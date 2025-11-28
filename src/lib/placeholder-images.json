@@ -1,0 +1,5 @@
+﻿[
+  { "id": 1, "url": "/images/placeholder1.jpg", "alt": "Placeholder image 1" },
+  { "id": 2, "url": "/images/placeholder2.jpg", "alt": "Placeholder image 2" },
+  { "id": 3, "url": "/images/placeholder3.jpg", "alt": "Placeholder image 3" }
+]
