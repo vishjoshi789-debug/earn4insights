@@ -1,29 +1,26 @@
-import React from 'react';
+// src/app/products/page.tsx
+import React from "react";
+import { mockProducts } from "@/lib/data";
 
-// Define a simple mock data structure
-const mockProducts = [
-  { id: 1, name: 'Firebase Studio Theme', price: 49.99 },
-  { id: 2, name: 'Next.js Debug Guide', price: 19.99 },
-  { id: 3, name: 'Cloud Function Starter', price: 99.99 },
-];
-
-function ProductsPage() {
+export default function ProductsPage() {
   return (
-    <div style={{ padding: '20px' }}>
-      <h2>Products Listing (Mock Data)</h2>
-      {mockProducts.length === 0 ? (
-        <p>No products available.</p>
-      ) : (
-        <ul style={{ listStyleType: 'disc', paddingLeft: '40px' }}>
-          {mockProducts.map((product) => (
-            <li key={product.id}>
-              {product.name} - ${product.price.toFixed(2)}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <main style={{ padding: 24 }}>
+      <h1>Products (debug list)</h1>
+      <p>Click any product name below. It should go to /products/&lt;id&gt;.</p>
+
+      <ul style={{ marginTop: 16 }}>
+        {mockProducts.map((product) => (
+          <li key={product.id} style={{ marginBottom: 8 }}>
+            {/* plain HTML link, no fancy components */}
+            <a
+              href={`/products/${product.id}`}
+              style={{ color: "blue", textDecoration: "underline", cursor: "pointer" }}
+            >
+              {product.name}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </main>
   );
 }
-
-export default ProductsPage;
