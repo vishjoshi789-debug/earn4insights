@@ -26,7 +26,15 @@ export type Feedback = {
 export type SocialPost = {
   id: string;
   productId: string;
-  platform: 'twitter' | 'instagram' | 'tiktok' | 'meta' | 'google';
+  platform:
+    | 'twitter'
+    | 'instagram'
+    | 'tiktok'
+    | 'meta'
+    | 'google'
+    | 'amazon'
+    | 'flipkart'
+    | 'reddit';
   userName: string;
   userHandle: string;
   userAvatar: string;
@@ -128,6 +136,67 @@ export const mockProducts: Product[] = [
     imageId: 'product-skincare',
     price: 75.0,
   },
+    {
+    id: 'sp_amazon_001',
+    productId: 'prod_001',
+    platform: 'amazon',
+    userName: 'Amazon Customer',
+    userHandle: 'Verified Buyer',
+    userAvatar: 'https://i.pravatar.cc/150?u=amazon1',
+    text: 'Great quality, delivered on time. Exactly as described in the listing.',
+    likes: 12,
+    shares: 0,
+    comments: 3,
+    timestamp: '2024-05-22T12:00:00Z',
+    analysis: {
+      sentiment: 'positive',
+      sentimentScore: 0.9,
+      influenceScore: 0.4,
+      isKeyOpinionLeader: false,
+      category: 'Product Feedback',
+    },
+  },
+  {
+    id: 'sp_flipkart_001',
+    productId: 'prod_002',
+    platform: 'flipkart',
+    userName: 'Flipkart User',
+    userHandle: 'Certified Buyer',
+    userAvatar: 'https://i.pravatar.cc/150?u=flipkart1',
+    text: 'Packaging was good, but the sound leakage is a bit high at full volume.',
+    likes: 5,
+    shares: 0,
+    comments: 1,
+    timestamp: '2024-05-23T09:30:00Z',
+    analysis: {
+      sentiment: 'neutral',
+      sentimentScore: 0.1,
+      influenceScore: 0.3,
+      isKeyOpinionLeader: false,
+      category: 'Product Feedback',
+    },
+  },
+  {
+    id: 'sp_reddit_001',
+    productId: 'prod_003',
+    platform: 'reddit',
+    userName: 'r/PhotographyUser',
+    userHandle: 'u/photo-geek',
+    userAvatar: 'https://i.pravatar.cc/150?u=reddit1',
+    text: 'For the price, this camera is actually insane. Low-light performance surprised me.',
+    likes: 48,
+    shares: 6,
+    comments: 12,
+    timestamp: '2024-05-24T18:15:00Z',
+    analysis: {
+      sentiment: 'positive',
+      sentimentScore: 0.85,
+      influenceScore: 0.8,
+      isKeyOpinionLeader: true,
+      category: 'Brand Mention',
+    },
+  },
+
 ];
 
 export const mockFeedback: Feedback[] = [
