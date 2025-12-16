@@ -1,0 +1,1 @@
+﻿C:\Users\Hp\Documents\studio\src\components\ui\alert.tsx --> contains Nix text

@@ -136,66 +136,7 @@ export const mockProducts: Product[] = [
     imageId: 'product-skincare',
     price: 75.0,
   },
-    {
-    id: 'sp_amazon_001',
-    productId: 'prod_001',
-    platform: 'amazon',
-    userName: 'Amazon Customer',
-    userHandle: 'Verified Buyer',
-    userAvatar: 'https://i.pravatar.cc/150?u=amazon1',
-    text: 'Great quality, delivered on time. Exactly as described in the listing.',
-    likes: 12,
-    shares: 0,
-    comments: 3,
-    timestamp: '2024-05-22T12:00:00Z',
-    analysis: {
-      sentiment: 'positive',
-      sentimentScore: 0.9,
-      influenceScore: 0.4,
-      isKeyOpinionLeader: false,
-      category: 'Product Feedback',
-    },
-  },
-  {
-    id: 'sp_flipkart_001',
-    productId: 'prod_002',
-    platform: 'flipkart',
-    userName: 'Flipkart User',
-    userHandle: 'Certified Buyer',
-    userAvatar: 'https://i.pravatar.cc/150?u=flipkart1',
-    text: 'Packaging was good, but the sound leakage is a bit high at full volume.',
-    likes: 5,
-    shares: 0,
-    comments: 1,
-    timestamp: '2024-05-23T09:30:00Z',
-    analysis: {
-      sentiment: 'neutral',
-      sentimentScore: 0.1,
-      influenceScore: 0.3,
-      isKeyOpinionLeader: false,
-      category: 'Product Feedback',
-    },
-  },
-  {
-    id: 'sp_reddit_001',
-    productId: 'prod_003',
-    platform: 'reddit',
-    userName: 'r/PhotographyUser',
-    userHandle: 'u/photo-geek',
-    userAvatar: 'https://i.pravatar.cc/150?u=reddit1',
-    text: 'For the price, this camera is actually insane. Low-light performance surprised me.',
-    likes: 48,
-    shares: 6,
-    comments: 12,
-    timestamp: '2024-05-24T18:15:00Z',
-    analysis: {
-      sentiment: 'positive',
-      sentimentScore: 0.85,
-      influenceScore: 0.8,
-      isKeyOpinionLeader: true,
-      category: 'Brand Mention',
-    },
-  },
+    
 
 ];
 
@@ -407,6 +348,66 @@ export const mockSocialPosts: SocialPost[] = [
         category: 'Product Feedback',
       },
     },
+    {
+    id: 'sp_amazon_001',
+    productId: 'prod_001',
+    platform: 'amazon',
+    userName: 'Amazon Customer',
+    userHandle: 'Verified Buyer',
+    userAvatar: 'https://i.pravatar.cc/150?u=amazon1',
+    text: 'Great quality, delivered on time. Exactly as described in the listing.',
+    likes: 12,
+    shares: 0,
+    comments: 3,
+    timestamp: '2024-05-22T12:00:00Z',
+    analysis: {
+      sentiment: 'positive',
+      sentimentScore: 0.9,
+      influenceScore: 0.4,
+      isKeyOpinionLeader: false,
+      category: 'Product Feedback',
+    },
+  },
+  {
+    id: 'sp_flipkart_001',
+    productId: 'prod_002',
+    platform: 'flipkart',
+    userName: 'Flipkart User',
+    userHandle: 'Certified Buyer',
+    userAvatar: 'https://i.pravatar.cc/150?u=flipkart1',
+    text: 'Packaging was good, but the sound leakage is a bit high at full volume.',
+    likes: 5,
+    shares: 0,
+    comments: 1,
+    timestamp: '2024-05-23T09:30:00Z',
+    analysis: {
+      sentiment: 'neutral',
+      sentimentScore: 0.1,
+      influenceScore: 0.3,
+      isKeyOpinionLeader: false,
+      category: 'Product Feedback',
+    },
+  },
+  {
+    id: 'sp_reddit_001',
+    productId: 'prod_003',
+    platform: 'reddit',
+    userName: 'r/PhotographyUser',
+    userHandle: 'u/photo-geek',
+    userAvatar: 'https://i.pravatar.cc/150?u=reddit1',
+    text: 'For the price, this camera is actually insane. Low-light performance surprised me.',
+    likes: 48,
+    shares: 6,
+    comments: 12,
+    timestamp: '2024-05-24T18:15:00Z',
+    analysis: {
+      sentiment: 'positive',
+      sentimentScore: 0.85,
+      influenceScore: 0.8,
+      isKeyOpinionLeader: true,
+      category: 'Brand Mention',
+    },
+  },
   ];
 
 export const mockLeaderboard: LeaderboardUser[] = [
@@ -433,6 +434,11 @@ export const mockRewards: Reward[] = [
     { id: 'rew_002', name: '$25 Gift Card', pointsCost: 2500, stock: 100 },
     { id: 'rew_003', name: 'Free T-Shirt', pointsCost: 3000, stock: 50 },
 ]
+
+
+  /* =======================
+   PAYOUT REQUESTS
+======================= */
 
 export const mockPayoutRequests: PayoutRequest[] = [
   {
@@ -467,4 +473,46 @@ export const mockPayoutRequests: PayoutRequest[] = [
     requestedAt: '2024-05-21T11:00:00Z',
     processedAt: '2024-05-21T12:00:00Z',
   },
-]
+];
+
+/* =======================
+   SURVEYS & NPS
+======================= */
+
+export type SurveyQuestion = {
+  id: string;
+  type: 'nps' | 'rating' | 'text' | 'multiple-choice';
+  question: string;
+  required: boolean;
+  options?: string[];
+};
+
+export type Survey = {
+  id: string;
+  title: string;
+  type: 'nps' | 'custom';
+  isActive: boolean;
+  createdAt: string;
+  questions: SurveyQuestion[];
+};
+
+export const mockSurveys: Survey[] = [
+  {
+    id: 'survey_nps_default',
+    title: 'Net Promoter Score',
+    type: 'nps',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    questions: [
+      {
+        id: 'q_nps_1',
+        type: 'nps',
+        question: 'How likely are you to recommend this brand to a friend?',
+        required: true,
+      },
+    ],
+  },
+];
+
+  
+

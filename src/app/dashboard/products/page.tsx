@@ -50,8 +50,10 @@ export default function DashboardProductsPage() {
                 <CardTitle className="flex items-center justify-between gap-2">
                   <span>{product.name}</span>
                   <span className="text-sm font-normal text-muted-foreground">
-                    ${product.price.toFixed(2)}
-                  </span>
+  {typeof product.price === 'number'
+    ? `$${product.price.toFixed(2)}`
+    : 'Price not set'}
+</span>
                 </CardTitle>
                 <CardDescription className="line-clamp-2">
                   {product.description}

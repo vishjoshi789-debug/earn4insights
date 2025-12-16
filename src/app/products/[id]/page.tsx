@@ -1,86 +1,68 @@
-// src/app/products/[id]/page.tsx
-import React from "react";
-import { notFound } from "next/navigation";
-import Image from "next/image";
-import { formatDistanceToNow } from "date-fns";
+import { mockProducts, mockFeedback } from '@/lib/data';
+import { notFound } from 'next/navigation';
+import Image from 'next/image';
+import { Separator } from '@/components/ui/separator';
+import { StarRating } from '@/components/star-rating';
+import { FeedbackForm } from '@/components/feedback-form';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { formatDistanceToNow } from 'date-fns';
 
-import { mockProducts, mockFeedback } from "@/lib/data";
-import { PlaceHolderImages } from "@/lib/placeholder-images";
-import { Separator } from "@/components/ui/separator";
-import { StarRating } from "@/components/star-rating";
-import FeedbackForm from "@/components/feedback-form";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
+// 👇 Match what Next 15 expects: params & searchParams as Promises
 type PageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default function PublicProductDetailPage({ params }: PageProps) {
-  const { id } = params;
+export default async function PublicProductDetailPage(props: PageProps) {
+  // ✅ Await params BEFORE using id
+  const { id } = await props.params;
 
   const product = mockProducts.find((p) => p.id === id);
   if (!product) {
     notFound();
   }
 
-  // Coerce product.imageId (string) to a number for comparison
-const imageId =
-  product?.imageId !== undefined && product?.imageId !== null
-    ? Number(product.imageId)
-    : undefined;
-
-const image = PlaceHolderImages.find(
-  (img) => img.id === imageId
-);
-
-// Safe URLs & alt text (with fallback)
-const imageUrl =
-  image?.imageUrl ??
-  "https://via.placeholder.com/800x450?text=Product+image";
-const imageAlt = image?.alt ?? product!.name;
-
-
+  // For now: simple fallback image (we can wire real placeholders later)
+  const imageUrl =
+    'https://via.placeholder.com/800x450?text=Product+image';
+  const imageAlt = product!.name;
 
   const feedbackList = mockFeedback
     .filter(
-      (f) => f.productId === id && !f.analysis.isPotentiallyFake
+      (f) => f.productId === id && !f.analysis.isPotentiallyFake,
     )
     .slice(0, 3);
 
   return (
     <div className="container mx-auto py-12 px-4">
       <div className="grid grid-cols-1 gap-12 md:grid-cols-2">
-        {/* Left column – product info */}
+        {/* LEFT: image + product info */}
         <div className="space-y-6">
-          {imageUrl && (
-  <div className="relative aspect-video w-full overflow-hidden rounded-lg shadow-lg">
-    <Image
-      src={imageUrl}
-      alt={imageAlt}
-      fill
-      className="object-cover"
-    />
-  </div>
-)}
+          <div className="relative aspect-video w-full overflow-hidden rounded-lg shadow-lg">
+            <Image
+              src={imageUrl}
+              alt={imageAlt}
+              fill
+              className="object-cover"
+            />
+          </div>
 
           <h1 className="font-headline text-4xl font-bold">
             {product!.name}
           </h1>
-
           <p className="text-2xl font-semibold text-primary">
             ${product!.price.toFixed(2)}
           </p>
-
           <p className="text-lg text-muted-foreground">
             {product!.description}
           </p>
         </div>
 
-        {/* Right column – feedback form + recent feedback */}
+        {/* RIGHT: feedback form + recent feedback */}
         <div className="space-y-8">
-          {/* ✅ this is the component we just fixed */}
-          <FeedbackForm productId={id} />
+          {/* If your FeedbackForm takes props, adjust here */}
+          <FeedbackForm />
 
           <Separator />
 
@@ -100,7 +82,6 @@ const imageAlt = image?.alt ?? product!.name;
                           {feedback.userName.charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <p className="font-semibold">
@@ -109,15 +90,13 @@ const imageAlt = image?.alt ?? product!.name;
                           <p className="text-xs text-muted-foreground">
                             {formatDistanceToNow(
                               new Date(feedback.timestamp),
-                              { addSuffix: true }
+                              { addSuffix: true },
                             )}
                           </p>
                         </div>
-
                         <StarRating rating={feedback.rating} />
                       </div>
                     </CardHeader>
-
                     <CardContent>
                       <p className="text-sm text-foreground/90">
                         {feedback.text}
