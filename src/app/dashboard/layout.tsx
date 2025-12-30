@@ -1,5 +1,5 @@
 'use client';
-
+import { PackagePlus } from 'lucide-react';
 import Link from 'next/link';
 import {
   SidebarProvider,
@@ -42,6 +42,12 @@ const menuItems = [
     label: 'Detailed product analytics',
     icon: FileText,
   },
+  {
+  href: '/dashboard/launch',
+  label: 'Launch Product',
+  icon: PackagePlus,
+}
+
 ];
 
 export default function DashboardLayout({
