@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { ArrowLeft, BarChart3 } from 'lucide-react'
 import { fetchSurvey } from '@/server/surveys/surveyService'
 import { formatDistanceToNow } from 'date-fns'
@@ -121,16 +123,36 @@ export default async function SurveyDetailPage({ params }: PageProps) {
           <p className="text-sm text-muted-foreground">
             Share this survey with your users to start collecting responses.
           </p>
+          
+          {/* Survey Link */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Survey Link</Label>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/survey/${survey.id}`}
+                className="font-mono text-sm"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/survey/${survey.id}`)
+                }}
+              >
+                Copy
+              </Button>
+            </div>
+          </div>
+
           <div className="flex gap-3">
             <Button variant="outline">
               <BarChart3 className="w-4 h-4 mr-2" />
               View Responses
             </Button>
-            <Button variant="outline">
-              Copy Survey Link
-            </Button>
-            <Button variant="outline">
-              Embed Code
+            <Button variant="outline" asChild>
+              <Link href={`/survey/${survey.id}`} target="_blank">
+                Preview Survey
+              </Link>
             </Button>
           </div>
         </CardContent>

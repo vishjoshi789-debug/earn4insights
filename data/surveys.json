@@ -1,1 +1,49 @@
-[]
+[
+  {
+    "productId": "demo",
+    "title": "Customer satisfaction survey",
+    "description": "we have launched new product , use it and give us your feedback ",
+    "type": "custom",
+    "isActive": true,
+    "questions": [
+      {
+        "type": "text",
+        "question": "what pain points that you are facing right now ? ",
+        "required": true,
+        "id": "q_1"
+      },
+      {
+        "type": "text",
+        "question": "what current products that you are using right now ? ",
+        "required": true,
+        "id": "q_2"
+      }
+    ],
+    "id": "0c0fcc4d-bb1e-4fd1-a6bb-00cf90e8d5ed",
+    "createdAt": "2026-01-22T07:45:03.889Z"
+  },
+  {
+    "productId": "demo",
+    "title": "NPS survey ",
+    "description": "we have launched new product . We are focusing on product Led growth and word of mouth . please do take your time to use product and recommend others to use it. ",
+    "type": "nps",
+    "isActive": true,
+    "questions": [
+      {
+        "id": "q_nps_score",
+        "type": "rating",
+        "question": "On a scale of 0-10, how likely are you to recommend our product to a friend or colleague?",
+        "scale": 10,
+        "required": true
+      },
+      {
+        "id": "q_nps_reason",
+        "type": "text",
+        "question": "What is the main reason for your score?",
+        "required": false
+      }
+    ],
+    "id": "fab02001-7037-4525-944e-32b4975b50d7",
+    "createdAt": "2026-01-22T07:48:47.658Z"
+  }
+]
