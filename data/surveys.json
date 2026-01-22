@@ -69,5 +69,77 @@
     ],
     "id": "4498cab4-ab99-4327-9bb4-97b73027df42",
     "createdAt": "2026-01-22T08:24:58.902Z"
+  },
+  {
+    "productId": "demo",
+    "title": "user satisfaction survey ",
+    "description": "want to understand how much you are satidfied with our product and how likely you will recommend to others ",
+    "type": "nps",
+    "isActive": true,
+    "questions": [
+      {
+        "id": "q_nps_score",
+        "type": "rating",
+        "question": "On a scale of 0-10, how likely are you to recommend our product to a friend or colleague?",
+        "scale": 10,
+        "required": true
+      },
+      {
+        "id": "q_nps_reason",
+        "type": "text",
+        "question": "What is the main reason for your score?",
+        "required": false
+      }
+    ],
+    "id": "9b8dff2b-aa0a-468a-b9af-5e6a04e54091",
+    "createdAt": "2026-01-22T08:47:15.518Z"
+  },
+  {
+    "productId": "demo",
+    "title": "CSAT Survey ",
+    "description": "new CSAT Survey",
+    "type": "csat",
+    "isActive": true,
+    "questions": [
+      {
+        "id": "q_csat_score",
+        "type": "rating",
+        "question": "How satisfied are you with our product?",
+        "scale": 5,
+        "required": true
+      },
+      {
+        "id": "q_csat_feedback",
+        "type": "text",
+        "question": "What could we improve?",
+        "required": false
+      }
+    ],
+    "id": "adafecde-ae34-4bd6-9328-4690d728ba4b",
+    "createdAt": "2026-01-22T11:01:54.136Z"
+  },
+  {
+    "productId": "demo",
+    "title": "Gauge customer intrests ",
+    "description": "it's about to know your interests in our upcoming launch of product. ",
+    "type": "nps",
+    "isActive": true,
+    "questions": [
+      {
+        "id": "q_nps_score",
+        "type": "rating",
+        "question": "On a scale of 0-10, how likely are you to recommend our product to a friend or colleague?",
+        "scale": 10,
+        "required": true
+      },
+      {
+        "id": "q_nps_reason",
+        "type": "text",
+        "question": "What is the main reason for your score?",
+        "required": false
+      }
+    ],
+    "id": "4772c081-4b4b-4c75-9412-81010271ee1c",
+    "createdAt": "2026-01-22T16:02:39.693Z"
   }
 ]

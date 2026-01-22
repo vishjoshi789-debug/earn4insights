@@ -151,12 +151,16 @@ export default async function SurveyDetailPage({ params }: PageProps) {
                 Embed Code
               </Link>
             </Button>
-            <Button variant="outline" asChild>
+            <Button asChild>
               <Link href={`/survey/${survey.id}`} target="_blank">
-                Preview Survey
+                Fill Out Survey (Test)
               </Link>
             </Button>
           </div>
+          
+          <p className="text-xs text-muted-foreground mt-3">
+            💡 Click "Fill Out Survey" to test the response form. Responses will appear in the analytics dashboard.
+          </p>
         </CardContent>
       </Card>
     </div>
