@@ -5,6 +5,9 @@ import {
   saveStep1ProductType as saveStep1,
   saveStep2Audience as saveStep2,
   saveStep3Channels as saveStep3,
+  saveStep4Goal as saveStep4,
+  saveStep5Branding as saveStep5,
+  saveStep6Details as saveStep6,
   completeProfile as completeProfileService
 } from '@/server/products/productService'
 
@@ -38,11 +41,44 @@ export async function saveStep3Channels(
   revalidatePath(`/dashboard/products/${productId}/profile`)
 }
 
-export async function completeProfile(
+export async function saveStep4Goal(
   productId: string,
   primaryGoal: string
 ) {
-  await completeProfileService(productId, primaryGoal)
+  await saveStep4(productId, primaryGoal)
+  revalidatePath(`/dashboard/products/${productId}`)
+  revalidatePath(`/dashboard/products/${productId}/profile`)
+}
+
+export async function saveStep5Branding(
+  productId: string,
+  primaryColor: string
+) {
+  await saveStep5(productId, primaryColor)
+  revalidatePath(`/dashboard/products/${productId}`)
+  revalidatePath(`/dashboard/products/${productId}/profile`)
+}
+
+export async function saveStep6Details(
+  productId: string,
+  website: string,
+  tagline: string,
+  description: string,
+  keyFeatures: string[]
+) {
+  await saveStep6(productId, website, tagline, description, keyFeatures)
+  revalidatePath(`/dashboard/products/${productId}`)
+  revalidatePath(`/dashboard/products/${productId}/profile`)
+}
+
+export async function completeProfile(
+  productId: string,
+  productStage: string,
+  userBase?: string | null,
+  twitter?: string,
+  linkedin?: string
+) {
+  await completeProfileService(productId, productStage, userBase, twitter, linkedin)
   revalidatePath(`/dashboard/products/${productId}`)
   revalidatePath(`/dashboard/products/${productId}/profile`)
 }

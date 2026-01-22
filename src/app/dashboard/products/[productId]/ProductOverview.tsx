@@ -21,8 +21,20 @@ export default function ProductOverview({
   // Helper to format profile values
   const formatValue = (value: string | undefined) => {
     if (!value) return 'Not set'
-    // Capitalize first letter
-    return value.charAt(0).toUpperCase() + value.slice(1)
+    // Capitalize first letter and replace hyphens with spaces
+    return value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, ' ')
+  }
+
+  const formatUserBase = (value: string | undefined) => {
+    if (!value) return 'Not set'
+    const map: Record<string, string> = {
+      'under-100': '< 100 users',
+      '100-1k': '100 - 1,000 users',
+      '1k-10k': '1,000 - 10,000 users',
+      '10k-100k': '10,000 - 100,000 users',
+      '100k-plus': '100,000+ users',
+    }
+    return map[value] || value
   }
 
   return (
@@ -56,14 +68,93 @@ export default function ProductOverview({
             value={formatValue(profile.data.audienceType)}
           />
           <ContextCard
-            label="Maturity"
-            value="Not set"
+            label="Product stage"
+            value={formatValue(profile.data.context?.productStage)}
           />
           <ContextCard
-            label="Primary goal"
-            value={profile.data.primaryGoal || 'Not set'}
+            label="User base"
+            value={formatUserBase(profile.data.context?.userBase)}
           />
         </div>
+
+        {/* =======================
+            2.5 PRODUCT DETAILS (NEW)
+        ======================== */}
+        {(profile.data.productDetails?.tagline || 
+          profile.data.productDetails?.website ||
+          profile.data.branding?.primaryColor) && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Product Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {profile.data.productDetails?.tagline && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Tagline</p>
+                  <p className="text-base font-medium">{profile.data.productDetails.tagline}</p>
+                </div>
+              )}
+              
+              {profile.data.productDetails?.description && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Description</p>
+                  <p className="text-sm">{profile.data.productDetails.description}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                {profile.data.productDetails?.website && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Website</p>
+                    <a 
+                      href={profile.data.productDetails.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      {profile.data.productDetails.website}
+                    </a>
+                  </div>
+                )}
+
+                {profile.data.branding?.primaryColor && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Brand Color</p>
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-6 h-6 rounded border"
+                        style={{ backgroundColor: profile.data.branding.primaryColor }}
+                      />
+                      <span className="text-sm font-mono">{profile.data.branding.primaryColor}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {profile.data.productDetails?.keyFeatures && 
+               profile.data.productDetails.keyFeatures.length > 0 && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Key Features</p>
+                  <ul className="space-y-1">
+                    {profile.data.productDetails.keyFeatures.map((feature, idx) => (
+                      <li key={idx} className="text-sm flex items-start gap-2">
+                        <span className="text-primary">•</span>
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {profile.data.primaryGoal && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Primary Goal</p>
+                  <p className="text-sm font-medium">{profile.data.primaryGoal}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* =======================
             3. ENABLED FEATURES

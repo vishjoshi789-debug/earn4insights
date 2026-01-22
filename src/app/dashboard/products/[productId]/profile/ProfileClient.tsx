@@ -12,6 +12,9 @@ import {
   saveStep1ProductType, 
   saveStep2Audience, 
   saveStep3Channels, 
+  saveStep4Goal,
+  saveStep5Branding,
+  saveStep6Details,
   completeProfile 
 } from './actions'
 
@@ -34,10 +37,12 @@ import {
   ShoppingCart,
 } from 'lucide-react'
 
-const TOTAL_STEPS = 4
+const TOTAL_STEPS = 7
 
 type ProductType = 'saas' | 'physical' | 'service' | 'mobile' | null
 type AudienceType = 'b2b' | 'b2c' | 'b2b2c' | 'education' | null
+type ProductStage = 'pre-launch' | 'recently-launched' | 'growth' | 'established' | null
+type UserBase = 'under-100' | '100-1k' | '1k-10k' | '10k-100k' | '100k-plus' | null
 
 export default function ProfileClient({
   productId,
@@ -76,12 +81,48 @@ export default function ProfileClient({
     profile.data.primaryGoal || ''
   )
 
+  // STEP 5: Visual Identity
+  const [primaryColor, setPrimaryColor] = useState(
+    profile.data.branding?.primaryColor || '#3b82f6'
+  )
+
+  // STEP 6: Product Details
+  const [website, setWebsite] = useState(
+    profile.data.productDetails?.website || ''
+  )
+  const [tagline, setTagline] = useState(
+    profile.data.productDetails?.tagline || ''
+  )
+  const [description, setDescription] = useState(
+    profile.data.productDetails?.description || ''
+  )
+  const [keyFeatures, setKeyFeatures] = useState<string[]>(
+    profile.data.productDetails?.keyFeatures || ['', '', '']
+  )
+
+  // STEP 7: Maturity & Context
+  const [productStage, setProductStage] = useState<ProductStage>(
+    (profile.data.context?.productStage as ProductStage) ?? null
+  )
+  const [userBase, setUserBase] = useState<UserBase>(
+    (profile.data.context?.userBase as UserBase) ?? null
+  )
+  const [twitter, setTwitter] = useState(
+    profile.data.context?.socialMedia?.twitter || ''
+  )
+  const [linkedin, setLinkedin] = useState(
+    profile.data.context?.socialMedia?.linkedin || ''
+  )
+
   // Validation logic for each step
   const canProceed = () => {
     if (currentStep === 1) return productType !== null
     if (currentStep === 2) return audienceType !== null
     if (currentStep === 3) return feedbackChannels.length > 0
     if (currentStep === 4) return primaryGoal.trim().length > 0
+    if (currentStep === 5) return true // All optional
+    if (currentStep === 6) return true // All optional
+    if (currentStep === 7) return productStage !== null // Required field
     return false
   }
 
@@ -99,6 +140,13 @@ export default function ProfileClient({
         await saveStep2Audience(productId, audienceType, targetDescription)
       } else if (currentStep === 3 && feedbackChannels.length > 0) {
         await saveStep3Channels(productId, feedbackChannels)
+      } else if (currentStep === 4 && primaryGoal.trim().length > 0) {
+        await saveStep4Goal(productId, primaryGoal)
+      } else if (currentStep === 5) {
+        await saveStep5Branding(productId, primaryColor)
+      } else if (currentStep === 6) {
+        const features = keyFeatures.filter(f => f.trim().length > 0)
+        await saveStep6Details(productId, website, tagline, description, features)
       }
 
       // Move to next step
@@ -135,7 +183,7 @@ export default function ProfileClient({
     setError(null)
 
     try {
-      await completeProfile(productId, primaryGoal)
+      await completeProfile(productId, productStage!, userBase, twitter, linkedin)
       
       // Redirect back to product overview
       router.push(`/dashboard/products/${productId}`)
@@ -146,6 +194,14 @@ export default function ProfileClient({
       setError(errorMessage)
       setIsSaving(false)
     }
+  }
+
+  const updateFeature = (index: number, value: string) => {
+    setKeyFeatures(prev => {
+      const newFeatures = [...prev]
+      newFeatures[index] = value
+      return newFeatures
+    })
   }
 
   return (
@@ -159,7 +215,7 @@ export default function ProfileClient({
 
       {/* Progress Bar */}
       <div className="flex gap-2">
-        {[1, 2, 3, 4].map((step) => (
+        {[1, 2, 3, 4, 5, 6, 7].map((step) => (
           <div
             key={step}
             className={`flex-1 h-2 rounded-full transition-colors ${
@@ -436,6 +492,259 @@ export default function ProfileClient({
                   <p className="font-medium">{feedbackChannels.length} selected</p>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========== STEP 5: VISUAL IDENTITY ========== */}
+        {currentStep === 5 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold">Visual Identity</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Add your brand colors and assets (all optional - you can add these later)
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="color">Primary Brand Color</Label>
+                <div className="flex gap-3 items-center">
+                  <input
+                    type="color"
+                    id="color"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="h-10 w-20 rounded border cursor-pointer"
+                  />
+                  <Input
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    placeholder="#3b82f6"
+                    className="flex-1"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Used for branded analytics and public product page theming
+                </p>
+              </div>
+
+              <div className="border rounded-lg p-4 bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">
+                  <strong>Coming soon:</strong> Upload product logo and screenshots for your public product page
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  For now, you can add these later in product settings
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t pt-4 mt-4">
+              <p className="text-sm text-muted-foreground">
+                💡 <strong>Skip for now?</strong> You can complete this step later from your product settings
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ========== STEP 6: PRODUCT DETAILS ========== */}
+        {currentStep === 6 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold">Product Details</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Help users understand your product (optional - enhances your public product page)
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="website">Official Website</Label>
+                <Input
+                  id="website"
+                  type="url"
+                  placeholder="https://yourproduct.com"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tagline">Product Tagline</Label>
+                <Input
+                  id="tagline"
+                  placeholder="e.g., AI-powered customer insights platform"
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                  maxLength={100}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {tagline.length}/100 characters
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Product Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Describe what makes your product unique and valuable..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={4}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Key Features (up to 3)</Label>
+                {keyFeatures.map((feature, index) => (
+                  <Input
+                    key={index}
+                    placeholder={`Feature ${index + 1}`}
+                    value={feature}
+                    onChange={(e) => updateFeature(index, e.target.value)}
+                  />
+                ))}
+                <p className="text-xs text-muted-foreground">
+                  These will be displayed on your public product page
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t pt-4 mt-4">
+              <p className="text-sm text-muted-foreground">
+                💡 <strong>Skip for now?</strong> You can add these details later to improve your public product page
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ========== STEP 7: MATURITY & CONTEXT ========== */}
+        {currentStep === 7 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold">Product Maturity & Context</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Help us calibrate insights and benchmarks for your product stage
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <Label>Product Stage *</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setProductStage('pre-launch')}
+                    className={`p-4 border-2 rounded-lg text-left transition-all hover:border-primary ${
+                      productStage === 'pre-launch'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border'
+                    }`}
+                  >
+                    <h3 className="font-semibold text-sm">Pre-launch (Beta)</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Testing with early users
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setProductStage('recently-launched')}
+                    className={`p-4 border-2 rounded-lg text-left transition-all hover:border-primary ${
+                      productStage === 'recently-launched'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border'
+                    }`}
+                  >
+                    <h3 className="font-semibold text-sm">Recently Launched</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      0-6 months live
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setProductStage('growth')}
+                    className={`p-4 border-2 rounded-lg text-left transition-all hover:border-primary ${
+                      productStage === 'growth'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border'
+                    }`}
+                  >
+                    <h3 className="font-semibold text-sm">Growth Stage</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      6 months - 2 years
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setProductStage('established')}
+                    className={`p-4 border-2 rounded-lg text-left transition-all hover:border-primary ${
+                      productStage === 'established'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border'
+                    }`}
+                  >
+                    <h3 className="font-semibold text-sm">Established</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      2+ years live
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="userbase">Approximate User Base (Optional)</Label>
+                <select
+                  id="userbase"
+                  value={userBase || ''}
+                  onChange={(e) => setUserBase((e.target.value || null) as UserBase)}
+                  className="w-full border rounded-md px-3 py-2"
+                >
+                  <option value="">Select user base size</option>
+                  <option value="under-100">&lt; 100 users</option>
+                  <option value="100-1k">100 - 1,000 users</option>
+                  <option value="1k-10k">1,000 - 10,000 users</option>
+                  <option value="10k-100k">10,000 - 100,000 users</option>
+                  <option value="100k-plus">100,000+ users</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Helps us provide relevant benchmarks and insights
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Social Media (Optional)</Label>
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Twitter/X handle (e.g., @yourproduct)"
+                    value={twitter}
+                    onChange={(e) => setTwitter(e.target.value)}
+                  />
+                  <Input
+                    placeholder="LinkedIn page URL"
+                    value={linkedin}
+                    onChange={(e) => setLinkedin(e.target.value)}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Used for social listening and brand verification
+                </p>
+              </div>
+            </div>
+
+            <div className="border rounded-lg p-4 bg-primary/5 space-y-3">
+              <h3 className="font-semibold text-sm">🎉 Almost done!</h3>
+              <p className="text-sm text-muted-foreground">
+                After completing this step, you'll have a complete product profile with:
+              </p>
+              <ul className="text-sm text-muted-foreground space-y-1 ml-4">
+                <li>• Customized analytics dashboards</li>
+                <li>• AI-powered feedback insights</li>
+                <li>• Public product page for collecting feedback</li>
+                <li>• Benchmarking against similar products</li>
+              </ul>
             </div>
           </div>
         )}

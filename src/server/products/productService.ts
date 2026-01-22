@@ -74,7 +74,7 @@ export async function saveStep3Channels(
   }))
 }
 
-export async function completeProfile(
+export async function saveStep4Goal(
   productId: string,
   primaryGoal: string
 ) {
@@ -82,11 +82,76 @@ export async function completeProfile(
 
   await updateProductProfile(productId, (prev: ProductProfile) => ({
     ...prev,
-    currentStep: 4,
-    isComplete: true,
+    currentStep: 5,
     data: {
       ...prev.data,
       primaryGoal,
+    },
+  }))
+}
+
+export async function saveStep5Branding(
+  productId: string,
+  primaryColor: string
+) {
+  await updateProductProfile(productId, (prev: ProductProfile) => ({
+    ...prev,
+    currentStep: 6,
+    data: {
+      ...prev.data,
+      branding: {
+        ...prev.data.branding,
+        primaryColor,
+      },
+    },
+  }))
+}
+
+export async function saveStep6Details(
+  productId: string,
+  website: string,
+  tagline: string,
+  description: string,
+  keyFeatures: string[]
+) {
+  await updateProductProfile(productId, (prev: ProductProfile) => ({
+    ...prev,
+    currentStep: 7,
+    data: {
+      ...prev.data,
+      productDetails: {
+        website: website || undefined,
+        tagline: tagline || undefined,
+        description: description || undefined,
+        keyFeatures: keyFeatures.length > 0 ? keyFeatures : undefined,
+      },
+    },
+  }))
+}
+
+export async function completeProfile(
+  productId: string,
+  productStage: string,
+  userBase?: string | null,
+  twitter?: string,
+  linkedin?: string
+) {
+  if (!productStage) return
+
+  await updateProductProfile(productId, (prev: ProductProfile) => ({
+    ...prev,
+    currentStep: 7,
+    isComplete: true,
+    data: {
+      ...prev.data,
+      context: {
+        productStage: productStage as ProductProfile['data']['context']['productStage'],
+        userBase: (userBase || undefined) as ProductProfile['data']['context']['userBase'],
+        socialMedia: {
+          twitter: twitter || undefined,
+          linkedin: linkedin || undefined,
+        },
+      },
     },
   }))
 }
