@@ -175,5 +175,4 @@ export async function exportResponsesToCSV(surveyId: string): Promise<string> {
   ].join('\n')
 
   return csvContent
-  }
 }
