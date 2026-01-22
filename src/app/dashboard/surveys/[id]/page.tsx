@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { ArrowLeft, BarChart3, Code } from 'lucide-react'
 import { fetchSurvey } from '@/server/surveys/surveyService'
 import { formatDistanceToNow } from 'date-fns'
+import CopyLinkButton from './CopyLinkButton'
 
 type PageProps = {
   params: Promise<{ id: string }>
@@ -133,14 +134,7 @@ export default async function SurveyDetailPage({ params }: PageProps) {
                 value={`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/survey/${survey.id}`}
                 className="font-mono text-sm"
               />
-              <Button
-                variant="outline"
-                onClick={() => {
-                  navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/survey/${survey.id}`)
-                }}
-              >
-                Copy
-              </Button>
+              <CopyLinkButton url={`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/survey/${survey.id}`} />
             </div>
           </div>
 
