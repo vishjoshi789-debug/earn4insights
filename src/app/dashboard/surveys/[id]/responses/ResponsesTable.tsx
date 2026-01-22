@@ -40,7 +40,36 @@ export default function ResponsesTable({ responses, survey }: ResponsesTableProp
               newSentiments.set(response.id, sentiment)
             } catch (err) {
               console.error('Sentiment analysis failed:', err)
-   
+            }
+          }
+        }
+      }
+      
+      setSentiments(newSentiments)
+    }
+    
+    if (responses.length > 0) {
+      analyzeResponses()
+    }
+  }, [responses, survey.questions])
+  
+  if (responses.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <p>No responses yet</p>
+      </div>
+    )
+  }
+
+  const getNPSCategory = (rating: number) => {
+    if (rating >= 9) return { label: 'Promoter', color: 'bg-green-100 text-green-800 border-green-200', icon: ThumbsUp }
+    if (rating >= 7) return { label: 'Passive', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: Minus }
+    return { label: 'Detractor', color: 'bg-red-100 text-red-800 border-red-200', icon: ThumbsDown }
+  }
+
+  const getRatingQuestion = () => {
+    return survey.questions.find(q => q.type === 'rating')
+  }
 
   const getSentimentBadge = (sentiment: SentimentData) => {
     const colors = {
@@ -60,37 +89,6 @@ export default function ResponsesTable({ responses, survey }: ResponsesTableProp
         {emojis[sentiment.sentiment]} {sentiment.sentiment}
       </Badge>
     )
-  }         }
-          }
-        }
-      }
-      
-      setSentiments(newSentiments)
-    }
-    
-    if (responses.length > 0) {
-      analyzeResponses()
-    }
-  }, [responses, survey.questions])
-  const [sentiments, setSentiments] = useState<Map<string, SentimentData>>(new Map())
-  
-  if (responses.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <p>No responses yet</p>
-      </const sentiment = sentiments.get(response.id)
-        div>
-    )
-  }
-
-  const getNPSCategory = (rating: number) => {
-    if (rating >= 9) return { label: 'Promoter', color: 'bg-green-100 text-green-800 border-green-200', icon: ThumbsUp }
-    if (rating >= 7) return { label: 'Passive', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: Minus }
-    return { label: 'Detractor', color: 'bg-red-100 text-red-800 border-red-200', icon: ThumbsDown }
-  }
-
-  const getRatingQuestion = () => {
-    return survey.questions.find(q => q.type === 'rating')
   }
 
   return (
@@ -99,6 +97,7 @@ export default function ResponsesTable({ responses, survey }: ResponsesTableProp
         const isExpanded = expandedId === response.id
         const ratingQuestion = getRatingQuestion()
         const rating = ratingQuestion ? Number(response.answers[ratingQuestion.id]) : null
+        const sentiment = sentiments.get(response.id)
         
         let category = null
         if (survey.type === 'nps' && rating !== null) {
@@ -107,10 +106,7 @@ export default function ResponsesTable({ responses, survey }: ResponsesTableProp
 
         return (
           <Card key={response.id} className="p-4">
-            <div classSentiment Badge */}
-                  {sentiment && getSentimentBadge(sentiment)}
-                  
-                  {/* Name="flex items-start justify-between">
+            <div className="flex items-start justify-between">
               <div className="flex-1 space-y-2">
                 <div className="flex items-center gap-3">
                   {/* Rating Display */}
@@ -130,6 +126,9 @@ export default function ResponsesTable({ responses, survey }: ResponsesTableProp
                       {category.label}
                     </Badge>
                   )}
+                  
+                  {/* Sentiment Badge */}
+                  {sentiment && getSentimentBadge(sentiment)}
                   
                   {/* Timestamp */}
                   <span className="text-sm text-muted-foreground">
