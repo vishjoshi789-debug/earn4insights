@@ -45,5 +45,29 @@
     ],
     "id": "fab02001-7037-4525-944e-32b4975b50d7",
     "createdAt": "2026-01-22T07:48:47.658Z"
+  },
+  {
+    "productId": "demo",
+    "title": "Customer NPS score ",
+    "description": "want to understand product led growth of our newly launched product ",
+    "type": "nps",
+    "isActive": true,
+    "questions": [
+      {
+        "id": "q_nps_score",
+        "type": "rating",
+        "question": "On a scale of 0-10, how likely are you to recommend our product to a friend or colleague?",
+        "scale": 10,
+        "required": true
+      },
+      {
+        "id": "q_nps_reason",
+        "type": "text",
+        "question": "What is the main reason for your score?",
+        "required": false
+      }
+    ],
+    "id": "4498cab4-ab99-4327-9bb4-97b73027df42",
+    "createdAt": "2026-01-22T08:24:58.902Z"
   }
 ]

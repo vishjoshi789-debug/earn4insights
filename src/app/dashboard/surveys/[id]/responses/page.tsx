@@ -173,8 +173,8 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
           <CardContent>
             <Suspense fallback={<div className="h-64 flex items-center justify-center text-muted-foreground">Loading chart...</div>}>
               <NPSTrendChart responses={allResponses} survey={survey} />
-            </CardContent>
-          </Card>
+            </Suspense>
+          </CardContent>
         </Card>
       )}
 
