@@ -90,25 +90,3 @@ export async function analyzeSentiment(text: string): Promise<SentimentAnalysis>
 export async function batchAnalyzeSentiment(texts: string[]): Promise<SentimentAnalysis[]> {
   return Promise.all(texts.map(text => analyzeSentiment(text)))
 }
-
-/**
- * Get sentiment color for UI display
- */
-export function getSentimentColor(sentiment: Sentiment): string {
-  switch (sentiment) {
-    case 'positive': return 'text-green-600 bg-green-50 border-green-200'
-    case 'negative': return 'text-red-600 bg-red-50 border-red-200'
-    case 'neutral': return 'text-gray-600 bg-gray-50 border-gray-200'
-  }
-}
-
-/**
- * Get sentiment emoji
- */
-export function getSentimentEmoji(sentiment: Sentiment): string {
-  switch (sentiment) {
-    case 'positive': return '😊'
-    case 'negative': return '😞'
-    case 'neutral': return '😐'
-  }
-}
