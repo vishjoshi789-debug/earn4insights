@@ -26,7 +26,7 @@ export default function DashboardPage() {
               View and explore your tracked products.
             </p>
             <Button asChild size="sm">
-              <Link href="/products">Go to products</Link>
+              <Link href="/dashboard/products">Go to products</Link>
             </Button>
           </CardContent>
         </Card>

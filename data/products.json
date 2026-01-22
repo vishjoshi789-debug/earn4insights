@@ -1,0 +1,113 @@
+[
+  {
+    "id": "0bbd6be4-a146-4255-84b7-f1f3b536115b",
+    "name": "startupsgurukul ",
+    "platform": "web",
+    "domain": "https://startupsgurukul.com",
+    "description": "updated product launch ",
+    "status": "launched",
+    "features": {
+      "nps": true,
+      "feedback": true,
+      "social_listening": true
+    },
+    "created_at": "2026-01-04T13:27:24.327Z"
+  },
+  {
+    "id": "2a261d43-9cfd-467f-9722-ada5d862a25c",
+    "name": "startupsgurukul ",
+    "platform": "web",
+    "domain": "https://startupsgurukul.com",
+    "description": "latest product launch ",
+    "status": "launched",
+    "features": {
+      "nps": true,
+      "feedback": true,
+      "social_listening": true
+    },
+    "created_at": "2026-01-04T13:43:35.145Z"
+  },
+  {
+    "id": "8a382d53-d581-4836-8423-06b5e0834b49",
+    "name": "startupsgurukul ",
+    "platform": "web",
+    "domain": "https://startupsgurukul.com",
+    "description": "new launch ",
+    "status": "launched",
+    "features": {
+      "nps": true,
+      "feedback": true,
+      "social_listening": true
+    },
+    "created_at": "2026-01-04T14:15:30.893Z"
+  },
+  {
+    "id": "bc5c4499-8875-4f6f-81aa-6b1caf81bedb",
+    "name": "startupsgurukul ",
+    "platform": "web",
+    "domain": "https://startupsgurukul.com",
+    "description": "new launch ",
+    "status": "launched",
+    "features": {
+      "nps": true,
+      "feedback": true,
+      "social_listening": true
+    },
+    "created_at": "2026-01-04T15:15:11.265Z"
+  },
+  {
+    "id": "f370660e-3711-45c7-8b92-635253fc6bc6",
+    "name": "earn4insights",
+    "platform": "web",
+    "domain": "earn4insights.com",
+    "description": "consumer intelligence ",
+    "status": "launched",
+    "features": {
+      "nps": true,
+      "feedback": true,
+      "social_listening": true
+    },
+    "created_at": "2026-01-18T15:57:30.790Z"
+  },
+  {
+    "id": "02a4d412-9e6d-48ff-8a7b-eefaf5b0ffe6",
+    "name": "Metacog",
+    "platform": "web",
+    "domain": "https://startupsgurukul.com",
+    "description": "Neurocognition",
+    "status": "launched",
+    "features": {
+      "nps": true,
+      "feedback": true,
+      "social_listening": true
+    },
+    "created_at": "2026-01-21T01:55:25.280Z",
+    "profile": {
+      "currentStep": 4,
+      "isComplete": true,
+      "data": {
+        "productType": "saas",
+        "audienceType": "b2b2c",
+        "feedbackChannels": [
+          "social",
+          "support"
+        ],
+        "primaryGoal": "Improve retention , increse NPS score "
+      }
+    }
+  },
+  {
+    "id": "ac502f80-bd3a-4cc8-a89b-6d9eaf1ba497",
+    "name": "Metacog",
+    "platform": "web",
+    "domain": "https://startupsgurukul.com",
+    "description": "Neurocognition",
+    "status": "launched",
+    "features": {
+      "nps": true,
+      "feedback": true,
+      "social_listening": true
+    },
+    "created_at": "2026-01-21T01:55:42.931Z"
+  }
+]

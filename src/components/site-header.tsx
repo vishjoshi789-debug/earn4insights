@@ -44,11 +44,12 @@ export function SiteHeader() {
             Features
           </Link>
           <Link
-            href="/products"
-            className="text-foreground/60 transition-colors hover:text-foreground/80"
-          >
-            Products
-          </Link>
+  href="/dashboard/products"
+  className="text-foreground/60 transition-colors hover:text-foreground/80"
+>
+  Products
+</Link>
+
           <Link
             href="/community"
             className="text-foreground/60 transition-colors hover:text-foreground/80"
