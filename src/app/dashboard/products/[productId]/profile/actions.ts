@@ -52,9 +52,11 @@ export async function saveStep4Goal(
 
 export async function saveStep5Branding(
   productId: string,
-  primaryColor: string
+  primaryColor: string,
+  logo: { url: string; filename: string; size: number } | null,
+  productImages: Array<{ url: string; filename: string; alt?: string }>
 ) {
-  await saveStep5(productId, primaryColor)
+  await saveStep5(productId, primaryColor, logo, productImages)
   revalidatePath(`/dashboard/products/${productId}`)
   revalidatePath(`/dashboard/products/${productId}/profile`)
 }
@@ -76,9 +78,15 @@ export async function completeProfile(
   productStage: string,
   userBase?: string | null,
   twitter?: string,
-  linkedin?: string
+  linkedin?: string,
+  testimonials?: Array<{
+    quote: string
+    author: string
+    role?: string
+    company?: string
+  }>
 ) {
-  await completeProfileService(productId, productStage, userBase, twitter, linkedin)
+  await completeProfileService(productId, productStage, userBase, twitter, linkedin, testimonials)
   revalidatePath(`/dashboard/products/${productId}`)
   revalidatePath(`/dashboard/products/${productId}/profile`)
 }

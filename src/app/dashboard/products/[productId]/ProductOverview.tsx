@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Quote } from 'lucide-react'
 import type { Product } from '@/lib/types/product'
 
 export default function ProductOverview({
@@ -46,6 +48,16 @@ export default function ProductOverview({
         ======================== */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
+            {profile.data.branding?.logo && (
+              <div className="relative w-12 h-12 rounded-lg overflow-hidden border bg-white">
+                <Image
+                  src={profile.data.branding.logo.url}
+                  alt={`${product.name} logo`}
+                  fill
+                  className="object-contain p-1"
+                />
+              </div>
+            )}
             <h1 className="text-3xl font-bold">{product.name}</h1>
             <Badge variant="secondary">LIVE</Badge>
           </div>
@@ -152,6 +164,73 @@ export default function ProductOverview({
                   <p className="text-sm font-medium">{profile.data.primaryGoal}</p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* =======================
+            2.6 PRODUCT IMAGES
+        ======================== */}
+        {profile.data.branding?.productImages && 
+         profile.data.branding.productImages.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Product Images</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`grid gap-4 ${
+                profile.data.branding.productImages.length === 1 ? 'grid-cols-1' :
+                profile.data.branding.productImages.length === 2 ? 'grid-cols-2' :
+                'grid-cols-3'
+              }`}>
+                {profile.data.branding.productImages.map((image, index) => (
+                  <div
+                    key={index}
+                    className="relative aspect-video rounded-lg overflow-hidden border bg-white"
+                  >
+                    <Image
+                      src={image.url}
+                      alt={image.alt || `Product screenshot ${index + 1}`}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* =======================
+            2.7 TESTIMONIALS
+        ======================== */}
+        {profile.data.context?.testimonials && 
+         profile.data.context.testimonials.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Testimonials</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 gap-4">
+                {profile.data.context.testimonials.map((testimonial, index) => (
+                  <div key={index} className="relative border rounded-lg p-4 bg-muted/30">
+                    <Quote className="absolute top-4 right-4 w-6 h-6 text-muted-foreground/20" />
+                    <blockquote className="space-y-3">
+                      <p className="text-sm italic leading-relaxed">
+                        "{testimonial.quote}"
+                      </p>
+                      <footer className="text-xs">
+                        <div className="font-semibold">{testimonial.author}</div>
+                        {(testimonial.role || testimonial.company) && (
+                          <div className="text-muted-foreground">
+                            {[testimonial.role, testimonial.company].filter(Boolean).join(', ')}
+                          </div>
+                        )}
+                      </footer>
+                    </blockquote>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}

@@ -85,6 +85,12 @@ export default function ProfileClient({
   const [primaryColor, setPrimaryColor] = useState(
     profile.data.branding?.primaryColor || '#3b82f6'
   )
+  const [logo, setLogo] = useState<{ url: string; filename: string; size: number } | null>(
+    profile.data.branding?.logo || null
+  )
+  const [productImages, setProductImages] = useState<Array<{ url: string; filename: string; alt?: string }>>(
+    profile.data.branding?.productImages || []
+  )
 
   // STEP 6: Product Details
   const [website, setWebsite] = useState(
@@ -113,6 +119,12 @@ export default function ProfileClient({
   const [linkedin, setLinkedin] = useState(
     profile.data.context?.socialMedia?.linkedin || ''
   )
+  const [testimonials, setTestimonials] = useState<Array<{
+    quote: string
+    author: string
+    role?: string
+    company?: string
+  }>>(profile.data.context?.testimonials || [])
 
   // Validation logic for each step
   const canProceed = () => {
@@ -143,7 +155,7 @@ export default function ProfileClient({
       } else if (currentStep === 4 && primaryGoal.trim().length > 0) {
         await saveStep4Goal(productId, primaryGoal)
       } else if (currentStep === 5) {
-        await saveStep5Branding(productId, primaryColor)
+        await saveStep5Branding(productId, primaryColor, logo, productImages)
       } else if (currentStep === 6) {
         const features = keyFeatures.filter(f => f.trim().length > 0)
         await saveStep6Details(productId, website, tagline, description, features)
@@ -183,7 +195,7 @@ export default function ProfileClient({
     setError(null)
 
     try {
-      await completeProfile(productId, productStage!, userBase, twitter, linkedin)
+      await completeProfile(productId, productStage!, userBase, twitter, linkedin, testimonials)
       
       // Redirect back to product overview
       router.push(`/dashboard/products/${productId}`)
@@ -202,6 +214,82 @@ export default function ProfileClient({
       newFeatures[index] = value
       return newFeatures
     })
+  }
+
+  // File upload handlers
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Logo file size must be less than 2MB')
+      return
+    }
+
+    // Convert to base64
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setLogo({
+        url: reader.result as string,
+        filename: file.name,
+        size: file.size
+      })
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || productImages.length >= 3) return
+
+    const newImages: Array<{ url: string; filename: string; alt?: string }> = []
+
+    for (let i = 0; i < Math.min(files.length, 3 - productImages.length); i++) {
+      const file = files[i]
+      
+      // Validate file size (max 5MB per image)
+      if (file.size > 5 * 1024 * 1024) {
+        setError(`Image ${file.name} is too large (max 5MB)`)
+        continue
+      }
+
+      await new Promise<void>((resolve) => {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          newImages.push({
+            url: reader.result as string,
+            filename: file.name,
+            alt: ''
+          })
+          resolve()
+        }
+        reader.readAsDataURL(file)
+      })
+    }
+
+    setProductImages(prev => [...prev, ...newImages])
+  }
+
+  const removeProductImage = (index: number) => {
+    setProductImages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // Testimonial handlers
+  const addTestimonial = () => {
+    setTestimonials(prev => [...prev, { quote: '', author: '', role: '', company: '' }])
+  }
+
+  const updateTestimonial = (index: number, field: string, value: string) => {
+    setTestimonials(prev => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], [field]: value }
+      return updated
+    })
+  }
+
+  const removeTestimonial = (index: number) => {
+    setTestimonials(prev => prev.filter((_, i) => i !== index))
   }
 
   return (
@@ -507,6 +595,120 @@ export default function ProfileClient({
             </div>
 
             <div className="space-y-4">
+              {/* Logo Upload */}
+              <div className="space-y-2">
+                <Label htmlFor="logo">Product Logo</Label>
+                {logo ? (
+                  <div className="border rounded-lg p-4 bg-muted/30 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={logo.url} 
+                        alt="Logo preview" 
+                        className="w-16 h-16 object-contain bg-white rounded border"
+                      />
+                      <div>
+                        <p className="text-sm font-medium">{logo.filename}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(logo.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setLogo(null)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                    <input
+                      type="file"
+                      id="logo"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                    />
+                    <label 
+                      htmlFor="logo"
+                      className="cursor-pointer flex flex-col items-center gap-2"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Package className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Click to upload logo</p>
+                        <p className="text-xs text-muted-foreground">PNG, JPG, SVG (max 2MB)</p>
+                      </div>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Product Images Upload */}
+              <div className="space-y-2">
+                <Label>Product Images (up to 3)</Label>
+                <div className="space-y-3">
+                  {productImages.map((image, index) => (
+                    <div key={index} className="border rounded-lg p-3 bg-muted/30 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={image.url} 
+                          alt={image.alt || `Product image ${index + 1}`}
+                          className="w-20 h-20 object-cover rounded"
+                        />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{image.filename}</p>
+                          <Input
+                            placeholder="Image description (optional)"
+                            value={image.alt || ''}
+                            onChange={(e) => {
+                              const updated = [...productImages]
+                              updated[index].alt = e.target.value
+                              setProductImages(updated)
+                            }}
+                            className="mt-1 text-xs"
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeProductImage(index)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                  
+                  {productImages.length < 3 && (
+                    <div className="border-2 border-dashed rounded-lg p-4 text-center">
+                      <input
+                        type="file"
+                        id="product-images"
+                        accept="image/*"
+                        multiple
+                        onChange={handleProductImageUpload}
+                        className="hidden"
+                      />
+                      <label 
+                        htmlFor="product-images"
+                        className="cursor-pointer flex flex-col items-center gap-2"
+                      >
+                        <p className="text-sm font-medium">+ Add product images</p>
+                        <p className="text-xs text-muted-foreground">
+                          {3 - productImages.length} image{3 - productImages.length !== 1 ? 's' : ''} remaining (max 5MB each)
+                        </p>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Brand Color */}
               <div className="space-y-2">
                 <Label htmlFor="color">Primary Brand Color</Label>
                 <div className="flex gap-3 items-center">
@@ -526,15 +728,6 @@ export default function ProfileClient({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Used for branded analytics and public product page theming
-                </p>
-              </div>
-
-              <div className="border rounded-lg p-4 bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">
-                  <strong>Coming soon:</strong> Upload product logo and screenshots for your public product page
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  For now, you can add these later in product settings
                 </p>
               </div>
             </div>
@@ -730,6 +923,79 @@ export default function ProfileClient({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Used for social listening and brand verification
+                </p>
+              </div>
+
+              {/* Testimonials Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Customer Testimonials (Optional)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addTestimonial}
+                    disabled={testimonials.length >= 3}
+                  >
+                    + Add Testimonial
+                  </Button>
+                </div>
+                
+                {testimonials.length > 0 ? (
+                  <div className="space-y-3">
+                    {testimonials.map((testimonial, index) => (
+                      <Card key={index} className="p-4">
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-start">
+                            <Label className="text-sm">Testimonial {index + 1}</Label>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeTestimonial(index)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                          
+                          <Textarea
+                            placeholder="Customer quote or testimonial..."
+                            value={testimonial.quote}
+                            onChange={(e) => updateTestimonial(index, 'quote', e.target.value)}
+                            rows={2}
+                          />
+                          
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              placeholder="Author name *"
+                              value={testimonial.author}
+                              onChange={(e) => updateTestimonial(index, 'author', e.target.value)}
+                            />
+                            <Input
+                              placeholder="Role/Title"
+                              value={testimonial.role || ''}
+                              onChange={(e) => updateTestimonial(index, 'role', e.target.value)}
+                            />
+                          </div>
+                          
+                          <Input
+                            placeholder="Company name"
+                            value={testimonial.company || ''}
+                            onChange={(e) => updateTestimonial(index, 'company', e.target.value)}
+                          />
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No testimonials added yet. Add customer testimonials to build trust on your public product page.
+                    </p>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Testimonials with social proof increase feedback submission rates by up to 40%
                 </p>
               </div>
             </div>

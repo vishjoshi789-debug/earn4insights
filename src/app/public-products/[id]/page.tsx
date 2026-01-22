@@ -1,118 +1,225 @@
-import { mockProducts, mockFeedback } from '@/lib/data';
-import { notFound } from 'next/navigation';
-import Image from 'next/image';
-import { Separator } from '@/components/ui/separator';
-import { StarRating } from '@/components/star-rating';
-import { FeedbackForm } from '@/components/feedback-form';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { formatDistanceToNow } from 'date-fns';
+import { notFound } from 'next/navigation'
+import Image from 'next/image'
+import Link from 'next/link'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { PublicFeedbackForm } from '@/components/public-feedback-form'
+import { ExternalLink, Quote } from 'lucide-react'
+import { getProductById } from '@/server/products/productService'
 
-// 👇 Match what Next 15 expects: params & searchParams as Promises
 type PageProps = {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-};
+  params: Promise<{ id: string }>
+}
 
-export default async function PublicProductDetailPage(props: PageProps) {
-  // ✅ Await params BEFORE using id
-  const { id } = await props.params;
+export default async function PublicProductPage({ params }: PageProps) {
+  const { id } = await params
+  const product = await getProductById(id)
 
-  const product = mockProducts.find((p) => p.id === id);
-  if (!product) {
-    notFound();
+  if (!product || !product.profile.isComplete) {
+    notFound()
   }
 
-  // For now: simple fallback image (we can wire real placeholders later)
-  const imageUrl =
-    'https://via.placeholder.com/800x450?text=Product+image';
-  const imageAlt = product!.name;
-
-  const feedbackList = mockFeedback
-    .filter(
-      (f) => f.productId === id && !f.analysis.isPotentiallyFake,
-    )
-    .slice(0, 3);
+  const { profile } = product
+  const { branding, productDetails, context } = profile.data
 
   return (
-    <div className="container mx-auto py-12 px-4">
-      <div className="grid grid-cols-1 gap-12 md:grid-cols-2">
-        {/* LEFT: image + product info */}
-        <div className="space-y-6">
-          <div className="relative aspect-video w-full overflow-hidden rounded-lg shadow-lg">
-            <Image
-              src={imageUrl}
-              alt={imageAlt}
-              fill
-              className="object-cover"
-            />
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      {/* Header */}
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              {branding?.logo && (
+                <div className="relative w-12 h-12 rounded-lg overflow-hidden border bg-white">
+                  <Image
+                    src={branding.logo.url}
+                    alt={`${product.name} logo`}
+                    fill
+                    className="object-contain p-1"
+                  />
+                </div>
+              )}
+              <div>
+                <h1 className="text-2xl font-bold">{product.name}</h1>
+                {productDetails?.tagline && (
+                  <p className="text-sm text-muted-foreground">{productDetails.tagline}</p>
+                )}
+              </div>
+            </div>
+            {productDetails?.website && (
+              <Button asChild variant="outline">
+                <Link href={productDetails.website} target="_blank" rel="noopener noreferrer">
+                  Visit Website
+                  <ExternalLink className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            )}
           </div>
-
-          <h1 className="font-headline text-4xl font-bold">
-            {product!.name}
-          </h1>
-          <p className="text-2xl font-semibold text-primary">
-            ${product!.price.toFixed(2)}
-          </p>
-          <p className="text-lg text-muted-foreground">
-            {product!.description}
-          </p>
         </div>
+      </header>
 
-        {/* RIGHT: feedback form + recent feedback */}
-        <div className="space-y-8">
-          {/* If your FeedbackForm takes props, adjust here */}
-          <FeedbackForm />
+      <main className="container mx-auto px-4 py-12 max-w-5xl">
+        <div className="space-y-12">
+          {/* Product Images Gallery */}
+          {branding?.productImages && branding.productImages.length > 0 && (
+            <section>
+              <div className={`grid gap-4 ${
+                branding.productImages.length === 1 ? 'grid-cols-1' :
+                branding.productImages.length === 2 ? 'grid-cols-2' :
+                'grid-cols-3'
+              }`}>
+                {branding.productImages.map((image, index) => (
+                  <div
+                    key={index}
+                    className="relative aspect-video rounded-lg overflow-hidden border bg-white shadow-sm"
+                  >
+                    <Image
+                      src={image.url}
+                      alt={image.alt || `${product.name} screenshot ${index + 1}`}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
-          <Separator />
+          {/* About Section */}
+          {productDetails?.description && (
+            <section>
+              <h2 className="text-3xl font-bold mb-4">About {product.name}</h2>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-lg leading-relaxed text-muted-foreground whitespace-pre-line">
+                    {productDetails.description}
+                  </p>
+                </CardContent>
+              </Card>
+            </section>
+          )}
 
-          <div>
-            <h2 className="font-headline text-2xl font-bold mb-4">
-              Recent Feedback
-            </h2>
-
-            <div className="space-y-4">
-              {feedbackList.length > 0 ? (
-                feedbackList.map((feedback) => (
-                  <Card key={feedback.id}>
-                    <CardHeader className="flex flex-row items-start gap-4 space-y-0">
-                      <Avatar>
-                        <AvatarImage src={feedback.userAvatar} />
-                        <AvatarFallback>
-                          {feedback.userName.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <p className="font-semibold">
-                            {feedback.userName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(
-                              new Date(feedback.timestamp),
-                              { addSuffix: true },
-                            )}
-                          </p>
+          {/* Key Features */}
+          {productDetails?.keyFeatures && productDetails.keyFeatures.length > 0 && (
+            <section>
+              <h2 className="text-3xl font-bold mb-4">Key Features</h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                {productDetails.keyFeatures.map((feature, index) => (
+                  <Card key={index}>
+                    <CardContent className="pt-6">
+                      <div className="flex items-start gap-3">
+                        <div 
+                          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: branding?.primaryColor || '#3b82f6' }}
+                        >
+                          <svg
+                            className="w-5 h-5 text-white"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
                         </div>
-                        <StarRating rating={feedback.rating} />
+                        <p className="text-base flex-1">{feature}</p>
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-foreground/90">
-                        {feedback.text}
-                      </p>
                     </CardContent>
                   </Card>
-                ))
-              ) : (
-                <p className="text-center text-muted-foreground py-8">
-                  Be the first to leave feedback for this product!
-                </p>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Testimonials */}
+          {context?.testimonials && context.testimonials.length > 0 && (
+            <section>
+              <h2 className="text-3xl font-bold mb-4">What People Say</h2>
+              <div className="grid md:grid-cols-2 gap-6">
+                {context.testimonials.map((testimonial, index) => (
+                  <Card key={index} className="relative">
+                    <CardContent className="pt-8 pb-6">
+                      <Quote className="absolute top-4 right-4 w-8 h-8 text-muted-foreground/20" />
+                      <blockquote className="space-y-4">
+                        <p className="text-base italic leading-relaxed">
+                          "{testimonial.quote}"
+                        </p>
+                        <footer className="text-sm">
+                          <div className="font-semibold">{testimonial.author}</div>
+                          {(testimonial.role || testimonial.company) && (
+                            <div className="text-muted-foreground">
+                              {[testimonial.role, testimonial.company].filter(Boolean).join(', ')}
+                            </div>
+                          )}
+                        </footer>
+                      </blockquote>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Product Metadata */}
+          <section>
+            <div className="flex flex-wrap gap-4 items-center">
+              {context?.productStage && (
+                <Badge variant="secondary" className="text-sm">
+                  {context.productStage.split('-').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                  ).join(' ')}
+                </Badge>
+              )}
+              {context?.userBase && (
+                <Badge variant="outline" className="text-sm">
+                  User Base: {context.userBase}
+                </Badge>
               )}
             </div>
-          </div>
+          </section>
+
+          {/* Feedback Form */}
+          <section>
+            <h2 className="text-3xl font-bold mb-6">We'd Love Your Feedback</h2>
+            <PublicFeedbackForm productId={id} />
+          </section>
+
+          {/* Social Links */}
+          {(context?.socialMedia?.twitter || context?.socialMedia?.linkedin) && (
+            <section className="border-t pt-8">
+              <p className="text-sm text-muted-foreground mb-4">Follow us on social media:</p>
+              <div className="flex gap-4">
+                {context.socialMedia.twitter && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={context.socialMedia.twitter} target="_blank" rel="noopener noreferrer">
+                      Twitter
+                    </Link>
+                  </Button>
+                )}
+                {context.socialMedia.linkedin && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={context.socialMedia.linkedin} target="_blank" rel="noopener noreferrer">
+                      LinkedIn
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </section>
+          )}
         </div>
-      </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t mt-16 py-8 bg-gray-50">
+        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+          <p>Powered by Your Platform • {new Date().getFullYear()}</p>
+        </div>
+      </footer>
     </div>
-  );
+  )
 }

@@ -92,7 +92,9 @@ export async function saveStep4Goal(
 
 export async function saveStep5Branding(
   productId: string,
-  primaryColor: string
+  primaryColor: string,
+  logo: { url: string; filename: string; size: number } | null,
+  productImages: Array<{ url: string; filename: string; alt?: string }>
 ) {
   await updateProductProfile(productId, (prev: ProductProfile) => ({
     ...prev,
@@ -100,8 +102,9 @@ export async function saveStep5Branding(
     data: {
       ...prev.data,
       branding: {
-        ...prev.data.branding,
         primaryColor,
+        logo: logo || undefined,
+        productImages: productImages.length > 0 ? productImages : undefined,
       },
     },
   }))
@@ -134,9 +137,18 @@ export async function completeProfile(
   productStage: string,
   userBase?: string | null,
   twitter?: string,
-  linkedin?: string
+  linkedin?: string,
+  testimonials?: Array<{
+    quote: string
+    author: string
+    role?: string
+    company?: string
+  }>
 ) {
   if (!productStage) return
+
+  // Filter testimonials to only include those with quote and author
+  const validTestimonials = testimonials?.filter(t => t.quote && t.author) || []
 
   await updateProductProfile(productId, (prev: ProductProfile) => ({
     ...prev,
@@ -147,6 +159,7 @@ export async function completeProfile(
       context: {
         productStage: productStage as ProductProfile['data']['context']['productStage'],
         userBase: (userBase || undefined) as ProductProfile['data']['context']['userBase'],
+        testimonials: validTestimonials.length > 0 ? validTestimonials : undefined,
         socialMedia: {
           twitter: twitter || undefined,
           linkedin: linkedin || undefined,
