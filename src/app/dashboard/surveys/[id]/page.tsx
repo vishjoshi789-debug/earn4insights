@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, BarChart3 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Code } from 'lucide-react'
 import { fetchSurvey } from '@/server/surveys/surveyService'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -145,9 +145,17 @@ export default async function SurveyDetailPage({ params }: PageProps) {
           </div>
 
           <div className="flex gap-3">
-            <Button variant="outline">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              View Responses
+            <Button variant="outline" asChild>
+              <Link href={`/dashboard/surveys/${survey.id}/responses`}>
+                <BarChart3 className="w-4 h-4 mr-2" />
+                View Responses
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/dashboard/surveys/${survey.id}/embed`}>
+                <Code className="w-4 h-4 mr-2" />
+                Embed Code
+              </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href={`/survey/${survey.id}`} target="_blank">

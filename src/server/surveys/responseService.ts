@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import { createResponse } from '@/lib/survey/responseStore'
 import { getSurveyById } from '@/lib/survey/store'
 import type { SurveyResponse } from '@/lib/survey-types'
+import { sendSurveyResponseNotification } from '@/server/emailService'
 
 export async function submitSurveyResponse(
   surveyId: string,
@@ -43,6 +44,29 @@ export async function submitSurveyResponse(
   }
 
   await createResponse(response)
+
+  // Send email notification (async, don't block response)
+  sendSurveyResponseNotification(
+    survey.title,
+    surveyId,
+    survey.productId,
+    // Extract rating if exists
+    (() => {
+      const ratingQ = survey.questions.find(q => q.type === 'rating')
+      return ratingQ ? Number(answers[ratingQ.id]) : undefined
+    })(),
+    // Extract first text answer as preview
+    (() => {
+      const textQ = survey.questions.find(q => q.type === 'text')
+      return textQ && typeof answers[textQ.id] === 'string' 
+        ? String(answers[textQ.id]).substring(0, 200) 
+        : undefined
+    })(),
+    userName
+  ).catch(err => {
+    console.error('Failed to send email notification:', err)
+    // Don't fail the response submission if email fails
+  })
 
   // Revalidate relevant pages
   revalidatePath('/dashboard/surveys')
@@ -98,5 +122,58 @@ export async function calculateNPS(surveyId: string): Promise<{
     passives,
     detractors,
     totalResponses,
+  }
+}
+
+// Export survey responses as CSV
+export async function exportResponsesToCSV(surveyId: string): Promise<string> {
+  const survey = await getSurveyById(surveyId)
+  if (!survey) {
+    throw new Error('Survey not found')
+  }
+
+  const { getResponsesBySurveyId } = await import('@/lib/survey/responseStore')
+  const responses = await getResponsesBySurveyId(surveyId)
+
+  if (responses.length === 0) {
+    return 'No responses to export'
+  }
+
+  // Build CSV headers
+  const headers = [
+    'Response ID',
+    'Submitted At',
+    'User Name',
+    'User Email',
+    ...survey.questions.map(q => q.text),
+  ]
+
+  // Build CSV rows
+  const rows = responses.map(response => {
+    return [
+      response.id,
+      new Date(response.submittedAt).toLocaleString(),
+      response.userName || '',
+      response.userEmail || '',
+      ...survey.questions.map(q => {
+        const answer = response.answers[q.id]
+        if (answer === undefined || answer === null) return ''
+        if (typeof answer === 'string') {
+          // Escape quotes and wrap in quotes if contains comma/newline
+          const escaped = answer.replace(/"/g, '""')
+          return escaped.includes(',') || escaped.includes('\n') ? `"${escaped}"` : escaped
+        }
+        return String(answer)
+      }),
+    ]
+  })
+
+  // Combine into CSV string
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.join(',')),
+  ].join('\n')
+
+  return csvContent
   }
 }
