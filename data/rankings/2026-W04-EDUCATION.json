@@ -1,0 +1,53 @@
+{
+  "id": "62f799e6-9174-45e4-aff7-e6dd76e985ab",
+  "weekStart": "2026-01-18T18:30:00.000Z",
+  "weekEnd": "2026-01-25T18:29:59.999Z",
+  "category": "EDUCATION",
+  "categoryName": "Education & Learning",
+  "rankings": [
+    {
+      "rank": 1,
+      "productId": "0bbd6be4-a146-4255-84b7-f1f3b536115b",
+      "productName": "StartupsGurukul",
+      "score": 0.1399893534183932,
+      "metrics": {
+        "npsScore": 0,
+        "sentimentScore": 0.5,
+        "totalResponses": 0,
+        "trendDirection": "stable",
+        "weekOverWeekChange": 0
+      }
+    }
+  ],
+  "products": [
+    {
+      "productId": "0bbd6be4-a146-4255-84b7-f1f3b536115b",
+      "productName": "StartupsGurukul",
+      "rankingScore": 0.1399893534183932,
+      "metrics": {
+        "productId": "0bbd6be4-a146-4255-84b7-f1f3b536115b",
+        "productName": "StartupsGurukul",
+        "category": "EDUCATION",
+        "npsScore": 0,
+        "totalResponses": 0,
+        "sentimentScore": 0.5,
+        "sentimentBreakdown": {
+          "positive": 0,
+          "neutral": 0,
+          "negative": 0
+        },
+        "surveyCompletionRate": 0,
+        "feedbackVolume": 0,
+        "recentResponseCount": 0,
+        "lastResponseAt": null,
+        "weekOverWeekChange": 0,
+        "trendDirection": "stable",
+        "confidenceScore": 0,
+        "hasMinimumData": true
+      },
+      "previousRank": null
+    }
+  ],
+  "generatedAt": "2026-01-23T10:26:21.969Z",
+  "totalProductsEvaluated": 1
+}

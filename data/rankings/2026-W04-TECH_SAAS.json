@@ -1,0 +1,53 @@
+{
+  "id": "5180bf4c-5225-43fc-97df-9e858da8e74b",
+  "weekStart": "2026-01-18T18:30:00.000Z",
+  "weekEnd": "2026-01-25T18:29:59.999Z",
+  "category": "TECH_SAAS",
+  "categoryName": "SaaS & Productivity",
+  "rankings": [
+    {
+      "rank": 1,
+      "productId": "f370660e-3711-45c7-8b92-635253fc6bc6",
+      "productName": "Earn4Insights",
+      "score": 0.1399893534183932,
+      "metrics": {
+        "npsScore": 0,
+        "sentimentScore": 0.5,
+        "totalResponses": 0,
+        "trendDirection": "stable",
+        "weekOverWeekChange": 0
+      }
+    }
+  ],
+  "products": [
+    {
+      "productId": "f370660e-3711-45c7-8b92-635253fc6bc6",
+      "productName": "Earn4Insights",
+      "rankingScore": 0.1399893534183932,
+      "metrics": {
+        "productId": "f370660e-3711-45c7-8b92-635253fc6bc6",
+        "productName": "Earn4Insights",
+        "category": "TECH_SAAS",
+        "npsScore": 0,
+        "totalResponses": 0,
+        "sentimentScore": 0.5,
+        "sentimentBreakdown": {
+          "positive": 0,
+          "neutral": 0,
+          "negative": 0
+        },
+        "surveyCompletionRate": 0,
+        "feedbackVolume": 0,
+        "recentResponseCount": 0,
+        "lastResponseAt": null,
+        "weekOverWeekChange": 0,
+        "trendDirection": "stable",
+        "confidenceScore": 0,
+        "hasMinimumData": true
+      },
+      "previousRank": null
+    }
+  ],
+  "generatedAt": "2026-01-23T10:26:21.931Z",
+  "totalProductsEvaluated": 1
+}

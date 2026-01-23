@@ -64,7 +64,7 @@ export default function RankingsPage() {
   const generateRankings = async () => {
     setGenerating(true)
     try {
-      const response = await fetch('/api/admin/generate-rankings', {
+      const response = await fetch('/api/admin/generate-rankings?apiKey=test123', {
         method: 'POST',
       })
       

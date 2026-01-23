@@ -68,8 +68,7 @@ export async function generateWeeklyRankings(): Promise<{
 
     console.log(`🎉 Ranking generation complete! Generated ${rankings.length} category rankings`)
 
-    return {
-    // Send email notifications
+    // Send email and WhatsApp notifications
     try {
       const emailData: RankingEmailData[] = []
       const whatsappData: WhatsAppRankingData[] = []
@@ -128,6 +127,7 @@ export async function generateWeeklyRankings(): Promise<{
       // Don't fail the whole operation if notifications fail
     }
 
+    return {
       success: errors.length === 0,
       rankings,
       errors,
