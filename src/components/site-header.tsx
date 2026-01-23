@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,14 +21,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from './ui/Tooltip.tsx';
+import { LogoutButton } from './logout-button';
 
 export function SiteHeader() {
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
-  const user = {
-    name: 'Admin',
-    email: 'admin@brandpulse.com',
-  };
+  const { data: session, status } = useSession();
+  const user = session?.user;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -58,7 +58,17 @@ export function SiteHeader() {
           </Link>
         </nav>
         <div className="flex flex-1 items-center justify-end space-x-2">
-          <TooltipProvider>
+          {status === 'loading' ? null : !user ? (
+            <>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/login">Sign In</Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link href="/signup">Sign Up</Link>
+              </Button>
+            </>
+          ) : (
+            <TooltipProvider>
             <DropdownMenu
               open={notificationsOpen}
               onOpenChange={setNotificationsOpen}
@@ -123,10 +133,10 @@ export function SiteHeader() {
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">
-                      {user.name}
+                      {user?.name}
                     </p>
                     <p className="text-xs leading-none text-muted-foreground">
-                      {user.email}
+                      {user?.email}
                     </p>
                   </div>
                 </DropdownMenuLabel>
@@ -138,10 +148,11 @@ export function SiteHeader() {
                   <Link href="/dashboard/settings">Settings</Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Log out</DropdownMenuItem>
+                <LogoutButton />
               </DropdownMenuContent>
             </DropdownMenu>
           </TooltipProvider>
+          )}
         </div>
       </div>
     </header>

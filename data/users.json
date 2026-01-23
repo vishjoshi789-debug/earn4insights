@@ -1,0 +1,33 @@
+[
+  {
+    "id": "user_1769166800312_j6nff",
+    "email": "vishweshwar@startupsgurukul.com",
+    "name": "VISHWESHWAR JOSHI",
+    "role": "consumer",
+    "passwordHash": "$2b$10$ZgZYP4bro5JpII6Pupsnx.J53XbNIKjN5V.UYG9u50LhZ64qT/97K",
+    "consent": {
+      "termsAcceptedAt": "2026-01-23T11:13:20.312Z",
+      "privacyAcceptedAt": "2026-01-23T11:13:20.312Z"
+    },
+    "createdAt": "2026-01-23T11:13:20.312Z",
+    "updatedAt": "2026-01-23T11:13:20.312Z",
+    "consumerProfile": {
+      "surveysCompleted": 0
+    }
+  },
+  {
+    "id": "user_1769174698738_usrhvt",
+    "email": "vishjoshi789@gmail.com",
+    "name": "Vishweshwar Joshi",
+    "role": "consumer",
+    "consent": {
+      "termsAcceptedAt": "2026-01-23T13:24:58.738Z",
+      "privacyAcceptedAt": "2026-01-23T13:24:58.738Z"
+    },
+    "createdAt": "2026-01-23T13:24:58.738Z",
+    "updatedAt": "2026-01-23T13:24:58.738Z",
+    "consumerProfile": {
+      "surveysCompleted": 0
+    }
+  }
+]
