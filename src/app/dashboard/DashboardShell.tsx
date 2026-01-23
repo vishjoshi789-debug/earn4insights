@@ -25,6 +25,7 @@ import {
   HandCoins,
   MessagesSquare,
   FileText,
+  Trophy,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { DashboardHeader } from '@/components/dashboard-header'
@@ -32,6 +33,7 @@ import { DashboardHeader } from '@/components/dashboard-header'
 const menuItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/products', label: 'Products', icon: Package },
+  { href: '/dashboard/rankings', label: 'Weekly Top 10 products', icon: Trophy },
   { href: '/dashboard/feedback', label: 'Feedback', icon: MessageSquare },
   { href: '/dashboard/social', label: 'Social', icon: Users },
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare },

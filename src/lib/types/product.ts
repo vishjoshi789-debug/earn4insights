@@ -1,9 +1,12 @@
+import type { ProductCategory } from '../categories'
+
 export type ProductProfile = {
   currentStep: number
   isComplete: boolean
   data: {
-    // STEP 1: Product Type
+    // STEP 1: Product Type & Category
     productType?: string
+    category?: ProductCategory  // Primary category for rankings
     
     // STEP 2: Target Audience
     audienceType?: string

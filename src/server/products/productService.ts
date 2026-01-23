@@ -3,6 +3,7 @@
 import 'server-only'
 import { getProductById, updateProductProfile } from '@/lib/product/store'
 import type { Product, ProductProfile } from '@/lib/types/product'
+import type { ProductCategory } from '@/lib/categories'
 
 function ensureProfile(product: Product): Product {
   if (product.profile) return product
@@ -26,7 +27,8 @@ export async function fetchProduct(productId: string) {
 
 export async function saveStep1ProductType(
   productId: string,
-  productType: ProductProfile['data']['productType']
+  productType: ProductProfile['data']['productType'],
+  category?: ProductCategory
 ) {
   if (!productType) return
 
@@ -36,6 +38,7 @@ export async function saveStep1ProductType(
     data: {
       ...prev.data,
       productType,
+      category: category || prev.data.category,
     },
   }))
 }
