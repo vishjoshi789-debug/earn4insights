@@ -1,25 +1,20 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
+import path from 'path'
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
-
-  // If you are using images from remote URLs (e.g., CDN / API)
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "**",
-      },
-    ],
+  webpack: (config) => {
+    config.resolve = config.resolve || {}
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      '@': path.resolve(__dirname, 'src'),
+    }
+    return config
   },
-
-  // ✅ Ignore type and lint errors only during production build
-  typescript: {
-    ignoreBuildErrors: true,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-};
+}
 
-export default nextConfig;
+export default nextConfig

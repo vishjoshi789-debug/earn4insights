@@ -20,7 +20,7 @@ export default function LaunchForm() {
             name="name"
             required
             placeholder="e.g. Acme App"
-            className="w-full border rounded-md px-3 py-2"
+            className="w-full border rounded-md px-3 py-2 bg-background text-foreground"
           />
         </div>
 
@@ -31,7 +31,7 @@ export default function LaunchForm() {
           <select
             name="platform"
             required
-            className="w-full border rounded-md px-3 py-2"
+            className="w-full border rounded-md px-3 py-2 bg-background text-foreground [&>option]:bg-popover [&>option]:text-popover-foreground"
           >
             <option value="">Select</option>
             <option value="web">Web</option>
@@ -54,7 +54,7 @@ export default function LaunchForm() {
           <input
             name="domain"
             placeholder="https://example.com"
-            className="w-full border rounded-md px-3 py-2"
+            className="w-full border rounded-md px-3 py-2 bg-background text-foreground"
           />
         </div>
 
@@ -66,7 +66,7 @@ export default function LaunchForm() {
             name="description"
             rows={3}
             placeholder="Short description"
-            className="w-full border rounded-md px-3 py-2"
+            className="w-full border rounded-md px-3 py-2 bg-background text-foreground"
           />
         </div>
       </div>

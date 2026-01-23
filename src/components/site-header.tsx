@@ -30,29 +30,24 @@ export function SiteHeader() {
   const user = session?.user;
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-14 items-center">
-        <Link href="/" className="mr-6 flex items-center space-x-2">
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+      <div className="container flex h-16 items-center">
+        <Link href="/" className="mr-6 flex items-center space-x-2 group">
           <Logo />
-          <span className="font-bold font-headline">Brand Pulse</span>
+          <span className="font-bold font-headline text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all">
+            Earn4Insights
+          </span>
         </Link>
         <nav className="hidden flex-1 items-center gap-6 text-sm md:flex">
           <Link
-            href="/#features"
-            className="text-foreground/60 transition-colors hover:text-foreground/80"
+            href="/top-products"
+            className="font-medium transition-colors hover:text-primary"
           >
-            Features
+            Rankings
           </Link>
           <Link
-  href="/dashboard/products"
-  className="text-foreground/60 transition-colors hover:text-foreground/80"
->
-  Products
-</Link>
-
-          <Link
             href="/community"
-            className="text-foreground/60 transition-colors hover:text-foreground/80"
+            className="font-medium transition-colors hover:text-primary"
           >
             Community
           </Link>
@@ -60,11 +55,11 @@ export function SiteHeader() {
         <div className="flex flex-1 items-center justify-end space-x-2">
           {status === 'loading' ? null : !user ? (
             <>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="font-semibold">
                 <Link href="/login">Sign In</Link>
               </Button>
-              <Button asChild size="sm">
-                <Link href="/signup">Sign Up</Link>
+              <Button asChild size="sm" className="font-semibold shadow-sm hover:shadow-md">
+                <Link href="/signup">Get Started</Link>
               </Button>
             </>
           ) : (

@@ -272,13 +272,13 @@ export default function ProductOverview({
               </Link>
             </Button>
 
-            <Button asChild variant="secondary">
+            <Button asChild>
               <Link href={`/dashboard/products/${product.id}/social`}>
                 View Social Listening
               </Link>
             </Button>
 
-            <Button asChild variant="secondary">
+            <Button asChild>
               <Link href={`/dashboard/products/${product.id}/profile`}>
                 {profile.isComplete
                   ? 'Edit product profile'
@@ -305,11 +305,11 @@ function ContextCard({
   value: string
 }) {
   return (
-    <div className="rounded-lg border bg-background p-4">
+    <div className="rounded-lg border bg-card p-4">
       <div className="text-xs uppercase text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 text-sm font-medium">
+      <div className="mt-1 text-sm font-medium text-foreground">
         {value}
       </div>
     </div>

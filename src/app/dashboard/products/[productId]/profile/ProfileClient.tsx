@@ -893,7 +893,7 @@ export default function ProfileClient({
                   id="userbase"
                   value={userBase || ''}
                   onChange={(e) => setUserBase((e.target.value || null) as UserBase)}
-                  className="w-full border rounded-md px-3 py-2"
+                  className="w-full border rounded-md px-3 py-2 bg-background text-foreground [&>option]:bg-popover [&>option]:text-popover-foreground"
                 >
                   <option value="">Select user base size</option>
                   <option value="under-100">&lt; 100 users</option>

@@ -4,74 +4,60 @@
 
 @layer base {
   :root {
-    --background: 240 20% 97%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 275 100% 25%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 277 100% 60%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 277 100% 60%;
+    /* Dark Theme - Professional & Modern */
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+    
+    /* Cards & Popovers - Elevated surfaces */
+    --card: 224 71% 6%;
+    --card-foreground: 213 31% 91%;
+    --popover: 224 71% 6%;
+    --popover-foreground: 213 31% 91%;
+    
+    /* Primary: Purple/Blue - Brand color */
+    --primary: 263 70% 50%;
+    --primary-foreground: 210 40% 98%;
+    
+    /* Secondary: Deep Blue - Accents */
+    --secondary: 217 91% 60%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    
+    /* Muted: Subtle backgrounds */
+    --muted: 223 47% 11%;
+    --muted-foreground: 215.4 16.3% 65%;
+    
+    /* Accent: Highlight states */
+    --accent: 263 70% 50%;
+    --accent-foreground: 210 40% 98%;
+    
+    /* Destructive: Errors */
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+    
+    /* Borders & Inputs */
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 263 70% 50%;
+    
+    /* Border Radius */
     --radius: 0.5rem;
-    --chart-1: 275 100% 25%;
-    --chart-2: 277 100% 60%;
-    --chart-3: 275 100% 45%;
-    --chart-4: 277 90% 70%;
-    --chart-5: 275 80% 80%;
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 275 100% 25%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 277 100% 60%;
-  }
-
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 277 100% 60%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 275 100% 25%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 277 100% 60%;
-    --chart-1: 277 100% 60%;
-    --chart-2: 275 100% 45%;
-    --chart-3: 277 90% 70%;
-    --chart-4: 275 80% 80%;
-    --chart-5: 277 70% 90%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 277 100% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 277 100% 60%;
+    
+    /* Charts - Purple & Blue palette */
+    --chart-1: 263 70% 50%;
+    --chart-2: 217 91% 60%;
+    --chart-3: 237 100% 68%;
+    --chart-4: 199 89% 48%;
+    --chart-5: 186 100% 42%;
+    
+    /* Sidebar */
+    --sidebar-background: 224 71% 4%;
+    --sidebar-foreground: 213 31% 91%;
+    --sidebar-primary: 263 70% 50%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 223 47% 11%;
+    --sidebar-accent-foreground: 213 31% 91%;
+    --sidebar-border: 217 33% 17%;
+    --sidebar-ring: 263 70% 50%;
   }
 }
 
@@ -79,7 +65,46 @@
   * {
     @apply border-border;
   }
+  
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Typography improvements for better readability */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-headline tracking-tight;
+  }
+  
+  h1 {
+    @apply text-4xl font-bold sm:text-5xl lg:text-6xl;
+    letter-spacing: -0.02em;
+  }
+  
+  h2 {
+    @apply text-3xl font-bold sm:text-4xl;
+    letter-spacing: -0.01em;
+  }
+  
+  h3 {
+    @apply text-2xl font-semibold sm:text-3xl;
+  }
+  
+  h4 {
+    @apply text-xl font-semibold sm:text-2xl;
+  }
+  
+  p {
+    @apply text-base leading-7 text-muted-foreground;
+  }
+  
+  /* Improved focus states */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+  
+  /* Better button transitions */
+  button {
+    @apply transition-all duration-200;
   }
 }

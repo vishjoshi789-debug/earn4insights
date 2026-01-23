@@ -59,7 +59,7 @@ export default async function PublicProductPage({ params }: PageProps) {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-12 max-w-5xl">
+      <main className="container mx-auto px-4 py-12">
         <div className="space-y-12">
           {/* Product Images Gallery */}
           {branding?.productImages && branding.productImages.length > 0 && (
