@@ -408,16 +408,17 @@ function ProductRankCard({ product, rank }: { product: RankedProduct; rank: numb
             {/* Metrics Breakdown */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm">
               <div>
-                <div className="text-muted-foreground">Engagement</div>
-                <div className="font-medium">{(product.metrics.engagementRate * 100).toFixed(1)}%</div>
+                <div className="text-muted-foreground">Completion</div>
+                <div className="font-medium">{(product.metrics.surveyCompletionRate * 100).toFixed(1)}%</div>
               </div>
               <div>
                 <div className="text-muted-foreground">Trend</div>
-                <div className="font-medium">{(product.metrics.trendScore * 100).toFixed(0)}%</div>
+                <div className="font-medium">{product.metrics.weekOverWeekChange > 0 ? '+' : ''}{product.metrics.weekOverWeekChange.toFixed(1)}%</div>
               </div>
               <div>
                 <div className="text-muted-foreground">Recency</div>
-                <div className="font-medium">{(product.metrics.recencyScore * 100).toFixed(0)}%</div>
+                <div className="font-medium">{product.metrics.recentResponseCount} responses</div>
+              </div>
               </div>
               <div>
                 <div className="text-muted-foreground">Recent</div>
