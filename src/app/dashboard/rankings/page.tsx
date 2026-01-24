@@ -200,7 +200,7 @@ export default function RankingsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {currentRanking ? `Week ${currentRanking.weekNumber}` : '-'}
+              {currentRanking ? new Date(currentRanking.weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '-'}
             </div>
             <p className="text-xs text-muted-foreground">
               {currentRanking ? new Date(currentRanking.weekStart).toLocaleDateString() : 'No rankings yet'}
