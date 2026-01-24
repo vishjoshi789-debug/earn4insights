@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import type { ProductProfile } from '@/lib/types/product'
 import { 
   saveStep1ProductType as saveStep1,
   saveStep2Audience as saveStep2,
