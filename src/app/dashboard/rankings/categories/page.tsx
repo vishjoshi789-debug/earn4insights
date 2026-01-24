@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { PRODUCT_CATEGORIES, getCategoryName } from '@/lib/categories'
+import { PRODUCT_CATEGORIES, CATEGORY_ICONS, getCategoryName } from '@/lib/categories'
 import type { ProductCategory } from '@/lib/categories'
 import { Sparkles, Check, AlertCircle } from 'lucide-react'
 
@@ -232,7 +232,7 @@ export default function AssignCategoriesPage() {
                         {Object.keys(PRODUCT_CATEGORIES).map((category) => (
                           <SelectItem key={category} value={category}>
                             <div className="flex items-center gap-2">
-                              <span>{PRODUCT_CATEGORIES[category as ProductCategory].icon}</span>
+                              <span>{CATEGORY_ICONS[category as ProductCategory]}</span>
                               {getCategoryName(category as ProductCategory)}
                             </div>
                           </SelectItem>

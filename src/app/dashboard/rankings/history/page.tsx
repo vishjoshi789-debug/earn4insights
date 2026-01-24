@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar, Trophy, TrendingUp, TrendingDown, Minus } from 'lucide-react'
-import { PRODUCT_CATEGORIES, getCategoryName } from '@/lib/categories'
+import { PRODUCT_CATEGORIES, CATEGORY_ICONS, getCategoryName } from '@/lib/categories'
 import type { ProductCategory } from '@/lib/categories'
 import type { WeeklyRanking } from '@/lib/types/ranking'
 import Link from 'next/link'
@@ -63,7 +63,7 @@ export default function RankingHistoryPage() {
               {Object.keys(PRODUCT_CATEGORIES).map((category) => (
                 <SelectItem key={category} value={category}>
                   <div className="flex items-center gap-2">
-                    <span>{PRODUCT_CATEGORIES[category as ProductCategory].icon}</span>
+                    <span>{CATEGORY_ICONS[category as ProductCategory]}</span>
                     {getCategoryName(category as ProductCategory)}
                   </div>
                 </SelectItem>

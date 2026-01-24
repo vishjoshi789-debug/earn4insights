@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Trophy, TrendingUp, Calendar, Sparkles, RefreshCw, ExternalLink } from 'lucide-react'
-import { PRODUCT_CATEGORIES, getCategoryName } from '@/lib/categories'
+import { PRODUCT_CATEGORIES, CATEGORY_ICONS, getCategoryName } from '@/lib/categories'
 import type { ProductCategory } from '@/lib/categories'
 import type { WeeklyRanking, RankedProduct } from '@/lib/types/ranking'
 import Link from 'next/link'
@@ -222,7 +222,7 @@ export default function RankingsPage() {
             <TabsList className="flex flex-wrap h-auto">
               {Object.keys(PRODUCT_CATEGORIES).map((category) => (
                 <TabsTrigger key={category} value={category} className="flex items-center gap-2">
-                  <span className="text-xl">{PRODUCT_CATEGORIES[category as ProductCategory].icon}</span>
+                  <span className="text-xl">{CATEGORY_ICONS[category as ProductCategory]}</span>
                   {getCategoryName(category as ProductCategory)}
                 </TabsTrigger>
               ))}
