@@ -69,7 +69,11 @@ export async function generateWeeklyRankings(): Promise<{
     console.log(`🎉 Ranking generation complete! Generated ${rankings.length} category rankings`)
 
     // Send email and WhatsApp notifications
+    // TODO: Re-enable notifications once Product type includes owner information
+    // This requires associating products with user accounts in the database
     try {
+      // Notifications disabled until owner info is properly tracked
+      /*
       const emailData: RankingEmailData[] = []
       const whatsappData: WhatsAppRankingData[] = []
       
@@ -122,6 +126,8 @@ export async function generateWeeklyRankings(): Promise<{
       } else {
         console.log('⚠️ No owner phone numbers found, skipping WhatsApp notifications')
       }
+      */
+      console.log('ℹ️ Ranking notifications disabled - owner information not yet implemented')
     } catch (error) {
       console.error('Failed to send notifications:', error)
       // Don't fail the whole operation if notifications fail
