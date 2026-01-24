@@ -145,7 +145,7 @@ export async function exportResponsesToCSV(surveyId: string): Promise<string> {
     'Submitted At',
     'User Name',
     'User Email',
-    ...survey.questions.map(q => q.text),
+    ...survey.questions.map(q => q.question),
   ]
 
   // Build CSV rows
