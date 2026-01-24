@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -11,7 +11,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Loader2, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 
-export default function CompleteSignupPage() {
+function CompleteSignupForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [error, setError] = useState('')
@@ -160,5 +160,16 @@ export default function CompleteSignupPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+export default function CompleteSignupPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    }>
+      <CompleteSignupForm />
+    </Suspense>
   )
 }
