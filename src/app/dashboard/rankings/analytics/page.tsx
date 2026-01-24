@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown, Trophy, BarChart3 } from 'lucide-react'
-import { PRODUCT_CATEGORIES, getCategoryName } from '@/lib/categories'
+import { PRODUCT_CATEGORIES, CATEGORY_ICONS, getCategoryName } from '@/lib/categories'
 import type { ProductCategory } from '@/lib/categories'
 
 type RankingHistoryData = {
@@ -136,7 +136,7 @@ export default function AnalyticsPage() {
               {Object.keys(PRODUCT_CATEGORIES).map((category) => (
                 <SelectItem key={category} value={category}>
                   <div className="flex items-center gap-2">
-                    <span>{PRODUCT_CATEGORIES[category as ProductCategory].icon}</span>
+                    <span>{CATEGORY_ICONS[category as ProductCategory]}</span>
                     {getCategoryName(category as ProductCategory)}
                   </div>
                 </SelectItem>
