@@ -23,24 +23,16 @@ export async function launchProduct(formData: FormData) {
       social_listening: true,
     },
     profile: {
+      currentStep: 0,
       isComplete: false,
       data: {
+        category: 'SOFTWARE',
         branding: {
-          name: productName,
-          tagline: '',
-          logo: '',
           primaryColor: '#6366f1',
         },
         productDetails: {
-          description: description || '',
-          category: 'SOFTWARE',
-          website: domain || '',
-          keyFeatures: [],
-        },
-        context: {
-          targetAudience: '',
-          useCases: [],
-          competitiveAdvantages: [],
+          description: description || undefined,
+          website: domain || undefined,
         },
       },
     },
