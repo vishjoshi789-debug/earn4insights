@@ -8,6 +8,11 @@ export function authenticateAdmin(request: NextRequest): boolean {
   const apiKey = process.env.ADMIN_API_KEY
 
   if (!apiKey) {
+    // In production, NEVER allow unprotected access
+    if (process.env.NODE_ENV === 'production') {
+      console.error('🚨 ADMIN_API_KEY not set in production! Admin endpoints blocked.')
+      return false
+    }
     console.warn('⚠️ ADMIN_API_KEY not set, admin endpoints are unprotected!')
     return true // Allow access if no key is configured (development mode)
   }
