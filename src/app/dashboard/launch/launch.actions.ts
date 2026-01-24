@@ -6,19 +6,44 @@ import { initializeProductData } from '@/lib/product/initProduct'
 import { addProduct } from '@/lib/product/store'
 
 export async function launchProduct(formData: FormData) {
+  const productName = formData.get('name') as string
+  const platform = formData.get('platform') as string
+  const domain = formData.get('domain') as string
+  const description = formData.get('description') as string
+
   const product: Product = {
     id: crypto.randomUUID(),
-    name: formData.get('name') as string,
-    platform: formData.get('platform') as any,
-    domain: formData.get('domain') as string,
-    description: formData.get('description') as string,
-    status: 'launched',
+    name: productName,
+    description: description || undefined,
+    platform: platform || undefined,
+    created_at: new Date().toISOString(),
     features: {
       nps: true,
       feedback: true,
       social_listening: true,
     },
-    created_at: new Date().toISOString(),
+    profile: {
+      isComplete: false,
+      data: {
+        branding: {
+          name: productName,
+          tagline: '',
+          logo: '',
+          primaryColor: '#6366f1',
+        },
+        productDetails: {
+          description: description || '',
+          category: 'SOFTWARE',
+          website: domain || '',
+          keyFeatures: [],
+        },
+        context: {
+          targetAudience: '',
+          useCases: [],
+          competitiveAdvantages: [],
+        },
+      },
+    },
   }
 
   await addProduct(product)
