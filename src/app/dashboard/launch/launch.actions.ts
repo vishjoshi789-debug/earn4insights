@@ -26,7 +26,7 @@ export async function launchProduct(formData: FormData) {
       currentStep: 0,
       isComplete: false,
       data: {
-        category: 'SOFTWARE',
+        category: 'TECH_SAAS',
         branding: {
           primaryColor: '#6366f1',
         },
