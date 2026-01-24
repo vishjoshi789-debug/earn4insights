@@ -242,7 +242,7 @@ async function generateCategoryRanking(
 export async function regenerateCategoryRanking(
   category: ProductCategory
 ): Promise<WeeklyRanking | null> {
-  const allProducts = await getAllProducts()
+  const allProducts = await getProducts()
   const allResponses = await getAllResponses()
 
   const ranking = await generateCategoryRanking(category, allProducts, allResponses)

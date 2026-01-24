@@ -162,8 +162,8 @@ export async function completeProfile(
     data: {
       ...prev.data,
       context: {
-        productStage: productStage as ProductProfile['data']['context']['productStage'],
-        userBase: (userBase || undefined) as ProductProfile['data']['context']['userBase'],
+        productStage: productStage as ProductProfile['data']['context']?['productStage'],
+        userBase: (userBase || undefined) as ProductProfile['data']['context']?['userBase'],
         testimonials: validTestimonials.length > 0 ? validTestimonials : undefined,
         socialMedia: {
           twitter: twitter || undefined,

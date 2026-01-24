@@ -2,6 +2,7 @@ import { Survey } from './survey-types';
 
 export const npsSurvey: Survey = {
   id: 'survey_nps_default',
+  productId: 'default',
   title: 'How likely are you to recommend us?',
   description: 'Your feedback helps us improve',
   type: 'nps',
