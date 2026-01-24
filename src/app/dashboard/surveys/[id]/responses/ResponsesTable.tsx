@@ -171,7 +171,7 @@ export default function ResponsesTable({ responses, survey }: ResponsesTableProp
 
                       return (
                         <div key={question.id}>
-                          <p className="text-sm font-medium mb-1">{question.text}</p>
+                          <p className="text-sm font-medium mb-1">{question.question}</p>
                           <p className="text-sm text-muted-foreground">
                             {typeof answer === 'string' ? answer : JSON.stringify(answer)}
                           </p>
