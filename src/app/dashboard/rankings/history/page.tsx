@@ -97,7 +97,7 @@ export default function RankingHistoryPage() {
         <div className="space-y-4">
           {history.map((ranking, index) => (
             <WeeklyRankingCard 
-              key={`${ranking.year}-${ranking.weekNumber}`} 
+              key={ranking.id} 
               ranking={ranking}
               isLatest={index === 0}
             />
