@@ -11,7 +11,7 @@ import 'server-only'
  * Run this ONCE after deploying the ranking system.
  */
 
-import { getAllProducts, updateProductProfile } from '@/lib/product/store'
+import { getProducts, updateProductProfile } from '@/lib/product/store'
 import type { ProductCategory } from '@/lib/categories'
 
 type CategoryMapping = Record<string, ProductCategory>
@@ -110,7 +110,7 @@ export async function migrateProductCategories(dryRun: boolean = true): Promise<
 }> {
   console.log(`🔄 Starting category migration (dry run: ${dryRun})...`)
 
-  const products = await getAllProducts()
+  const products = await getProducts()
   const results: Array<{
     productId: string
     productName: string

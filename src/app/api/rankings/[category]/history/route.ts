@@ -5,10 +5,11 @@ import { PRODUCT_CATEGORIES } from '@/lib/categories'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { category: string } }
+  { params }: { params: Promise<{ category: string }> }
 ) {
   try {
-    const category = params.category.toUpperCase() as ProductCategory
+    const { category: categoryParam } = await params
+    const category = categoryParam.toUpperCase() as ProductCategory
 
     // Validate category
     if (!PRODUCT_CATEGORIES[category]) {
