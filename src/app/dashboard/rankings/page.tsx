@@ -321,7 +321,7 @@ function CategoryRankingView({
       <div className="flex justify-between items-center mb-4">
         <div>
           <p className="text-sm text-muted-foreground">
-            Week {ranking.weekNumber} • {new Date(ranking.weekStart).toLocaleDateString()} - {new Date(ranking.weekEnd).toLocaleDateString()}
+            {new Date(ranking.weekStart).toLocaleDateString()} - {new Date(ranking.weekEnd).toLocaleDateString()}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             Generated on {new Date(ranking.generatedAt).toLocaleString()}
