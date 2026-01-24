@@ -1,9 +1,9 @@
-export default function SocialPage({
+export default async function SocialPage({
   params,
 }: {
-  params: { productId: string }
+  params: Promise<{ productId: string }>
 }) {
-  const productId = params.productId
+  const { productId } = await params
 
   if (!productId) {
     return <div className="p-6">Invalid product</div>
