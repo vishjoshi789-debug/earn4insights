@@ -112,7 +112,7 @@ export function SiteHeader() {
                       className="relative h-8 w-8 rounded-full hover:bg-accent hover:text-accent-foreground"
                     >
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src="/avatars/01.png" alt={user.name} />
+                        <AvatarImage src="/avatars/01.png" alt={user.name || undefined} />
                         <AvatarFallback>
                           <User />
                         </AvatarFallback>
