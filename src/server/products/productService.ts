@@ -140,7 +140,7 @@ export async function saveStep6Details(
 export async function completeProfile(
   productId: string,
   productStage: NonNullable<ProductProfile['data']['context']>['productStage'],
-  userBase?: string | null,
+  userBase?: NonNullable<ProductProfile['data']['context']>['userBase'] | null,
   twitter?: string,
   linkedin?: string,
   testimonials?: Array<{
