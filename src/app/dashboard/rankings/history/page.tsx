@@ -111,17 +111,20 @@ export default function RankingHistoryPage() {
 function WeeklyRankingCard({ ranking, isLatest }: { ranking: WeeklyRanking; isLatest: boolean }) {
   const [expanded, setExpanded] = useState(isLatest)
 
+  const weekStart = new Date(ranking.weekStart)
+  const weekEnd = new Date(ranking.weekEnd)
+
   return (
     <Card>
       <CardHeader>
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="flex items-center gap-2">
-              Week {ranking.weekNumber}, {ranking.year}
+              {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               {isLatest && <Badge>Latest</Badge>}
             </CardTitle>
             <CardDescription>
-              {new Date(ranking.weekStart).toLocaleDateString()} - {new Date(ranking.weekEnd).toLocaleDateString()}
+              {weekStart.toLocaleDateString()} - {weekEnd.toLocaleDateString()}
             </CardDescription>
           </div>
           <div className="text-right">
