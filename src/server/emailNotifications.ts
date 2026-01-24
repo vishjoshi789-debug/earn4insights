@@ -1,6 +1,14 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazy initialize Resend client only when needed
+let resend: Resend | null = null
+
+function getResendClient() {
+  if (!resend && process.env.RESEND_API_KEY) {
+    resend = new Resend(process.env.RESEND_API_KEY)
+  }
+  return resend
+}
 
 export interface RankingEmailData {
   productName: string
@@ -21,6 +29,12 @@ export async function sendRankingNotification(data: RankingEmailData) {
     return { success: false, error: 'API key not configured' }
   }
 
+  const client = getResendClient()
+  if (!client) {
+    console.warn('⚠️ Resend client not initialized')
+    return { success: false, error: 'Resend client not initialized' }
+  }
+
   try {
     const rankChange = data.previousRank
       ? data.rank - data.previousRank
@@ -30,7 +44,7 @@ export async function sendRankingNotification(data: RankingEmailData) {
       ? `🎉 ${data.productName} moved up to #${data.rank}!`
       : `📊 ${data.productName} is #${data.rank} this week`
 
-    const { data: emailData, error } = await resend.emails.send({
+    const { data: emailData, error } = await client.emails.send({
       from: process.env.EMAIL_FROM || 'rankings@brandpulse.com',
       to: data.ownerEmail,
       subject,
