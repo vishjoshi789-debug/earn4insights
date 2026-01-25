@@ -28,7 +28,7 @@ export async function migrateJSONData() {
         if (error.code === '23505') {
           console.log(`  ⏭️  Product already exists: ${product.name}`)
         } else {
-          console.error(`  ❌ Failed to migrate product ${product.name}:`, error.message)
+          console.error(`  ❌ Failed to migrate product ${product.name}:`, error)
         }
       }
     }
@@ -48,7 +48,7 @@ export async function migrateJSONData() {
         if (error.code === '23505') {
           console.log(`  ⏭️  Survey already exists: ${survey.title}`)
         } else {
-          console.error(`  ❌ Failed to migrate survey ${survey.title}:`, error.message)
+          console.error(`  ❌ Failed to migrate survey ${survey.title}:`, error)
         }
       }
     }
