@@ -1,6 +1,6 @@
 'use server'
 
-import { auth } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth.config'
 import { getUserProfile, createUserProfile, updateDemographics, updateInterests } from '@/db/repositories/userProfileRepository'
 
 export async function completeOnboarding(data: {

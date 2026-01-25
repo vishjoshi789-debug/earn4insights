@@ -1,8 +1,8 @@
 'use server'
 
-import { auth } from '@/lib/auth'
-import { trackProductView, trackSurveyStart, trackSurveyComplete } from '@/server/eventTrackingService'
-import { getOrCreateUserProfile } from '@/server/userProfileService'
+import { auth } from '@/lib/auth/auth.config'
+import { trackProductView } from '@/server/eventTrackingService'
+import { getUserProfile, createUserProfile } from '@/db/repositories/userProfileRepository'
 
 export async function trackProductViewAction(productId: string) {
   try {
@@ -10,7 +10,14 @@ export async function trackProductViewAction(productId: string) {
     if (!session?.user?.id) return // Don't track anonymous users
     
     // Ensure user profile exists
-    await getOrCreateUserProfile(session.user.id, session.user.email!)
+    let profile = await getUserProfile(session.user.id)
+    if (!profile && session.user.email) {
+      profile = await createUserProfile({ 
+        id: session.user.id, 
+        email: session.user.email 
+      })
+    }
+    if (!profile) return
     
     // Generate a session ID (in production, use a proper session management)
     const sessionId = `${session.user.id}-${Date.now()}`
