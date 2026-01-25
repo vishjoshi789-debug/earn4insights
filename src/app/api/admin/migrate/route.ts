@@ -34,7 +34,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      version: '2.0',
+      version: '2.1',
+      timestamp: new Date().toISOString(),
       message: migrateData 
         ? 'Database schema and data migration completed successfully'
         : 'Database migration completed successfully',
