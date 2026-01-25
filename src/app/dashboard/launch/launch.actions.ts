@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 import { Product } from '@/lib/types/product'
 import { initializeProductData } from '@/lib/product/initProduct'
-import { addProduct } from '@/lib/product/store'
+import { createProduct } from '@/db/repositories/productRepository'
 
 export async function launchProduct(formData: FormData) {
   const productName = formData.get('name') as string
@@ -38,7 +38,7 @@ export async function launchProduct(formData: FormData) {
     },
   }
 
-  await addProduct(product)
+  await createProduct(product)
   initializeProductData(product.id)
 
   redirect(`/dashboard/products/${product.id}`)
