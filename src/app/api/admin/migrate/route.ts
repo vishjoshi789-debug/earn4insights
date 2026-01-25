@@ -4,7 +4,8 @@ import { migrateJSONData } from '@/db/migrateData'
 
 /**
  * Run database migration
- * POST /api/admin/migrate?data=true - Also migrate JSON data
+ * POST /api/admin/migrate?data=true - Also migrate JSON data  
+ * Version: 2.0 with data migration
  * Requires ADMIN_API_KEY
  */
 export async function POST(request: NextRequest) {
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      version: '2.0',
       message: migrateData 
         ? 'Database schema and data migration completed successfully'
         : 'Database migration completed successfully',
