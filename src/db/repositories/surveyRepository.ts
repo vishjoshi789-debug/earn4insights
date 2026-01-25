@@ -49,6 +49,14 @@ export async function getAllSurveys(): Promise<Survey[]> {
 }
 
 /**
+ * Get a single survey by ID
+ */
+export async function getSurveyById(id: string): Promise<Survey | null> {
+  const dbSurveys = await db.select().from(surveys).where(eq(surveys.id, id)).limit(1)
+  return dbSurveys.length > 0 ? toSurvey(dbSurveys[0]) : null
+}
+
+/**
  * Get surveys by product ID
  */
 export async function getSurveysByProductId(productId: string): Promise<Survey[]> {
