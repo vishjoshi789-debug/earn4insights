@@ -14,6 +14,7 @@ function toSurvey(dbSurvey: DBSurvey): Survey {
     title: dbSurvey.title,
     description: dbSurvey.description || undefined,
     type: dbSurvey.type as Survey['type'],
+    isActive: dbSurvey.status === 'active',
     status: dbSurvey.status as Survey['status'],
     createdAt: dbSurvey.createdAt.toISOString(),
     updatedAt: dbSurvey.updatedAt.toISOString(),
