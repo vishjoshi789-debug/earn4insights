@@ -101,6 +101,73 @@ export const feedback = pgTable('feedback', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// User profiles table (for personalization)
+export const userProfiles = pgTable('user_profiles', {
+  id: text('id').primaryKey(), // Will match user ID from auth
+  email: text('email').notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  
+  // Explicit demographics (user-provided)
+  demographics: jsonb('demographics'), // { gender, ageRange, location, language, education }
+  
+  // Interests (user-selected tags)
+  interests: jsonb('interests'), // { productCategories: string[], topics: string[] }
+  
+  // Notification preferences
+  notificationPreferences: jsonb('notification_preferences').notNull(), 
+  // { email: { enabled, frequency, quietHours }, whatsapp: {...}, sms: {...} }
+  
+  // Consent tracking
+  consent: jsonb('consent').notNull(),
+  // { tracking: boolean, personalization: boolean, analytics: boolean, marketing: boolean, grantedAt: timestamp }
+  
+  // Behavioral attributes (system-computed)
+  behavioral: jsonb('behavioral'),
+  // { engagementScore, lastActiveAt, surveyCompletionRate, productViewCount, interests: { [category]: score } }
+  
+  // Sensitive data (opt-in only, encrypted at rest)
+  sensitiveData: jsonb('sensitive_data'),
+  // { spendingCapacity, explicitIncome } - never inferred
+})
+
+// User events table (for behavior tracking)
+export const userEvents = pgTable('user_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  eventType: text('event_type').notNull(), // 'product_view', 'survey_start', 'survey_complete', 'notification_click', etc.
+  productId: text('product_id'),
+  surveyId: text('survey_id'),
+  notificationId: text('notification_id'),
+  metadata: jsonb('metadata'), // Flexible event data
+  sessionId: text('session_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// Notification queue table
+export const notificationQueue = pgTable('notification_queue', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  channel: text('channel').notNull(), // 'email' | 'whatsapp' | 'sms'
+  type: text('type').notNull(), // 'new_survey', 'weekly_digest', 'product_update', etc.
+  status: text('status').default('pending').notNull(), // 'pending' | 'sent' | 'failed' | 'cancelled'
+  priority: integer('priority').default(5).notNull(), // 1 (highest) to 10 (lowest)
+  
+  // Content
+  subject: text('subject'),
+  body: text('body').notNull(),
+  metadata: jsonb('metadata'), // Additional data (productId, surveyId, etc.)
+  
+  // Scheduling
+  scheduledFor: timestamp('scheduled_for').notNull(),
+  sentAt: timestamp('sent_at'),
+  failedAt: timestamp('failed_at'),
+  failureReason: text('failure_reason'),
+  retryCount: integer('retry_count').default(0).notNull(),
+  
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -115,3 +182,9 @@ export type SocialPost = typeof socialPosts.$inferSelect
 export type NewSocialPost = typeof socialPosts.$inferInsert
 export type Feedback = typeof feedback.$inferSelect
 export type NewFeedback = typeof feedback.$inferInsert
+export type UserProfile = typeof userProfiles.$inferSelect
+export type NewUserProfile = typeof userProfiles.$inferInsert
+export type UserEvent = typeof userEvents.$inferSelect
+export type NewUserEvent = typeof userEvents.$inferInsert
+export type NotificationQueue = typeof notificationQueue.$inferSelect
+export type NewNotificationQueue = typeof notificationQueue.$inferInsert
