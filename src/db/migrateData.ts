@@ -1,9 +1,12 @@
-import { readFileSync } from 'fs'
-import { join } from 'path'
 import { createProduct } from '@/db/repositories/productRepository'
 import { createSurvey, createSurveyResponse } from '@/db/repositories/surveyRepository'
 import type { Product } from '@/lib/types/product'
 import type { Survey, SurveyResponse } from '@/lib/survey-types'
+
+// Import JSON data directly (works in both Node and Vercel)
+import productsData from '../../data/products.json'
+import surveysData from '../../data/surveys.json'
+import responsesData from '../../data/survey-responses.json'
 
 /**
  * Migrate existing JSON data to Postgres database
@@ -14,8 +17,6 @@ export async function migrateJSONData() {
   try {
     // Migrate products
     console.log('📦 Migrating products...')
-    const productsPath = join(process.cwd(), 'data', 'products.json')
-    const productsData = JSON.parse(readFileSync(productsPath, 'utf-8'))
     
     let productCount = 0
     for (const product of productsData as Product[]) {
@@ -35,8 +36,6 @@ export async function migrateJSONData() {
 
     // Migrate surveys
     console.log('📋 Migrating surveys...')
-    const surveysPath = join(process.cwd(), 'data', 'surveys.json')
-    const surveysData = JSON.parse(readFileSync(surveysPath, 'utf-8'))
     
     let surveyCount = 0
     for (const survey of surveysData as Survey[]) {
@@ -55,8 +54,6 @@ export async function migrateJSONData() {
 
     // Migrate survey responses
     console.log('💬 Migrating survey responses...')
-    const responsesPath = join(process.cwd(), 'data', 'survey-responses.json')
-    const responsesData = JSON.parse(readFileSync(responsesPath, 'utf-8'))
     
     let responseCount = 0
     for (const response of responsesData as SurveyResponse[]) {
@@ -88,14 +85,4 @@ export async function migrateJSONData() {
     console.error('❌ Migration failed:', error)
     throw error
   }
-}
-
-// Run migration if executed directly
-if (require.main === module) {
-  migrateJSONData()
-    .then(() => process.exit(0))
-    .catch((error) => {
-      console.error(error)
-      process.exit(1)
-    })
 }
