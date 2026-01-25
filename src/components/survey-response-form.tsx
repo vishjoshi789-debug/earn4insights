@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup } from '@/components/ui/radio-group'
 import { Star } from 'lucide-react'
 import { submitSurveyResponse } from '@/server/surveys/responseService'
+import { trackSurveyStartAction, trackSurveyCompleteAction } from '@/app/survey/[surveyId]/actions'
 import type { Survey, SurveyQuestion } from '@/lib/survey-types'
 
 type SurveyResponseFormProps = {
@@ -25,6 +26,11 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Track survey start when component mounts
+  useEffect(() => {
+    trackSurveyStartAction(survey.id).catch(console.error)
+  }, [survey.id])
 
   const handleAnswerChange = (questionId: string, value: string | number) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }))
@@ -58,6 +64,9 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
         userName || undefined,
         userEmail || undefined
       )
+
+      // Track survey completion
+      await trackSurveyCompleteAction(survey.id)
 
       setIsSubmitted(true)
     } catch (err) {

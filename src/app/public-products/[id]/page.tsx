@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { PublicFeedbackForm } from '@/components/public-feedback-form'
 import { ExternalLink, Quote } from 'lucide-react'
 import { getProductById } from '@/server/products/productService'
+import { ProductViewTracker } from './ProductViewTracker'
 
 type PageProps = {
   params: Promise<{ id: string }>
@@ -25,6 +26,9 @@ export default async function PublicProductPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      {/* Track product view */}
+      <ProductViewTracker productId={id} />
+      
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
