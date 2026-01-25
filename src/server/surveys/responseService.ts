@@ -3,8 +3,8 @@
 import 'server-only'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
-import { createResponse } from '@/lib/survey/responseStore'
-import { getSurveyById } from '@/lib/survey/store'
+import { createSurveyResponse } from '@/db/repositories/surveyRepository'
+import { getSurveyById } from '@/db/repositories/surveyRepository'
 import type { SurveyResponse } from '@/lib/survey-types'
 import { sendSurveyResponseNotification } from '@/server/emailService'
 
@@ -43,7 +43,7 @@ export async function submitSurveyResponse(
     submittedAt: new Date().toISOString(),
   }
 
-  await createResponse(response)
+  await createSurveyResponse(response)
 
   // Send email notification (async, don't block response)
   sendSurveyResponseNotification(

@@ -1,11 +1,17 @@
 'use server'
 
 import 'server-only'
-import { getProductById as getProductByIdFromStore, updateProductProfile } from '@/lib/product/store'
+import { 
+  getProductById as getProductByIdFromDB, 
+  updateProductProfile,
+  getAllProducts as getAllProductsFromDB,
+  createProduct as createProductInDB,
+  updateProduct as updateProductInDB,
+} from '@/db/repositories/productRepository'
 import type { Product, ProductProfile } from '@/lib/types/product'
 import type { ProductCategory } from '@/lib/categories'
 
-export { getProductByIdFromStore as getProductById }
+export { getProductByIdFromDB as getProductById, getAllProductsFromDB as getProducts }
 
 function ensureProfile(product: Product): Product {
   if (product.profile) return product
@@ -21,7 +27,7 @@ function ensureProfile(product: Product): Product {
 }
 
 export async function fetchProduct(productId: string) {
-  const product = await getProductByIdFromStore(productId)
+  const product = await getProductByIdFromDB(productId)
   if (!product) return undefined
 
   return ensureProfile(product)

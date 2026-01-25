@@ -7,10 +7,10 @@ import {
   getAllSurveys,
   getSurveyById,
   getSurveysByProductId,
-  createSurvey as storeSurvey,
-  updateSurvey as storeUpdateSurvey,
-  deleteSurvey as storeDeleteSurvey,
-} from '@/lib/survey/store'
+  createSurvey as createSurveyInDB,
+  updateSurvey as updateSurveyInDB,
+  deleteSurvey as deleteSurveyFromDB,
+} from '@/db/repositories/surveyRepository'
 import type { Survey, SurveyQuestion, SurveyType } from '@/lib/survey-types'
 import { createNPSSurvey, createCSATSurvey } from '@/lib/survey-types'
 
@@ -67,7 +67,7 @@ export async function createSurvey(
     createdAt: new Date().toISOString(),
   }
 
-  await storeSurvey(survey)
+  await createSurveyInDB(survey)
 
   // Revalidate the surveys page
   revalidatePath('/dashboard/surveys')
@@ -77,7 +77,7 @@ export async function createSurvey(
 }
 
 export async function toggleSurveyActive(surveyId: string, isActive: boolean) {
-  const survey = await storeUpdateSurvey(surveyId, { isActive })
+  const survey = await updateSurveyInDB(surveyId, { status: isActive ? 'active' : 'paused' })
 
   if (survey) {
     revalidatePath('/dashboard/surveys')
@@ -89,9 +89,7 @@ export async function toggleSurveyActive(surveyId: string, isActive: boolean) {
 
 export async function deleteSurvey(surveyId: string) {
   const survey = await getSurveyById(surveyId)
-  const success = await storeDeleteSurvey(surveyId)
-
-  if (success && survey) {
+  const success = await deleteSurveyFromDB(surveyId)
     revalidatePath('/dashboard/surveys')
     revalidatePath(`/dashboard/products/${survey.productId}`)
   }
