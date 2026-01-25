@@ -22,8 +22,11 @@ export type Survey = {
   description?: string
   type: SurveyType
   isActive: boolean
+  status?: 'draft' | 'active' | 'paused' | 'closed'  // Database field
   createdAt: string
+  updatedAt?: string  // Database field
   questions: SurveyQuestion[]
+  settings?: any  // Database field for additional settings
 }
 
 export type SurveyResponse = {
@@ -35,6 +38,8 @@ export type SurveyResponse = {
   userEmail?: string
   answers: Record<string, string | number>
   submittedAt: string
+  npsScore?: number  // Database field for NPS scores
+  sentiment?: 'positive' | 'neutral' | 'negative'  // Database field
 }
 
 // Helper to create NPS survey

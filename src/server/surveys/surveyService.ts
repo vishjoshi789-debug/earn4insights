@@ -89,10 +89,13 @@ export async function toggleSurveyActive(surveyId: string, isActive: boolean) {
 
 export async function deleteSurvey(surveyId: string) {
   const survey = await getSurveyById(surveyId)
-  const success = await deleteSurveyFromDB(surveyId)
-    revalidatePath('/dashboard/surveys')
-    revalidatePath(`/dashboard/products/${survey.productId}`)
+  if (!survey) {
+    throw new Error('Survey not found')
   }
+  
+  const success = await deleteSurveyFromDB(surveyId)
+  revalidatePath('/dashboard/surveys')
+  revalidatePath(`/dashboard/products/${survey.productId}`)
 
   return success
 }

@@ -23,9 +23,8 @@ export async function POST(request: NextRequest) {
     const result = await migrateJSONData()
 
     return NextResponse.json({
-      success: true,
-      message: 'Data migration completed successfully',
       ...result,
+      message: 'Data migration completed successfully',
     })
   } catch (error) {
     console.error('Data migration error:', error)

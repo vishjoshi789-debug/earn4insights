@@ -111,7 +111,7 @@ export async function updateSurvey(id: string, updates: Partial<Survey>): Promis
  */
 export async function deleteSurvey(id: string): Promise<boolean> {
   const result = await db.delete(surveys).where(eq(surveys.id, id))
-  return result.rowCount ? result.rowCount > 0 : false
+  return result.length > 0
 }
 
 /**

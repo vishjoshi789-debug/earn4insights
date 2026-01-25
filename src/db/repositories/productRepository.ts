@@ -106,5 +106,5 @@ export async function updateProductProfile(
  */
 export async function deleteProduct(id: string): Promise<boolean> {
   const result = await db.delete(products).where(eq(products.id, id))
-  return result.rowCount ? result.rowCount > 0 : false
+  return result.length > 0
 }
