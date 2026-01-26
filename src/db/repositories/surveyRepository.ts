@@ -65,14 +65,6 @@ export async function getSurveysByProductId(productId: string): Promise<Survey[]
 }
 
 /**
- * Get survey by ID
- */
-export async function getSurveyById(id: string): Promise<Survey | null> {
-  const [dbSurvey] = await db.select().from(surveys).where(eq(surveys.id, id))
-  return dbSurvey ? toSurvey(dbSurvey) : null
-}
-
-/**
  * Create new survey
  */
 export async function createSurvey(survey: Survey): Promise<Survey> {

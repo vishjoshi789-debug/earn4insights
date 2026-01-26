@@ -12,7 +12,7 @@ export default async function OnboardingPage() {
 
   return (
     <EnsureProfile>
-      <OnboardingClient userRole={session.user.role} />
+      <OnboardingClient userRole={session.user.role || 'brand'} />
     </EnsureProfile>
   )
 }

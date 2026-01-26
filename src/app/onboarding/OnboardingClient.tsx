@@ -88,24 +88,24 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                <div className="p-4 bg-purple-50 rounded-lg">
+                <div className="p-4 bg-purple-100 rounded-lg border border-purple-200">
                   <div className="text-2xl mb-2">🎯</div>
-                  <h3 className="font-semibold mb-1">Relevant Content</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <h3 className="font-semibold mb-1 text-purple-900">Relevant Content</h3>
+                  <p className="text-sm text-purple-700">
                     See products and surveys that match your interests
                   </p>
                 </div>
-                <div className="p-4 bg-blue-50 rounded-lg">
+                <div className="p-4 bg-blue-100 rounded-lg border border-blue-200">
                   <div className="text-2xl mb-2">🔔</div>
-                  <h3 className="font-semibold mb-1">Smart Notifications</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <h3 className="font-semibold mb-1 text-blue-900">Smart Notifications</h3>
+                  <p className="text-sm text-blue-700">
                     Get notified only about things you care about
                   </p>
                 </div>
-                <div className="p-4 bg-green-50 rounded-lg">
+                <div className="p-4 bg-green-100 rounded-lg border border-green-200">
                   <div className="text-2xl mb-2">🔒</div>
-                  <h3 className="font-semibold mb-1">Privacy First</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <h3 className="font-semibold mb-1 text-green-900">Privacy First</h3>
+                  <p className="text-sm text-green-700">
                     Your data stays private and you stay in control
                   </p>
                 </div>
