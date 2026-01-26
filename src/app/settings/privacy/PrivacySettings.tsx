@@ -120,7 +120,7 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
             <Switch
               id="tracking"
               checked={consent.tracking || false}
-              onCheckedChange={(checked) => handleConsentChange('tracking', checked)}
+              onCheckedChange={(checked: boolean) => handleConsentChange('tracking', checked)}
               disabled={saving}
             />
           </div>
@@ -137,7 +137,7 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
             <Switch
               id="personalization"
               checked={consent.personalization || false}
-              onCheckedChange={(checked) => handleConsentChange('personalization', checked)}
+              onCheckedChange={(checked: boolean) => handleConsentChange('personalization', checked)}
               disabled={saving}
             />
           </div>
@@ -154,7 +154,7 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
             <Switch
               id="analytics"
               checked={consent.analytics || false}
-              onCheckedChange={(checked) => handleConsentChange('analytics', checked)}
+              onCheckedChange={(checked: boolean) => handleConsentChange('analytics', checked)}
               disabled={saving}
             />
           </div>
@@ -171,7 +171,7 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
             <Switch
               id="marketing"
               checked={consent.marketing || false}
-              onCheckedChange={(checked) => handleConsentChange('marketing', checked)}
+              onCheckedChange={(checked: boolean) => handleConsentChange('marketing', checked)}
               disabled={saving}
             />
           </div>
@@ -192,7 +192,7 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
             <Switch
               id="email-enabled"
               checked={notificationPrefs.email?.enabled || false}
-              onCheckedChange={(checked) => handleChannelToggle('email', checked)}
+              onCheckedChange={(checked: boolean) => handleChannelToggle('email', checked)}
               disabled={saving}
             />
           </div>

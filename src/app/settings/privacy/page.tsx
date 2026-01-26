@@ -1,4 +1,4 @@
-import { auth } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth.config'
 import { getUserProfile } from '@/db/repositories/userProfileRepository'
 import { redirect } from 'next/navigation'
 import { PrivacySettings } from './PrivacySettings'

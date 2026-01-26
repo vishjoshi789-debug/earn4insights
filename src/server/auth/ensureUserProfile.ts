@@ -1,6 +1,6 @@
 'use server'
 
-import { auth } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth.config'
 import { getUserProfile, createUserProfile } from '@/db/repositories/userProfileRepository'
 import { redirect } from 'next/navigation'
 
