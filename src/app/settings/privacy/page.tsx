@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { getUserProfile } from '@/db/repositories/userProfileRepository'
 import { redirect } from 'next/navigation'
 import { PrivacySettings } from './PrivacySettings'
+import { EnsureProfile } from '@/components/OnboardingGuard'
 
 export default async function PrivacySettingsPage() {
   const session = await auth()
@@ -10,10 +11,18 @@ export default async function PrivacySettingsPage() {
     redirect('/api/auth/signin')
   }
 
-  const profile = await getUserProfile(session.user.id)
+  return (
+    <EnsureProfile>
+      <PrivacySettingsContent userId={session.user.id} />
+    </EnsureProfile>
+  )
+}
 
-  // If no profile exists, create one with defaults
+async function PrivacySettingsContent({ userId }: { userId: string }) {
+  const profile = await getUserProfile(userId)
+
   if (!profile) {
+    // This shouldn't happen because EnsureProfile creates the profile
     return (
       <div className="container mx-auto py-8">
         <div className="max-w-2xl mx-auto">
@@ -36,7 +45,7 @@ export default async function PrivacySettingsPage() {
           Control how we use your data and how we communicate with you.
         </p>
 
-        <PrivacySettings userId={session.user.id} initialProfile={profile} />
+        <PrivacySettings userId={userId} initialProfile={profile} />
       </div>
     </div>
   )

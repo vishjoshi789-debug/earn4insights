@@ -10,6 +10,8 @@ export default auth((req: NextRequest & { auth: any }) => {
   const isAuthPage = nextUrl.pathname.startsWith('/login') || nextUrl.pathname.startsWith('/signup')
   const isBrandRoute = nextUrl.pathname.startsWith('/dashboard')
   const isConsumerRoute = nextUrl.pathname.startsWith('/surveys') || nextUrl.pathname.startsWith('/respond')
+  const isOnboardingRoute = nextUrl.pathname.startsWith('/onboarding')
+  const isSettingsRoute = nextUrl.pathname.startsWith('/settings')
   const isPublicRoute = nextUrl.pathname.startsWith('/rankings') || 
                         nextUrl.pathname.startsWith('/privacy-policy') ||
                         nextUrl.pathname.startsWith('/terms-of-service') ||
@@ -17,8 +19,24 @@ export default auth((req: NextRequest & { auth: any }) => {
 
   // Redirect logged-in users away from auth pages
   if (isAuthPage && isLoggedIn) {
+    // First-time users will be redirected to onboarding by OnboardingGuard
     const redirectUrl = req.auth?.user?.role === 'brand' ? '/dashboard' : '/top-products'
     return NextResponse.redirect(new URL(redirectUrl, nextUrl))
+  }
+
+  // Allow onboarding route for logged-in users (no role check)
+  if (isOnboardingRoute && isLoggedIn) {
+    return NextResponse.next()
+  }
+
+  // Allow settings route for logged-in users
+  if (isSettingsRoute && isLoggedIn) {
+    return NextResponse.next()
+  }
+
+  // Protect onboarding route from non-logged-in users
+  if (isOnboardingRoute && !isLoggedIn) {
+    return NextResponse.redirect(new URL('/login', nextUrl))
   }
 
   // Protect brand routes
