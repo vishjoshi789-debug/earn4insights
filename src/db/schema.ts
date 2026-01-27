@@ -1,5 +1,18 @@
 import { pgTable, text, timestamp, jsonb, boolean, integer, real, uuid } from 'drizzle-orm/pg-core'
 
+// Users table (for authentication)
+export const users = pgTable('users', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  name: text('name'),
+  role: text('role').notNull(), // 'brand' | 'consumer'
+  passwordHash: text('password_hash'), // For email/password auth
+  googleId: text('google_id'), // For Google OAuth
+  consent: jsonb('consent'), // { termsAcceptedAt, privacyAcceptedAt }
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 // Products table
 export const products = pgTable('products', {
   id: text('id').primaryKey(),
@@ -188,3 +201,5 @@ export type UserEvent = typeof userEvents.$inferSelect
 export type NewUserEvent = typeof userEvents.$inferInsert
 export type NotificationQueue = typeof notificationQueue.$inferSelect
 export type NewNotificationQueue = typeof notificationQueue.$inferInsert
+export type User = typeof users.$inferSelect
+export type NewUser = typeof users.$inferInsert

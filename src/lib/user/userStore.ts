@@ -1,65 +1,65 @@
 import 'server-only'
-import { readFile, writeFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
-import { join } from 'path'
+import { db } from '@/db'
+import { users } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 import type { User, CreateUserInput } from './types'
 import { hashPassword } from './password'
-
-const DATA_DIR = join(process.cwd(), 'data')
-const USERS_FILE = join(DATA_DIR, 'users.json')
-
-/**
- * Ensure data directory and users file exist
- */
-async function ensureDataFile() {
-  if (!existsSync(DATA_DIR)) {
-    await mkdir(DATA_DIR, { recursive: true })
-  }
-  
-  if (!existsSync(USERS_FILE)) {
-    await writeFile(USERS_FILE, JSON.stringify([]), 'utf-8')
-  }
-}
-
-/**
- * Read all users from file
- */
-async function readUsers(): Promise<User[]> {
-  await ensureDataFile()
-  const data = await readFile(USERS_FILE, 'utf-8')
-  return JSON.parse(data)
-}
-
-/**
- * Write users to file
- */
-async function writeUsers(users: User[]): Promise<void> {
-  await ensureDataFile()
-  await writeFile(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8')
-}
 
 /**
  * Get user by ID
  */
 export async function getUserById(id: string): Promise<User | null> {
-  const users = await readUsers()
-  return users.find(u => u.id === id) || null
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1)
+  if (!result[0]) return null
+  
+  return {
+    ...result[0],
+    name: result[0].name || '',
+    role: result[0].role as 'brand' | 'consumer',
+    passwordHash: result[0].passwordHash || undefined,
+    googleId: result[0].googleId || undefined,
+    createdAt: result[0].createdAt.toISOString(),
+    updatedAt: result[0].updatedAt.toISOString(),
+    consent: result[0].consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
+  }
 }
 
 /**
  * Get user by email
  */
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const users = await readUsers()
-  return users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null
+  const result = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1)
+  if (!result[0]) return null
+  
+  return {
+    ...result[0],
+    name: result[0].name || '',
+    role: result[0].role as 'brand' | 'consumer',
+    passwordHash: result[0].passwordHash || undefined,
+    googleId: result[0].googleId || undefined,
+    createdAt: result[0].createdAt.toISOString(),
+    updatedAt: result[0].updatedAt.toISOString(),
+    consent: result[0].consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
+  }
 }
 
 /**
  * Get user by Google ID
  */
 export async function getUserByGoogleId(googleId: string): Promise<User | null> {
-  const users = await readUsers()
-  return users.find(u => u.googleId === googleId) || null
+  const result = await db.select().from(users).where(eq(users.googleId, googleId)).limit(1)
+  if (!result[0]) return null
+  
+  return {
+    ...result[0],
+    name: result[0].name || '',
+    role: result[0].role as 'brand' | 'consumer',
+    passwordHash: result[0].passwordHash || undefined,
+    googleId: result[0].googleId || undefined,
+    createdAt: result[0].createdAt.toISOString(),
+    updatedAt: result[0].updatedAt.toISOString(),
+    consent: result[0].consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
+  }
 }
 
 /**
@@ -83,75 +83,93 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     passwordHash = await hashPassword(input.password)
   }
 
-  const now = new Date().toISOString()
+  const now = new Date()
+  const userId = `user_${Date.now()}_${Math.random().toString(36).substring(7)}`
   
-  const user: User = {
-    id: `user_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+  const newUser = {
+    id: userId,
     email: input.email.toLowerCase(),
     name: input.name,
     role: input.role,
-    passwordHash,
-    googleId: input.googleId,
+    passwordHash: passwordHash || null,
+    googleId: input.googleId || null,
     consent: {
-      termsAcceptedAt: now,
-      privacyAcceptedAt: now,
+      termsAcceptedAt: now.toISOString(),
+      privacyAcceptedAt: now.toISOString(),
     },
     createdAt: now,
     updatedAt: now,
   }
 
-  // Initialize role-specific profiles
-  if (input.role === 'brand') {
-    user.brandProfile = {
-      productsManaged: [],
-    }
-  } else {
-    user.consumerProfile = {
-      surveysCompleted: 0,
-    }
+  await db.insert(users).values(newUser)
+
+  return {
+    id: newUser.id,
+    email: newUser.email,
+    name: newUser.name,
+    role: newUser.role,
+    passwordHash: newUser.passwordHash || undefined,
+    googleId: newUser.googleId || undefined,
+    consent: newUser.consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
+    createdAt: newUser.createdAt.toISOString(),
+    updatedAt: newUser.updatedAt.toISOString(),
   }
-
-  const users = await readUsers()
-  users.push(user)
-  await writeUsers(users)
-
-  // Return user without sensitive data
-  const { passwordHash: _, ...safeUser } = user
-  return safeUser as User
 }
 
 /**
  * Update user
  */
-export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
-  const users = await readUsers()
-  const index = users.findIndex(u => u.id === id)
-  
-  if (index === -1) {
-    return null
-  }
-
-  users[index] = {
-    ...users[index],
+export async function updateUser(id: string, updates: Partial<User>): Promise<User> {
+  // Convert string dates to Date objects if present
+  const dbUpdates: any = {
     ...updates,
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date(),
+  }
+  
+  // Remove fields that shouldn't be updated directly
+  delete dbUpdates.createdAt
+  delete dbUpdates.id
+
+  await db.update(users).set(dbUpdates).where(eq(users.id, id))
+
+  const user = await getUserById(id)
+  if (!user) {
+    throw new Error('User not found after update')
   }
 
-  await writeUsers(users)
-  return users[index]
+  return user
 }
 
 /**
  * Get all users (admin only)
  */
 export async function getAllUsers(): Promise<User[]> {
-  return readUsers()
+  const result = await db.select().from(users)
+  return result.map(u => ({
+    ...u,
+    name: u.name || '',
+    role: u.role as 'brand' | 'consumer',
+    passwordHash: u.passwordHash || undefined,
+    googleId: u.googleId || undefined,
+    createdAt: u.createdAt.toISOString(),
+    updatedAt: u.updatedAt.toISOString(),
+    consent: u.consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
+  }))
 }
 
 /**
  * Get users by role
  */
 export async function getUsersByRole(role: 'brand' | 'consumer'): Promise<User[]> {
-  const users = await readUsers()
-  return users.filter(u => u.role === role)
+  const result = await db.select().from(users).where(eq(users.role, role))
+  return result.map(u => ({
+    ...u,
+    name: u.name || '',
+    role: u.role as 'brand' | 'consumer',
+    passwordHash: u.passwordHash || undefined,
+    googleId: u.googleId || undefined,
+    createdAt: u.createdAt.toISOString(),
+    updatedAt: u.updatedAt.toISOString(),
+    consent: u.consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
+  }))
 }
