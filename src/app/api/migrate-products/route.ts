@@ -2,14 +2,6 @@ import { neon } from '@neondatabase/serverless';
 import { readFile } from 'fs/promises';
 
 export async function GET(request: Request) {
-  // Security: Only allow in development or with secret
-  const url = new URL(request.url);
-  const secret = url.searchParams.get('secret');
-  
-  if (process.env.NODE_ENV === 'production' && secret !== process.env.MIGRATION_SECRET) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   try {
     const sql = neon(process.env.DATABASE_URL!);
     
