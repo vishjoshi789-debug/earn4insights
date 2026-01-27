@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import DashboardShell from './DashboardShell'
 
 export default function DashboardLayout({
@@ -8,3 +8,4 @@ export default function DashboardLayout({
 }) {
   return <DashboardShell>{children}</DashboardShell>
 }
+ 
