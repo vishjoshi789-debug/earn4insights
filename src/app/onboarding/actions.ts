@@ -2,6 +2,7 @@
 
 import { auth } from '@/lib/auth/auth.config'
 import { getUserProfile, createUserProfile, updateDemographics, updateInterests } from '@/db/repositories/userProfileRepository'
+import { trackOnboardingComplete } from '@/server/eventTrackingService'
 
 export async function completeOnboarding(data: {
   demographics?: {
@@ -39,6 +40,9 @@ export async function completeOnboarding(data: {
   if (data.interests) {
     await updateInterests(userId, data.interests)
   }
+
+  // Track onboarding completion
+  await trackOnboardingComplete(userId, data.demographics, data.interests).catch(console.error)
 
   return { success: true }
 }

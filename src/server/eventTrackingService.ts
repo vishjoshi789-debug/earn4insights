@@ -213,17 +213,52 @@ export async function calculateInterestScores(userId: string): Promise<Record<st
 /**
  * Convenience functions for common events
  */
-export const trackProductView = (userId: string, productId: string, sessionId?: string) =>
-  trackEvent(userId, 'product_view', { productId, sessionId })
+// Product tracking
+export const trackProductView = (userId: string, productId: string, sessionId?: string, category?: string) =>
+  trackEvent(userId, 'product_view', { productId, sessionId, category })
 
+// Survey tracking
 export const trackSurveyStart = (userId: string, surveyId: string, sessionId?: string) =>
   trackEvent(userId, 'survey_start', { surveyId, sessionId })
 
 export const trackSurveyComplete = (userId: string, surveyId: string, sessionId?: string) =>
   trackEvent(userId, 'survey_complete', { surveyId, sessionId })
 
+// Notification tracking
 export const trackNotificationClick = (userId: string, notificationId: string) =>
   trackEvent(userId, 'notification_click', { notificationId })
 
 export const trackNotificationView = (userId: string, notificationId: string) =>
   trackEvent(userId, 'notification_view', { notificationId })
+
+// Feedback tracking
+export const trackFeedbackSubmit = (userId: string, productId: string, rating?: number, category?: string) =>
+  trackEvent(userId, 'feedback_submit', { productId, rating, category })
+
+// Profile tracking
+export const trackOnboardingComplete = (userId: string, demographics: any, interests: any) =>
+  trackEvent(userId, 'onboarding_complete', { demographics, interests })
+
+export const trackProfileUpdate = (userId: string, field: string, oldValue: any, newValue: any) =>
+  trackEvent(userId, 'profile_update', { field, oldValue, newValue })
+
+export const trackPrivacySettingsUpdate = (userId: string, settings: any) =>
+  trackEvent(userId, 'privacy_settings_update', { settings })
+
+// Social tracking
+export const trackSocialPostView = (userId: string, postId: string, productId: string) =>
+  trackEvent(userId, 'social_post_view', { postId, productId })
+
+export const trackSocialPostLike = (userId: string, postId: string, productId: string) =>
+  trackEvent(userId, 'social_post_like', { postId, productId })
+
+export const trackSocialCommentSubmit = (userId: string, postId: string, productId: string) =>
+  trackEvent(userId, 'social_comment_submit', { postId, productId })
+
+// Rankings tracking
+export const trackRankingsView = (userId: string, category?: string) =>
+  trackEvent(userId, 'rankings_view', { category })
+
+// Community tracking
+export const trackCommunityFeatureView = (userId: string, feature: string) =>
+  trackEvent(userId, 'community_feature_view', { feature })
