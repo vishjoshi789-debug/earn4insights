@@ -19,7 +19,7 @@ export async function trackProductViewAction(productId: string) {
     
     // Get product details for metadata enrichment
     const product = await getProductById(productId)
-    const category = product?.profile?.category
+    const category = product?.profile?.data?.category
     
     await trackProductView(session.user.id, productId, sessionId, category)
     return { success: true }
