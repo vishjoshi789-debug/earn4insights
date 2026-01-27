@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { trackProductView, trackSurveyStart, trackSurveyComplete } from '@/server/eventTrackingService'
 import { ensureUserProfile } from '@/lib/auth/ensureUserProfile'
 import { getOrCreateSessionId } from '@/lib/sessionManager'
-import { getProductById } from '@/server/products/productRepository'
+import { getProductById } from '@/db/repositories/productRepository'
 
 export async function trackProductViewAction(productId: string) {
   try {
