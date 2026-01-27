@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TrendingUp, TrendingDown, Minus, Trophy, ArrowLeft, Star, ThumbsUp, MessageSquare, Users } from 'lucide-react'
+import { RankingsViewTracker } from '../RankingsViewTracker'
 
 type Props = {
   params: Promise<{ category: string }>
@@ -41,6 +42,7 @@ export default async function CategoryRankingPage({ params }: Props) {
   if (!ranking || ranking.rankings.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+        <RankingsViewTracker category={categoryKey} />
         <div className="container mx-auto px-4 py-12">
           <Link href="/top-products">
             <Button variant="ghost" className="mb-6">
@@ -76,6 +78,7 @@ export default async function CategoryRankingPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <RankingsViewTracker category={categoryKey} />
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <div className="container mx-auto px-4 py-12">

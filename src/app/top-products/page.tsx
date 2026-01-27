@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TrendingUp, TrendingDown, Minus, Trophy, Star, Users } from 'lucide-react'
+import { RankingsViewTracker } from './RankingsViewTracker'
 
 export const metadata = {
   title: 'Top Products of the Week | Earn4Insights',
@@ -19,6 +20,7 @@ export default async function TopProductsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <RankingsViewTracker />
       {/* Hero Section */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <div className="container mx-auto px-4 py-16">

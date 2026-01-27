@@ -1,6 +1,7 @@
 import { db } from '@/db'
 import { userProfiles, type UserProfile, type NewUserProfile } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import { trackProfileUpdate } from '@/server/eventTrackingService'
 
 // Default notification preferences for new users
 const DEFAULT_NOTIFICATION_PREFS = {
@@ -93,6 +94,9 @@ export async function updateDemographics(
     education?: string
   }
 ): Promise<UserProfile | null> {
+  // Get old value for tracking
+  const oldProfile = await getUserProfile(userId)
+  
   const result = await db
     .update(userProfiles)
     .set({
@@ -102,14 +106,37 @@ export async function updateDemographics(
     .where(eq(userProfiles.id, userId))
     .returning()
 
-  return result[0] || null
-}
+  // Track profile update
+  if (result[0]) {
+    await trackProfileUpdate(
+      userId, 
+      'demographics', 
+      oldProfile?.demographics, 
+      demographics
+    ).catch(console.error)
+  }
 
-/**
- * Update user interests
- */
-export async function updateInterests(
-  userId: string,
+  // Get old value for tracking
+  const oldProfile = await getUserProfile(userId)
+  
+  const result = await db
+    .update(userProfiles)
+    .set({
+      interests: interests,
+      updatedAt: new Date()
+    })
+    .where(eq(userProfiles.id, userId))
+    .returning()
+
+  // Track profile update
+  if (result[0]) {
+    await trackProfileUpdate(
+      userId, 
+      'interests', 
+      oldProfile?.interests, 
+      interests
+    ).catch(console.error)
+  },
   interests: {
     productCategories?: string[]
     topics?: string[]

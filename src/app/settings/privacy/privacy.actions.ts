@@ -1,6 +1,7 @@
 'use server'
 
 import { getUserProfile, updateConsent, updateNotificationPreferences } from '@/db/repositories/userProfileRepository'
+import { trackPrivacySettingsUpdate } from '@/server/eventTrackingService'
 import { revalidatePath } from 'next/cache'
 
 export async function updateUserConsent(userId: string, consent: {
@@ -11,6 +12,10 @@ export async function updateUserConsent(userId: string, consent: {
 }) {
   try {
     await updateConsent(userId, consent)
+    
+    // Track privacy settings update
+    await trackPrivacySettingsUpdate(userId, { type: 'consent', changes: consent }).catch(console.error)
+    
     revalidatePath('/settings/privacy')
     return { success: true }
   } catch (error) {
@@ -38,6 +43,10 @@ export async function updateChannelPreferences(userId: string, channel: 'email' 
     }
 
     await updateNotificationPreferences(userId, updatedPrefs)
+    
+    // Track privacy settings update
+    await trackPrivacySettingsUpdate(userId, { type: 'notifications', channel, changes: preferences }).catch(console.error)
+    
     revalidatePath('/settings/privacy')
     return { success: true }
   } catch (error) {
