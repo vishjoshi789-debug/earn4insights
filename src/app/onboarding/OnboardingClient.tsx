@@ -273,7 +273,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                       onCheckedChange={() => handleCategoryToggle(category)}
                     />
                     <div>
-                      <div className="font-medium">{category}</div>
+                      <div className="font-medium text-gray-900">{category}</div>
                     </div>
                   </div>
                 </div>
