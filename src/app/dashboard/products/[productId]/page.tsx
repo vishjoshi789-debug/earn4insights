@@ -1,5 +1,6 @@
 import ProductOverview from './ProductOverview'
 import { fetchProduct } from '@/server/products/productService'
+import { DashboardProductViewTracker } from './DashboardProductViewTracker'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,5 +17,10 @@ export default async function ProductPage({
     return <div className="p-6">Product not found</div>
   }
 
-  return <ProductOverview product={product} />
+  return (
+    <>
+      <DashboardProductViewTracker productId={productId} />
+      <ProductOverview product={product} />
+    </>
+  )
 }

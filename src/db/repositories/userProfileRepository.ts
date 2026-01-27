@@ -116,6 +116,19 @@ export async function updateDemographics(
     ).catch(console.error)
   }
 
+  return result[0] || null
+}
+
+/**
+ * Update user interests
+ */
+export async function updateInterests(
+  userId: string,
+  interests: {
+    productCategories?: string[]
+    topics?: string[]
+  }
+): Promise<UserProfile | null> {
   // Get old value for tracking
   const oldProfile = await getUserProfile(userId)
   
@@ -136,20 +149,7 @@ export async function updateDemographics(
       oldProfile?.interests, 
       interests
     ).catch(console.error)
-  },
-  interests: {
-    productCategories?: string[]
-    topics?: string[]
   }
-): Promise<UserProfile | null> {
-  const result = await db
-    .update(userProfiles)
-    .set({
-      interests: interests,
-      updatedAt: new Date()
-    })
-    .where(eq(userProfiles.id, userId))
-    .returning()
 
   return result[0] || null
 }
