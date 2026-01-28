@@ -4,26 +4,15 @@ import { readFile } from 'fs/promises';
 export async function GET(request: Request) {
   try {
     const sql = neon(process.env.DATABASE_URL!);
-    
     // Read products from file
     const data = await readFile('data/products.json', 'utf-8');
     const products = JSON.parse(data);
 
-    let inserted = 0;
-    let skipped = 0;
+    let upserted = 0;
     const errors = [];
 
     for (const product of products) {
       try {
-        // Check if exists
-        const existing = await sql`SELECT id FROM products WHERE id = ${product.id}`;
-        
-        if (existing.length > 0) {
-          skipped++;
-          continue;
-        }
-
-        // Insert product
         await sql`
           INSERT INTO products (
             id, name, description, platform, created_at,
@@ -39,9 +28,17 @@ export async function GET(request: Request) {
             ${product.features?.social_listening || false},
             ${JSON.stringify(product.profile)}
           )
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            platform = EXCLUDED.platform,
+            created_at = EXCLUDED.created_at,
+            nps_enabled = EXCLUDED.nps_enabled,
+            feedback_enabled = EXCLUDED.feedback_enabled,
+            social_listening_enabled = EXCLUDED.social_listening_enabled,
+            profile = EXCLUDED.profile
         `;
-
-        inserted++;
+        upserted++;
       } catch (err: any) {
         errors.push({ product: product.name, error: err.message });
       }
@@ -52,8 +49,7 @@ export async function GET(request: Request) {
 
     return Response.json({
       success: true,
-      inserted,
-      skipped,
+      upserted,
       errors,
       totalProducts: count[0].count,
     });
