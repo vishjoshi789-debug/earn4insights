@@ -3,8 +3,45 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { auth } from '@/lib/auth';
+import { db } from '@/db';
+import { userProfiles, products } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { getPersonalizedRecommendations } from '@/server/personalizationEngine';
+import { RecommendationCard } from '@/components/recommendation-card';
+import { Sparkles, ArrowRight } from 'lucide-react';
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const session = await auth();
+  
+  // Fetch recommendations if user is logged in
+  let topRecommendations: Array<{
+    productId: string;
+    score: number;
+    reasons: string[];
+    product?: any;
+  }> = [];
+
+  if (session?.user?.id) {
+    try {
+      const recommendations = await getPersonalizedRecommendations(session.user.id, 3);
+      
+      if (recommendations.length > 0) {
+        const allProducts = await db.select().from(products);
+        const productMap = new Map(allProducts.map(p => [p.id, p]));
+        
+        topRecommendations = recommendations
+          .map(rec => ({
+            ...rec,
+            product: productMap.get(rec.productId)
+          }))
+          .filter(rec => rec.product);
+      }
+    } catch (error) {
+      console.error('[Dashboard] Error fetching recommendations:', error);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -15,6 +52,38 @@ export default function DashboardPage() {
           Overview of your products, feedback, and community activity.
         </p>
       </div>
+
+      {/* For You Section */}
+      {topRecommendations.length > 0 && (
+        <section className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 rounded-lg p-6 border border-purple-200 dark:border-purple-800">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-6 w-6 text-purple-600" />
+              <h2 className="text-2xl font-semibold">For You</h2>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard/recommendations" className="flex items-center gap-1">
+                View all
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Products we think you'll love based on your interests
+          </p>
+          <div className="grid gap-4 md:grid-cols-3">
+            {topRecommendations.map((rec) => (
+              <RecommendationCard
+                key={rec.productId}
+                product={rec.product!}
+                score={rec.score}
+                reasons={rec.reasons}
+                compact
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
