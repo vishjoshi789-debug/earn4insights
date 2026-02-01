@@ -205,7 +205,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="gender">Gender</Label>
-                  <FieldTooltip text="Helps us personalize product recommendations" />
+                  <FieldTooltip content="Helps us personalize product recommendations" />
                 </div>
                 <Select value={gender} onValueChange={setGender}>
                   <SelectTrigger>
@@ -224,7 +224,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="age">Age Range</Label>
-                  <FieldTooltip text="Shows age-appropriate products and surveys" />
+                  <FieldTooltip content="Shows age-appropriate products and surveys" />
                 </div>
                 <Select value={ageRange} onValueChange={setAgeRange}>
                   <SelectTrigger>
@@ -244,7 +244,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="location">Location</Label>
-                  <FieldTooltip text="See region-specific products and opportunities" />
+                  <FieldTooltip content="See region-specific products and opportunities" />
                 </div>
                 <Select value={location} onValueChange={setLocation}>
                   <SelectTrigger>
@@ -266,7 +266,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="education">Education</Label>
-                  <FieldTooltip text="Match with relevant research and surveys" />
+                  <FieldTooltip content="Match with relevant research and surveys" />
                 </div>
                 <Select value={education} onValueChange={setEducation}>
                   <SelectTrigger>
