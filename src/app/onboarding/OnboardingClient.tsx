@@ -74,14 +74,17 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         topics: []
       }
 
-      await completeOnboarding({ demographics, interests })
+      console.log('[OnboardingClient] Saving progress:', { demographics, interests })
+      const result = await completeOnboarding({ demographics, interests })
+      console.log('[OnboardingClient] Save result:', result)
+      
       toast.success('Progress saved! You can continue anytime.')
       
       const redirectUrl = userRole === 'brand' ? '/dashboard' : '/top-products'
       router.push(redirectUrl)
     } catch (error) {
-      toast.error('Failed to save progress. Please try again.')
-      console.error(error)
+      console.error('[OnboardingClient] Save error:', error)
+      toast.error(`Failed to save progress: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
     }
