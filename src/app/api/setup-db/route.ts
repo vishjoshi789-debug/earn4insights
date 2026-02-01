@@ -1,10 +1,11 @@
-import { sql } from '@/db'
+import { db } from '@/db'
+import { sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
   try {
-    // Read the migration SQL file content
-    const migrationSQL = `
+    // Execute the migration
+    await db.execute(sql`
 CREATE TABLE IF NOT EXISTS "user_profiles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
@@ -17,7 +18,7 @@ CREATE TABLE IF NOT EXISTS "user_profiles" (
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "user_profiles_email_unique" UNIQUE("email")
-);
+	);
 
 CREATE TABLE IF NOT EXISTS "user_events" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS "user_events" (
 	"event_data" jsonb,
 	"metadata" jsonb,
 	"created_at" timestamp DEFAULT now() NOT NULL
-);
+	);
 
 CREATE TABLE IF NOT EXISTS "notification_queue" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -44,7 +45,7 @@ CREATE TABLE IF NOT EXISTS "notification_queue" (
 	"failure_reason" text,
 	"retry_count" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
-);
+	);
 
 CREATE TABLE IF NOT EXISTS "products" (
 	"id" text PRIMARY KEY NOT NULL,
@@ -56,11 +57,8 @@ CREATE TABLE IF NOT EXISTS "products" (
 	"feedback_enabled" boolean DEFAULT false NOT NULL,
 	"social_listening_enabled" boolean DEFAULT false NOT NULL,
 	"profile" jsonb NOT NULL
-);
-    `
-
-    // Execute the migration
-    await sql(migrationSQL)
+	);
+    `)
 
     return NextResponse.json({ 
       success: true, 
