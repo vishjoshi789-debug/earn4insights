@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { CATEGORY_VALUES, CATEGORY_KEYS } from '@/lib/categories'
 import { completeOnboarding } from './actions'
 import { toast } from 'sonner'
+import { ProgressIndicator } from '@/components/ProgressIndicator'
+import { FieldTooltip } from '@/components/FieldTooltip'
 
 export default function OnboardingClient({ userRole }: { userRole?: string }) {
   const router = useRouter()
@@ -32,6 +34,51 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         ? prev.filter(c => c !== category)
         : [...prev, category]
     )
+  }
+
+  const calculateCompletion = () => {
+    let filledFields = 0
+    let totalFields = 5 // gender, age, location, education, language (always has default)
+    
+    if (gender) filledFields++
+    if (ageRange) filledFields++
+    if (location) filledFields++
+    if (education) filledFields++
+    filledFields++ // language always filled
+    
+    const demographicsPercent = (filledFields / totalFields) * 50 // 50% weight
+    const interestsPercent = selectedCategories.length > 0 ? 50 : 0 // 50% weight
+    
+    return Math.round(demographicsPercent + interestsPercent)
+  }
+
+  const handleSaveForLater = async () => {
+    setLoading(true)
+    try {
+      const demographics = {
+        gender: gender || undefined,
+        ageRange: ageRange || undefined,
+        location: location || undefined,
+        language: language || 'English',
+        education: education || undefined
+      }
+
+      const interests = {
+        productCategories: selectedCategories,
+        topics: []
+      }
+
+      await completeOnboarding({ demographics, interests })
+      toast.success('Progress saved! You can continue anytime.')
+      
+      const redirectUrl = userRole === 'brand' ? '/dashboard' : '/top-products'
+      router.push(redirectUrl)
+    } catch (error) {
+      toast.error('Failed to save progress. Please try again.')
+      console.error(error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleSubmit = async () => {
@@ -127,19 +174,33 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   }
 
   if (step === 2) {
+    const completion = calculateCompletion()
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
         <Card className="max-w-3xl w-full">
           <CardHeader>
-            <CardTitle className="text-2xl">Tell us about yourself (optional)</CardTitle>
-            <CardDescription>
-              This helps us show you relevant products and surveys. You can skip any field.
-            </CardDescription>
+            <ProgressIndicator currentStep={2} totalSteps={3} />
+            <div className="flex items-center justify-between mt-4">
+              <div>
+                <CardTitle className="text-2xl">Tell us about yourself (optional)</CardTitle>
+                <CardDescription>
+                  This helps us show you relevant products and surveys. You can skip any field.
+                </CardDescription>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-bold text-purple-600">{completion}%</div>
+                <div className="text-xs text-muted-foreground">Complete</div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="gender">Gender</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="gender">Gender</Label>
+                  <FieldTooltip text="Helps us personalize product recommendations" />
+                </div>
                 <Select value={gender} onValueChange={setGender}>
                   <SelectTrigger>
                     <SelectValue placeholder="Prefer not to say" />
@@ -155,7 +216,10 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="age">Age Range</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="age">Age Range</Label>
+                  <FieldTooltip text="Shows age-appropriate products and surveys" />
+                </div>
                 <Select value={ageRange} onValueChange={setAgeRange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select age range" />
@@ -172,7 +236,10 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="location">Location</Label>
+                  <FieldTooltip text="See region-specific products and opportunities" />
+                </div>
                 <Select value={location} onValueChange={setLocation}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select location" />
@@ -191,7 +258,10 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="education">Education</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="education">Education</Label>
+                  <FieldTooltip text="Match with relevant research and surveys" />
+                </div>
                 <Select value={education} onValueChange={setEducation}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select education level" />
@@ -229,6 +299,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               <Button variant="outline" onClick={() => setStep(1)}>
                 Back
               </Button>
+              <Button variant="ghost" onClick={handleSaveForLater} disabled={loading}>
+                {loading ? 'Saving...' : 'Save for Later'}
+              </Button>
               <Button onClick={() => setStep(3)} className="flex-1">
                 Continue
               </Button>
@@ -240,14 +313,25 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   }
 
   // Step 3: Interests
+  const completion = calculateCompletion()
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
       <Card className="max-w-4xl w-full">
         <CardHeader>
-          <CardTitle className="text-2xl">What interests you?</CardTitle>
-          <CardDescription>
-            Select product categories you'd like to see. You can change this later.
-          </CardDescription>
+          <ProgressIndicator currentStep={3} totalSteps={3} />
+          <div className="flex items-center justify-between mt-4">
+            <div>
+              <CardTitle className="text-2xl">What interests you?</CardTitle>
+              <CardDescription>
+                Select product categories you'd like to see. You can change this later.
+              </CardDescription>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold text-purple-600">{completion}%</div>
+              <div className="text-xs text-muted-foreground">Complete</div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -290,6 +374,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setStep(2)}>
               Back
+            </Button>
+            <Button variant="ghost" onClick={handleSaveForLater} disabled={loading}>
+              {loading ? 'Saving...' : 'Save for Later'}
             </Button>
             <Button 
               onClick={handleSubmit} 
