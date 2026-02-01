@@ -15,12 +15,33 @@ export async function ensureUserProfile(userId: string, email: string) {
   if (!profile) {
     // Create new profile with default settings
     console.log(`[ensureUserProfile] Creating new profile for user: ${userId}`)
-    profile = await createUserProfile({
-      id: userId,
-      email: email,
-      demographics: null,
-      interests: null
-    })
+    try {
+      profile = await createUserProfile({
+        id: userId,
+        email: email,
+        demographics: null,
+        interests: null
+      })
+    } catch (error: any) {
+      // Handle duplicate key constraint violations
+      if (error?.code === '23505' || 
+          error?.message?.includes('duplicate key') || 
+          error?.message?.includes('unique constraint')) {
+        console.log(`[ensureUserProfile] Profile already exists (duplicate key), fetching existing profile`)
+        // Race condition: profile was created between check and insert
+        // Fetch the profile that exists
+        profile = await getUserProfile(userId)
+        
+        if (!profile) {
+          // If still not found, something is wrong
+          console.error(`[ensureUserProfile] Failed to fetch profile after duplicate key error for user: ${userId}`)
+          throw new Error('Failed to create or retrieve user profile')
+        }
+      } else {
+        // Re-throw other errors
+        throw error
+      }
+    }
   }
   
   return profile
