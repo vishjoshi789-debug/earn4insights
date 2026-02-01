@@ -81,17 +81,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, account, profile }) {
       // For Google OAuth, check if user exists
       if (account?.provider === "google") {
-        const existingUser = await getUserByEmail(user.email!)
-        
-        if (!existingUser) {
-          // User needs to complete signup with role selection
-          // Redirect to signup completion
-          return `/signup/complete?email=${encodeURIComponent(user.email!)}&name=${encodeURIComponent(user.name!)}&provider=google`
+        try {
+          const existingUser = await getUserByEmail(user.email!)
+          
+          if (!existingUser) {
+            // User needs to complete signup with role selection
+            // Redirect to signup completion
+            return `/signup/complete?email=${encodeURIComponent(user.email!)}&name=${encodeURIComponent(user.name!)}&provider=google`
+          }
+          
+          // User exists, allow sign in
+          user.role = existingUser.role
+          user.id = existingUser.id
+        } catch (error) {
+          console.error('[Auth] signIn error:', error)
+          return false
         }
-        
-        // User exists, allow sign in
-        user.role = existingUser.role
-        user.id = existingUser.id
       }
       
       return true
@@ -106,11 +111,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       
       // Subsequent requests - fetch fresh user data
       if (token.id) {
-        const freshUser = await getUserById(token.id as string)
-        if (freshUser) {
-          token.role = freshUser.role
-          token.name = freshUser.name
-          token.email = freshUser.email
+        try {
+          const freshUser = await getUserById(token.id as string)
+          if (freshUser) {
+            token.role = freshUser.role
+            token.name = freshUser.name
+            token.email = freshUser.email
+          }
+        } catch (error) {
+          console.error('[Auth] jwt error:', error)
+          // Keep existing token data if database fails
         }
       }
       
