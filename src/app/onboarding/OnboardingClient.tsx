@@ -28,6 +28,12 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   // Interests
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
+  const progressSteps = [
+    { id: 1, title: 'Welcome', description: 'Get started' },
+    { id: 2, title: 'About You', description: 'Demographics' },
+    { id: 3, title: 'Interests', description: 'Preferences' }
+  ]
+
   const handleCategoryToggle = (category: string) => {
     setSelectedCategories(prev =>
       prev.includes(category)
@@ -180,7 +186,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
         <Card className="max-w-3xl w-full">
           <CardHeader>
-            <ProgressIndicator currentStep={2} totalSteps={3} />
+            <ProgressIndicator currentStep={2} steps={progressSteps} />
             <div className="flex items-center justify-between mt-4">
               <div>
                 <CardTitle className="text-2xl">Tell us about yourself (optional)</CardTitle>
@@ -319,7 +325,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
       <Card className="max-w-4xl w-full">
         <CardHeader>
-          <ProgressIndicator currentStep={3} totalSteps={3} />
+          <ProgressIndicator currentStep={3} steps={progressSteps} />
           <div className="flex items-center justify-between mt-4">
             <div>
               <CardTitle className="text-2xl">What interests you?</CardTitle>
