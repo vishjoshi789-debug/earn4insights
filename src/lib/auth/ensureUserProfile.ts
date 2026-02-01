@@ -1,4 +1,4 @@
-import { getUserProfile, createUserProfile } from '@/db/repositories/userProfileRepository'
+import { getUserProfile, getUserProfileByEmail, createUserProfile } from '@/db/repositories/userProfileRepository'
 
 /**
  * Ensures a user profile exists for the given user.
@@ -9,12 +9,21 @@ import { getUserProfile, createUserProfile } from '@/db/repositories/userProfile
  * @returns The user profile (existing or newly created)
  */
 export async function ensureUserProfile(userId: string, email: string) {
-  // Check if profile already exists
-  let profile = await getUserProfile(userId)
+  // Check if profile already exists by email first (unique constraint is on email)
+  let profile = await getUserProfileByEmail(email)
+  
+  // If found by email but different userId, return existing profile
+  if (profile) {
+    console.log(`[ensureUserProfile] Profile already exists for email: ${email}`)
+    return profile
+  }
+  
+  // Double-check by userId
+  profile = await getUserProfile(userId)
   
   if (!profile) {
     // Create new profile with default settings
-    console.log(`[ensureUserProfile] Creating new profile for user: ${userId}`)
+    console.log(`[ensureUserProfile] Creating new profile for user: ${userId}, email: ${email}`)
     try {
       profile = await createUserProfile({
         id: userId,
@@ -27,14 +36,14 @@ export async function ensureUserProfile(userId: string, email: string) {
       if (error?.code === '23505' || 
           error?.message?.includes('duplicate key') || 
           error?.message?.includes('unique constraint')) {
-        console.log(`[ensureUserProfile] Profile already exists (duplicate key), fetching existing profile`)
+        console.log(`[ensureUserProfile] Profile already exists (duplicate key), fetching by email`)
         // Race condition: profile was created between check and insert
-        // Fetch the profile that exists
-        profile = await getUserProfile(userId)
+        // Fetch the profile by email
+        profile = await getUserProfileByEmail(email)
         
         if (!profile) {
           // If still not found, something is wrong
-          console.error(`[ensureUserProfile] Failed to fetch profile after duplicate key error for user: ${userId}`)
+          console.error(`[ensureUserProfile] Failed to fetch profile after duplicate key error for email: ${email}`)
           throw new Error('Failed to create or retrieve user profile')
         }
       } else {
