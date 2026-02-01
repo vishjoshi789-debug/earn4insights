@@ -1,7 +1,7 @@
 import NextAuth, { type DefaultSession } from "next-auth"
 import Google from "next-auth/providers/google"
 import Credentials from "next-auth/providers/credentials"
-import { getUserByEmail, getUserById } from "@/lib/user/userStore"
+import { getUserByEmail, getUserById, createUser } from "@/lib/user/userStore"
 import { verifyPassword } from "@/lib/user/password"
 import type { UserRole } from "@/lib/user/types"
 
