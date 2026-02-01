@@ -1,7 +1,7 @@
 'use server'
 
 import { auth } from '@/lib/auth/auth.config'
-import { getUserProfile, createUserProfile, updateDemographics, updateInterests } from '@/db/repositories/userProfileRepository'
+import { getUserProfile, getUserProfileByEmail, createUserProfile, updateDemographics, updateInterests } from '@/db/repositories/userProfileRepository'
 import { trackOnboardingComplete } from '@/server/eventTrackingService'
 
 export async function completeOnboarding(data: {
@@ -31,31 +31,58 @@ export async function completeOnboarding(data: {
     const userId = session.user.id
     const email = session.user.email
 
-    // Get or create user profile
-    console.log('[completeOnboarding] Fetching profile for user:', userId)
-    let profile = await getUserProfile(userId)
+    // Get or create user profile - check by email FIRST (matches unique constraint)
+    console.log('[completeOnboarding] Fetching profile by email:', email)
+    let profile = await getUserProfileByEmail(email)
+    
+    if (!profile) {
+      // Double-check by userId
+      console.log('[completeOnboarding] Profile not found by email, checking by userId:', userId)
+      profile = await getUserProfile(userId)
+    }
     
     if (!profile) {
       console.log('[completeOnboarding] Profile not found, creating new one')
-      profile = await createUserProfile({ id: userId, email })
+      try {
+        profile = await createUserProfile({ id: userId, email })
+      } catch (createError: any) {
+        // Handle duplicate key constraint violations (race condition)
+        if (createError?.code === '23505' || 
+            createError?.message?.includes('duplicate key') || 
+            createError?.message?.includes('unique constraint')) {
+          console.log('[completeOnboarding] Duplicate key during create, fetching existing profile')
+          // Profile was created by another request, fetch it
+          profile = await getUserProfileByEmail(email)
+          if (!profile) {
+            profile = await getUserProfile(userId)
+          }
+          if (!profile) {
+            console.error('[completeOnboarding] Still no profile after duplicate key error')
+            throw new Error('Failed to create or retrieve user profile')
+          }
+        } else {
+          // Re-throw other errors
+          throw createError
+        }
+      }
     }
     console.log('[completeOnboarding] Profile exists:', profile.id)
 
     // Update demographics if provided
     if (data.demographics) {
       console.log('[completeOnboarding] Updating demographics:', JSON.stringify(data.demographics))
-      await updateDemographics(userId, data.demographics)
+      await updateDemographics(profile.id, data.demographics)
     }
 
     // Update interests if provided
     if (data.interests) {
       console.log('[completeOnboarding] Updating interests:', JSON.stringify(data.interests))
-      await updateInterests(userId, data.interests)
+      await updateInterests(profile.id, data.interests)
     }
 
     // Track onboarding completion
     console.log('[completeOnboarding] Tracking completion event')
-    await trackOnboardingComplete(userId, data.demographics, data.interests).catch((err) => {
+    await trackOnboardingComplete(profile.id, data.demographics, data.interests).catch((err) => {
       console.error('[completeOnboarding] Tracking error (non-fatal):', err)
     })
 
