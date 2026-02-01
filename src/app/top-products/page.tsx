@@ -59,7 +59,7 @@ export default async function TopProductsPage() {
       <div className="container mx-auto px-4 py-12">
         {rankings.length === 0 ? (
           <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
-            <Card className="bg-card">
+            <Card className="bg-slate-50/80 border-slate-200/50">
               <CardHeader>
                 <CardTitle>No Rankings Yet</CardTitle>
                 <CardDescription>
@@ -68,7 +68,7 @@ export default async function TopProductsPage() {
               </CardHeader>
             </Card>
             
-            <Card className="bg-card">
+            <Card className="bg-slate-50/80 border-slate-200/50">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Star className="h-5 w-5" />
@@ -161,7 +161,7 @@ export default async function TopProductsPage() {
 
         {/* Methodology Section - Only show when we have rankings */}
         {rankings.length > 0 && (
-          <Card className="mt-12 max-w-4xl mx-auto bg-card">
+          <Card className="mt-12 max-w-4xl mx-auto bg-slate-50/80 border-slate-200/50">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Star className="h-5 w-5" />
