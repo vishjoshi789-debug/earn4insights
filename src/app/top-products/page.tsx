@@ -58,14 +58,38 @@ export default async function TopProductsPage() {
       {/* Category Grid */}
       <div className="container mx-auto px-4 py-12">
         {rankings.length === 0 ? (
-          <Card className="max-w-2xl mx-auto">
-            <CardHeader>
-              <CardTitle>No Rankings Yet</CardTitle>
-              <CardDescription>
-                Weekly rankings haven&apos;t been generated yet. Check back soon!
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
+            <Card className="bg-card">
+              <CardHeader>
+                <CardTitle>No Rankings Yet</CardTitle>
+                <CardDescription>
+                  Weekly rankings haven&apos;t been generated yet. Check back soon!
+                </CardDescription>
+              </CardHeader>
+            </Card>
+            
+            <Card className="bg-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Star className="h-5 w-5" />
+                  How Rankings Work
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-3">
+                <p className="text-muted-foreground">
+                  Rankings based on:
+                </p>
+                <ul className="space-y-1.5 text-muted-foreground">
+                  <li>• <strong>NPS Score</strong> (25%)</li>
+                  <li>• <strong>Sentiment</strong> (20%)</li>
+                  <li>• <strong>Engagement</strong> (20%)</li>
+                  <li>• <strong>Volume</strong> (15%)</li>
+                  <li>• <strong>Recency</strong> (10%)</li>
+                  <li>• <strong>Trend</strong> (10%)</li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {CATEGORY_KEYS.map(categoryKey => {
@@ -135,32 +159,34 @@ export default async function TopProductsPage() {
           </div>
         )}
 
-        {/* Methodology Section */}
-        <Card className="mt-12 max-w-4xl mx-auto">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Star className="h-5 w-5" />
-              How Rankings Work
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="prose prose-sm max-w-none">
-            <p className="text-muted-foreground">
-              Our rankings are 100% data-driven and based on multiple signals:
-            </p>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><strong>NPS Score (25%):</strong> Net Promoter Score from verified user surveys</li>
-              <li><strong>Sentiment (20%):</strong> AI-analyzed feedback sentiment from text responses</li>
-              <li><strong>Engagement (20%):</strong> Survey completion rates and feedback volume</li>
-              <li><strong>Volume (15%):</strong> Total number of verified responses</li>
-              <li><strong>Recency (10%):</strong> Recent activity and fresh feedback</li>
-              <li><strong>Trend (10%):</strong> Week-over-week improvement in metrics</li>
-            </ul>
-            <p className="text-sm text-muted-foreground mt-4">
-              <strong>Minimum Requirements:</strong> Products must have at least 20 total responses 
-              and 5 responses in the last 30 days to be eligible for ranking.
-            </p>
-          </CardContent>
-        </Card>
+        {/* Methodology Section - Only show when we have rankings */}
+        {rankings.length > 0 && (
+          <Card className="mt-12 max-w-4xl mx-auto bg-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Star className="h-5 w-5" />
+                How Rankings Work
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="prose prose-sm max-w-none">
+              <p className="text-muted-foreground">
+                Our rankings are 100% data-driven and based on multiple signals:
+              </p>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><strong>NPS Score (25%):</strong> Net Promoter Score from verified user surveys</li>
+                <li><strong>Sentiment (20%):</strong> AI-analyzed feedback sentiment from text responses</li>
+                <li><strong>Engagement (20%):</strong> Survey completion rates and feedback volume</li>
+                <li><strong>Volume (15%):</strong> Total number of verified responses</li>
+                <li><strong>Recency (10%):</strong> Recent activity and fresh feedback</li>
+                <li><strong>Trend (10%):</strong> Week-over-week improvement in metrics</li>
+              </ul>
+              <p className="text-sm text-muted-foreground mt-4">
+                <strong>Minimum Requirements:</strong> Products must have at least 20 total responses 
+                and 5 responses in the last 30 days to be eligible for ranking.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )
