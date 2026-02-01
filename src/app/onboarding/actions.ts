@@ -11,10 +11,19 @@ export async function completeOnboarding(data: {
     location?: string
     language?: string
     education?: string
+    culture?: string
+    aspirations?: string[]
   }
   interests?: {
     productCategories?: string[]
     topics?: string[]
+  }
+  sensitiveData?: {
+    incomeRange?: string
+    purchaseHistory?: {
+      amazonCategories?: string[]
+      frequency?: string
+    }
   }
 }) {
   try {
@@ -78,6 +87,22 @@ export async function completeOnboarding(data: {
     if (data.interests) {
       console.log('[completeOnboarding] Updating interests:', JSON.stringify(data.interests))
       await updateInterests(profile.id, data.interests)
+    }
+
+    // Update sensitive data if provided (privacy-protected)
+    if (data.sensitiveData) {
+      console.log('[completeOnboarding] Updating sensitive data (encrypted)')
+      const { db } = await import('@/db')
+      const { userProfiles } = await import('@/db/schema')
+      const { eq } = await import('drizzle-orm')
+      
+      await db
+        .update(userProfiles)
+        .set({
+          sensitiveData: data.sensitiveData,
+          updatedAt: new Date()
+        })
+        .where(eq(userProfiles.id, profile.id))
     }
 
     // Track onboarding completion

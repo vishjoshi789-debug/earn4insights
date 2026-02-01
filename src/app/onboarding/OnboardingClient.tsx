@@ -24,6 +24,15 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   const [location, setLocation] = useState<string>('')
   const [language, setLanguage] = useState<string>('English')
   const [education, setEducation] = useState<string>('')
+  const [culture, setCulture] = useState<string>('')
+  const [aspirations, setAspirations] = useState<string[]>([])
+
+  // Sensitive Data (opt-in)
+  const [incomeRange, setIncomeRange] = useState<string>('')
+  const [amazonCategories, setAmazonCategories] = useState<string[]>([])
+  const [purchaseFrequency, setPurchaseFrequency] = useState<string>('')
+  const [shareIncomeData, setShareIncomeData] = useState(false)
+  const [sharePurchaseData, setSharePurchaseData] = useState(false)
 
   // Interests
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -31,7 +40,8 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   const progressSteps = [
     { id: 1, title: 'Welcome', description: 'Get started' },
     { id: 2, title: 'About You', description: 'Demographics' },
-    { id: 3, title: 'Interests', description: 'Preferences' }
+    { id: 3, title: 'Preferences', description: 'Lifestyle & Goals' },
+    { id: 4, title: 'Interests', description: 'Categories' }
   ]
 
   const handleCategoryToggle = (category: string) => {
@@ -42,20 +52,39 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     )
   }
 
+  const handleAspirationToggle = (aspiration: string) => {
+    setAspirations(prev =>
+      prev.includes(aspiration)
+        ? prev.filter(a => a !== aspiration)
+        : [...prev, aspiration]
+    )
+  }
+
+  const handleAmazonCategoryToggle = (category: string) => {
+    setAmazonCategories(prev =>
+      prev.includes(category)
+        ? prev.filter(c => c !== category)
+        : [...prev, category]
+    )
+  }
+
   const calculateCompletion = () => {
     let filledFields = 0
-    let totalFields = 5 // gender, age, location, education, language (always has default)
+    let totalFields = 7 // gender, age, location, education, language, culture, aspirations
     
     if (gender) filledFields++
     if (ageRange) filledFields++
     if (location) filledFields++
     if (education) filledFields++
+    if (culture) filledFields++
+    if (aspirations.length > 0) filledFields++
     filledFields++ // language always filled
     
-    const demographicsPercent = (filledFields / totalFields) * 50 // 50% weight
-    const interestsPercent = selectedCategories.length > 0 ? 50 : 0 // 50% weight
+    const demographicsPercent = (filledFields / totalFields) * 40 // 40% weight
+    const lifestylePercent = (sharePurchaseData || shareIncomeData) ? 20 : 0 // 20% weight for privacy consent
+    const interestsPercent = selectedCategories.length > 0 ? 40 : 0 // 40% weight
     
-    return Math.round(demographicsPercent + interestsPercent)
+    return Math.round(demographicsPercent + lifestylePercent + interestsPercent)
   }
 
   const handleSaveForLater = async () => {
@@ -66,7 +95,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         ageRange: ageRange || undefined,
         location: location || undefined,
         language: language || 'English',
-        education: education || undefined
+        education: education || undefined,
+        culture: culture || undefined,
+        aspirations: aspirations.length > 0 ? aspirations : undefined
       }
 
       const interests = {
@@ -74,8 +105,16 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         topics: []
       }
 
-      console.log('[OnboardingClient] Saving progress:', { demographics, interests })
-      const result = await completeOnboarding({ demographics, interests })
+      const sensitiveData = {
+        incomeRange: shareIncomeData && incomeRange ? incomeRange : undefined,
+        purchaseHistory: sharePurchaseData ? {
+          amazonCategories: amazonCategories.length > 0 ? amazonCategories : undefined,
+          frequency: purchaseFrequency || undefined
+        } : undefined
+      }
+
+      console.log('[OnboardingClient] Saving progress:', { demographics, interests, sensitiveData })
+      const result = await completeOnboarding({ demographics, interests, sensitiveData })
       console.log('[OnboardingClient] Save result:', result)
       
       toast.success('Progress saved! You can continue anytime.')
@@ -98,7 +137,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         ageRange: ageRange || undefined,
         location: location || undefined,
         language: language || 'English',
-        education: education || undefined
+        education: education || undefined,
+        culture: culture || undefined,
+        aspirations: aspirations.length > 0 ? aspirations : undefined
       }
 
       const interests = {
@@ -106,7 +147,15 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         topics: []
       }
 
-      await completeOnboarding({ demographics, interests })
+      const sensitiveData = {
+        incomeRange: shareIncomeData && incomeRange ? incomeRange : undefined,
+        purchaseHistory: sharePurchaseData ? {
+          amazonCategories: amazonCategories.length > 0 ? amazonCategories : undefined,
+          frequency: purchaseFrequency || undefined
+        } : undefined
+      }
+
+      await completeOnboarding({ demographics, interests, sensitiveData })
       toast.success('Profile completed! Enjoy personalized experiences.')
       
       // Redirect based on user role
@@ -302,6 +351,27 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="culture">Cultural Background</Label>
+                  <FieldTooltip content="Helps us show culturally relevant products and content" />
+                </div>
+                <Select value={culture} onValueChange={setCulture}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Western">Western</SelectItem>
+                    <SelectItem value="Indian">Indian/South Asian</SelectItem>
+                    <SelectItem value="East Asian">East Asian</SelectItem>
+                    <SelectItem value="Middle Eastern">Middle Eastern</SelectItem>
+                    <SelectItem value="Latin American">Latin American</SelectItem>
+                    <SelectItem value="African">African</SelectItem>
+                    <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="flex gap-3">
@@ -321,14 +391,179 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     )
   }
 
-  // Step 3: Interests
+  // Step 3: Preferences & Lifestyle
+  if (step === 3) {
+    const completion = calculateCompletion()
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
+        <Card className="max-w-4xl w-full">
+          <CardHeader>
+            <ProgressIndicator currentStep={3} steps={progressSteps} />
+            <div className="flex items-center justify-between mt-4">
+              <div>
+                <CardTitle className="text-2xl">Your Goals & Lifestyle</CardTitle>
+                <CardDescription>
+                  Help us understand what matters to you (all fields optional)
+                </CardDescription>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-bold text-purple-600">{completion}%</div>
+                <div className="text-xs text-muted-foreground">Complete</div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Aspirations */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Label>What are your current goals/aspirations?</Label>
+                <FieldTooltip content="We'll recommend products that align with your life goals" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  { value: 'career-growth', label: '🚀 Career Growth' },
+                  { value: 'financial-freedom', label: '💰 Financial Independence' },
+                  { value: 'health-fitness', label: '💪 Health & Fitness' },
+                  { value: 'learning-skills', label: '📚 Learning New Skills' },
+                  { value: 'entrepreneurship', label: '💡 Entrepreneurship' },
+                  { value: 'work-life-balance', label: '⚖️ Work-Life Balance' },
+                  { value: 'family-home', label: '🏡 Family & Home' },
+                  { value: 'travel-experiences', label: '✈️ Travel & Experiences' }
+                ].map(aspiration => (
+                  <div
+                    key={aspiration.value}
+                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      aspirations.includes(aspiration.value)
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 hover:border-purple-300'
+                    }`}
+                    onClick={() => handleAspirationToggle(aspiration.value)}
+                  >
+                    <span className="text-sm font-medium">{aspiration.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Privacy-Protected Sensitive Data */}
+            <div className="border-t pt-6 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                  🔒 Optional: Better Recommendations (Privacy Protected)
+                </h3>
+                <p className="text-sm text-blue-700 mb-3">
+                  Share additional information for more accurate product matches. This data is encrypted and never shared.
+                </p>
+              </div>
+
+              {/* Income Range */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Checkbox 
+                    id="share-income" 
+                    checked={shareIncomeData}
+                    onCheckedChange={(checked) => setShareIncomeData(checked as boolean)}
+                  />
+                  <Label htmlFor="share-income" className="cursor-pointer">
+                    Share income range to see products that fit my budget
+                  </Label>
+                </div>
+                
+                {shareIncomeData && (
+                  <Select value={incomeRange} onValueChange={setIncomeRange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select income range (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0-25k">$0 - $25,000</SelectItem>
+                      <SelectItem value="25k-50k">$25,000 - $50,000</SelectItem>
+                      <SelectItem value="50k-100k">$50,000 - $100,000</SelectItem>
+                      <SelectItem value="100k-200k">$100,000 - $200,000</SelectItem>
+                      <SelectItem value="200k+">$200,000+</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              {/* Purchase History */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Checkbox 
+                    id="share-purchase" 
+                    checked={sharePurchaseData}
+                    onCheckedChange={(checked) => setSharePurchaseData(checked as boolean)}
+                  />
+                  <Label htmlFor="share-purchase" className="cursor-pointer">
+                    Share my shopping preferences for better product suggestions
+                  </Label>
+                </div>
+                
+                {sharePurchaseData && (
+                  <div className="space-y-3 ml-6">
+                    <div className="space-y-2">
+                      <Label className="text-sm">What do you typically buy on Amazon?</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Electronics', 'Books', 'Clothing', 'Home & Kitchen', 'Health', 'Sports'].map(cat => (
+                          <div
+                            key={cat}
+                            className={`p-2 text-sm rounded border cursor-pointer ${
+                              amazonCategories.includes(cat)
+                                ? 'border-purple-500 bg-purple-50'
+                                : 'border-gray-200 hover:border-purple-300'
+                            }`}
+                            onClick={() => handleAmazonCategoryToggle(cat)}
+                          >
+                            {cat}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-sm">How often do you shop online?</Label>
+                      <Select value={purchaseFrequency} onValueChange={setPurchaseFrequency}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select frequency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="quarterly">Every few months</SelectItem>
+                          <SelectItem value="rarely">Rarely</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setStep(2)}>
+                Back
+              </Button>
+              <Button variant="ghost" onClick={handleSaveForLater} disabled={loading}>
+                {loading ? 'Saving...' : 'Save for Later'}
+              </Button>
+              <Button onClick={() => setStep(4)} className="flex-1">
+                Continue
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Step 4: Interests
   const completion = calculateCompletion()
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
       <Card className="max-w-4xl w-full">
         <CardHeader>
-          <ProgressIndicator currentStep={3} steps={progressSteps} />
+          <ProgressIndicator currentStep={4} steps={progressSteps} />
           <div className="flex items-center justify-between mt-4">
             <div>
               <CardTitle className="text-2xl">What interests you?</CardTitle>
@@ -381,7 +616,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
           )}
 
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setStep(2)}>
+            <Button variant="outline" onClick={() => setStep(3)}>
               Back
             </Button>
             <Button variant="ghost" onClick={handleSaveForLater} disabled={loading}>
