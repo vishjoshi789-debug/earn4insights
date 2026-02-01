@@ -6,6 +6,19 @@ export async function GET() {
   try {
     // Execute the migration
     await db.execute(sql`
+CREATE TABLE IF NOT EXISTS "users" (
+	"id" text PRIMARY KEY NOT NULL,
+	"email" text NOT NULL,
+	"name" text,
+	"role" text NOT NULL,
+	"password_hash" text,
+	"google_id" text,
+	"consent" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "users_email_unique" UNIQUE("email")
+	);
+
 CREATE TABLE IF NOT EXISTS "user_profiles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
