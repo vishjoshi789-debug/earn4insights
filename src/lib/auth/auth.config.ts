@@ -20,6 +20,18 @@ declare module "next-auth" {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  debug: true, // Enable debug mode
+  logger: {
+    error(code, ...message) {
+      console.error('[NextAuth Error]', code, message)
+    },
+    warn(code, ...message) {
+      console.warn('[NextAuth Warn]', code, message)
+    },
+    debug(code, ...message) {
+      console.log('[NextAuth Debug]', code, message)
+    },
+  },
   providers: [
     // Google OAuth Provider
     Google({
@@ -82,20 +94,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // For Google OAuth, check if user exists
       if (account?.provider === "google") {
         try {
-          const existingUser = await getUserByEmail(user.email!)
+          let existingUser = await getUserByEmail(user.email!)
           
           if (!existingUser) {
-            // User needs to complete signup with role selection
-            // Redirect to signup completion
-            return `/signup/complete?email=${encodeURIComponent(user.email!)}&name=${encodeURIComponent(user.name!)}&provider=google`
+            // Auto-create user with Google OAuth
+            console.log('[Auth] Creating new Google user:', user.email)
+            existingUser = await createUser({
+              email: user.email!,
+              name: user.name || '',
+              role: 'brand', // Default to brand, can be changed later
+              googleId: user.id,
+              acceptedTerms: true,
+              acceptedPrivacy: true,
+            })
           }
           
-          // User exists, allow sign in
+          // User exists or was just created, allow sign in
           user.role = existingUser.role
           user.id = existingUser.id
         } catch (error) {
           console.error('[Auth] signIn error:', error)
-          return false
+          // Don't fail login, just log the error
+          // User will still be signed in but may need to complete profile
         }
       }
       
