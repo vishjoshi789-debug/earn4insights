@@ -99,23 +99,43 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (!existingUser) {
             // Auto-create user with Google OAuth
             console.log('[Auth] Creating new Google user:', user.email)
-            existingUser = await createUser({
-              email: user.email!,
-              name: user.name || '',
-              role: 'brand', // Default to brand, can be changed later
-              googleId: user.id,
-              acceptedTerms: true,
-              acceptedPrivacy: true,
-            })
+            try {
+              existingUser = await createUser({
+                email: user.email!,
+                name: user.name || '',
+                role: 'brand', // Default to brand, can be changed later
+                googleId: user.id,
+                acceptedTerms: true,
+                acceptedPrivacy: true,
+              })
+            } catch (createError: any) {
+              // Handle duplicate key constraint violations
+              if (createError?.message?.includes('duplicate key') || 
+                  createError?.message?.includes('unique constraint')) {
+                console.log('[Auth] User already exists (duplicate key), fetching existing user')
+                // Race condition: user was created between check and insert
+                // Fetch the user that was created
+                existingUser = await getUserByEmail(user.email!)
+              } else {
+                // Re-throw other errors
+                throw createError
+              }
+            }
+          }
+          
+          // Ensure we have a valid user before proceeding
+          if (!existingUser) {
+            console.error('[Auth] Failed to get or create user for:', user.email)
+            return false // Reject sign-in
           }
           
           // User exists or was just created, allow sign in
           user.role = existingUser.role
           user.id = existingUser.id
+          console.log('[Auth] Sign-in successful for:', user.email, 'Role:', user.role)
         } catch (error) {
           console.error('[Auth] signIn error:', error)
-          // Don't fail login, just log the error
-          // User will still be signed in but may need to complete profile
+          return false // Reject sign-in on unexpected errors
         }
       }
       
