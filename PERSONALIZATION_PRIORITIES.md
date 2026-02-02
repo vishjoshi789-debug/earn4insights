@@ -150,9 +150,11 @@ Requirements:
 | Targeting resolution | All | ⚠️ PARTIAL | **P3** |
 | Behavioral targeting | All | ❌ NOT DONE | **P3** |
 | **PRIVACY & COMPLIANCE** ||||
-| GDPR data export | Compliance | ❌ NOT DONE | P4 |
-| GDPR data deletion | Compliance | ❌ NOT DONE | P4 |
-| Consent renewal | Compliance | ❌ NOT DONE | P4 |
+| GDPR data export | Compliance | ✅ DONE | P4 |
+| GDPR data deletion | Compliance | ✅ DONE | P4 |
+| Consent renewal | Compliance | ✅ DONE | P4 |
+| Audit logging | Compliance | ⏳ TODO | P4 |
+| "Why am I seeing this?" UI | Compliance | ⏳ TODO | P4 |
 
 ---
 
@@ -173,9 +175,20 @@ Requirements:
 2. Wire `calculateCategoryInterests()` into survey notification targeting
 3. Implement send-time optimization
 
-### 🟡 COMPLIANCE: GDPR Gaps ⏸️ NEXT
-**Current State:** Consent modeled but not enforced everywhere
-**Impact:** GDPR non-compliance risk in EU
+### 🟡 COMPLIANCE: GDPR Gaps 🔨 IN PROGRESS
+**Current State:** Data export, deletion, and consent renewal implemented
+**Remaining:** Audit logging, enhanced "Why am I seeing this?" UI
+**Impact:** 60% GDPR compliance complete, core rights implemented
+
+**Completed:**
+1. ✅ Data export endpoint (Article 20 - Right to Data Portability)
+2. ✅ Account deletion with 30-day grace period (Article 17)
+3. ✅ Automated permanent deletion cron job
+4. ✅ Consent renewal modal (shows after 12 months)
+
+**Remaining:**
+1. ⏳ Audit log for sensitive data access
+2. ⏳ Enhanced "Why am I seeing this?" visibility
 
 ---
 
@@ -188,10 +201,12 @@ Requirements:
 - [ ] Send-time optimization active
 - [ ] >20% increase in notification click-through rate
 
-### Phase 3 (1 Month)
-- [ ] GDPR data export/deletion working
-- [ ] Consent renewal implemented
-- [ ] All EU compliance requirements met
+### Phase 3 (1 Month) - 🔨 IN PROGRESS
+- [x] GDPR data export/deletion working
+- [x] Consent renewal implemented
+- [ ] Audit logging for sensitive data access
+- [ ] Enhanced "Why am I seeing this?" UI
+- [x] All critical EU compliance requirements met (export, deletion, consent)
 
 ### Phase 4 (2-3 Months)
 - [ ] >500 active users

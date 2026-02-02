@@ -90,6 +90,22 @@ export function RecommendationCard({
             </p>
           )}
           
+          {/* Always-visible "Why you're seeing this" section */}
+          <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-3">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">
+                  Why you're seeing this
+                </p>
+                <p className="text-xs text-blue-800 dark:text-blue-200">
+                  {reasons.slice(0, 2).join(' • ')}
+                  {reasons.length > 2 && ` • +${reasons.length - 2} more reasons`}
+                </p>
+              </div>
+            </div>
+          </div>
+          
           <div className="flex flex-wrap gap-2">
             {reasons.slice(0, 2).map((reason, idx) => (
               <div 
