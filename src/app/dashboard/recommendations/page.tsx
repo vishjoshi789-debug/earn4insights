@@ -1,4 +1,4 @@
-import { auth } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth.config'
 import { redirect } from 'next/navigation'
 import { db } from '@/db'
 import { userProfiles, products } from '@/db/schema'

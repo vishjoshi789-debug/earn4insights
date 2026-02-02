@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/auth';
+import { auth } from '@/lib/auth/auth.config';
 import { db } from '@/db';
 import { userProfiles, products } from '@/db/schema';
 import { eq } from 'drizzle-orm';
