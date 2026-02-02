@@ -26,7 +26,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/Tooltip';
+} from '@/components/ui/tooltip';
 
 export function DashboardHeader() {
   const { isMobile } = useSidebar();
