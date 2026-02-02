@@ -476,12 +476,16 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                     key={aspiration.value}
                     className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
                       aspirations.includes(aspiration.value)
-                        ? 'border-purple-500 bg-purple-50'
-                        : 'border-gray-200 hover:border-purple-300'
+                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-900 dark:border-purple-400'
+                        : 'border-gray-200 hover:border-purple-300 dark:border-gray-700'
                     }`}
                     onClick={() => handleAspirationToggle(aspiration.value)}
                   >
-                    <span className="text-sm font-medium">{aspiration.label}</span>
+                    <span className={`text-sm font-medium ${
+                      aspirations.includes(aspiration.value)
+                        ? 'text-purple-900 dark:text-purple-100'
+                        : 'text-gray-900 dark:text-gray-100'
+                    }`}>{aspiration.label}</span>
                   </div>
                 ))}
               </div>
@@ -526,8 +530,8 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                       key={cat}
                       className={`p-2 text-sm rounded border cursor-pointer transition-all ${
                         amazonCategories.includes(cat)
-                          ? 'border-purple-500 bg-purple-50'
-                          : 'border-gray-200 hover:border-purple-300'
+                          ? 'border-purple-500 bg-purple-50 text-purple-900 dark:bg-purple-900 dark:text-purple-100 font-medium'
+                          : 'border-gray-200 hover:border-purple-300 text-gray-900 dark:text-gray-100'
                       }`}
                       onClick={() => handleAmazonCategoryToggle(cat)}
                     >
