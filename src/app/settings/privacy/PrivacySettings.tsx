@@ -11,6 +11,17 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { updateUserConsent, updateChannelPreferences } from './privacy.actions'
 import { toast } from 'sonner'
+import { Download, Trash2, AlertTriangle, Info, CheckCircle2, Shield } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 
 interface PrivacySettingsProps {
   userId: string
@@ -21,6 +32,10 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
   const [consent, setConsent] = useState<any>(initialProfile.consent || {})
   const [notificationPrefs, setNotificationPrefs] = useState<any>(initialProfile.notificationPreferences || {})
   const [saving, setSaving] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deletionReason, setDeletionReason] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const handleConsentChange = async (key: string, value: boolean) => {
     setSaving(true)
@@ -99,8 +114,137 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
     }
   }
 
+  const handleExportData = async () => {
+    setIsExporting(true)
+    try {
+      const response = await fetch('/api/user/export-data')
+      
+      if (!response.ok) {
+        throw new Error('Failed to export data')
+      }
+
+      // Download the file
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `earn4insights-data-export-${Date.now()}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      toast.success('Data exported successfully!')
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error('Failed to export data. Please try again.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true)
+    try {
+      const response = await fetch('/api/user/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: deletionReason })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete account')
+      }
+
+      toast.success('Account deletion scheduled', {
+        description: `Your account will be deleted on ${new Date(data.deletionScheduledFor).toLocaleDateString()}. You can cancel anytime before then.`
+      })
+
+      setShowDeleteDialog(false)
+      
+      // Redirect to sign out after 2 seconds
+      setTimeout(() => {
+        window.location.href = '/api/auth/signout'
+      }, 2000)
+
+    } catch (error) {
+      console.error('Delete error:', error)
+      toast.error('Failed to schedule deletion. Please try again.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {/* GDPR Compliance Banner */}
+      <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+        <Shield className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-900 dark:text-blue-100">
+          GDPR Compliant
+        </AlertTitle>
+        <AlertDescription className="text-blue-800 dark:text-blue-200">
+          We respect your privacy rights under GDPR, CCPA, and other data protection laws.
+          You have full control over your personal data.
+        </AlertDescription>
+      </Alert>
+
+      {/* Data Export */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Download className="h-5 w-5" />
+            Download Your Data
+          </CardTitle>
+          <CardDescription>
+            Export all your personal data in JSON format
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 space-y-2">
+            <h4 className="font-semibold text-sm">What's included:</h4>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                Profile information (demographics, interests, preferences)
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                Activity history (product views, survey completions)
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                Survey responses and feedback
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                Notification history
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                Consent records
+              </li>
+            </ul>
+          </div>
+
+          <Button 
+            onClick={handleExportData} 
+            disabled={isExporting}
+            className="w-full sm:w-auto"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {isExporting ? 'Exporting...' : 'Download My Data'}
+          </Button>
+
+          <p className="text-xs text-muted-foreground">
+            <Info className="h-3 w-3 inline mr-1" />
+            Data export complies with GDPR Article 20 (Right to Data Portability)
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Consent Settings */}
       <Card>
         <CardHeader>
@@ -309,6 +453,112 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
           </p>
         </CardContent>
       </Card>
+
+      {/* Account Deletion */}
+      <Card className="border-red-200 dark:border-red-900">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-red-600">
+            <Trash2 className="h-5 w-5" />
+            Delete My Account
+          </CardTitle>
+          <CardDescription>
+            Permanently delete your account and all associated data
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Warning: This action is permanent</AlertTitle>
+            <AlertDescription>
+              Once deleted, your account cannot be recovered. You will lose all:
+              <ul className="mt-2 space-y-1 text-sm">
+                <li>• Profile data and preferences</li>
+                <li>• Survey responses and feedback history</li>
+                <li>• Earned points and rewards</li>
+                <li>• Activity and engagement records</li>
+              </ul>
+            </AlertDescription>
+          </Alert>
+
+          <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900 rounded-lg p-4">
+            <h4 className="font-semibold text-sm text-yellow-900 dark:text-yellow-100 mb-2">
+              30-Day Grace Period
+            </h4>
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              Your account will be scheduled for deletion in 30 days. You can cancel anytime
+              within this period by logging back in.
+            </p>
+          </div>
+
+          <Button 
+            variant="destructive"
+            onClick={() => setShowDeleteDialog(true)}
+            className="w-full sm:w-auto"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete My Account
+          </Button>
+
+          <p className="text-xs text-muted-foreground">
+            <Info className="h-3 w-3 inline mr-1" />
+            Account deletion complies with GDPR Article 17 (Right to be Forgotten)
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Confirm Account Deletion
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently delete your account and all associated data after 30 days.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Why are you leaving? (Optional)
+              </label>
+              <Textarea
+                placeholder="Help us improve by sharing your feedback..."
+                value={deletionReason}
+                onChange={(e) => setDeletionReason(e.target.value)}
+                rows={4}
+              />
+            </div>
+
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                You'll receive a confirmation email and can cancel the deletion within 30 days
+                by logging back in.
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowDeleteDialog(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Processing...' : 'Yes, Delete My Account'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
