@@ -221,9 +221,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
             <ProgressIndicator currentStep={2} steps={progressSteps} />
             <div className="flex items-center justify-between mt-4">
               <div>
-                <CardTitle className="text-2xl">Tell us about yourself (optional)</CardTitle>
+                <CardTitle className="text-2xl">Tell us about yourself</CardTitle>
                 <CardDescription>
-                  This helps us show you relevant products and surveys. You can skip any field.
+                  All fields required for personalized recommendations
                 </CardDescription>
               </div>
               <div className="text-right">
