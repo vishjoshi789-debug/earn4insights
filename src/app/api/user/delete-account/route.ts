@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
 import { userProfiles, users } from '@/db/schema'
-import { eq } from 'drizzle-orm'
-
+import { eq } from 'drizzle-orm'import { logAccountDeletion } from '@/lib/audit-log'
 /**
  * GDPR Account Deletion Endpoint
  * 
@@ -61,6 +60,14 @@ export async function POST(request: NextRequest) {
     }
 
     // TODO: Send confirmation email with cancellation link
+
+    // Log deletion request for audit trail (GDPR compliance)
+    await logAccountDeletion(
+      userId,
+      request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+      request.headers.get('user-agent') || undefined,
+      reason
+    )
 
     console.log(`[GDPR Deletion] Account marked for deletion on ${deletionScheduledFor.toISOString()}`)
 

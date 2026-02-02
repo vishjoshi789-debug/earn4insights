@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
 import { userProfiles, userEvents, surveyResponses, feedback, notificationQueue } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import { logDataExport } from '@/lib/audit-log'
 
 /**
  * GDPR Data Export Endpoint
@@ -23,6 +24,13 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id
     console.log(`[GDPR Export] Starting data export for user ${userId}`)
+
+    // Log data export for audit trail (GDPR compliance)
+    await logDataExport(
+      userId,
+      request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+      request.headers.get('user-agent') || undefined
+    )
 
     // Fetch user profile
     const profile = await db

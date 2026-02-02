@@ -215,6 +215,43 @@ export async function notifyNewSurvey(surveyId: string, options?: {
           scheduledFor = calculateOptimalSendTime(userId, profile)
         }
 
+        // Generate transparency explanation
+        const transparencyReasons: string[] = []
+        
+        // Category match
+        if (options?.categoryFilter) {
+          const interests = profile.interests as any
+          const userCategories = interests?.productCategories || []
+          if (userCategories.includes(options.categoryFilter)) {
+            transparencyReasons.push(`Matches your <strong>${options.categoryFilter}</strong> interests`)
+          }
+        }
+        
+        // Demographic match
+        if (options?.demographicFilters) {
+          const demographics = profile.demographics as any
+          if (options.demographicFilters.ageRange && demographics?.ageRange === options.demographicFilters.ageRange) {
+            transparencyReasons.push(`Targeted to <strong>${demographics.ageRange}</strong> demographic`)
+          }
+          if (options.demographicFilters.location && demographics?.location === options.demographicFilters.location) {
+            transparencyReasons.push(`Available in <strong>${demographics.location}</strong>`)
+          }
+        }
+        
+        // Engagement level
+        if (options?.behavioralFilters?.minEngagementScore) {
+          const behavioral = profile.behavioral as any
+          if (behavioral?.engagementScore) {
+            const engagementLevel = behavioral.engagementScore > 0.7 ? 'high' : behavioral.engagementScore > 0.4 ? 'moderate' : 'low'
+            transparencyReasons.push(`Based on your <strong>${engagementLevel} engagement</strong> with similar content`)
+          }
+        }
+        
+        // Default reason
+        if (transparencyReasons.length === 0) {
+          transparencyReasons.push('You opted in to receive survey notifications')
+        }
+
         // Generate email content
         const subject = `New Survey Available: Help ${product.name} Improve!`
         const body = `
@@ -230,6 +267,18 @@ export async function notifyNewSurvey(surveyId: string, options?: {
           <p style="margin-top: 24px; font-size: 12px; color: #666;">
             This survey takes about 5 minutes. You'll earn points that can be redeemed for rewards.
           </p>
+          
+          <!-- Transparency Section (GDPR Article 13) -->
+          <div style="margin: 24px 0; padding: 16px; background-color: #dbeafe; border-left: 4px solid #3b82f6; border-radius: 4px;">
+            <p style="margin: 0; font-weight: bold; color: #1e40af; font-size: 14px;">💡 Why you're seeing this</p>
+            <p style="margin: 8px 0 0 0; color: #1e3a8a; font-size: 13px; line-height: 1.6;">
+              ${transparencyReasons.map(reason => `• ${reason}`).join('<br>')}
+            </p>
+            <p style="margin: 8px 0 0 0; font-size: 12px; color: #1e40af;">
+              <a href="${process.env.NEXT_PUBLIC_APP_URL}/transparency" style="color: #1e40af; text-decoration: underline;">Learn how we personalize content</a>
+            </p>
+          </div>
+          
           <hr style="margin: 24px 0; border: none; border-top: 1px solid #ddd;" />
           <p style="font-size: 11px; color: #999;">
             You're receiving this because you opted in to survey notifications. 

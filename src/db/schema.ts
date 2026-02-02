@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, boolean, integer, real, uuid } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, jsonb, boolean, integer, real, uuid, serial } from 'drizzle-orm/pg-core'
 
 // Users table (for authentication)
 export const users = pgTable('users', {
@@ -189,6 +189,20 @@ export const notificationQueue = pgTable('notification_queue', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// Audit Log table (for GDPR compliance and security)
+export const auditLog = pgTable('audit_log', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  action: text('action').notNull(), // 'read', 'write', 'delete', 'export'
+  dataType: text('data_type').notNull(), // 'sensitiveData', 'profile', 'events', etc.
+  accessedBy: text('accessed_by').notNull(), // userId or 'system' or 'cron'
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  timestamp: timestamp('timestamp').defaultNow().notNull(),
+  metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+  reason: text('reason'), // Why the data was accessed
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -209,5 +223,7 @@ export type UserEvent = typeof userEvents.$inferSelect
 export type NewUserEvent = typeof userEvents.$inferInsert
 export type NotificationQueue = typeof notificationQueue.$inferSelect
 export type NewNotificationQueue = typeof notificationQueue.$inferInsert
+export type AuditLog = typeof auditLog.$inferSelect
+export type NewAuditLog = typeof auditLog.$inferInsert
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert

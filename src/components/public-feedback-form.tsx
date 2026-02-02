@@ -65,8 +65,20 @@ export function PublicFeedbackForm({ productId }: { productId: string }) {
         <CardTitle>Share Your Feedback</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Rating */}
+        {/* Transparency Info Box (GDPR Article 13) */}
+        <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+          <h4 className="text-sm font-semibold text-blue-900 mb-2">💡 Why we're asking for feedback</h4>
+          <ul className="text-xs text-blue-800 space-y-1">
+            <li>• This product matches your browsing interests</li>
+            <li>• We use feedback to improve personalized recommendations</li>
+            <li>• Your responses help other users discover great products</li>
+          </ul>
+          <a href="/transparency" className="text-xs text-blue-600 hover:underline mt-2 inline-block">
+            Learn how we personalize content
+          </a>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">{/* Rating */}
           <div className="space-y-2">
             <Label>How would you rate this product? *</Label>
             <div className="flex gap-2">

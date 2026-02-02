@@ -28,6 +28,15 @@ export function FeedbackForm({ productId }: FeedbackFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Transparency Info Box (GDPR Article 13) */}
+      <div className="p-3 bg-blue-50 border-l-4 border-blue-500 rounded text-sm">
+        <p className="font-semibold text-blue-900 mb-1">💡 Why we're collecting feedback</p>
+        <ul className="text-xs text-blue-800 space-y-0.5">
+          <li>• Improve personalized product recommendations</li>
+          <li>• Help other users discover quality products</li>
+        </ul>
+      </div>
+
       <div>
         <label className="block text-sm font-medium mb-1">
           Rating (1–5)

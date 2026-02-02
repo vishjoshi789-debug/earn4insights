@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { userProfiles, type UserProfile, type NewUserProfile } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { trackProfileUpdate } from '@/server/eventTrackingService'
+import { logSensitiveDataAccess } from '@/lib/audit-log'
 
 // Default notification preferences for new users
 const DEFAULT_NOTIFICATION_PREFS = {
@@ -262,3 +263,69 @@ export async function getUsersOptedInForChannel(channel: 'email' | 'whatsapp' | 
 export async function deleteUserProfile(userId: string): Promise<void> {
   await db.delete(userProfiles).where(eq(userProfiles.id, userId))
 }
+
+/**
+ * Access sensitive data with audit logging
+ * 
+ * This function logs all access to the sensitiveData field for GDPR compliance
+ * and security monitoring.
+ * 
+ * @param userId - User ID whose sensitive data to access
+ * @param accessedBy - Who is accessing (userId, 'system', 'admin', etc.)
+ * @param reason - Why the data is being accessed
+ * @param metadata - Additional context
+ * @returns Sensitive data object or null
+ */
+export async function accessSensitiveData(
+  userId: string,
+  accessedBy: string,
+  reason: string,
+  metadata?: Record<string, any>
+): Promise<any | null> {
+  // Log the access for audit trail
+  await logSensitiveDataAccess(userId, accessedBy, reason, metadata)
+
+  // Fetch the profile
+  const profile = await getUserProfile(userId)
+  
+  if (!profile) {
+    console.warn(`[SensitiveData] Profile not found for user ${userId}`)
+    return null
+  }
+
+  // Return the sensitive data
+  return profile.sensitiveData || null
+}
+
+/**
+ * Update sensitive data with audit logging
+ * 
+ * @param userId - User ID
+ * @param data - Sensitive data to store
+ * @param updatedBy - Who is updating
+ * @param reason - Why it's being updated
+ */
+export async function updateSensitiveData(
+  userId: string,
+  data: any,
+  updatedBy: string,
+  reason: string
+): Promise<UserProfile | null> {
+  // Log the write operation
+  await logSensitiveDataAccess(userId, updatedBy, `UPDATE: ${reason}`, {
+    operation: 'write',
+    dataKeys: Object.keys(data || {})
+  })
+
+  const result = await db
+    .update(userProfiles)
+    .set({
+      sensitiveData: data,
+      updatedAt: new Date()
+    })
+    .where(eq(userProfiles.id, userId))
+    .returning()
+
+  return result[0] || null
+}
+
