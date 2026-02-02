@@ -200,12 +200,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               </div>
             </div>
 
-            <div className="flex gap-3 justify-center mt-8">
-              <Button variant="outline" onClick={handleSkip}>
-                Skip for now
-              </Button>
+            <div className="flex justify-center mt-8">
               <Button onClick={() => setStep(2)} size="lg" className="px-8">
-                Get Started
+                Get Started →
               </Button>
             </div>
           </CardContent>
