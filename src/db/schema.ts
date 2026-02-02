@@ -121,6 +121,9 @@ export const userProfiles = pgTable('user_profiles', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   
+  // Onboarding status
+  onboardingComplete: boolean('onboarding_complete').default(false).notNull(),
+  
   // Explicit demographics (user-provided)
   demographics: jsonb('demographics'), // { gender, ageRange, location, language, education }
   
