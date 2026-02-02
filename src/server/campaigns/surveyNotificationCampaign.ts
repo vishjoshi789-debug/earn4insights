@@ -6,6 +6,69 @@ import { getSurveyById } from '@/db/repositories/surveyRepository'
 import { getProductById } from '@/db/repositories/productRepository'
 
 /**
+ * Calculate optimal send time based on user's activity patterns
+ */
+function calculateOptimalSendTime(userId: string, profile: any): Date {
+  const now = new Date()
+  const prefs = profile.notificationPreferences as any
+  const behavioral = profile.behavioral as any
+
+  // Check quiet hours
+  const quietHours = prefs?.email?.quietHours
+  if (quietHours) {
+    const currentHour = now.getHours()
+    const quietStart = parseInt(quietHours.start?.split(':')[0] || '22')
+    const quietEnd = parseInt(quietHours.end?.split(':')[0] || '8')
+
+    // If in quiet hours, schedule for end of quiet period
+    if (quietEnd > quietStart) {
+      // Normal case: quiet hours don't cross midnight
+      if (currentHour >= quietStart || currentHour < quietEnd) {
+        const scheduledTime = new Date(now)
+        scheduledTime.setHours(quietEnd, 0, 0, 0)
+        if (scheduledTime < now) {
+          scheduledTime.setDate(scheduledTime.getDate() + 1)
+        }
+        return scheduledTime
+      }
+    } else {
+      // Quiet hours cross midnight
+      if (currentHour >= quietStart && currentHour < quietEnd) {
+        const scheduledTime = new Date(now)
+        scheduledTime.setHours(quietEnd, 0, 0, 0)
+        if (scheduledTime < now) {
+          scheduledTime.setDate(scheduledTime.getDate() + 1)
+        }
+        return scheduledTime
+      }
+    }
+  }
+
+  // TODO: Analyze user's event timestamps to find peak activity hours
+  // For now, use safe default times: 10am-2pm or 6pm-8pm
+  const currentHour = now.getHours()
+  
+  // If current time is within active hours, send now
+  if ((currentHour >= 10 && currentHour < 14) || (currentHour >= 18 && currentHour < 20)) {
+    return now
+  }
+
+  // Otherwise schedule for next active period
+  const scheduledTime = new Date(now)
+  if (currentHour < 10) {
+    scheduledTime.setHours(10, 0, 0, 0)
+  } else if (currentHour >= 14 && currentHour < 18) {
+    scheduledTime.setHours(18, 0, 0, 0)
+  } else {
+    // After 8pm, schedule for tomorrow 10am
+    scheduledTime.setDate(scheduledTime.getDate() + 1)
+    scheduledTime.setHours(10, 0, 0, 0)
+  }
+
+  return scheduledTime
+}
+
+/**
  * Send "New Survey Available" notification to targeted users
  * 
  * Targeting Rules (Phase 1 - Rule-based):
@@ -22,6 +85,12 @@ export async function notifyNewSurvey(surveyId: string, options?: {
     location?: string
     gender?: string
   }
+  behavioralFilters?: {
+    minEngagementScore?: number // Only notify engaged users (0-1)
+    minCategoryInterest?: number // Minimum interest in category (0-1)
+    excludeInactive?: boolean // Skip users with no recent activity
+  }
+  sendTimeOptimization?: boolean // Schedule for optimal send time
 }) {
   try {
     // Get survey details
@@ -108,6 +177,44 @@ export async function notifyNewSurvey(surveyId: string, options?: {
           }
         }
 
+        // Apply behavioral filters (Phase 2 - Behavior-based targeting)
+        if (options?.behavioralFilters) {
+          const behavioral = profile.behavioral as any
+          const filters = options.behavioralFilters
+
+          // Check engagement score
+          if (filters.minEngagementScore && behavioral?.engagementScore) {
+            if (behavioral.engagementScore < filters.minEngagementScore) {
+              console.log(`[NotifyCampaign] User ${userId} engagement too low: ${behavioral.engagementScore}`)
+              continue
+            }
+          }
+
+          // Check category interest (learned from behavior)
+          if (filters.minCategoryInterest && options.categoryFilter && behavioral?.categoryInterests) {
+            const categoryInterest = behavioral.categoryInterests[options.categoryFilter] || 0
+            if (categoryInterest < filters.minCategoryInterest) {
+              console.log(`[NotifyCampaign] User ${userId} low interest in ${options.categoryFilter}: ${categoryInterest}`)
+              continue
+            }
+          }
+
+          // Exclude inactive users
+          if (filters.excludeInactive && behavioral?.lastActiveAt) {
+            const daysSinceActive = (Date.now() - new Date(behavioral.lastActiveAt).getTime()) / (1000 * 60 * 60 * 24)
+            if (daysSinceActive > 30) {
+              console.log(`[NotifyCampaign] User ${userId} inactive for ${daysSinceActive.toFixed(0)} days`)
+              continue
+            }
+          }
+        }
+
+        // Determine optimal send time (if enabled)
+        let scheduledFor = new Date()
+        if (options?.sendTimeOptimization) {
+          scheduledFor = calculateOptimalSendTime(userId, profile)
+        }
+
         // Generate email content
         const subject = `New Survey Available: Help ${product.name} Improve!`
         const body = `
@@ -142,7 +249,8 @@ export async function notifyNewSurvey(surveyId: string, options?: {
             productId: product.id,
             category: options?.categoryFilter
           },
-          priority: 5 // Normal priority
+          priority: 5, // Normal priority
+          scheduledFor // Use calculated optimal send time
         })
 
         if (notificationId) {

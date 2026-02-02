@@ -1,1 +1,9 @@
-{}
+{
+  "crons": [
+    {
+      "path": "/api/jobs/update-behavioral",
+      "schedule": "0 */6 * * *"
+    }
+  ]
+}
+
