@@ -477,14 +477,14 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                     className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
                       aspirations.includes(aspiration.value)
                         ? 'border-purple-500 bg-purple-50 dark:bg-purple-900 dark:border-purple-400'
-                        : 'border-gray-200 hover:border-purple-300 dark:border-gray-700'
+                        : 'border-gray-200 hover:border-purple-300 dark:border-gray-700 bg-white dark:bg-gray-800'
                     }`}
                     onClick={() => handleAspirationToggle(aspiration.value)}
                   >
                     <span className={`text-sm font-bold ${
                       aspirations.includes(aspiration.value)
                         ? 'text-purple-900 dark:text-purple-100'
-                        : 'text-gray-700 dark:text-gray-200'
+                        : 'text-black dark:text-white'
                     }`}>{aspiration.label}</span>
                   </div>
                 ))}
@@ -531,7 +531,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                       className={`p-2 text-sm font-bold rounded border cursor-pointer transition-all ${
                         amazonCategories.includes(cat)
                           ? 'border-purple-500 bg-purple-50 text-purple-900 dark:bg-purple-900 dark:text-purple-100'
-                          : 'border-gray-200 hover:border-purple-300 text-gray-900 dark:text-gray-100'
+                          : 'border-gray-200 hover:border-purple-300 bg-white dark:bg-gray-800 text-black dark:text-white'
                       }`}
                       onClick={() => handleAmazonCategoryToggle(cat)}
                     >
