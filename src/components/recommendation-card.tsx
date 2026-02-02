@@ -14,12 +14,12 @@ interface RecommendationCardProps {
   product: {
     id: string
     name: string
-    description?: string
+    description?: string | null
     profile?: {
       category?: string
       categoryName?: string
       website?: string
-    }
+    } | null
   }
   score: number
   reasons: string[]
