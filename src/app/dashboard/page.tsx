@@ -85,7 +85,7 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle>Products</CardTitle>
@@ -102,28 +102,44 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Brand Analytics</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Comprehensive insights: demographics, NPS, audience breakdown.
+            </p>
+            <Button asChild size="sm">
+              <Link href="/dashboard/analytics">
+                View analytics
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Product Reports</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Individual product-level reports and analytics.
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/dashboard/detailed-analytics">
+                View reports
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Social & Community</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-muted-foreground">
               (Coming from VM snapshot later — social feed, community posts, etc.)
             </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Detailed analytics</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Open product-level reports and analytics.
-            </p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/dashboard/detailed-analytics">
-                Detailed analytics
-              </Link>
-            </Button>
           </CardContent>
         </Card>
       </div>
