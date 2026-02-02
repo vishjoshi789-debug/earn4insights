@@ -594,9 +594,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
             </div>
 
             {!isStep3Valid() && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-sm text-amber-800">
-                  <strong>Please complete:</strong> Select aspirations, income range, Amazon categories, shopping frequency, and accept both privacy acknowledgments to continue.
+              <div className="bg-gray-900 text-white p-6 rounded-lg border border-gray-700">
+                <p className="text-sm">
+                  <strong className="text-white">Please complete:</strong> Select aspirations, income range, Amazon categories, shopping frequency, and accept both privacy acknowledgments to continue.
                 </p>
               </div>
             )}
