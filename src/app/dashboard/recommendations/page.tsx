@@ -76,8 +76,26 @@ export default async function RecommendationsPage() {
   
   try {
     recommendations = await getPersonalizedRecommendations(session.user.id, 20)
+    
+    // If no personalized recommendations, fall back to trending products
+    if (recommendations.length === 0) {
+      console.log('[Recommendations] No personalized recs, falling back to trending products')
+      const trendingProducts = await db.select().from(products).limit(20)
+      recommendations = trendingProducts.map(p => ({
+        productId: p.id,
+        score: 50, // Moderate score for trending
+        reasons: ['Trending product', 'Popular with other users']
+      }))
+    }
   } catch (error) {
     console.error('[Recommendations] Error fetching:', error)
+    // Fallback to showing some products
+    const fallbackProducts = await db.select().from(products).limit(10)
+    recommendations = fallbackProducts.map(p => ({
+      productId: p.id,
+      score: 30,
+      reasons: ['Suggested product', 'Explore to get personalized recommendations']
+    }))
   }
 
   // Fetch full product details
@@ -122,13 +140,17 @@ export default async function RecommendationsPage() {
       {recommendationsWithProducts.length === 0 ? (
         <Alert>
           <TrendingUp className="h-4 w-4" />
-          <AlertTitle>Building Your Recommendations</AlertTitle>
+          <AlertTitle>Welcome! Let's Find Your Perfect Matches</AlertTitle>
           <AlertDescription>
-            We're learning your preferences! View some products or complete surveys to get personalized recommendations.
-            <br />
-            <Button asChild className="mt-4" size="sm" variant="outline">
-              <Link href="/public-products">Explore Products</Link>
-            </Button>
+            Complete your profile and explore products to get personalized recommendations tailored just for you.
+            <div className="flex gap-2 mt-4">
+              <Button asChild size="sm">
+                <Link href="/onboarding">Complete Profile</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/public-products">Explore Products</Link>
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       ) : (
