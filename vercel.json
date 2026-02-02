@@ -3,6 +3,10 @@
     {
       "path": "/api/jobs/update-behavioral",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/jobs/process-deletions",
+      "schedule": "0 2 * * *"
     }
   ]
 }
