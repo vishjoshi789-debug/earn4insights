@@ -641,9 +641,10 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   }
 
   // Step 4: Interests
-  const completion = calculateCompletion()
-  
-  return (
+  if (step === 4) {
+    const completion = calculateCompletion()
+    
+    return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
       <Card className="max-w-4xl w-full">
         <CardHeader>
@@ -730,5 +731,6 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         </CardContent>
       </Card>
     </div>
-  )
+    )
+  }
 }
