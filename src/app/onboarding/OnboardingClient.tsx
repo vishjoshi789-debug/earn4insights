@@ -288,7 +288,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                   <Label htmlFor="age">Age *</Label>
                   <FieldTooltip content="See age-appropriate products and content" />
                 </div>
-                <Select value={age} onValueChange={setAge}>
+                <Select value={ageRange} onValueChange={setAgeRange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select age range" />
                   </SelectTrigger>
