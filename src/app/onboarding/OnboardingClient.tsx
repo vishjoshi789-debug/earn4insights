@@ -236,51 +236,6 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <FieldTooltip content="Helps us personalize product recommendations" />
-                </div>
-                <Select value={gender} onValueChange={setGender}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Prefer not to say" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SonClick={() => setStep(2)} size="lg" className="px-8">
-                Get Started →
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (step === 2) {
-    const completion = calculateCompletion()
-    
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
-        <Card className="max-w-3xl w-full">
-          <CardHeader>
-            <ProgressIndicator currentStep={2} steps={progressSteps} />
-            <div className="flex items-center justify-between mt-4">
-              <div>
-                <CardTitle className="text-2xl">Tell us about yourself</CardTitle>
-                <CardDescription>
-                  All fields required for accurate recommendations
-                </CardDescription>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-purple-600">{completion}%</div>
-                <div className="text-xs text-muted-foreground">Complete</div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
             {/* Privacy Assurance Banner */}
             <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
@@ -307,7 +262,39 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                   </ul>
                 </div>
               </div>
-            </div34">25-34</SelectItem>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="gender">Gender *</Label>
+                  <FieldTooltip content="Helps us personalize product recommendations" />
+                </div>
+                <Select value={gender} onValueChange={setGender}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="non-binary">Non-binary</SelectItem>
+                    <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="age">Age *</Label>
+                  <FieldTooltip content="See age-appropriate products and content" />
+                </div>
+                <Select value={age} onValueChange={setAge}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select age range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="18-24">18-24</SelectItem>
+                    <SelectItem value="25-34">25-34</SelectItem>
                     <SelectItem value="35-44">35-44</SelectItem>
                     <SelectItem value="45-54">45-54</SelectItem>
                     <SelectItem value="55-64">55-64</SelectItem>
@@ -530,7 +517,6 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                 <p className="text-sm text-muted-foreground">
                   Help us show products that match your budget and shopping style
                 </p>
-              </div>
               </div>
 
               {/* Income Range */}
