@@ -20,7 +20,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from './ui/Tooltip';
+} from './ui/tooltip';
 import { LogoutButton } from './logout-button';
 
 export function SiteHeader() {

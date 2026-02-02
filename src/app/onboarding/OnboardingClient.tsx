@@ -455,25 +455,8 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                   </ul>
                 </div>
               </div>
-            </div>    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
-        <Card className="max-w-4xl w-full">
-          <CardHeader>
-            <ProgressIndicator currentStep={3} steps={progressSteps} />
-            <div className="flex items-center justify-between mt-4">
-              <div>
-                <CardTitle className="text-2xl">Your Goals & Lifestyle</CardTitle>
-                <CardDescription>
-                  Help us understand what matters to you (all fields optional)
-                </CardDescription>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-purple-600">{completion}%</div>
-                <div className="text-xs text-muted-foreground">Complete</div>
-              </div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
+
             {/* Aspirations */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
