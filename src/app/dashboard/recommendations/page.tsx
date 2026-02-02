@@ -11,29 +11,37 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
 export default async function RecommendationsPage() {
-  const session = await auth()
+  try {
+    const session = await auth()
+    
+    if (!session?.user?.id) {
+      redirect('/api/auth/signin')
+    }
+
+    // Get user profile
+    const userProfile = await db
+      .select()
+      .from(userProfiles)
+      .where(eq(userProfiles.id, session.user.id))
+      .limit(1)
+      .catch((err) => {
+        console.error('[Recommendations] Database error fetching profile:', err)
+        throw err
+      })
+
+    if (!userProfile[0]) {
+      console.log('[Recommendations] No profile found, redirecting to onboarding')
+      redirect('/onboarding')
+    }
+
+    const profile = userProfile[0]
+
+    // Check if onboarding is complete (gracefully handle missing field)
+    const isOnboardingComplete = profile.onboardingComplete ?? false
   
-  if (!session?.user?.id) {
-    redirect('/api/auth/signin')
-  }
-
-  // Get user profile
-  const userProfile = await db
-    .select()
-    .from(userProfiles)
-    .where(eq(userProfiles.id, session.user.id))
-    .limit(1)
-
-  if (!userProfile[0]) {
-    redirect('/onboarding')
-  }
-
-  const profile = userProfile[0]
-
-  // Check if onboarding is complete
-  if (!profile.onboardingComplete) {
-    return (
-      <div className="space-y-6">
+    if (!isOnboardingComplete) {
+      return (
+        <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-headline font-bold mb-2 flex items-center gap-2">
             <Sparkles className="h-8 w-8 text-purple-500" />
@@ -203,4 +211,18 @@ export default async function RecommendationsPage() {
       </Alert>
     </div>
   )
+  } catch (error) {
+    console.error('[Recommendations] Fatal error:', error)
+    return (
+      <div className="space-y-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error Loading Recommendations</AlertTitle>
+          <AlertDescription>
+            {error instanceof Error ? error.message : 'An unexpected error occurred. Please try again later.'}
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
 }
