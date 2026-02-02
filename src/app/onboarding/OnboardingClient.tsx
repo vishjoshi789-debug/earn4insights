@@ -481,10 +481,10 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                     }`}
                     onClick={() => handleAspirationToggle(aspiration.value)}
                   >
-                    <span className={`text-sm font-medium ${
+                    <span className={`text-sm font-bold ${
                       aspirations.includes(aspiration.value)
                         ? 'text-purple-900 dark:text-purple-100'
-                        : 'text-gray-900 dark:text-gray-100'
+                        : 'text-gray-700 dark:text-gray-200'
                     }`}>{aspiration.label}</span>
                   </div>
                 ))}
@@ -528,9 +528,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                   {['Electronics', 'Books', 'Clothing', 'Home & Kitchen', 'Health', 'Sports'].map(cat => (
                     <div
                       key={cat}
-                      className={`p-2 text-sm rounded border cursor-pointer transition-all ${
+                      className={`p-2 text-sm font-bold rounded border cursor-pointer transition-all ${
                         amazonCategories.includes(cat)
-                          ? 'border-purple-500 bg-purple-50 text-purple-900 dark:bg-purple-900 dark:text-purple-100 font-medium'
+                          ? 'border-purple-500 bg-purple-50 text-purple-900 dark:bg-purple-900 dark:text-purple-100'
                           : 'border-gray-200 hover:border-purple-300 text-gray-900 dark:text-gray-100'
                       }`}
                       onClick={() => handleAmazonCategoryToggle(cat)}
