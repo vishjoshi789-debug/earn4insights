@@ -77,9 +77,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
 
   const isStep3Valid = () => {
     return (
-      aspirations.length > 0 &&
+      aspirations.length >= 5 &&
       incomeRange &&
-      amazonCategories.length > 0 &&
+      amazonCategories.length >= 5 &&
       purchaseFrequency &&
       dataProcessingConsent &&
       privacyPolicyConsent
@@ -460,7 +460,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                 <Label>What are your current goals/aspirations? *</Label>
                 <FieldTooltip content="We'll recommend products that align with your life goals" />
               </div>
-              <p className="text-sm text-muted-foreground">Select at least one</p>
+              <p className="text-sm text-muted-foreground">Select at least 5 aspirations</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {[
                   { value: 'career-growth', label: '🚀 Career Growth' },
@@ -522,8 +522,8 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
 
               {/* Amazon Categories */}
               <div className="space-y-2">
-                <Label>What do you typically buy on Amazon? *</Label>
-                <p className="text-sm text-muted-foreground">Select at least one category</p>
+                <Label>What do you usually buy online? *</Label>
+                <p className="text-sm text-muted-foreground">Select at least 5 categories</p>
                 <div className="grid grid-cols-2 gap-2">
                   {['Electronics', 'Books', 'Clothing', 'Home & Kitchen', 'Health', 'Sports'].map(cat => (
                     <div
@@ -600,7 +600,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
             {!isStep3Valid() && (
               <div className="bg-gray-900 text-white p-6 rounded-lg border border-gray-700">
                 <p className="text-sm">
-                  <strong className="text-white">Please complete:</strong> Select aspirations, income range, Amazon categories, shopping frequency, and accept both privacy acknowledgments to continue.
+                  <strong className="text-white">Please complete:</strong> Select at least 5 aspirations, income range, at least 5 categories, shopping frequency, and accept both privacy acknowledgments to continue.
                 </p>
               </div>
             )}
