@@ -19,6 +19,7 @@ interface RecommendationCardProps {
       category?: string
       categoryName?: string
       website?: string
+      [key: string]: any
     } | null
   }
   score: number

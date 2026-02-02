@@ -27,7 +27,12 @@ export const products = pgTable('products', {
   socialListeningEnabled: boolean('social_listening_enabled').default(false).notNull(),
   
   // Product profile (stored as JSONB)
-  profile: jsonb('profile').notNull(),
+  profile: jsonb('profile').$type<{
+    category?: string
+    categoryName?: string
+    website?: string
+    [key: string]: any
+  }>().notNull(),
 })
 
 // Surveys table
