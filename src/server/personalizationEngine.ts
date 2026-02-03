@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { userProfiles, products } from '@/db/schema'
 import { eq, and, sql, inArray } from 'drizzle-orm'
 import { getUserEventCounts, calculateCategoryInterests } from './analyticsService'
+import { enforceConsent } from '@/lib/consent-enforcement'
 
 /**
  * Personalization Engine
@@ -191,6 +192,9 @@ export async function getPersonalizedRecommendations(
   userId: string,
   limit: number = 10
 ): Promise<RecommendationScore[]> {
+  // ✅ CONSENT CHECK: Require personalization consent for recommendations
+  await enforceConsent(userId, 'personalization', 'getPersonalizedRecommendations')
+  
   // Get user profile
   const userProfile = await db
     .select()
@@ -219,11 +223,45 @@ export async function getPersonalizedRecommendations(
     }
   })
 
-  // Sort by score and return top N
-  return scoredProducts
+  // Sort by score
+  const sortedByScore = scoredProducts
     .filter(p => p.score > 0) // Only return products with some match
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
+  
+  // ✅ DIVERSITY INJECTION: Prevent echo chambers
+  // Take top personalized recommendations but inject diverse options
+  const topPersonalized = sortedByScore.slice(0, Math.floor(limit * 0.8)) // 80% personalized
+  const remainingProducts = sortedByScore.slice(Math.floor(limit * 0.8))
+  
+  // Inject diversity: pick products from different categories
+  const diverseProducts: typeof scoredProducts = []
+  const usedCategories = new Set(
+    topPersonalized.map(p => {
+      const product = allProducts.find(prod => prod.id === p.productId)
+      return product?.profile?.category
+    }).filter(Boolean)
+  )
+  
+  // Add products from categories user hasn't seen much
+  for (const product of remainingProducts) {
+    const fullProduct = allProducts.find(p => p.id === product.productId)
+    const category = fullProduct?.profile?.category
+    
+    if (category && !usedCategories.has(category)) {
+      diverseProducts.push({
+        ...product,
+        reasons: [...product.reasons, 'Explore something new']
+      })
+      usedCategories.add(category)
+      
+      if (diverseProducts.length >= Math.ceil(limit * 0.2)) break // 20% diverse
+    }
+  }
+  
+  // Combine personalized + diverse recommendations
+  const finalRecommendations = [...topPersonalized, ...diverseProducts].slice(0, limit)
+  
+  return finalRecommendations
 }
 
 /**

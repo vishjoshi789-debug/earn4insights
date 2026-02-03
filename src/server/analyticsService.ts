@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { userEvents, userProfiles } from '@/db/schema'
 import { eq, and, gte, desc, sql, inArray } from 'drizzle-orm'
 import { analyzeSentiment } from './sentimentService'
+import { checkConsent } from '@/lib/consent-enforcement'
 
 /**
  * Event Aggregation Service
@@ -183,9 +184,19 @@ export async function getUserActiveHours(userId: string): Promise<number[]> {
 /**
  * Update user's behavioral attributes in profile
  * Should be run periodically (daily or weekly)
+ * REQUIRES: tracking + analytics consent
  */
 export async function updateUserBehavioralAttributes(userId: string): Promise<void> {
   try {
+    // ✅ CONSENT CHECK: Require both tracking and analytics consent
+    const trackingConsent = await checkConsent(userId, 'tracking')
+    const analyticsConsent = await checkConsent(userId, 'analytics')
+    
+    if (!trackingConsent.allowed || !analyticsConsent.allowed) {
+      console.log(`[Analytics] Skipping behavioral update for user ${userId} - missing consent (tracking: ${trackingConsent.allowed}, analytics: ${analyticsConsent.allowed})`)
+      return
+    }
+
     const [
       engagementScore,
       categoryInterests,

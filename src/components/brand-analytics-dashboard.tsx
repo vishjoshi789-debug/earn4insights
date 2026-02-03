@@ -17,11 +17,11 @@ import {
 
 interface BrandAnalyticsDashboardProps {
   demographicsData: {
-    gender: Record<string, number>;
-    ageRange: Record<string, number>;
-    location: Record<string, number>;
-    education: Record<string, number>;
-    culture: Record<string, number>;
+    gender: Record<string, { count: number }>;
+    ageRange: Record<string, { count: number }>;
+    location: Record<string, { count: number }>;
+    education: Record<string, { count: number }>;
+    culture: Record<string, { count: number }>;
   };
   totalUsers: number;
 }
@@ -29,18 +29,18 @@ interface BrandAnalyticsDashboardProps {
 const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'];
 
 export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandAnalyticsDashboardProps) {
-  // Transform data for charts
-  const genderData = Object.entries(demographicsData.gender).map(([name, value]) => ({
+  // Transform data for charts - handle new { count: number } format
+  const genderData = Object.entries(demographicsData.gender).map(([name, data]) => ({
     name: name.charAt(0).toUpperCase() + name.slice(1),
-    value,
-    percentage: ((value / totalUsers) * 100).toFixed(1)
+    value: data.count,
+    percentage: ((data.count / totalUsers) * 100).toFixed(1)
   }));
 
   const ageData = Object.entries(demographicsData.ageRange)
-    .map(([name, value]) => ({
+    .map(([name, data]) => ({
       name,
-      users: value,
-      percentage: ((value / totalUsers) * 100).toFixed(1)
+      users: data.count,
+      percentage: ((data.count / totalUsers) * 100).toFixed(1)
     }))
     .sort((a, b) => {
       const order = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
@@ -48,27 +48,27 @@ export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandA
     });
 
   const locationData = Object.entries(demographicsData.location)
-    .map(([name, value]) => ({
+    .map(([name, data]) => ({
       name,
-      users: value,
-      percentage: ((value / totalUsers) * 100).toFixed(1)
+      users: data.count,
+      percentage: ((data.count / totalUsers) * 100).toFixed(1)
     }))
     .sort((a, b) => b.users - a.users)
     .slice(0, 10);
 
   const educationData = Object.entries(demographicsData.education)
-    .map(([name, value]) => ({
+    .map(([name, data]) => ({
       name,
-      value,
-      percentage: ((value / totalUsers) * 100).toFixed(1)
+      value: data.count,
+      percentage: ((data.count / totalUsers) * 100).toFixed(1)
     }))
     .sort((a, b) => b.value - a.value);
 
   const cultureData = Object.entries(demographicsData.culture)
-    .map(([name, value]) => ({
+    .map(([name, data]) => ({
       name,
-      users: value,
-      percentage: ((value / totalUsers) * 100).toFixed(1)
+      users: data.count,
+      percentage: ((data.count / totalUsers) * 100).toFixed(1)
     }))
     .sort((a, b) => b.users - a.users)
     .slice(0, 8);

@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { notificationQueue, type NewNotificationQueue } from '@/db/schema'
-import { getUserProfile } from '@/db/repositories/userProfileRepository'
+import { getUserProfile, adaptNotificationPreferences, type NotificationPreferences } from '@/db/repositories/userProfileRepository'
 import { eq, and, lte, gte } from 'drizzle-orm'
 import { Resend } from 'resend'
 
@@ -26,9 +26,9 @@ export async function queueNotification(data: {
     return null
   }
 
-  // Check if user has enabled this channel
-  const prefs = profile.notificationPreferences as any
-  if (!prefs?.[data.channel]?.enabled) {
+  // Safely adapt notification preferences (handles schema versioning)
+  const prefs = adaptNotificationPreferences(profile.notificationPreferences)
+  if (!prefs[data.channel].enabled) {
     console.log(`[Notifications] User ${data.userId} has ${data.channel} disabled`)
     return null
   }
@@ -141,6 +141,9 @@ export async function processPendingNotifications(): Promise<void> {
 async function sendEmail(notification: typeof notificationQueue.$inferSelect): Promise<void> {
   const profile = await getUserProfile(notification.userId)
   if (!profile) throw new Error('User profile not found')
+  
+  // Safely adapt notification preferences
+  const prefs = adaptNotificationPreferences(profile.notificationPreferences)
 
   await resend.emails.send({
     from: process.env.EMAIL_FROM || 'Earn4Insights <notifications@earn4insights.com>',

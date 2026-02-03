@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, boolean, integer, real, uuid, serial } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, jsonb, boolean, integer, real, uuid, serial, date, decimal } from 'drizzle-orm/pg-core'
 
 // Users table (for authentication)
 export const users = pgTable('users', {
@@ -162,6 +162,7 @@ export const userEvents = pgTable('user_events', {
   notificationId: text('notification_id'),
   metadata: jsonb('metadata'), // Flexible event data
   sessionId: text('session_id'),
+  schemaVersion: integer('schema_version').default(1).notNull(), // Track event schema version for backward compatibility
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
@@ -203,6 +204,107 @@ export const auditLog = pgTable('audit_log', {
   reason: text('reason'), // Why the data was accessed
 })
 
+// Email Send Events table (for send-time optimization)
+export const emailSendEvents = pgTable('email_send_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  notificationId: uuid('notification_id'),
+  emailType: text('email_type').notNull(), // 'survey_notification', 'weekly_digest', etc.
+  sentAt: timestamp('sent_at').notNull(),
+  sendHour: integer('send_hour').notNull(), // Hour of day (0-23)
+  sendDayOfWeek: integer('send_day_of_week').notNull(), // Day of week (0=Sunday, 6=Saturday)
+  
+  // User demographics snapshot
+  userAgeBracket: text('user_age_bracket'),
+  userIncomeBracket: text('user_income_bracket'),
+  userIndustry: text('user_industry'),
+  
+  // Engagement tracking
+  opened: boolean('opened').default(false),
+  openedAt: timestamp('opened_at'),
+  clicked: boolean('clicked').default(false),
+  clickedAt: timestamp('clicked_at'),
+  converted: boolean('converted').default(false),
+  convertedAt: timestamp('converted_at'),
+  
+  // Time-to-engagement metrics (in minutes)
+  timeToOpen: integer('time_to_open'),
+  timeToClick: integer('time_to_click'),
+  timeToConvert: integer('time_to_convert'),
+  
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// Send Time Cohorts table (for A/B testing send times)
+export const sendTimeCohorts = pgTable('send_time_cohorts', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull().unique(),
+  cohortName: text('cohort_name').notNull(), // 'morning', 'lunch', 'evening', 'night', 'weekend', 'control'
+  sendHourMin: integer('send_hour_min').notNull(),
+  sendHourMax: integer('send_hour_max').notNull(),
+  assignedAt: timestamp('assigned_at').defaultNow().notNull(),
+  
+  // Performance metrics
+  emailsSent: integer('emails_sent').default(0),
+  emailsClicked: integer('emails_clicked').default(0),
+  clickRate: decimal('click_rate', { precision: 5, scale: 4 }),
+  avgTimeToClick: integer('avg_time_to_click'),
+  
+  lastUpdated: timestamp('last_updated').defaultNow(),
+})
+
+// Send Time Analytics table (aggregated statistics)
+export const sendTimeAnalytics = pgTable('send_time_analytics', {
+  id: serial('id').primaryKey(),
+  analysisDate: date('analysis_date').notNull(),
+  sendHour: integer('send_hour').notNull(),
+  
+  // Overall metrics
+  emailsSent: integer('emails_sent').default(0),
+  emailsOpened: integer('emails_opened').default(0),
+  emailsClicked: integer('emails_clicked').default(0),
+  emailsConverted: integer('emails_converted').default(0),
+  
+  // Rates
+  openRate: decimal('open_rate', { precision: 5, scale: 4 }),
+  clickRate: decimal('click_rate', { precision: 5, scale: 4 }),
+  conversionRate: decimal('conversion_rate', { precision: 5, scale: 4 }),
+  
+  // Timing metrics
+  avgTimeToOpen: integer('avg_time_to_open'),
+  avgTimeToClick: integer('avg_time_to_click'),
+  avgTimeToConvert: integer('avg_time_to_convert'),
+  
+  // Statistical analysis
+  sampleSize: integer('sample_size'),
+  variance: decimal('variance', { precision: 10, scale: 6 }),
+  optimizationEnabled: boolean('optimization_enabled').default(false),
+  
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Demographic Performance table
+export const demographicPerformance = pgTable('demographic_performance', {
+  id: serial('id').primaryKey(),
+  analysisDate: date('analysis_date').notNull(),
+  segmentType: text('segment_type').notNull(), // 'age', 'income', 'industry'
+  segmentValue: text('segment_value').notNull(),
+  
+  // Metrics
+  emailsSent: integer('emails_sent').default(0),
+  emailsClicked: integer('emails_clicked').default(0),
+  clickRate: decimal('click_rate', { precision: 5, scale: 4 }),
+  avgTimeToClick: integer('avg_time_to_click'),
+  
+  // Optimal send time for this segment
+  optimalSendHour: integer('optimal_send_hour'),
+  optimalHourClickRate: decimal('optimal_hour_click_rate', { precision: 5, scale: 4 }),
+  
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -225,5 +327,13 @@ export type NotificationQueue = typeof notificationQueue.$inferSelect
 export type NewNotificationQueue = typeof notificationQueue.$inferInsert
 export type AuditLog = typeof auditLog.$inferSelect
 export type NewAuditLog = typeof auditLog.$inferInsert
+export type EmailSendEvent = typeof emailSendEvents.$inferSelect
+export type NewEmailSendEvent = typeof emailSendEvents.$inferInsert
+export type SendTimeCohort = typeof sendTimeCohorts.$inferSelect
+export type NewSendTimeCohort = typeof sendTimeCohorts.$inferInsert
+export type SendTimeAnalytics = typeof sendTimeAnalytics.$inferSelect
+export type NewSendTimeAnalytics = typeof sendTimeAnalytics.$inferInsert
+export type DemographicPerformance = typeof demographicPerformance.$inferSelect
+export type NewDemographicPerformance = typeof demographicPerformance.$inferInsert
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert

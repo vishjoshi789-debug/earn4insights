@@ -4,14 +4,29 @@ import { queueNotification } from '@/server/notificationService'
 import { getUserProfile } from '@/db/repositories/userProfileRepository'
 import { getSurveyById } from '@/db/repositories/surveyRepository'
 import { getProductById } from '@/db/repositories/productRepository'
+import { 
+  getOptimalSendHour, 
+  assignUserToCohort,
+  trackEmailSend 
+} from '@/lib/send-time-optimizer'
+import { 
+  getOptimalSendHour, 
+  assignUserToCohort,
+  trackEmailSend 
+} from '@/lib/send-time-optimizer'
 
 /**
- * Calculate optimal send time based on user's activity patterns
+ * Calculate optimal send time using intelligent send-time optimization
+ * 
+ * Decision logic:
+ * 1. If optimization enabled (variance >30%): Use personalized send times
+ * 2. If optimization disabled (variance <15%): Use random timing
+ * 3. Respects user quiet hours
+ * 4. Assigns user to cohort for A/B testing
  */
-function calculateOptimalSendTime(userId: string, profile: any): Date {
+async function calculateOptimalSendTime(userId: string, profile: any): Promise<Date> {
   const now = new Date()
   const prefs = profile.notificationPreferences as any
-  const behavioral = profile.behavioral as any
 
   // Check quiet hours
   const quietHours = prefs?.email?.quietHours
@@ -44,25 +59,23 @@ function calculateOptimalSendTime(userId: string, profile: any): Date {
     }
   }
 
-  // TODO: Analyze user's event timestamps to find peak activity hours
-  // For now, use safe default times: 10am-2pm or 6pm-8pm
+  // Assign user to cohort for A/B testing
+  await assignUserToCohort(userId)
+
+  // Get optimal send hour from intelligent optimizer
+  const optimalHour = await getOptimalSendHour(userId)
+  
+  // Schedule for optimal hour
+  const scheduledTime = new Date(now)
   const currentHour = now.getHours()
   
-  // If current time is within active hours, send now
-  if ((currentHour >= 10 && currentHour < 14) || (currentHour >= 18 && currentHour < 20)) {
-    return now
-  }
-
-  // Otherwise schedule for next active period
-  const scheduledTime = new Date(now)
-  if (currentHour < 10) {
-    scheduledTime.setHours(10, 0, 0, 0)
-  } else if (currentHour >= 14 && currentHour < 18) {
-    scheduledTime.setHours(18, 0, 0, 0)
+  if (currentHour < optimalHour) {
+    // Send today at optimal hour
+    scheduledTime.setHours(optimalHour, 0, 0, 0)
   } else {
-    // After 8pm, schedule for tomorrow 10am
+    // Send tomorrow at optimal hour
     scheduledTime.setDate(scheduledTime.getDate() + 1)
-    scheduledTime.setHours(10, 0, 0, 0)
+    scheduledTime.setHours(optimalHour, 0, 0, 0)
   }
 
   return scheduledTime
@@ -209,10 +222,41 @@ export async function notifyNewSurvey(surveyId: string, options?: {
           }
         }
 
-        // Determine optimal send time (if enabled)
-        let scheduledFor = new Date()
-        if (options?.sendTimeOptimization) {
-          scheduledFor = calculateOptimalSendTime(userId, profile)
+        // Determine optimal send time (always use optimizer)
+        const scheduledFor = await calculateOptimalSendTime(userId, profile)
+
+        // Extract demographics for tracking
+        const demographics = profile.demographics as any
+        const sensitiveData = profile.sensitiveData as any
+        
+        let userAgeBracket: string | undefined
+        let userIncomeBracket: string | undefined
+        let userIndustry: string | undefined
+        
+        // Age bracket
+        if (demographics?.ageRange) {
+          userAgeBracket = demographics.ageRange
+        } else if (sensitiveData?.age) {
+          const age = sensitiveData.age
+          if (age < 25) userAgeBracket = '<25'
+          else if (age < 35) userAgeBracket = '25-34'
+          else if (age < 45) userAgeBracket = '35-44'
+          else if (age < 55) userAgeBracket = '45-54'
+          else userAgeBracket = '55+'
+        }
+        
+        // Income bracket
+        if (sensitiveData?.income) {
+          const income = sensitiveData.income
+          if (income.includes('<')) userIncomeBracket = '<$50K'
+          else if (income.includes('50') && income.includes('75')) userIncomeBracket = '$50K-$75K'
+          else if (income.includes('75') && income.includes('100')) userIncomeBracket = '$75K-$100K'
+          else if (income.includes('100')) userIncomeBracket = '$100K+'
+        }
+        
+        // Industry
+        if (demographics?.industry) {
+          userIndustry = demographics.industry
         }
 
         // Generate transparency explanation
@@ -304,6 +348,22 @@ export async function notifyNewSurvey(surveyId: string, options?: {
 
         if (notificationId) {
           notificationsSent++
+          
+          // Track email send event for analytics
+          try {
+            await trackEmailSend({
+              userId,
+              notificationId,
+              emailType: 'survey_notification',
+              sentAt: scheduledFor,
+              userAgeBracket,
+              userIncomeBracket,
+              userIndustry,
+            })
+          } catch (trackError) {
+            console.error('[NotifyCampaign] Error tracking email send:', trackError)
+            // Don't fail the notification if tracking fails
+          }
         } else {
           errors.push(`User ${userId}: Failed to queue notification`)
         }

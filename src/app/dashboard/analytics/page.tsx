@@ -22,9 +22,11 @@ import {
   DollarSign,
   ShoppingBag,
   Heart,
-  BarChart3
+  BarChart3,
+  ArrowRight
 } from 'lucide-react';
 import { BrandAnalyticsDashboard } from '@/components/brand-analytics-dashboard';
+import { safeAggregate, filterSmallSegments, countSuppressedSegments, getPrivacyNote, MINIMUM_SEGMENT_SIZE } from '@/lib/analytics/safeAggregation';
 
 export default async function BrandAnalyticsPage() {
   const session = await auth();
@@ -115,8 +117,8 @@ export default async function BrandAnalyticsPage() {
   const totalEvents = events.length;
   const totalFeedback = allFeedback.length;
 
-  // Demographics breakdown
-  const demographicsData = profiles.reduce((acc: any, profile) => {
+  // Demographics breakdown with k-anonymity protection
+  const rawDemographicsData = profiles.reduce((acc: any, profile) => {
     const demographics = profile.demographics as any;
     if (!demographics) return acc;
 
@@ -154,6 +156,24 @@ export default async function BrandAnalyticsPage() {
     culture: {}
   });
 
+  // Apply k-anonymity: filter out segments with < 5 users
+  const demographicsData = {
+    gender: filterSmallSegments(Object.entries(rawDemographicsData.gender).reduce((acc, [key, count]) => ({ ...acc, [key]: { count } }), {})),
+    ageRange: filterSmallSegments(Object.entries(rawDemographicsData.ageRange).reduce((acc, [key, count]) => ({ ...acc, [key]: { count } }), {})),
+    location: filterSmallSegments(Object.entries(rawDemographicsData.location).reduce((acc, [key, count]) => ({ ...acc, [key]: { count } }), {})),
+    education: filterSmallSegments(Object.entries(rawDemographicsData.education).reduce((acc, [key, count]) => ({ ...acc, [key]: { count } }), {})),
+    culture: filterSmallSegments(Object.entries(rawDemographicsData.culture).reduce((acc, [key, count]) => ({ ...acc, [key]: { count } }), {}))
+  };
+
+  // Count suppressed segments for privacy transparency
+  const suppressedDemographics = {
+    gender: Object.values(rawDemographicsData.gender).filter((c: any) => c < MINIMUM_SEGMENT_SIZE).length,
+    ageRange: Object.values(rawDemographicsData.ageRange).filter((c: any) => c < MINIMUM_SEGMENT_SIZE).length,
+    location: Object.values(rawDemographicsData.location).filter((c: any) => c < MINIMUM_SEGMENT_SIZE).length,
+    education: Object.values(rawDemographicsData.education).filter((c: any) => c < MINIMUM_SEGMENT_SIZE).length,
+    culture: Object.values(rawDemographicsData.culture).filter((c: any) => c < MINIMUM_SEGMENT_SIZE).length
+  };
+
   // Interests breakdown
   const interestsData = profiles.reduce((acc: any, profile) => {
     const interests = profile.interests as any;
@@ -166,8 +186,8 @@ export default async function BrandAnalyticsPage() {
     return acc;
   }, {});
 
-  // Sensitive data breakdown (aggregated with privacy protection)
-  const incomeData = profiles.reduce((acc: any, profile) => {
+  // Sensitive data breakdown with k-anonymity protection
+  const rawIncomeData = profiles.reduce((acc: any, profile) => {
     const sensitiveData = profile.sensitiveData as any;
     if (!sensitiveData?.incomeRange) return acc;
 
@@ -175,13 +195,19 @@ export default async function BrandAnalyticsPage() {
     return acc;
   }, {});
 
-  const purchaseData = profiles.reduce((acc: any, profile) => {
+  const rawPurchaseData = profiles.reduce((acc: any, profile) => {
     const sensitiveData = profile.sensitiveData as any;
     if (!sensitiveData?.purchaseHistory?.frequency) return acc;
 
     acc[sensitiveData.purchaseHistory.frequency] = (acc[sensitiveData.purchaseHistory.frequency] || 0) + 1;
     return acc;
   }, {});
+
+  // Apply k-anonymity to sensitive data
+  const incomeData = filterSmallSegments(Object.entries(rawIncomeData).reduce((acc, [key, count]) => ({ ...acc, [key]: { count } }), {}));
+  const purchaseData = filterSmallSegments(Object.entries(rawPurchaseData).reduce((acc, [key, count]) => ({ ...acc, [key]: { count } }), {}));
+  const suppressedIncome = Object.values(rawIncomeData).filter((c: any) => c < MINIMUM_SEGMENT_SIZE).length;
+  const suppressedPurchase = Object.values(rawPurchaseData).filter((c: any) => c < MINIMUM_SEGMENT_SIZE).length;
 
   // Aspirations breakdown
   const aspirationsData = profiles.reduce((acc: any, profile) => {
@@ -251,13 +277,84 @@ export default async function BrandAnalyticsPage() {
     location: {}
   });
 
-  // Calculate averages
+  // Calculate averages and apply k-anonymity
   Object.keys(npsByDemographic).forEach(category => {
     Object.keys(npsByDemographic[category]).forEach(segment => {
       const data = npsByDemographic[category][segment];
       npsByDemographic[category][segment].average = (data.total / data.count).toFixed(1);
     });
+    // Filter out segments with < 5 responses for privacy
+    npsByDemographic[category] = filterSmallSegments(npsByDemographic[category]);
   });
+
+  // Count suppressed NPS segments
+  const suppressedNPS = {
+    ageRange: Object.values(npsByDemographic.ageRange).length,
+    gender: Object.values(npsByDemographic.gender).length,
+    location: Object.values(npsByDemographic.location).length
+  };
+
+  // Post-Survey Conversion Tracking
+  // Track what users do AFTER completing surveys
+  const surveyCompletes = events.filter(e => e.eventType === 'survey_complete');
+  
+  const postSurveyConversions = surveyCompletes.map(surveyEvent => {
+    const userId = surveyEvent.userId;
+    const surveyCompleteTime = new Date(surveyEvent.createdAt);
+    const sevenDaysLater = new Date(surveyCompleteTime.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const oneDayLater = new Date(surveyCompleteTime.getTime() + 24 * 60 * 60 * 1000);
+
+    // Get all events after survey completion (within 7 days)
+    const postSurveyEvents = events.filter(e => {
+      const eventTime = new Date(e.createdAt);
+      return e.userId === userId && 
+             eventTime > surveyCompleteTime && 
+             eventTime <= sevenDaysLater;
+    });
+
+    // Within 24 hours
+    const within24h = events.filter(e => {
+      const eventTime = new Date(e.createdAt);
+      return e.userId === userId && 
+             eventTime > surveyCompleteTime && 
+             eventTime <= oneDayLater;
+    });
+
+    return {
+      userId,
+      surveyId: surveyEvent.surveyId,
+      completedAt: surveyCompleteTime,
+      productViewsWithin24h: within24h.filter(e => e.eventType === 'product_view').length,
+      productViewsWithin7d: postSurveyEvents.filter(e => e.eventType === 'product_view').length,
+      recommendationClicks: postSurveyEvents.filter(e => 
+        e.eventType === 'product_view' && 
+        (e.metadata as any)?.source === 'recommendation'
+      ).length,
+      returnVisits: postSurveyEvents.filter(e => e.eventType === 'session_start').length,
+      emailClicks: postSurveyEvents.filter(e => e.eventType === 'notification_click').length,
+    };
+  });
+
+  const conversionMetrics = {
+    totalSurveyCompletes: surveyCompletes.length,
+    usersWithActionWithin24h: postSurveyConversions.filter(c => c.productViewsWithin24h > 0).length,
+    usersWithActionWithin7d: postSurveyConversions.filter(c => c.productViewsWithin7d > 0).length,
+    totalProductViewsAfterSurvey: postSurveyConversions.reduce((sum, c) => sum + c.productViewsWithin7d, 0),
+    totalRecommendationClicks: postSurveyConversions.reduce((sum, c) => sum + c.recommendationClicks, 0),
+    avgProductViewsPerUser: postSurveyConversions.length > 0
+      ? (postSurveyConversions.reduce((sum, c) => sum + c.productViewsWithin7d, 0) / postSurveyConversions.length).toFixed(1)
+      : '0',
+    conversionRate24h: surveyCompletes.length > 0
+      ? ((postSurveyConversions.filter(c => c.productViewsWithin24h > 0).length / surveyCompletes.length) * 100).toFixed(1)
+      : '0',
+    conversionRate7d: surveyCompletes.length > 0
+      ? ((postSurveyConversions.filter(c => c.productViewsWithin7d > 0).length / surveyCompletes.length) * 100).toFixed(1)
+      : '0',
+    recommendationClickRate: postSurveyConversions.filter(c => c.productViewsWithin7d > 0).length > 0
+      ? ((postSurveyConversions.filter(c => c.recommendationClicks > 0).length / 
+          postSurveyConversions.filter(c => c.productViewsWithin7d > 0).length) * 100).toFixed(1)
+      : '0',
+  };
 
   // Product performance breakdown
   const productPerformance = brandProducts.map(product => {
@@ -363,9 +460,29 @@ export default async function BrandAnalyticsPage() {
           <TabsTrigger value="nps">NPS Segmentation</TabsTrigger>
           <TabsTrigger value="products">Product Performance</TabsTrigger>
           <TabsTrigger value="funnel">Conversion Funnel</TabsTrigger>
+          <TabsTrigger value="post-survey">Post-Survey Impact</TabsTrigger>
         </TabsList>
 
         <TabsContent value="demographics" className="space-y-4">
+          {/* Privacy Protection Notice */}
+          {(suppressedDemographics.gender + suppressedDemographics.ageRange + suppressedDemographics.location + suppressedDemographics.education + suppressedDemographics.culture) > 0 && (
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Users className="h-4 w-4 text-blue-700" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-blue-900 mb-1">Privacy Protection Active</h4>
+                    <p className="text-sm text-blue-700">
+                      {suppressedDemographics.gender + suppressedDemographics.ageRange + suppressedDemographics.location + suppressedDemographics.education + suppressedDemographics.culture} demographic segment(s) 
+                      with fewer than {MINIMUM_SEGMENT_SIZE} users are hidden to prevent re-identification (k-anonymity).
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           <BrandAnalyticsDashboard
             demographicsData={demographicsData}
             totalUsers={totalUsers}
@@ -449,31 +566,36 @@ export default async function BrandAnalyticsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Income Distribution</CardTitle>
-                <CardDescription>Self-reported income ranges (aggregated)</CardDescription>
+                <CardDescription>Self-reported income ranges (aggregated with k-anonymity)</CardDescription>
               </CardHeader>
               <CardContent>
+                {suppressedIncome > 0 && (
+                  <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                    🔒 {suppressedIncome} income range(s) hidden (fewer than {MINIMUM_SEGMENT_SIZE} users)
+                  </div>
+                )}
                 <div className="space-y-2">
                   {Object.entries(incomeData)
-                    .sort(([, a]: any, [, b]: any) => b - a)
-                    .map(([range, count]: any) => (
+                    .sort(([, a]: any, [, b]: any) => b.count - a.count)
+                    .map(([range, data]: any) => (
                       <div key={range} className="flex items-center justify-between">
                         <span className="text-sm">{range}</span>
                         <div className="flex items-center gap-2">
                           <div className="w-32 bg-gray-200 rounded-full h-2">
                             <div
                               className="bg-green-600 h-2 rounded-full"
-                              style={{ width: `${(count / totalUsers) * 100}%` }}
+                              style={{ width: `${(data.count / totalUsers) * 100}%` }}
                             />
                           </div>
                           <span className="text-sm font-medium w-12 text-right">
-                            {count}
+                            {data.count}
                           </span>
                         </div>
                       </div>
                     ))}
                 </div>
                 {Object.keys(incomeData).length === 0 && (
-                  <p className="text-sm text-muted-foreground">No income data available</p>
+                  <p className="text-sm text-muted-foreground">No income data available or all segments suppressed for privacy</p>
                 )}
               </CardContent>
             </Card>
@@ -481,24 +603,29 @@ export default async function BrandAnalyticsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Shopping Frequency</CardTitle>
-                <CardDescription>How often users shop online</CardDescription>
+                <CardDescription>How often users shop online (k-anonymity protected)</CardDescription>
               </CardHeader>
               <CardContent>
+                {suppressedPurchase > 0 && (
+                  <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                    🔒 {suppressedPurchase} frequency segment(s) hidden (fewer than {MINIMUM_SEGMENT_SIZE} users)
+                  </div>
+                )}
                 <div className="space-y-2">
                   {Object.entries(purchaseData)
-                    .sort(([, a]: any, [, b]: any) => b - a)
-                    .map(([frequency, count]: any) => (
+                    .sort(([, a]: any, [, b]: any) => b.count - a.count)
+                    .map(([frequency, data]: any) => (
                       <div key={frequency} className="flex items-center justify-between">
                         <span className="text-sm capitalize">{frequency}</span>
                         <div className="flex items-center gap-2">
                           <div className="w-32 bg-gray-200 rounded-full h-2">
                             <div
                               className="bg-orange-600 h-2 rounded-full"
-                              style={{ width: `${(count / totalUsers) * 100}%` }}
+                              style={{ width: `${(data.count / totalUsers) * 100}%` }}
                             />
                           </div>
                           <span className="text-sm font-medium w-12 text-right">
-                            {count}
+                            {data.count}
                           </span>
                         </div>
                       </div>
@@ -736,6 +863,171 @@ export default async function BrandAnalyticsPage() {
                     <li>• Average events per user: {(totalEvents / totalUsers).toFixed(1)}</li>
                     <li>• Onboarding completion rate: {((profiles.filter(p => p.onboardingComplete).length / totalUsers) * 100).toFixed(0)}%</li>
                   </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="post-survey" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">24h Action Rate</CardTitle>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{conversionMetrics.conversionRate24h}%</div>
+                <p className="text-xs text-muted-foreground">
+                  {conversionMetrics.usersWithActionWithin24h} of {conversionMetrics.totalSurveyCompletes} users
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">7-Day Action Rate</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{conversionMetrics.conversionRate7d}%</div>
+                <p className="text-xs text-muted-foreground">
+                  {conversionMetrics.usersWithActionWithin7d} users took action
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Post-Survey Views</CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{conversionMetrics.totalProductViewsAfterSurvey}</div>
+                <p className="text-xs text-muted-foreground">
+                  Avg {conversionMetrics.avgProductViewsPerUser} views/user
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Recommendation Clicks</CardTitle>
+                <Target className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{conversionMetrics.recommendationClickRate}%</div>
+                <p className="text-xs text-muted-foreground">
+                  {conversionMetrics.totalRecommendationClicks} clicks from recommendations
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Post-Survey User Journey</CardTitle>
+              <CardDescription>What users do after completing surveys</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">Survey Completed</span>
+                      <span className="text-sm font-bold">{conversionMetrics.totalSurveyCompletes}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-8">
+                      <div className="bg-purple-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" style={{ width: '100%' }}>
+                        100%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">Took Action Within 24 Hours</span>
+                      <span className="text-sm font-bold">{conversionMetrics.usersWithActionWithin24h}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-8">
+                      <div 
+                        className="bg-blue-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
+                        style={{ width: `${conversionMetrics.conversionRate24h}%` }}
+                      >
+                        {conversionMetrics.conversionRate24h}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">Took Action Within 7 Days</span>
+                      <span className="text-sm font-bold">{conversionMetrics.usersWithActionWithin7d}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-8">
+                      <div 
+                        className="bg-green-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
+                        style={{ width: `${conversionMetrics.conversionRate7d}%` }}
+                      >
+                        {conversionMetrics.conversionRate7d}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">Clicked Recommended Products</span>
+                      <span className="text-sm font-bold">
+                        {postSurveyConversions.filter(c => c.recommendationClicks > 0).length}
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-8">
+                      <div 
+                        className="bg-orange-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
+                        style={{ width: conversionMetrics.usersWithActionWithin7d > 0 ? `${(postSurveyConversions.filter(c => c.recommendationClicks > 0).length / conversionMetrics.usersWithActionWithin7d) * 100}%` : '0%' }}
+                      >
+                        {conversionMetrics.recommendationClickRate}% of active users
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 p-4 bg-green-50 rounded-lg">
+                  <h4 className="font-semibold mb-2 text-green-900">Survey Impact Insights</h4>
+                  <ul className="space-y-1 text-sm text-green-700">
+                    <li>• {conversionMetrics.conversionRate7d}% of survey completers took action within a week</li>
+                    <li>• Average {conversionMetrics.avgProductViewsPerUser} product views per user after survey</li>
+                    <li>• {conversionMetrics.totalRecommendationClicks} clicks on recommended products (from survey results)</li>
+                    <li>• {conversionMetrics.recommendationClickRate}% of active users clicked recommendations</li>
+                  </ul>
+                </div>
+
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <h4 className="font-semibold mb-2 text-blue-900">How to Interpret This Data</h4>
+                  <div className="space-y-2 text-sm text-blue-700">
+                    <p>
+                      <strong>24h Action Rate:</strong> Percentage of users who viewed products within 24 hours after completing a survey. 
+                      High rates indicate strong immediate engagement.
+                    </p>
+                    <p>
+                      <strong>7-Day Action Rate:</strong> Percentage who took any action within a week. 
+                      This shows the extended impact of survey completion on user behavior.
+                    </p>
+                    <p>
+                      <strong>Recommendation Click Rate:</strong> Among users who browsed products post-survey, what percentage clicked on recommended items. 
+                      This measures recommendation quality and relevance.
+                    </p>
+                    <p className="text-xs mt-2 italic">
+                      Note: Actions include product views, recommendation clicks, and return visits. 
+                      Attribution is based on event timestamps within 7 days of survey completion.
+                    </p>
+                  </div>
                 </div>
               </div>
             </CardContent>

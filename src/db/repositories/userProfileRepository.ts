@@ -3,9 +3,34 @@ import { userProfiles, type UserProfile, type NewUserProfile } from '@/db/schema
 import { eq } from 'drizzle-orm'
 import { trackProfileUpdate } from '@/server/eventTrackingService'
 import { logSensitiveDataAccess } from '@/lib/audit-log'
+import { encryptSensitiveData, decryptSensitiveData, isEncrypted } from '@/lib/encryption'
+import { encryptSensitiveData, decryptSensitiveData, isEncrypted } from '@/lib/encryption'
+
+/**
+ * VERSIONED NOTIFICATION PREFERENCES SCHEMA
+ * Version: 1.0
+ * Last updated: Feb 2026
+ * 
+ * IMPORTANT: When adding new fields, increment SCHEMA_VERSION and add migration logic
+ */
+export const NOTIFICATION_PREFS_SCHEMA_VERSION = 1
+
+export type NotificationChannelPrefs = {
+  enabled: boolean
+  frequency: 'instant' | 'daily' | 'weekly'
+  quietHours: { start: string; end: string }
+}
+
+export type NotificationPreferences = {
+  schemaVersion?: number // Track schema version
+  email: NotificationChannelPrefs
+  whatsapp: NotificationChannelPrefs
+  sms: NotificationChannelPrefs
+}
 
 // Default notification preferences for new users
-const DEFAULT_NOTIFICATION_PREFS = {
+const DEFAULT_NOTIFICATION_PREFS: NotificationPreferences = {
+  schemaVersion: NOTIFICATION_PREFS_SCHEMA_VERSION,
   email: {
     enabled: true,
     frequency: 'instant', // 'instant' | 'daily' | 'weekly'
@@ -21,6 +46,43 @@ const DEFAULT_NOTIFICATION_PREFS = {
     frequency: 'instant',
     quietHours: { start: '22:00', end: '08:00' }
   }
+}
+
+/**
+ * Preference Schema Adapter
+ * Safely migrates old preference schemas to current version
+ */
+export function adaptNotificationPreferences(prefs: any): NotificationPreferences {
+  if (!prefs) return DEFAULT_NOTIFICATION_PREFS
+  
+  // Check if already current version
+  if (prefs.schemaVersion === NOTIFICATION_PREFS_SCHEMA_VERSION) {
+    return prefs as NotificationPreferences
+  }
+  
+  // Migration logic for version upgrades
+  const adapted: NotificationPreferences = {
+    schemaVersion: NOTIFICATION_PREFS_SCHEMA_VERSION,
+    email: prefs.email || DEFAULT_NOTIFICATION_PREFS.email,
+    whatsapp: prefs.whatsapp || DEFAULT_NOTIFICATION_PREFS.whatsapp,
+    sms: prefs.sms || DEFAULT_NOTIFICATION_PREFS.sms
+  }
+  
+  // Ensure all required fields exist with defaults
+  for (const channel of ['email', 'whatsapp', 'sms'] as const) {
+    if (!adapted[channel]) {
+      adapted[channel] = DEFAULT_NOTIFICATION_PREFS[channel]
+    } else {
+      // Ensure nested fields exist
+      adapted[channel] = {
+        enabled: adapted[channel].enabled ?? DEFAULT_NOTIFICATION_PREFS[channel].enabled,
+        frequency: adapted[channel].frequency || DEFAULT_NOTIFICATION_PREFS[channel].frequency,
+        quietHours: adapted[channel].quietHours || DEFAULT_NOTIFICATION_PREFS[channel].quietHours
+      }
+    }
+  }
+  
+  return adapted
 }
 
 // Default consent settings (all opt-in required)
@@ -293,8 +355,26 @@ export async function accessSensitiveData(
     return null
   }
 
-  // Return the sensitive data
-  return profile.sensitiveData || null
+  // Return null if no sensitive data
+  if (!profile.sensitiveData) {
+    return null
+  }
+
+  // Decrypt if encrypted (check if it's a base64 string)
+  const data = profile.sensitiveData
+  if (typeof data === 'string' && isEncrypted(data)) {
+    try {
+      const decrypted = await decryptSensitiveData(data)
+      console.log(`[SensitiveData] ✓ Decrypted data for user ${userId}`)
+      return decrypted
+    } catch (error) {
+      console.error('[SensitiveData] Decryption failed:', error)
+      return null
+    }
+  }
+
+  // Return as-is if not encrypted (backward compatibility)
+  return data
 }
 
 /**
@@ -317,10 +397,20 @@ export async function updateSensitiveData(
     dataKeys: Object.keys(data || {})
   })
 
+  // Encrypt sensitive data before storing
+  let encryptedData: any
+  try {
+    encryptedData = await encryptSensitiveData(data)
+    console.log(`[SensitiveData] ✓ Encrypted data for user ${userId}`)
+  } catch (error) {
+    console.error('[SensitiveData] Encryption failed:', error)
+    throw new Error('Failed to encrypt sensitive data')
+  }
+
   const result = await db
     .update(userProfiles)
     .set({
-      sensitiveData: data,
+      sensitiveData: encryptedData,
       updatedAt: new Date()
     })
     .where(eq(userProfiles.id, userId))

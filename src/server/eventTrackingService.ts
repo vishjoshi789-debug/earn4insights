@@ -148,7 +148,8 @@ export async function trackEvent(
       surveyId: metadata?.surveyId || null,
       notificationId: metadata?.notificationId || null,
       sessionId: metadata?.sessionId || null,
-      metadata: sanitizedMetadata
+      metadata: sanitizedMetadata,
+      schemaVersion: 1 // Current event metadata schema version
     }
 
     await db.insert(userEvents).values(event)

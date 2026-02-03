@@ -9,6 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useEffect } from 'react'
 
 interface RecommendationCardProps {
   product: {
@@ -41,6 +42,41 @@ export function RecommendationCard({
     if (score >= 70) return 'default' // Purple
     if (score >= 50) return 'secondary'
     return 'outline'
+  }
+
+  // Track when user views a recommendation
+  useEffect(() => {
+    // Track recommendation view
+    fetch('/api/track-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventType: 'product_view',
+        productId: product.id,
+        metadata: {
+          source: 'recommendation',
+          score: score,
+          matchPercentage: matchPercentage
+        }
+      })
+    }).catch(err => console.error('Failed to track recommendation view:', err))
+  }, [product.id, score, matchPercentage])
+
+  const handleWebsiteClick = () => {
+    // Track recommendation click (external link)
+    fetch('/api/track-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventType: 'recommendation_click',
+        productId: product.id,
+        metadata: {
+          source: 'recommendation',
+          destination: 'external_website',
+          url: product.profile?.website
+        }
+      })
+    }).catch(err => console.error('Failed to track recommendation click:', err))
   }
 
   return (
@@ -142,6 +178,7 @@ export function RecommendationCard({
               href={product.profile.website}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={handleWebsiteClick}
               className="inline-block mt-3 text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 underline"
             >
               Learn more →
