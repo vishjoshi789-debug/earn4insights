@@ -5,6 +5,9 @@ import { emailSendEvents, surveys, products } from '@/db/schema'
 import { sql, desc, eq } from 'drizzle-orm'
 import { BarChart3, Mail, MousePointerClick, TrendingUp, Users } from 'lucide-react'
 
+// Mark as dynamic since database might not have email_send_events table until migrations run
+export const dynamic = 'force-dynamic'
+
 export default async function CampaignAnalyticsPage() {
   // Overall stats
   const [stats] = await db.select({

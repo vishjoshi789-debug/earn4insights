@@ -10,6 +10,9 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
+// This page uses auth(), which requires headers() - mark as dynamic
+export const dynamic = 'force-dynamic'
+
 export default async function RecommendationsPage() {
   try {
     const session = await auth()
