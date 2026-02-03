@@ -9,11 +9,6 @@ import {
   assignUserToCohort,
   trackEmailSend 
 } from '@/lib/send-time-optimizer'
-import { 
-  getOptimalSendHour, 
-  assignUserToCohort,
-  trackEmailSend 
-} from '@/lib/send-time-optimizer'
 
 /**
  * Calculate optimal send time using intelligent send-time optimization

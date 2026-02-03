@@ -4,7 +4,6 @@ import { eq } from 'drizzle-orm'
 import { trackProfileUpdate } from '@/server/eventTrackingService'
 import { logSensitiveDataAccess } from '@/lib/audit-log'
 import { encryptSensitiveData, decryptSensitiveData, isEncrypted } from '@/lib/encryption'
-import { encryptSensitiveData, decryptSensitiveData, isEncrypted } from '@/lib/encryption'
 
 /**
  * VERSIONED NOTIFICATION PREFERENCES SCHEMA

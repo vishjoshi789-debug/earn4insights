@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
 import { userProfiles, users } from '@/db/schema'
-import { eq } from 'drizzle-orm'import { logAccountDeletion } from '@/lib/audit-log'
+import { eq } from 'drizzle-orm'
+import { logAccountDeletion } from '@/lib/audit-log'
 /**
  * GDPR Account Deletion Endpoint
  * 
