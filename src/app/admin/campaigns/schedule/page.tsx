@@ -12,8 +12,8 @@ export default async function ScheduleCampaignPage() {
       id: surveys.id,
       title: surveys.title,
       productId: surveys.productId,
-      isActive: surveys.isActive
-    }).from(surveys).where(eq(surveys.isActive, true)),
+      status: surveys.status
+    }).from(surveys).where(eq(surveys.status, 'active')),
     db.select({
       id: products.id,
       name: products.name
