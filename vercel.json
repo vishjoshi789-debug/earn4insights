@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/jobs/update-behavioral",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/jobs/process-deletions",
@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/send-time-analysis",
-      "schedule": "0 3 * * *"
+      "schedule": "0 4 * * *"
     }
   ]
 }
