@@ -11,10 +11,13 @@ export async function POST() {
   try {
     const result = await runSendTimeAnalysis()
     
+    // Destructure to avoid duplicate 'success' key
+    const { success, ...rest } = result
+    
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
-      ...result,
+      ...rest,
     })
   } catch (error) {
     console.error('[RunSendTimeAnalysis] Error:', error)
