@@ -689,11 +689,6 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               )
             })}
           </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
 
           {selectedCategories.length > 0 ? (
             <div className="text-sm text-center">
