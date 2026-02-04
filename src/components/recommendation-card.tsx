@@ -80,7 +80,7 @@ export function RecommendationCard({
   }
 
   return (
-    <Card className="bg-slate-900 dark:bg-slate-950 border-slate-700 dark:border-slate-800 hover:border-purple-500/50 transition-colors">
+    <Card className="!bg-slate-900 !text-white border-slate-700 hover:border-purple-500/50 transition-colors">
       <CardHeader className={compact ? 'pb-3' : 'pb-4'}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
