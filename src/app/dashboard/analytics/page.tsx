@@ -28,6 +28,9 @@ import {
 import { BrandAnalyticsDashboard } from '@/components/brand-analytics-dashboard';
 import { safeAggregate, filterSmallSegments, countSuppressedSegments, getPrivacyNote, MINIMUM_SEGMENT_SIZE } from '@/lib/analytics/safeAggregation';
 
+// Force dynamic rendering since this page uses auth() and database queries
+export const dynamic = 'force-dynamic';
+
 export default async function BrandAnalyticsPage() {
   const session = await auth();
   
