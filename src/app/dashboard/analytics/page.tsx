@@ -108,12 +108,14 @@ export default async function BrandAnalyticsPage() {
     .from(feedback)
     .orderBy(desc(feedback.createdAt));
 
-  // Fetch ranking history
-  const rankings = await db
-    .select()
-    .from(rankingHistory)
-    .where(sql`${rankingHistory.productId} = ANY(${productIds})`)
-    .orderBy(desc(rankingHistory.weekStart));
+  // Fetch ranking history - only if we have products
+  const rankings = productIds.length > 0 
+    ? await db
+        .select()
+        .from(rankingHistory)
+        .where(sql`${rankingHistory.productId} = ANY(${sql.array(productIds)})`)
+        .orderBy(desc(rankingHistory.weekStart))
+    : [];
 
   // Calculate aggregate metrics
   const totalUsers = profiles.length;
