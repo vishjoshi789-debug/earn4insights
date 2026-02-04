@@ -35,24 +35,25 @@ export default async function BrandAnalyticsPage() {
     return <div>Please sign in to view analytics</div>;
   }
 
-  // Fetch all brand products
-  const brandProducts = await db.select().from(products);
-  const productIds = brandProducts.map(p => p.id);
+  try {
+    // Fetch all brand products
+    const brandProducts = await db.select().from(products);
+    const productIds = brandProducts.map(p => p.id);
 
-  if (productIds.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-headline font-bold mb-2">
-            Brand Analytics Dashboard
-          </h1>
-          <p className="text-muted-foreground">
-            No products found. Add products to see analytics.
-          </p>
+    if (productIds.length === 0) {
+      return (
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-headline font-bold mb-2">
+              Brand Analytics Dashboard
+            </h1>
+            <p className="text-muted-foreground">
+              No products found. Add products to see analytics.
+            </p>
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
   // Fetch survey responses with user demographic data
   const responses = await db
@@ -1036,4 +1037,32 @@ export default async function BrandAnalyticsPage() {
       </Tabs>
     </div>
   );
+  } catch (error) {
+    console.error('[BrandAnalyticsPage] Error:', error);
+    return (
+      <div className="space-y-6 p-6">
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-900">Analytics Error</CardTitle>
+            <CardDescription className="text-red-700">
+              Unable to load analytics data. This may be due to:
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-red-800">
+            <ul className="list-disc list-inside space-y-1">
+              <li>Database migration in progress</li>
+              <li>Missing required data tables</li>
+              <li>Insufficient permissions</li>
+            </ul>
+            <p className="mt-4">
+              Error details: {error instanceof Error ? error.message : 'Unknown error'}
+            </p>
+            <p className="mt-2 text-xs">
+              Please try refreshing the page. If the issue persists, contact support.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 }

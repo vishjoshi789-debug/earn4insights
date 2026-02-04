@@ -664,27 +664,33 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               const isSelected = selectedCategories.includes(category)
               
               return (
-                <div
+                <label
                   key={key}
+                  htmlFor={`category-${key}`}
                   className={`
-                    p-4 border-2 rounded-lg cursor-pointer transition-all
+                    p-4 border-2 rounded-lg cursor-pointer transition-all block
                     ${isSelected 
                       ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' 
-                      : 'border-gray-200 hover:border-gray-300 bg-white dark:bg-gray-800'
+                      : 'border-gray-200 hover:border-purple-300 bg-white dark:bg-gray-800'
                     }
                   `}
-                  onClick={() => handleCategoryToggle(category)}
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-3">
                     <Checkbox
+                      id={`category-${key}`}
                       checked={isSelected}
-                      className="pointer-events-none"
+                      onCheckedChange={() => handleCategoryToggle(category)}
                     />
-                    <div>
-                      <div className={`font-medium ${isSelected ? 'text-purple-900 dark:text-purple-100' : 'text-gray-900 dark:text-gray-100'}`}>{category}</div>
+                    <div className={`font-medium ${isSelected ? 'text-purple-900 dark:text-purple-100' : 'text-gray-900 dark:text-gray-100'}`}>
+                      {category}
                     </div>
                   </div>
-                </div>
+                </label>
+              )
+            })}
+          </div>
+                  </div>
+                </button>
               )
             })}
           </div>
