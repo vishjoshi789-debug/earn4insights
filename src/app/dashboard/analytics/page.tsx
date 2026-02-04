@@ -9,7 +9,7 @@ import {
   rankingHistory,
   weeklyRankings
 } from '@/db/schema';
-import { eq, and, gte, sql, desc, count } from 'drizzle-orm';
+import { eq, and, gte, sql, desc, count, inArray } from 'drizzle-orm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
@@ -113,7 +113,7 @@ export default async function BrandAnalyticsPage() {
     ? await db
         .select()
         .from(rankingHistory)
-        .where(sql`${rankingHistory.productId} = ANY(${sql.array(productIds)})`)
+        .where(inArray(rankingHistory.productId, productIds))
         .orderBy(desc(rankingHistory.weekStart))
     : [];
 
