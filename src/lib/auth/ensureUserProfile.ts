@@ -59,6 +59,7 @@ export async function ensureUserProfile(userId: string, email: string) {
 /**
  * Checks if a user has completed onboarding.
  * A user is considered to have completed onboarding if they have:
+ * - The onboardingComplete flag set to true, OR
  * - At least one demographic field filled, OR
  * - At least one interest selected
  * 
@@ -70,6 +71,11 @@ export async function hasCompletedOnboarding(userId: string): Promise<boolean> {
   
   if (!profile) {
     return false
+  }
+  
+  // First check the explicit onboardingComplete flag
+  if (profile.onboardingComplete) {
+    return true
   }
   
   const demographics = profile.demographics as any

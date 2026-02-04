@@ -105,6 +105,20 @@ export async function completeOnboarding(data: {
         .where(eq(userProfiles.id, profile.id))
     }
 
+    // Mark onboarding as complete
+    console.log('[completeOnboarding] Marking onboarding as complete')
+    const { db } = await import('@/db')
+    const { userProfiles } = await import('@/db/schema')
+    const { eq } = await import('drizzle-orm')
+    
+    await db
+      .update(userProfiles)
+      .set({
+        onboardingComplete: true,
+        updatedAt: new Date()
+      })
+      .where(eq(userProfiles.id, profile.id))
+
     // Track onboarding completion
     console.log('[completeOnboarding] Tracking completion event')
     await trackOnboardingComplete(profile.id, data.demographics, data.interests).catch((err) => {
