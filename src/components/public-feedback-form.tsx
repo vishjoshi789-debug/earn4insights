@@ -66,7 +66,7 @@ export function PublicFeedbackForm({ productId }: { productId: string }) {
       </CardHeader>
       <CardContent>
         {/* Transparency Info Box (GDPR Article 13) */}
-        <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+        <div className="mb-6 p-4 bg-blue-900/50 border-l-4 border-blue-600 rounded text-blue-200">
           <h4 className="text-sm font-semibold text-blue-900 mb-2">💡 Why we're asking for feedback</h4>
           <ul className="text-xs text-blue-800 space-y-1">
             <li>• This product matches your browsing interests</li>

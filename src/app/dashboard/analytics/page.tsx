@@ -472,15 +472,15 @@ export default async function BrandAnalyticsPage() {
         <TabsContent value="demographics" className="space-y-4">
           {/* Privacy Protection Notice */}
           {(suppressedDemographics.gender + suppressedDemographics.ageRange + suppressedDemographics.location + suppressedDemographics.education + suppressedDemographics.culture) > 0 && (
-            <Card className="border-blue-200 bg-blue-50">
+            <Card className="border-blue-700 bg-blue-900/50">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Users className="h-4 w-4 text-blue-700" />
+                  <div className="p-2 bg-blue-800 rounded-lg">
+                    <Users className="h-4 w-4 text-blue-300" />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-semibold text-blue-900 mb-1">Privacy Protection Active</h4>
-                    <p className="text-sm text-blue-700">
+                    <h4 className="font-semibold text-blue-200 mb-1">Privacy Protection Active</h4>
+                    <p className="text-sm text-blue-300">
                       {suppressedDemographics.gender + suppressedDemographics.ageRange + suppressedDemographics.location + suppressedDemographics.education + suppressedDemographics.culture} demographic segment(s) 
                       with fewer than {MINIMUM_SEGMENT_SIZE} users are hidden to prevent re-identification (k-anonymity).
                     </p>
@@ -576,7 +576,7 @@ export default async function BrandAnalyticsPage() {
               </CardHeader>
               <CardContent>
                 {suppressedIncome > 0 && (
-                  <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                  <div className="mb-3 p-2 bg-blue-900/50 border border-blue-700 rounded text-xs text-blue-300">
                     🔒 {suppressedIncome} income range(s) hidden (fewer than {MINIMUM_SEGMENT_SIZE} users)
                   </div>
                 )}
@@ -613,7 +613,7 @@ export default async function BrandAnalyticsPage() {
               </CardHeader>
               <CardContent>
                 {suppressedPurchase > 0 && (
-                  <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                  <div className="mb-3 p-2 bg-blue-900/50 border border-blue-700 rounded text-xs text-blue-300">
                     🔒 {suppressedPurchase} frequency segment(s) hidden (fewer than {MINIMUM_SEGMENT_SIZE} users)
                   </div>
                 )}
@@ -862,9 +862,9 @@ export default async function BrandAnalyticsPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                  <h4 className="font-semibold mb-2">Key Insights</h4>
-                  <ul className="space-y-1 text-sm text-muted-foreground">
+                <div className="mt-6 p-4 bg-slate-800 rounded-lg">
+                  <h4 className="font-semibold mb-2 text-white">Key Insights</h4>
+                  <ul className="space-y-1 text-sm text-slate-300">
                     <li>• Survey completion rate: {engagementData.conversionRate}%</li>
                     <li>• Average events per user: {(totalEvents / totalUsers).toFixed(1)}</li>
                     <li>• Onboarding completion rate: {((profiles.filter(p => p.onboardingComplete).length / totalUsers) * 100).toFixed(0)}%</li>
@@ -1014,9 +1014,9 @@ export default async function BrandAnalyticsPage() {
                   </ul>
                 </div>
 
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <h4 className="font-semibold mb-2 text-blue-900">How to Interpret This Data</h4>
-                  <div className="space-y-2 text-sm text-blue-700">
+                <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
+                  <h4 className="font-semibold mb-2 text-white">How to Interpret This Data</h4>
+                  <div className="space-y-2 text-sm text-slate-300">
                     <p>
                       <strong>24h Action Rate:</strong> Percentage of users who viewed products within 24 hours after completing a survey. 
                       High rates indicate strong immediate engagement.

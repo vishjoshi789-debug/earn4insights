@@ -160,7 +160,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
 
   if (step === 1) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <Card className="max-w-2xl w-full">
           <CardHeader className="text-center">
             <CardTitle className="text-3xl">Welcome to Earn4Insights! 🎉</CardTitle>
@@ -215,7 +215,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     const completion = calculateCompletion()
     
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <Card className="max-w-3xl w-full">
           <CardHeader>
             <ProgressIndicator currentStep={2} steps={progressSteps} />
@@ -405,7 +405,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     const completion = calculateCompletion()
     
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <Card className="max-w-4xl w-full">
           <CardHeader>
             <ProgressIndicator currentStep={3} steps={progressSteps} />
@@ -424,15 +424,15 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Privacy Assurance Banner */}
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+            <div className="bg-blue-900/50 border-2 border-blue-700 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <div className="text-2xl">🛡️</div>
                 <div className="flex-1">
-                  <h3 className="font-bold text-blue-900 mb-2">Your Financial Data is Protected</h3>
-                  <p className="text-sm text-blue-800 mb-2">
+                  <h3 className="font-bold text-blue-200 mb-2">Your Financial Data is Protected</h3>
+                  <p className="text-sm text-blue-300 mb-2">
                     We take 100% responsibility for your sensitive information:
                   </p>
-                  <ul className="text-sm text-blue-800 space-y-1">
+                  <ul className="text-sm text-blue-300 space-y-1">
                     <li className="flex items-center gap-2">
                       <span className="text-blue-600">✓</span>
                       <span><strong>Zero-Knowledge Encryption</strong> - We can't access your unencrypted data</span>
@@ -633,7 +633,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     const completion = calculateCompletion()
     
     return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <Card className="max-w-4xl w-full">
         <CardHeader>
           <ProgressIndicator currentStep={4} steps={progressSteps} />

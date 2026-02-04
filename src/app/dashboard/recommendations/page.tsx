@@ -224,7 +224,7 @@ export default async function RecommendationsPage() {
       )}
 
       {/* How This Works */}
-      <Alert className="bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800">
+      <Alert className="bg-purple-900/50 border-purple-700">
         <Sparkles className="h-4 w-4 text-purple-600" />
         <AlertTitle className="text-purple-900 dark:text-purple-100">
           How Recommendations Work

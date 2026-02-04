@@ -21,11 +21,11 @@ export default function TransparencyPage() {
       </div>
 
       {/* Overview */}
-      <Card className="border-blue-200 bg-blue-50/50">
+      <Card className="border-blue-700 bg-blue-900/50">
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Info className="w-5 h-5 text-blue-600" />
-            <CardTitle>Our Commitment to Transparency</CardTitle>
+            <Info className="w-5 h-5 text-blue-400" />
+            <CardTitle className="text-white">Our Commitment to Transparency</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
@@ -112,9 +112,9 @@ export default function TransparencyPage() {
             </div>
           </div>
 
-          <div className="p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
-            <p className="text-sm font-medium text-blue-900 mb-1">Example Calculation</p>
-            <p className="text-xs text-blue-800">
+          <div className="p-4 bg-blue-900/50 border-l-4 border-blue-600 rounded">
+            <p className="text-sm font-medium text-blue-200 mb-1">Example Calculation</p>
+            <p className="text-xs text-blue-300">
               If a product matches your "Technology" interest (25 points), targets your age range 25-34 (25 points), 
               aligns with your values (15 points), fits your budget (15 points), you've shown purchase intent (10 points), 
               and you're highly engaged (10 points), it scores <strong>100/100</strong> and appears at the top of your feed.
@@ -367,14 +367,14 @@ export default function TransparencyPage() {
       </Card>
 
       {/* Audit Trail */}
-      <Card className="border-purple-200 bg-purple-50/50">
+      <Card className="border-purple-700 bg-purple-900/50">
         <CardHeader>
-          <CardTitle>🔍 New: Complete Audit Trail</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-white">🔍 New: Complete Audit Trail</CardTitle>
+          <CardDescription className="text-purple-200">
             Every access to your sensitive data is now logged
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
+        <CardContent className="space-y-2 text-sm text-slate-300">
           <p>
             As of this update, we track every access to your sensitive personal data including:
           </p>

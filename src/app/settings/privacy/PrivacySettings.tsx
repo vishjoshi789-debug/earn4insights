@@ -180,7 +180,7 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
   return (
     <div className="space-y-6">
       {/* GDPR Compliance Banner */}
-      <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+      <Alert className="bg-blue-900/50 border-blue-700">
         <Shield className="h-4 w-4 text-blue-600" />
         <AlertTitle className="text-blue-900 dark:text-blue-100">
           GDPR Compliant

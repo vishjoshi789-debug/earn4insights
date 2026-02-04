@@ -168,12 +168,12 @@ export default async function CategoryRankingPage({ params }: Props) {
               <CardContent className="pl-20">
                 {/* Metrics Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                  <div className="bg-blue-50 rounded-lg p-3">
-                    <div className="flex items-center gap-2 text-blue-600 mb-1">
+                  <div className="bg-blue-900/50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 text-blue-400 mb-1">
                       <Star className="h-4 w-4" />
                       <span className="text-xs font-medium">NPS Score</span>
                     </div>
-                    <div className="text-2xl font-bold text-blue-700">
+                    <div className="text-2xl font-bold text-blue-300">
                       {metrics.npsScore.toFixed(0)}
                     </div>
                   </div>

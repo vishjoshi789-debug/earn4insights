@@ -129,7 +129,7 @@ export function ConsentRenewalModal({
           </DialogDescription>
         </DialogHeader>
 
-        <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+        <Alert className="bg-blue-900/50 border-blue-700">
           <Info className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-800 dark:text-blue-200">
             <strong>Why we're asking:</strong> Under GDPR regulations, we must periodically 
