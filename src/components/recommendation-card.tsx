@@ -80,16 +80,16 @@ export function RecommendationCard({
   }
 
   return (
-    <Card className="hover:border-purple-500/50 transition-colors">
+    <Card className="bg-slate-900 dark:bg-slate-950 border-slate-700 dark:border-slate-800 hover:border-purple-500/50 transition-colors">
       <CardHeader className={compact ? 'pb-3' : 'pb-4'}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0" />
-              <h3 className="font-semibold text-lg truncate">{product.name}</h3>
+              <Sparkles className="h-4 w-4 text-purple-400 flex-shrink-0" />
+              <h3 className="font-semibold text-lg truncate text-white">{product.name}</h3>
             </div>
             {product.profile?.categoryName && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs border-slate-600 text-slate-300">
                 {product.profile.categoryName}
               </Badge>
             )}
@@ -99,10 +99,10 @@ export function RecommendationCard({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex flex-col items-center flex-shrink-0">
-                  <div className="text-2xl font-bold text-purple-600">
+                  <div className="text-2xl font-bold text-purple-400">
                     {matchPercentage}%
                   </div>
-                  <div className="text-xs text-muted-foreground">match</div>
+                  <div className="text-xs text-slate-400">match</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent>
@@ -121,20 +121,20 @@ export function RecommendationCard({
       {!compact && (
         <CardContent className="pt-0">
           {product.description && (
-            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+            <p className="text-sm text-slate-300 mb-3 line-clamp-2">
               {product.description}
             </p>
           )}
           
           {/* Always-visible "Why you're seeing this" section */}
-          <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-3">
+          <div className="bg-blue-900/50 dark:bg-blue-950/50 border border-blue-700 dark:border-blue-800 rounded-lg p-3 mb-3">
             <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <Info className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">
+                <p className="text-xs font-semibold text-blue-200 mb-1">
                   Why you're seeing this
                 </p>
-                <p className="text-xs text-blue-800 dark:text-blue-200">
+                <p className="text-xs text-blue-300">
                   {reasons.slice(0, 2).join(' • ')}
                   {reasons.length > 2 && ` • +${reasons.length - 2} more reasons`}
                 </p>
@@ -146,7 +146,7 @@ export function RecommendationCard({
             {reasons.slice(0, 2).map((reason, idx) => (
               <div 
                 key={idx}
-                className="flex items-center gap-1.5 text-xs bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 px-2 py-1 rounded-full"
+                className="flex items-center gap-1.5 text-xs bg-purple-900/50 text-purple-300 px-2 py-1 rounded-full"
               >
                 <TrendingUp className="h-3 w-3" />
                 <span>{reason}</span>
@@ -156,7 +156,7 @@ export function RecommendationCard({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground px-2 py-1 rounded-full border border-dashed cursor-help">
+                    <div className="flex items-center gap-1 text-xs text-slate-400 px-2 py-1 rounded-full border border-slate-600 border-dashed cursor-help">
                       <Info className="h-3 w-3" />
                       <span>+{reasons.length - 2} more</span>
                     </div>
@@ -179,7 +179,7 @@ export function RecommendationCard({
               target="_blank"
               rel="noopener noreferrer"
               onClick={handleWebsiteClick}
-              className="inline-block mt-3 text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 underline"
+              className="inline-block mt-3 text-sm text-purple-400 hover:text-purple-300 underline"
             >
               Learn more →
             </a>
