@@ -80,7 +80,10 @@ export function RecommendationCard({
   }
 
   return (
-    <Card className="!bg-slate-900 !text-white border-slate-700 hover:border-purple-500/50 transition-colors">
+    <Card 
+      className="border-slate-700 hover:border-purple-500/50 transition-colors"
+      style={{ backgroundColor: '#0f172a', color: 'white' }}
+    >
       <CardHeader className={compact ? 'pb-3' : 'pb-4'}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
