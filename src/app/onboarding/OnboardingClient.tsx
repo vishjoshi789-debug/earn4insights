@@ -460,7 +460,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                 <Label>What are your current goals/aspirations? *</Label>
                 <FieldTooltip content="We'll recommend products that align with your life goals" />
               </div>
-              <p className="text-sm text-muted-foreground">Select at least 5 aspirations</p>
+              <p className="text-sm text-muted-foreground">Select at least 5 aspirations ({aspirations.length}/5)</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {[
                   { value: 'career-growth', label: '🚀 Career Growth' },
@@ -489,8 +489,10 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                   </div>
                 ))}
               </div>
-              {aspirations.length > 0 && (
-                <p className="text-sm text-green-600">✓ {aspirations.length} selected</p>
+              {aspirations.length >= 5 ? (
+                <p className="text-sm text-green-600 font-semibold">✓ {aspirations.length} aspirations selected</p>
+              ) : (
+                <p className="text-sm text-orange-600">Select {5 - aspirations.length} more aspirations</p>
               )}
             </div>
 
@@ -523,9 +525,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               {/* Amazon Categories */}
               <div className="space-y-2">
                 <Label>What do you usually buy online? *</Label>
-                <p className="text-sm text-muted-foreground">Select at least 5 categories</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {['Electronics', 'Books', 'Clothing', 'Home & Kitchen', 'Health', 'Sports'].map(cat => (
+                <p className="text-sm text-muted-foreground">Select at least 5 categories ({amazonCategories.length}/5)</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {['Electronics', 'Books', 'Clothing', 'Home & Kitchen', 'Health', 'Sports', 'Beauty', 'Toys', 'Automotive', 'Office Supplies', 'Food & Grocery', 'Pet Supplies'].map(cat => (
                     <div
                       key={cat}
                       className={`p-2 text-sm font-bold rounded border cursor-pointer transition-all ${
@@ -539,8 +541,10 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                     </div>
                   ))}
                 </div>
-                {amazonCategories.length > 0 && (
-                  <p className="text-sm text-green-600">✓ {amazonCategories.length} selected</p>
+                {amazonCategories.length >= 5 ? (
+                  <p className="text-sm text-green-600 font-semibold">✓ {amazonCategories.length} categories selected</p>
+                ) : (
+                  <p className="text-sm text-orange-600">Select {5 - amazonCategories.length} more categories</p>
                 )}
               </div>
               
