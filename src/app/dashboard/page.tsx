@@ -55,20 +55,20 @@ export default async function DashboardPage() {
 
       {/* For You Section */}
       {topRecommendations.length > 0 && (
-        <section className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 rounded-lg p-6 border border-purple-200 dark:border-purple-800">
+        <section className="bg-slate-900 rounded-lg p-6 border border-slate-700">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-purple-600" />
-              <h2 className="text-2xl font-semibold">For You</h2>
+              <Sparkles className="h-6 w-6 text-purple-400" />
+              <h2 className="text-2xl font-semibold text-white">For You</h2>
             </div>
-            <Button asChild variant="ghost" size="sm">
+            <Button asChild variant="ghost" size="sm" className="text-slate-200 hover:text-white">
               <Link href="/dashboard/recommendations" className="flex items-center gap-1">
                 View all
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground mb-4">
+          <p className="text-sm text-slate-300 mb-4">
             Products we think you'll love based on your interests
           </p>
           <div className="grid gap-4 md:grid-cols-3">
