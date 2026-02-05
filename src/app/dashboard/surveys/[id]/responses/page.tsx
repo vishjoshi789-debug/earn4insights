@@ -14,6 +14,7 @@ import NPSTrendChart from './NPSTrendChart'
 import ExportResponsesButton from './ExportResponsesButton'
 import { listFeedbackMediaForOwners } from '@/server/uploads/feedbackMediaRepo'
 import ProcessNowButton from './ProcessNowButton'
+import ResponseFilters from './ResponseFilters'
 
 type PageProps = {
   params: Promise<{ id: string }>
@@ -36,6 +37,53 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
   if (!survey) notFound()
 
   const allResponses = await getResponsesBySurveyId(id)
+
+  // Apply filters
+  let filteredResponses = allResponses
+  
+  // Date range filter
+  if (filters.dateFrom) {
+    const fromDate = new Date(filters.dateFrom)
+    filteredResponses = filteredResponses.filter(r => new Date(r.createdAt) >= fromDate)
+  }
+  if (filters.dateTo) {
+    const toDate = new Date(filters.dateTo)
+    toDate.setHours(23, 59, 59, 999) // End of day
+    filteredResponses = filteredResponses.filter(r => new Date(r.createdAt) <= toDate)
+  }
+
+  // Rating range filter
+  if (filters.ratingMin) {
+    const minRating = parseInt(filters.ratingMin)
+    filteredResponses = filteredResponses.filter(r => r.rating && r.rating >= minRating)
+  }
+  if (filters.ratingMax) {
+    const maxRating = parseInt(filters.ratingMax)
+    filteredResponses = filteredResponses.filter(r => r.rating && r.rating <= maxRating)
+  }
+
+  // Language filter
+  if (filters.language && filters.language !== 'all') {
+    filteredResponses = filteredResponses.filter(r => r.originalLanguage === filters.language)
+  }
+
+  // Modality filter
+  if (filters.modality && filters.modality !== 'all') {
+    filteredResponses = filteredResponses.filter(r => {
+      const modality = (r.modalityPrimary || 'text').toLowerCase()
+      return modality === filters.modality.toLowerCase()
+    })
+  }
+
+  // Sentiment filter
+  if (filters.sentiment && filters.sentiment !== 'all') {
+    filteredResponses = filteredResponses.filter(r => {
+      const sentiment = (r.sentiment || '').toLowerCase()
+      return sentiment === filters.sentiment.toLowerCase()
+    })
+  }
+
+  const responses = filteredResponses
 
   const media = await listFeedbackMediaForOwners({
     ownerType: 'survey_response',
@@ -238,44 +286,139 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
         </div>
       </div>
 
+      {/* Filters */}
+      <ResponseFilters
+        availableLanguages={availableLanguages}
+        totalResponses={allResponses.length}
+        filteredCount={filteredResponses.length}
+      />
+
       {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Responses</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{totalResponses}</div>
+          </CardContent>
+        </Card>
+
+        {npsData && (
+          <>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">NPS Score</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{npsData.score}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Promoters</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-green-600">{npsData.promoters}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Detractors</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-red-600">{npsData.detractors}</div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {avgRating && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Avg Rating</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold flex items-center gap-2">
+                <Star className="w-6 h-6 fill-yellow-400 text-yellow-400" />
+                {avgRating}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Voice Processing Card - keeping original */}
       <Card>
+        <CardHeader>
+          <CardTitle>Voice processing</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200">
+              queued: {audioCounts.uploaded || 0}
+            </Badge>
+            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
+              processing: {audioCounts.processing || 0}
+            </Badge>
+            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+              ready: {audioCounts.ready || 0}
+            </Badge>
+            <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
+              failed: {audioCounts.failed || 0}
+            </Badge>
+            <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
+              deleted: {audioCounts.deleted || 0}
+            </Badge>
+          </div>
+
+          {staleProcessingCount > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {staleProcessingCount} item(s) look stuck (processing &gt; {Math.round(processingTimeoutSeconds / 60)}m). They will be auto re-queued by the processor.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Video Processing Card - keeping original */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Video processing</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200">
+              queued: {videoCounts.uploaded || 0}
+            </Badge>
+            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
+              processing: {videoCounts.processing || 0}
+            </Badge>
+            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+              ready: {videoCounts.ready || 0}
+            </Badge>
+            <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
+              failed: {videoCounts.failed || 0}
+            </Badge>
+            <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
+              deleted: {videoCounts.deleted || 0}
+            </Badge>
+          </div>
+
+          {staleVideoProcessingCount > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {staleVideoProcessingCount} item(s) look stuck (processing &gt; {Math.round(processingTimeoutSeconds / 60)}m). They will be auto re-queued by the processor.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Placeholder for old filter form removal */}
+      <Card style={{ display: 'none' }}>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="grid md:grid-cols-4 gap-4" method="get">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Language</label>
-              <select
-                name="language"
-                defaultValue={filters.language || ''}
-                className="w-full border rounded px-3 py-2 bg-background"
-              >
-                <option value="">All</option>
-                {availableLanguages.map(lang => (
-                  <option key={lang} value={lang}>
-                    {lang}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Modality</label>
-              <select
-                name="modality"
-                defaultValue={filters.modality || ''}
-                className="w-full border rounded px-3 py-2 bg-background"
-              >
-                <option value="">All</option>
-                <option value="text">text</option>
-                <option value="audio">audio</option>
-                <option value="mixed">mixed</option>
-                <option value="video">video</option>
-              </select>
-            </div>
-
             <div className="space-y-2">
               <label className="text-sm font-medium">Sentiment</label>
               <select
