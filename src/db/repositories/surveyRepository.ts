@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { surveys, surveyResponses } from '@/db/schema'
 import type { Survey as DBSurvey, NewSurvey, SurveyResponse as DBSurveyResponse, NewSurveyResponse } from '@/db/schema'
@@ -37,6 +37,14 @@ function toSurveyResponse(dbResponse: DBSurveyResponse): SurveyResponse {
     answers: dbResponse.answers as SurveyResponse['answers'],
     npsScore: dbResponse.npsScore || undefined,
     sentiment: dbResponse.sentiment as SurveyResponse['sentiment'],
+
+    // Phase 0/1 fields (optional)
+    modalityPrimary: (dbResponse as any).modalityPrimary ?? undefined,
+    processingStatus: (dbResponse as any).processingStatus ?? undefined,
+    originalLanguage: (dbResponse as any).originalLanguage ?? undefined,
+    normalizedLanguage: (dbResponse as any).normalizedLanguage ?? undefined,
+    normalizedText: (dbResponse as any).normalizedText ?? undefined,
+    transcriptText: (dbResponse as any).transcriptText ?? undefined,
   }
 }
 
@@ -146,8 +154,53 @@ export async function createSurveyResponse(response: SurveyResponse): Promise<Su
       answers: response.answers as any,
       npsScore: response.npsScore,
       sentiment: response.sentiment,
+      modalityPrimary: response.modalityPrimary,
+      processingStatus: response.processingStatus,
+      originalLanguage: response.originalLanguage,
+      normalizedText: response.normalizedText,
+      normalizedLanguage: response.normalizedLanguage,
+      transcriptText: response.transcriptText,
     })
     .returning()
   
   return toSurveyResponse(created)
+}
+
+/**
+ * Update survey response (Phase 1: multimodal metadata + consent).
+ *
+ * NOTE: We keep this intentionally small and backwards-compatible.
+ */
+export async function updateSurveyResponseById(
+  id: string,
+  updates: Partial<{
+    modalityPrimary: string
+    processingStatus: string
+    consentAudio: boolean
+    consentVideo: boolean
+    consentCapturedAt: Date
+
+    // Phase 1.5+: admin review / overrides
+    originalLanguage: string | null
+    normalizedLanguage: string | null
+    normalizedText: string | null
+    sentiment: 'positive' | 'neutral' | 'negative' | null
+    transcriptText: string | null
+  }>
+): Promise<void> {
+  const updateData: any = {}
+  if (updates.modalityPrimary !== undefined) updateData.modalityPrimary = updates.modalityPrimary
+  if (updates.processingStatus !== undefined) updateData.processingStatus = updates.processingStatus
+  if (updates.consentAudio !== undefined) updateData.consentAudio = updates.consentAudio
+  if (updates.consentVideo !== undefined) updateData.consentVideo = updates.consentVideo
+  if (updates.consentCapturedAt !== undefined) updateData.consentCapturedAt = updates.consentCapturedAt
+  if (updates.originalLanguage !== undefined) updateData.originalLanguage = updates.originalLanguage ?? null
+  if (updates.normalizedLanguage !== undefined) updateData.normalizedLanguage = updates.normalizedLanguage ?? null
+  if (updates.normalizedText !== undefined) updateData.normalizedText = updates.normalizedText ?? null
+  if (updates.sentiment !== undefined) updateData.sentiment = updates.sentiment ?? null
+  if (updates.transcriptText !== undefined) updateData.transcriptText = updates.transcriptText ?? null
+
+  if (Object.keys(updateData).length === 0) return
+
+  await db.update(surveyResponses).set(updateData).where(eq(surveyResponses.id, id))
 }

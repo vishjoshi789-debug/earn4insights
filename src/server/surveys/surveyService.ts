@@ -11,7 +11,7 @@ import {
   updateSurvey as updateSurveyInDB,
   deleteSurvey as deleteSurveyFromDB,
 } from '@/db/repositories/surveyRepository'
-import type { Survey, SurveyQuestion, SurveyType } from '@/lib/survey-types'
+import type { Survey, SurveyQuestion, SurveyType, SurveySettings } from '@/lib/survey-types'
 import { createNPSSurvey, createCSATSurvey } from '@/lib/survey-types'
 
 export async function fetchAllSurveys() {
@@ -31,7 +31,8 @@ export async function createSurvey(
   title: string,
   description: string | undefined,
   type: SurveyType,
-  questions: SurveyQuestion[]
+  questions: SurveyQuestion[],
+  settings?: SurveySettings
 ) {
   // Validation
   if (!productId || !title.trim()) {
@@ -65,6 +66,12 @@ export async function createSurvey(
     ...surveyData,
     id: randomUUID(),
     createdAt: new Date().toISOString(),
+    settings: {
+      // Phase 0 flags: default off unless explicitly enabled
+      allowAudio: Boolean(settings?.allowAudio),
+      allowVideo: Boolean(settings?.allowVideo),
+      ...(settings || {}),
+    },
   }
 
   await createSurveyInDB(survey)

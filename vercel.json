@@ -11,6 +11,14 @@
     {
       "path": "/api/cron/send-time-analysis",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/process-feedback-media",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-feedback-media",
+      "schedule": "30 1 * * *"
     }
   ]
 }

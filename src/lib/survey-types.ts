@@ -15,6 +15,20 @@ export type SurveyQuestion = {
 
 export type SurveyType = 'nps' | 'csat' | 'custom'
 
+export type SurveySettings = {
+  /**
+   * Phase 0 feature flags (default off).
+   * These control whether public survey pages are allowed to upload audio/video.
+   */
+  allowAudio?: boolean
+  allowVideo?: boolean
+
+  /**
+   * Reserved for Phase 1+ (limits, retention, etc.)
+   */
+  [key: string]: any
+}
+
 export type Survey = {
   id: string
   productId: string
@@ -26,7 +40,7 @@ export type Survey = {
   createdAt: string
   updatedAt?: string  // Database field
   questions: SurveyQuestion[]
-  settings?: any  // Database field for additional settings
+  settings?: SurveySettings  // Database field for additional settings
 }
 
 export type SurveyResponse = {
@@ -40,6 +54,14 @@ export type SurveyResponse = {
   submittedAt: string
   npsScore?: number  // Database field for NPS scores
   sentiment?: 'positive' | 'neutral' | 'negative'  // Database field
+
+  // Phase 0/1 multimodal + multilingual fields (optional; backwards-compatible)
+  modalityPrimary?: 'text' | 'audio' | 'video' | 'mixed'
+  processingStatus?: 'ready' | 'processing' | 'failed'
+  originalLanguage?: string
+  normalizedLanguage?: string
+  normalizedText?: string
+  transcriptText?: string
 }
 
 // Helper to create NPS survey

@@ -24,6 +24,8 @@ export default function SurveyCreationForm({ productId }: SurveyCreationFormProp
   const [description, setDescription] = useState('')
   const [surveyType, setSurveyType] = useState<SurveyType>('nps')
   const [questions, setQuestions] = useState<Omit<SurveyQuestion, 'id'>[]>([])
+  const [allowAudio, setAllowAudio] = useState(false)
+  const [allowVideo, setAllowVideo] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -126,7 +128,11 @@ export default function SurveyCreationForm({ productId }: SurveyCreationFormProp
         title,
         description || undefined,
         surveyType,
-        questionsWithIds
+        questionsWithIds,
+        {
+          allowAudio,
+          allowVideo,
+        }
       )
 
       // Redirect to surveys list
@@ -214,6 +220,46 @@ export default function SurveyCreationForm({ productId }: SurveyCreationFormProp
                   Build your own questions
                 </p>
               </button>
+            </div>
+          </div>
+
+          <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+            <p className="text-sm font-medium">Optional collection modes (Phase-based)</p>
+
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="allow-audio"
+                checked={allowAudio}
+                onChange={(e) => setAllowAudio(e.target.checked)}
+                className="mt-1 rounded"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="allow-audio" className="cursor-pointer">
+                  Enable voice feedback uploads (Audio)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Adds voice-first feedback in Phase 1. Default is off.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="allow-video"
+                checked={allowVideo}
+                onChange={(e) => setAllowVideo(e.target.checked)}
+                className="mt-1 rounded"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="allow-video" className="cursor-pointer">
+                  Enable video feedback uploads (Video)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Phase 2 feature. Keep off until moderation + limits are ready.
+                </p>
+              </div>
             </div>
           </div>
 

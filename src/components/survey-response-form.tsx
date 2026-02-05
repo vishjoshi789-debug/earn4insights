@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup } from '@/components/ui/radio-group'
-import { Star } from 'lucide-react'
+import { Star, Mic, Square, RotateCcw } from 'lucide-react'
 import { submitSurveyResponse } from '@/server/surveys/responseService'
 import { trackSurveyStartAction, trackSurveyCompleteAction } from '@/app/survey/[surveyId]/actions'
 import type { Survey, SurveyQuestion } from '@/lib/survey-types'
@@ -26,11 +26,128 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [submittedResponseId, setSubmittedResponseId] = useState<string | null>(null)
+
+  // Phase 1 (audio): gated by per-survey flag
+  const allowAudio = Boolean(survey.settings?.allowAudio)
+  const [consentAudio, setConsentAudio] = useState(false)
+  const [audioError, setAudioError] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [audioMimeType, setAudioMimeType] = useState<string | null>(null)
+  const [audioDurationMs, setAudioDurationMs] = useState<number | null>(null)
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false)
+  const [audioUploadProgress, setAudioUploadProgress] = useState<number | null>(null)
+  const [voiceProcessingUi, setVoiceProcessingUi] = useState<{
+    processingStatus: string
+    audioStatus: string | null
+    audioErrorCode: string | null
+    videoStatus: string | null
+    videoErrorCode: string | null
+  } | null>(null)
+
+  // Phase 2 foundation (video): gated by per-survey flag
+  const allowVideo = Boolean(survey.settings?.allowVideo)
+  const [consentVideo, setConsentVideo] = useState(false)
+  const [videoError, setVideoError] = useState<string | null>(null)
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false)
+  const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [videoMimeType, setVideoMimeType] = useState<string | null>(null)
+  const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false)
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const chunksRef = useRef<BlobPart[]>([])
+  const recordingStartRef = useRef<number | null>(null)
+
+  const videoRecorderRef = useRef<MediaRecorder | null>(null)
+  const videoStreamRef = useRef<MediaStream | null>(null)
+  const videoChunksRef = useRef<BlobPart[]>([])
+  const videoRecordingStartRef = useRef<number | null>(null)
 
   // Track survey start when component mounts
   useEffect(() => {
     trackSurveyStartAction(survey.id).catch(console.error)
   }, [survey.id])
+
+  // Cleanup audio URL + stream on unmount
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl)
+      mediaRecorderRef.current?.stop?.()
+      mediaStreamRef.current?.getTracks()?.forEach(t => t.stop())
+
+      if (videoUrl) URL.revokeObjectURL(videoUrl)
+      videoRecorderRef.current?.stop?.()
+      videoStreamRef.current?.getTracks()?.forEach(t => t.stop())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // After submit, poll a minimal public status endpoint so consumers see non-blocking progress.
+  useEffect(() => {
+    if (!isSubmitted) return
+    if (!submittedResponseId) return
+
+    const shouldPollAudio = allowAudio && Boolean(audioBlob)
+    const shouldPollVideo = allowVideo && Boolean(videoBlob)
+    if (!shouldPollAudio && !shouldPollVideo) return
+
+    let cancelled = false
+    let interval: number | null = null
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/public/survey-responses/${submittedResponseId}/status`, {
+          method: 'GET',
+          cache: 'no-store',
+        })
+        if (!res.ok) return
+        const payload: any = await res.json().catch(() => null)
+        if (!payload?.success) return
+
+        const processingStatus = String(payload?.response?.processingStatus || 'processing')
+        const audioStatus = payload?.audio?.status ? String(payload.audio.status) : null
+        const audioErrorCode = payload?.audio?.errorCode ? String(payload.audio.errorCode) : null
+        const videoStatus = payload?.video?.status ? String(payload.video.status) : null
+        const videoErrorCode = payload?.video?.errorCode ? String(payload.video.errorCode) : null
+
+        if (!cancelled) {
+          setVoiceProcessingUi({
+            processingStatus,
+            audioStatus,
+            audioErrorCode,
+            videoStatus,
+            videoErrorCode,
+          })
+        }
+
+        const terminal =
+          processingStatus.toLowerCase() === 'ready' ||
+          processingStatus.toLowerCase() === 'failed' ||
+          (audioStatus && ['ready', 'failed', 'deleted'].includes(audioStatus.toLowerCase())) ||
+          (videoStatus && ['ready', 'failed', 'deleted'].includes(videoStatus.toLowerCase()))
+
+        if (terminal && interval !== null) {
+          window.clearInterval(interval)
+          interval = null
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    poll()
+    interval = window.setInterval(poll, 5000)
+
+    return () => {
+      cancelled = true
+      if (interval !== null) window.clearInterval(interval)
+    }
+  }, [isSubmitted, submittedResponseId, allowAudio, audioBlob, allowVideo, videoBlob])
 
   const handleAnswerChange = (questionId: string, value: string | number) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }))
@@ -49,21 +166,313 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
     return true
   }
 
+  const hasAnyTypedText = useMemo(() => {
+    // If any text answer is a non-empty string, treat this as mixed when audio is present
+    return Object.values(answers).some(v => typeof v === 'string' && v.trim().length > 0)
+  }, [answers])
+
+  const preferredAudioMimeType = useMemo(() => {
+    // Best-effort, feature-detected selection.
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/ogg',
+      'audio/mp4',
+    ]
+    if (typeof MediaRecorder === 'undefined') return null
+    for (const c of candidates) {
+      if (MediaRecorder.isTypeSupported?.(c)) return c
+    }
+    return null
+  }, [])
+
+  const preferredVideoMimeType = useMemo(() => {
+    const candidates = [
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9,opus',
+      'video/webm',
+      'video/mp4',
+    ]
+    if (typeof MediaRecorder === 'undefined') return null
+    for (const c of candidates) {
+      if (MediaRecorder.isTypeSupported?.(c)) return c
+    }
+    return null
+  }, [])
+
+  const resetAudio = () => {
+    setAudioError(null)
+    setAudioBlob(null)
+    setAudioMimeType(null)
+    setAudioDurationMs(null)
+    setAudioUploadProgress(null)
+    if (audioUrl) URL.revokeObjectURL(audioUrl)
+    setAudioUrl(null)
+  }
+
+  const resetVideo = () => {
+    setVideoError(null)
+    setVideoBlob(null)
+    setVideoMimeType(null)
+    setVideoDurationMs(null)
+    if (videoUrl) URL.revokeObjectURL(videoUrl)
+    setVideoUrl(null)
+  }
+
+  const stopRecording = () => {
+    try {
+      mediaRecorderRef.current?.stop()
+    } catch (e) {
+      // ignore
+    }
+    setIsRecording(false)
+    mediaStreamRef.current?.getTracks()?.forEach(t => t.stop())
+    mediaStreamRef.current = null
+  }
+
+  const stopVideoRecording = () => {
+    try {
+      videoRecorderRef.current?.stop()
+    } catch (e) {
+      // ignore
+    }
+    setIsRecordingVideo(false)
+    videoStreamRef.current?.getTracks()?.forEach(t => t.stop())
+    videoStreamRef.current = null
+  }
+
+  const startRecording = async () => {
+    setAudioError(null)
+
+    if (!consentAudio) {
+      setAudioError('Please provide consent to record and upload audio.')
+      return
+    }
+    if (isRecording) return
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setAudioError('Audio recording is not supported in this browser.')
+      return
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      setAudioError('Audio recording is not supported in this browser.')
+      return
+    }
+
+    // Reset previous recording
+    resetAudio()
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStreamRef.current = stream
+      chunksRef.current = []
+
+      const mr = new MediaRecorder(stream, preferredAudioMimeType ? { mimeType: preferredAudioMimeType } : undefined)
+      mediaRecorderRef.current = mr
+      recordingStartRef.current = Date.now()
+
+      mr.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data)
+        }
+      }
+
+      mr.onerror = () => {
+        setAudioError('Recording failed. Please try again.')
+        stopRecording()
+      }
+
+      mr.onstop = () => {
+        const mime = mr.mimeType || preferredAudioMimeType || 'audio/webm'
+        const blob = new Blob(chunksRef.current, { type: mime })
+        setAudioBlob(blob)
+        setAudioMimeType(mime)
+
+        const url = URL.createObjectURL(blob)
+        setAudioUrl(url)
+
+        if (recordingStartRef.current) {
+          setAudioDurationMs(Date.now() - recordingStartRef.current)
+        }
+        recordingStartRef.current = null
+      }
+
+      // Start with 1s timeslice so we get data periodically (helps memory / large blobs).
+      mr.start(1000)
+      setIsRecording(true)
+
+      // Hard limit for Phase 1 to keep it startup-friendly and safe.
+      window.setTimeout(() => {
+        if (mediaRecorderRef.current?.state === 'recording') stopRecording()
+      }, 60_000)
+    } catch (e) {
+      setAudioError('Microphone permission denied or unavailable.')
+      stopRecording()
+    }
+  }
+
+  const startVideoRecording = async () => {
+    setVideoError(null)
+
+    if (!consentVideo) {
+      setVideoError('Please provide consent to record and upload video.')
+      return
+    }
+    if (isRecordingVideo) return
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setVideoError('Video recording is not supported in this browser.')
+      return
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      setVideoError('Video recording is not supported in this browser.')
+      return
+    }
+
+    resetVideo()
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      videoStreamRef.current = stream
+      videoChunksRef.current = []
+
+      const mr = new MediaRecorder(stream, preferredVideoMimeType ? { mimeType: preferredVideoMimeType } : undefined)
+      videoRecorderRef.current = mr
+      videoRecordingStartRef.current = Date.now()
+
+      mr.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          videoChunksRef.current.push(event.data)
+        }
+      }
+
+      mr.onerror = () => {
+        setVideoError('Recording failed. Please try again.')
+        stopVideoRecording()
+      }
+
+      mr.onstop = () => {
+        const mime = mr.mimeType || preferredVideoMimeType || 'video/webm'
+        const blob = new Blob(videoChunksRef.current, { type: mime })
+        setVideoBlob(blob)
+        setVideoMimeType(mime)
+
+        const url = URL.createObjectURL(blob)
+        setVideoUrl(url)
+
+        if (videoRecordingStartRef.current) {
+          setVideoDurationMs(Date.now() - videoRecordingStartRef.current)
+        }
+        videoRecordingStartRef.current = null
+      }
+
+      mr.start(1000)
+      setIsRecordingVideo(true)
+
+      window.setTimeout(() => {
+        if (videoRecorderRef.current?.state === 'recording') stopVideoRecording()
+      }, 15_000)
+    } catch (e) {
+      setVideoError('Camera/microphone permission denied or unavailable.')
+      stopVideoRecording()
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!validateForm()) return
 
+    if (allowAudio && audioBlob && !consentAudio) {
+      setError('Please provide consent for audio before submitting.')
+      return
+    }
+    if (allowVideo && videoBlob && !consentVideo) {
+      setError('Please provide consent for video before submitting.')
+      return
+    }
+
     setIsSubmitting(true)
     setError(null)
 
     try {
-      await submitSurveyResponse(
+      const created = await submitSurveyResponse(
         survey.id,
         answers,
         userName || undefined,
         userEmail || undefined
       )
+      setSubmittedResponseId(created.id)
+
+      const modalityPrimary =
+        audioBlob && videoBlob ? 'mixed' :
+        videoBlob ? (hasAnyTypedText ? 'mixed' : 'video') :
+        audioBlob ? (hasAnyTypedText ? 'mixed' : 'audio') :
+        'text'
+
+      if (allowAudio && audioBlob) {
+        setIsUploadingAudio(true)
+        setAudioUploadProgress(null)
+
+        const fileExt = audioMimeType?.includes('mp4') ? 'mp4' : audioMimeType?.includes('ogg') ? 'ogg' : 'webm'
+        const file = new File([audioBlob], `voice.${fileExt}`, { type: audioMimeType || 'audio/webm' })
+
+        const formData = new FormData()
+        formData.append('surveyId', survey.id)
+        formData.append('responseId', created.id)
+        formData.append('consentAudio', 'true')
+        formData.append('mediaType', 'audio')
+        formData.append('modalityPrimary', modalityPrimary)
+        if (audioDurationMs !== null) {
+          formData.append('durationMs', String(audioDurationMs))
+        }
+        formData.append('file', file)
+
+        const uploadRes = await fetch('/api/uploads/feedback-media/server', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!uploadRes.ok) {
+          const payload = await uploadRes.json().catch(() => ({}))
+          throw new Error(payload?.error || 'Voice upload failed')
+        }
+
+        setIsUploadingAudio(false)
+        setAudioUploadProgress(null)
+      }
+
+      if (allowVideo && videoBlob) {
+        setIsUploadingVideo(true)
+
+        const fileExt =
+          videoMimeType?.includes('mp4') ? 'mp4' :
+          videoMimeType?.includes('quicktime') ? 'mov' :
+          'webm'
+        const file = new File([videoBlob], `video.${fileExt}`, { type: videoMimeType || 'video/webm' })
+
+        const formData = new FormData()
+        formData.append('surveyId', survey.id)
+        formData.append('responseId', created.id)
+        formData.append('consentVideo', 'true')
+        formData.append('mediaType', 'video')
+        formData.append('modalityPrimary', modalityPrimary)
+        if (videoDurationMs !== null) {
+          formData.append('durationMs', String(videoDurationMs))
+        }
+        formData.append('file', file)
+
+        const uploadRes = await fetch('/api/uploads/feedback-media/server', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!uploadRes.ok) {
+          const payload = await uploadRes.json().catch(() => ({}))
+          throw new Error(payload?.error || 'Video upload failed')
+        }
+
+        setIsUploadingVideo(false)
+      }
 
       // Track survey completion
       await trackSurveyCompleteAction(survey.id)
@@ -74,11 +483,36 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       console.error('Failed to submit response:', err)
       setError(errorMessage)
       setIsSubmitting(false)
+      setIsUploadingAudio(false)
+      setIsUploadingVideo(false)
     }
   }
 
   // Success state
   if (isSubmitted) {
+    const audioStatus = voiceProcessingUi?.audioStatus?.toLowerCase?.() || null
+    const processingStatus = voiceProcessingUi?.processingStatus?.toLowerCase?.() || null
+    const voiceLabel = (() => {
+      if (!allowAudio || !audioBlob) return null
+      if (isUploadingAudio) return 'Uploading voice feedback…'
+      if (audioStatus === 'ready' || processingStatus === 'ready') return 'Voice processed. Thank you!'
+      if (audioStatus === 'failed' || processingStatus === 'failed') return 'Voice processing failed (your rating/text is saved).'
+      if (audioStatus === 'uploaded') return 'Voice queued for processing…'
+      if (audioStatus === 'processing' || processingStatus === 'processing') return 'Processing voice feedback…'
+      return 'Voice queued for processing…'
+    })()
+
+    const videoStatus = voiceProcessingUi?.videoStatus?.toLowerCase?.() || null
+    const videoLabel = (() => {
+      if (!allowVideo || !videoBlob) return null
+      if (isUploadingVideo) return 'Uploading video feedback…'
+      if (videoStatus === 'ready' || processingStatus === 'ready') return 'Video processed. Thank you!'
+      if (videoStatus === 'failed' || processingStatus === 'failed') return 'Video processing failed (your rating/text is saved).'
+      if (videoStatus === 'uploaded') return 'Video queued for processing…'
+      if (videoStatus === 'processing' || processingStatus === 'processing') return 'Processing video feedback…'
+      return 'Video queued for processing…'
+    })()
+
     return (
       <Card>
         <CardContent className="py-12">
@@ -92,6 +526,36 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
             <p className="text-muted-foreground">
               Your response has been recorded successfully.
             </p>
+            {allowAudio && audioBlob && (
+              <p className="text-sm text-muted-foreground">
+                If you recorded voice feedback, it may take a minute to process. Your rating/text is already saved.
+              </p>
+            )}
+            {allowVideo && videoBlob && (
+              <p className="text-sm text-muted-foreground">
+                If you recorded video feedback, it may take a minute to process. Your rating/text is already saved.
+              </p>
+            )}
+            {voiceLabel && (
+              <div className="text-sm">
+                <p className="text-muted-foreground">{voiceLabel}</p>
+                {voiceProcessingUi?.audioErrorCode && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Code: {voiceProcessingUi.audioErrorCode}
+                  </p>
+                )}
+              </div>
+            )}
+            {videoLabel && (
+              <div className="text-sm">
+                <p className="text-muted-foreground">{videoLabel}</p>
+                {voiceProcessingUi?.videoErrorCode && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Code: {voiceProcessingUi.videoErrorCode}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -118,6 +582,173 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
               onChange={(value) => handleAnswerChange(question.id, value)}
             />
           ))}
+
+          {/* Voice feedback (Phase 1) */}
+          {allowAudio && (
+            <div className="space-y-3 pt-4 border-t">
+              <p className="text-sm font-medium">Voice feedback (optional)</p>
+
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="consent-audio"
+                  checked={consentAudio}
+                  onChange={(e) => setConsentAudio(e.target.checked)}
+                  className="mt-1 rounded"
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="consent-audio" className="cursor-pointer">
+                    I agree to share my voice recording for feedback analysis.
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    You can submit without voice. If you record, we’ll upload it securely.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {!isRecording ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={startRecording}
+                    disabled={isSubmitting || isUploadingAudio || !consentAudio}
+                  >
+                    <Mic className="w-4 h-4 mr-2" />
+                    Record
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={stopRecording}
+                    disabled={isSubmitting || isUploadingAudio}
+                  >
+                    <Square className="w-4 h-4 mr-2" />
+                    Stop
+                  </Button>
+                )}
+
+                {audioBlob && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={resetAudio}
+                    disabled={isSubmitting || isUploadingAudio}
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Re-record
+                  </Button>
+                )}
+              </div>
+
+              {audioUrl && (
+                <div className="space-y-2">
+                  <audio controls src={audioUrl} className="w-full" />
+                  <p className="text-xs text-muted-foreground">
+                    Ready to upload with your submission.
+                    {audioDurationMs ? ` (~${Math.round(audioDurationMs / 1000)}s)` : ''}
+                  </p>
+                </div>
+              )}
+
+              {isUploadingAudio && (
+                <p className="text-xs text-muted-foreground">
+                  Uploading voice feedback…
+                </p>
+              )}
+
+              {(audioError || (allowAudio && audioBlob && !consentAudio)) && (
+                <div className="p-3 bg-destructive/10 border border-destructive rounded-lg">
+                  <p className="text-sm text-destructive font-medium">
+                    {audioError || 'Please provide consent for audio.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Video feedback (Phase 2 foundation) */}
+          {allowVideo && (
+            <div className="space-y-3 pt-4 border-t">
+              <p className="text-sm font-medium">Video feedback (optional)</p>
+
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="consent-video"
+                  checked={consentVideo}
+                  onChange={(e) => setConsentVideo(e.target.checked)}
+                  className="mt-1 rounded"
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="consent-video" className="cursor-pointer">
+                    I agree to share my video recording for feedback review.
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    You can submit without video. If you record, we’ll upload it securely. (Max ~15s)
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {!isRecordingVideo ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={startVideoRecording}
+                    disabled={isSubmitting || isUploadingVideo || !consentVideo}
+                  >
+                    Record video
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={stopVideoRecording}
+                    disabled={isSubmitting || isUploadingVideo}
+                  >
+                    Stop
+                  </Button>
+                )}
+
+                {videoBlob && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={resetVideo}
+                    disabled={isSubmitting || isUploadingVideo}
+                  >
+                    Re-record
+                  </Button>
+                )}
+              </div>
+
+              {videoUrl && (
+                <div className="space-y-2">
+                  <video controls src={videoUrl} className="w-full rounded" />
+                  <p className="text-xs text-muted-foreground">
+                    Ready to upload with your submission.
+                    {videoDurationMs ? ` (~${Math.round(videoDurationMs / 1000)}s)` : ''}
+                  </p>
+                </div>
+              )}
+
+              {isUploadingVideo && (
+                <p className="text-xs text-muted-foreground">
+                  Uploading video feedback…
+                </p>
+              )}
+
+              {videoError && (
+                <div className="p-3 bg-destructive/10 border border-destructive rounded-lg">
+                  <p className="text-sm text-destructive font-medium">
+                    {videoError}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Optional user info */}
           {Object.keys(answers).length > 0 && (
@@ -157,11 +788,17 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
           {/* Submit Button */}
           <Button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isUploadingAudio || isUploadingVideo}
             className="w-full"
             size="lg"
           >
-            {isSubmitting ? 'Submitting...' : 'Submit Response'}
+            {isSubmitting
+              ? 'Submitting...'
+              : isUploadingAudio
+                ? 'Uploading voice…'
+                : isUploadingVideo
+                  ? 'Uploading video…'
+                  : 'Submit Response'}
           </Button>
         </form>
       </CardContent>

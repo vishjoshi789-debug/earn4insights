@@ -4,20 +4,21 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Download } from 'lucide-react'
 import { SurveyResponse } from '@/lib/survey-types'
-import { exportResponsesToCSV } from '@/server/surveys/responseService'
+import { exportResponsesToCSV, ExportResponsesFilters } from '@/server/surveys/responseService'
 
 type ExportResponsesButtonProps = {
   surveyId: string
   responses: SurveyResponse[]
+  filters?: ExportResponsesFilters
 }
 
-export default function ExportResponsesButton({ surveyId, responses }: ExportResponsesButtonProps) {
+export default function ExportResponsesButton({ surveyId, responses, filters }: ExportResponsesButtonProps) {
   const [isExporting, setIsExporting] = useState(false)
 
   const handleExport = async () => {
     setIsExporting(true)
     try {
-      const csv = await exportResponsesToCSV(surveyId)
+      const csv = await exportResponsesToCSV(surveyId, filters)
       
       // Create a blob and download
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })

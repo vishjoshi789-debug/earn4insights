@@ -66,6 +66,74 @@ export const surveyResponses = pgTable('survey_responses', {
   answers: jsonb('answers').notNull(),
   npsScore: integer('nps_score'),
   sentiment: text('sentiment'), // 'positive' | 'neutral' | 'negative'
+
+  // Multimodal + multilingual foundations (Phase 0)
+  modalityPrimary: text('modality_primary').default('text').notNull(), // 'text' | 'audio' | 'video' | 'mixed'
+  processingStatus: text('processing_status').default('ready').notNull(), // 'ready' | 'processing' | 'failed'
+
+  // Language + normalization (optional until Phase 1)
+  originalLanguage: text('original_language'), // e.g., 'en', 'hi', 'es'
+  languageConfidence: real('language_confidence'), // 0..1
+  normalizedText: text('normalized_text'), // translated/normalized text for analytics
+  normalizedLanguage: text('normalized_language'), // e.g., 'en'
+
+  // Transcript (optional; used for audio/video once enabled)
+  transcriptText: text('transcript_text'),
+  transcriptConfidence: real('transcript_confidence'), // 0..1
+
+  // Consent (explicit for audio/video)
+  consentAudio: boolean('consent_audio').default(false).notNull(),
+  consentVideo: boolean('consent_video').default(false).notNull(),
+  consentCapturedAt: timestamp('consent_captured_at'),
+
+  // Flexible metadata for future analytics/debugging
+  multimodalMetadata: jsonb('multimodal_metadata').$type<Record<string, any>>(),
+})
+
+// Generic media attachments (Phase 0)
+// - Works for both survey responses and product feedback
+// - ownerType: 'survey_response' | 'feedback'
+export const feedbackMedia = pgTable('feedback_media', {
+  id: uuid('id').defaultRandom().primaryKey(),
+
+  ownerType: text('owner_type').notNull(),
+  ownerId: text('owner_id').notNull(),
+
+  mediaType: text('media_type').notNull(), // 'audio' | 'video'
+  storageProvider: text('storage_provider').notNull(), // 'vercel_blob' | 's3' | ...
+  storageKey: text('storage_key').notNull(), // provider key/path
+  mimeType: text('mime_type'),
+  sizeBytes: integer('size_bytes'),
+  durationMs: integer('duration_ms'),
+
+  status: text('status').default('uploaded').notNull(), // 'uploaded' | 'processing' | 'ready' | 'failed' | 'deleted'
+  transcriptText: text('transcript_text'),
+  transcriptConfidence: real('transcript_confidence'),
+  originalLanguage: text('original_language'),
+  languageConfidence: real('language_confidence'),
+
+  errorCode: text('error_code'),
+  errorDetail: text('error_detail'),
+
+  // Phase 1.5 hardening
+  retryCount: integer('retry_count').default(0).notNull(),
+  lastAttemptAt: timestamp('last_attempt_at'),
+  lastErrorAt: timestamp('last_error_at'),
+
+  // Retention / cost controls (Phase 1.5)
+  deletedAt: timestamp('deleted_at'),
+  retentionReason: text('retention_reason'),
+
+  // Moderation / review (Phase 2 foundation)
+  // - null/undefined means "visible" (default)
+  // - 'hidden' hides from dashboard playback/exports
+  // - 'flagged' indicates needs review
+  moderationStatus: text('moderation_status'),
+  moderationNote: text('moderation_note'),
+  moderatedAt: timestamp('moderated_at'),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
 // Weekly rankings table
@@ -117,6 +185,23 @@ export const feedback = pgTable('feedback', {
   category: text('category'), // e.g., 'bug', 'feature-request', 'general'
   status: text('status').default('new').notNull(), // 'new' | 'reviewed' | 'addressed'
   createdAt: timestamp('created_at').defaultNow().notNull(),
+
+  // Multimodal + multilingual foundations (Phase 0)
+  modalityPrimary: text('modality_primary').default('text').notNull(), // 'text' | 'audio' | 'video' | 'mixed'
+  processingStatus: text('processing_status').default('ready').notNull(), // 'ready' | 'processing' | 'failed'
+
+  originalLanguage: text('original_language'),
+  languageConfidence: real('language_confidence'),
+  normalizedText: text('normalized_text'),
+  normalizedLanguage: text('normalized_language'),
+  transcriptText: text('transcript_text'),
+  transcriptConfidence: real('transcript_confidence'),
+
+  consentAudio: boolean('consent_audio').default(false).notNull(),
+  consentVideo: boolean('consent_video').default(false).notNull(),
+  consentCapturedAt: timestamp('consent_captured_at'),
+
+  multimodalMetadata: jsonb('multimodal_metadata').$type<Record<string, any>>(),
 })
 
 // User profiles table (for personalization)
@@ -319,6 +404,8 @@ export type SocialPost = typeof socialPosts.$inferSelect
 export type NewSocialPost = typeof socialPosts.$inferInsert
 export type Feedback = typeof feedback.$inferSelect
 export type NewFeedback = typeof feedback.$inferInsert
+export type FeedbackMedia = typeof feedbackMedia.$inferSelect
+export type NewFeedbackMedia = typeof feedbackMedia.$inferInsert
 export type UserProfile = typeof userProfiles.$inferSelect
 export type NewUserProfile = typeof userProfiles.$inferInsert
 export type UserEvent = typeof userEvents.$inferSelect

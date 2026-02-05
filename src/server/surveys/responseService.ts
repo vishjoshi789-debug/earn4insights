@@ -3,10 +3,12 @@
 import 'server-only'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
-import { createSurveyResponse } from '@/db/repositories/surveyRepository'
+import { createSurveyResponse, getResponsesBySurveyId, updateSurveyResponseById } from '@/db/repositories/surveyRepository'
 import { getSurveyById } from '@/db/repositories/surveyRepository'
 import type { SurveyResponse } from '@/lib/survey-types'
 import { sendSurveyResponseNotification } from '@/server/emailService'
+import { analyzeSentiment } from '@/server/sentimentService'
+import { normalizeTextForAnalytics } from '@/server/textNormalizationService'
 
 export async function submitSurveyResponse(
   surveyId: string,
@@ -33,6 +35,14 @@ export async function submitSurveyResponse(
     }
   }
 
+  // Extract typed text answers for multilingual normalization (Phase 1 completion)
+  const typedTextAnswers = survey.questions
+    .filter(q => q.type === 'text')
+    .map(q => answers[q.id])
+    .filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
+
+  const combinedText = typedTextAnswers.join('\n\n').trim()
+
   const response: SurveyResponse = {
     id: randomUUID(),
     surveyId,
@@ -41,6 +51,17 @@ export async function submitSurveyResponse(
     userEmail,
     answers,
     submittedAt: new Date().toISOString(),
+  }
+
+  if (combinedText) {
+    // Normalize all text feedback to a single language for analytics.
+    const normalized = await normalizeTextForAnalytics(combinedText)
+    response.originalLanguage = normalized.originalLanguage || undefined
+    response.normalizedLanguage = normalized.normalizedLanguage
+    response.normalizedText = normalized.normalizedText
+
+    const sentiment = await analyzeSentiment(normalized.normalizedText)
+    response.sentiment = sentiment.sentiment
   }
 
   await createSurveyResponse(response)
@@ -76,6 +97,21 @@ export async function submitSurveyResponse(
   return response
 }
 
+export async function markSurveyResponseAudioAttached(params: {
+  responseId: string
+  modalityPrimary: 'audio' | 'mixed'
+  consentCapturedAt: Date
+}) {
+  await updateSurveyResponseById(params.responseId, {
+    modalityPrimary: params.modalityPrimary,
+    consentAudio: true,
+    consentCapturedAt: params.consentCapturedAt,
+    processingStatus: 'ready',
+  })
+
+  revalidatePath('/dashboard/surveys')
+}
+
 // Calculate NPS score from responses
 export async function calculateNPS(surveyId: string): Promise<{
   score: number
@@ -94,8 +130,6 @@ export async function calculateNPS(surveyId: string): Promise<{
   if (!npsQuestion) {
     throw new Error('NPS rating question not found')
   }
-
-  const { getResponsesBySurveyId } = await import('@/lib/survey/responseStore')
   const responses = await getResponsesBySurveyId(surveyId)
 
   let promoters = 0
@@ -126,14 +160,61 @@ export async function calculateNPS(surveyId: string): Promise<{
 }
 
 // Export survey responses as CSV
-export async function exportResponsesToCSV(surveyId: string): Promise<string> {
+export type ExportResponsesFilters = {
+  dateFrom?: string
+  dateTo?: string
+  ratingMin?: string
+  ratingMax?: string
+  language?: string
+  modality?: string
+  sentiment?: string
+}
+
+export async function exportResponsesToCSV(
+  surveyId: string,
+  filters?: ExportResponsesFilters
+): Promise<string> {
   const survey = await getSurveyById(surveyId)
   if (!survey) {
     throw new Error('Survey not found')
   }
+  let responses = await getResponsesBySurveyId(surveyId)
 
-  const { getResponsesBySurveyId } = await import('@/lib/survey/responseStore')
-  const responses = await getResponsesBySurveyId(surveyId)
+  // Apply the same filters used by the dashboard table (best-effort)
+  if (filters?.dateFrom) {
+    responses = responses.filter(r => new Date(r.submittedAt) >= new Date(filters.dateFrom!))
+  }
+
+  if (filters?.dateTo) {
+    responses = responses.filter(r => new Date(r.submittedAt) <= new Date(filters.dateTo!))
+  }
+
+  if (filters?.ratingMin || filters?.ratingMax) {
+    const ratingQuestion = survey.questions.find(q => q.type === 'rating')
+    if (ratingQuestion) {
+      const min = filters.ratingMin ? Number(filters.ratingMin) : null
+      const max = filters.ratingMax ? Number(filters.ratingMax) : null
+      responses = responses.filter(r => {
+        const val = Number(r.answers[ratingQuestion.id])
+        if (Number.isNaN(val)) return false
+        if (min !== null && val < min) return false
+        if (max !== null && val > max) return false
+        return true
+      })
+    }
+  }
+
+  if (filters?.language) {
+    responses = responses.filter(r => (r.originalLanguage || 'und') === filters.language)
+  }
+
+  if (filters?.modality) {
+    responses = responses.filter(r => (r.modalityPrimary || 'text') === filters.modality)
+  }
+
+  if (filters?.sentiment) {
+    responses = responses.filter(r => r.sentiment === filters.sentiment)
+  }
 
   if (responses.length === 0) {
     return 'No responses to export'
