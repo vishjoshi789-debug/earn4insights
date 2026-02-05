@@ -146,6 +146,12 @@ export default async function SurveyDetailPage({ params }: PageProps) {
               </Link>
             </Button>
             <Button variant="outline" asChild>
+              <Link href={`/dashboard/surveys/${survey.id}/analytics`}>
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Analytics
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
               <Link href={`/dashboard/surveys/${survey.id}/embed`}>
                 <Code className="w-4 h-4 mr-2" />
                 Embed Code
