@@ -7,6 +7,7 @@ export interface ModalityMetrics {
   text: number
   audio: number
   video: number
+  image: number
   mixed: number
   total: number
 }
@@ -21,6 +22,7 @@ export interface SentimentMetrics {
     text: { positive: number; neutral: number; negative: number }
     audio: { positive: number; neutral: number; negative: number }
     video: { positive: number; neutral: number; negative: number }
+    image: { positive: number; neutral: number; negative: number }
   }
 }
 
@@ -49,6 +51,9 @@ export interface ProcessingMetrics {
     failed: number
     deleted: number
     successRate: number
+  }
+  image: {
+    total: number
   }
 }
 
@@ -94,10 +99,11 @@ export async function calculateMultimodalAnalytics(params: {
       if (modality === 'text') acc.text++
       else if (modality === 'audio') acc.audio++
       else if (modality === 'video') acc.video++
+      else if (modality === 'image') acc.image++
       else if (modality === 'mixed') acc.mixed++
       return acc
     },
-    { text: 0, audio: 0, video: 0, mixed: 0 }
+    { text: 0, audio: 0, video: 0, image: 0, mixed: 0 }
   )
 
   const modalityMetrics: ModalityMetrics = {
@@ -116,16 +122,19 @@ export async function calculateMultimodalAnalytics(params: {
         if (modality === 'text') acc.byModality.text.positive++
         else if (modality === 'audio') acc.byModality.audio.positive++
         else if (modality === 'video') acc.byModality.video.positive++
+        else if (modality === 'image') acc.byModality.image.positive++
       } else if (sentiment === 'neutral') {
         acc.neutral++
         if (modality === 'text') acc.byModality.text.neutral++
         else if (modality === 'audio') acc.byModality.audio.neutral++
         else if (modality === 'video') acc.byModality.video.neutral++
+        else if (modality === 'image') acc.byModality.image.neutral++
       } else if (sentiment === 'negative') {
         acc.negative++
         if (modality === 'text') acc.byModality.text.negative++
         else if (modality === 'audio') acc.byModality.audio.negative++
         else if (modality === 'video') acc.byModality.video.negative++
+        else if (modality === 'image') acc.byModality.image.negative++
       } else {
         acc.unknown++
       }
@@ -140,6 +149,7 @@ export async function calculateMultimodalAnalytics(params: {
         text: { positive: 0, neutral: 0, negative: 0 },
         audio: { positive: 0, neutral: 0, negative: 0 },
         video: { positive: 0, neutral: 0, negative: 0 },
+        image: { positive: 0, neutral: 0, negative: 0 },
       },
     }
   )
@@ -196,6 +206,12 @@ export async function calculateMultimodalAnalytics(params: {
 
     audioMediaList = mediaList.filter((m) => m.mediaType === 'audio')
     videoMediaList = mediaList.filter((m) => m.mediaType === 'video')
+    
+    const imageMediaList = mediaList.filter((m) => m.mediaType === 'image')
+    
+    processingMetrics.image = {
+      total: imageMediaList.length,
+    }
   }
 
   const calculateStatusCounts = (mediaList: Array<{ status: string | null }>) => {

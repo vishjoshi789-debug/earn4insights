@@ -92,6 +92,7 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
 
   const audioMedia = media.filter(m => String((m as any).mediaType) === 'audio')
   const videoMedia = media.filter(m => String((m as any).mediaType) === 'video')
+  const imageMedia = media.filter(m => String((m as any).mediaType) === 'image')
 
   const audioCounts = audioMedia.reduce<Record<string, number>>((acc, row) => {
     const s = String((row as any).status || '').toLowerCase() || 'unknown'
@@ -183,6 +184,26 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
       retryCount: typeof (row as any).retryCount === 'number' ? (row as any).retryCount : null,
       lastAttemptAt: (row as any).lastAttemptAt ? new Date((row as any).lastAttemptAt).toISOString() : null,
       lastErrorAt: (row as any).lastErrorAt ? new Date((row as any).lastErrorAt).toISOString() : null,
+      moderationStatus: (row as any).moderationStatus ? String((row as any).moderationStatus) : null,
+    })
+    acc[row.ownerId] = list
+    return acc
+  }, {})
+
+  const imageMediaByResponseId = media.reduce<Record<string, Array<{
+    id: string
+    storageKey: string
+    mimeType: string | null
+    sizeBytes: number | null
+    moderationStatus: string | null
+  }>>>((acc, row) => {
+    if (String((row as any).mediaType) !== 'image') return acc
+    const list = acc[row.ownerId] || []
+    list.push({
+      id: String(row.id),
+      storageKey: String((row as any).storageKey || ''),
+      mimeType: (row as any).mimeType ?? null,
+      sizeBytes: typeof (row as any).sizeBytes === 'number' ? (row as any).sizeBytes : null,
       moderationStatus: (row as any).moderationStatus ? String((row as any).moderationStatus) : null,
     })
     acc[row.ownerId] = list
@@ -606,6 +627,7 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
             survey={survey}
             audioMediaByResponseId={audioMediaByResponseId}
             videoMediaByResponseId={videoMediaByResponseId}
+            imageMediaByResponseId={imageMediaByResponseId}
           />
         </CardContent>
       </Card>

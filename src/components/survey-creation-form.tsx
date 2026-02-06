@@ -26,6 +26,7 @@ export default function SurveyCreationForm({ productId }: SurveyCreationFormProp
   const [questions, setQuestions] = useState<Omit<SurveyQuestion, 'id'>[]>([])
   const [allowAudio, setAllowAudio] = useState(false)
   const [allowVideo, setAllowVideo] = useState(false)
+  const [allowImages, setAllowImages] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -258,6 +259,24 @@ export default function SurveyCreationForm({ productId }: SurveyCreationFormProp
                 </Label>
                 <p className="text-xs text-muted-foreground">
                   Phase 2 feature. Keep off until moderation + limits are ready.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="allow-images"
+                checked={allowImages}
+                onChange={(e) => setAllowImages(e.target.checked)}
+                className="mt-1 rounded"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="allow-images" className="cursor-pointer">
+                  Enable image feedback uploads (Images)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Phase 3.5 feature. Allow users to upload photos (proof of purchase, defects, etc.). Max 3 images, 5MB each.
                 </p>
               </div>
             </div>

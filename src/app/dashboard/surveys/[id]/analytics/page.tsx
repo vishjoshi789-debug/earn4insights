@@ -65,7 +65,7 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps)
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Responses</CardTitle>
@@ -123,6 +123,26 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps)
             <p className="text-xs text-muted-foreground mt-1">
               {analytics.totalResponses > 0
                 ? ((analytics.modalityMetrics.video / analytics.totalResponses) * 100).toFixed(1)
+                : 0}
+              % of total
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Image Feedback
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{analytics.modalityMetrics.image}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {analytics.totalResponses > 0
+                ? ((analytics.modalityMetrics.image / analytics.totalResponses) * 100).toFixed(1)
                 : 0}
               % of total
             </p>

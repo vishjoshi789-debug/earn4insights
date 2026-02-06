@@ -4,6 +4,7 @@ import { getSurveyById, updateSurveyResponseById } from '@/db/repositories/surve
 import { upsertFeedbackMedia } from '@/server/uploads/feedbackMediaRepo'
 
 const MAX_BYTES = 4 * 1024 * 1024 // stay safely under Vercel 4.5MB limit
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5MB for images
 
 const ALLOWED_AUDIO_CONTENT_TYPES = new Set([
   'audio/webm',
@@ -23,6 +24,13 @@ const ALLOWED_VIDEO_CONTENT_TYPES = new Set([
   'video/quicktime',
 ])
 
+const ALLOWED_IMAGE_CONTENT_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+])
+
 const MAX_VIDEO_DURATION_MS = 15_000
 
 function asString(value: FormDataEntryValue | null): string | null {
@@ -39,7 +47,7 @@ function asInt(value: FormDataEntryValue | null): number | null {
 }
 
 /**
- * Server-side upload for voice feedback.
+ * Server-side upload for multimodal feedback (audio, video, images).
  *
  * Note: Vercel Blob is "unlisted by URL" (URLs are public but hard to guess when random suffix is used).
  * This endpoint lets us enforce size/type checks and store references server-side.
@@ -50,18 +58,20 @@ export async function POST(request: Request) {
 
     const surveyId = asString(form.get('surveyId'))
     const responseId = asString(form.get('responseId'))
-    const mediaType = (asString(form.get('mediaType')) || 'audio') as 'audio' | 'video'
+    const mediaType = (asString(form.get('mediaType')) || 'audio') as 'audio' | 'video' | 'image'
     const consentAudio = asString(form.get('consentAudio')) === 'true'
     const consentVideo = asString(form.get('consentVideo')) === 'true'
+    const consentImages = asString(form.get('consentImages')) === 'true'
     const modalityPrimary = asString(form.get('modalityPrimary')) || 'audio'
     const durationMs = asInt(form.get('durationMs'))
+    const imageIndex = asInt(form.get('imageIndex')) || 0
     const file = form.get('file')
 
     if (!surveyId || !responseId) {
       return NextResponse.json({ error: 'surveyId and responseId are required' }, { status: 400 })
     }
 
-    if (mediaType !== 'audio' && mediaType !== 'video') {
+    if (mediaType !== 'audio' && mediaType !== 'video' && mediaType !== 'image') {
       return NextResponse.json({ error: 'Invalid mediaType' }, { status: 400 })
     }
 
@@ -71,6 +81,9 @@ export async function POST(request: Request) {
     if (mediaType === 'video' && !consentVideo) {
       return NextResponse.json({ error: 'Video consent is required' }, { status: 400 })
     }
+    if (mediaType === 'image' && !consentImages) {
+      return NextResponse.json({ error: 'Image consent is required' }, { status: 400 })
+    }
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'file is required' }, { status: 400 })
@@ -79,9 +92,12 @@ export async function POST(request: Request) {
     if (file.size <= 0) {
       return NextResponse.json({ error: 'Empty file' }, { status: 400 })
     }
-    if (file.size > MAX_BYTES) {
+
+    // Different size limits for images
+    const maxSize = mediaType === 'image' ? MAX_IMAGE_BYTES : MAX_BYTES
+    if (file.size > maxSize) {
       return NextResponse.json(
-        { error: `File too large (max ${MAX_BYTES} bytes)` },
+        { error: `File too large (max ${maxSize} bytes)` },
         { status: 413 }
       )
     }
@@ -91,6 +107,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Unsupported content type: ${contentType}` }, { status: 415 })
     }
     if (mediaType === 'video' && !ALLOWED_VIDEO_CONTENT_TYPES.has(contentType)) {
+      return NextResponse.json({ error: `Unsupported content type: ${contentType}` }, { status: 415 })
+    }
+    if (mediaType === 'image' && !ALLOWED_IMAGE_CONTENT_TYPES.has(contentType)) {
       return NextResponse.json({ error: `Unsupported content type: ${contentType}` }, { status: 415 })
     }
 
@@ -104,18 +123,26 @@ export async function POST(request: Request) {
     if (mediaType === 'video' && !survey.settings?.allowVideo) {
       return NextResponse.json({ error: 'Video uploads are not enabled for this survey' }, { status: 403 })
     }
+    if (mediaType === 'image' && !survey.settings?.allowImages) {
+      return NextResponse.json({ error: 'Image uploads are not enabled for this survey' }, { status: 403 })
+    }
 
     if (mediaType === 'video' && typeof durationMs === 'number' && durationMs > MAX_VIDEO_DURATION_MS) {
       return NextResponse.json({ error: `Video too long (max ${MAX_VIDEO_DURATION_MS}ms)` }, { status: 413 })
     }
 
     const safeExt =
+      mediaType === 'image' ? (
+        contentType.includes('png') ? 'png' :
+        contentType.includes('webp') ? 'webp' :
+        'jpg'
+      ) :
       contentType.includes('mp4') ? 'mp4' :
       contentType.includes('quicktime') ? 'mov' :
       contentType.includes('ogg') ? 'ogg' :
       'webm'
 
-    const kind = mediaType === 'video' ? 'video' : 'voice'
+    const kind = mediaType === 'video' ? 'video' : mediaType === 'image' ? `image-${imageIndex}` : 'voice'
     const pathname = `feedback-media/${surveyId}/${responseId}/${kind}.${safeExt}`
 
     const blob = await put(pathname, file, {
@@ -138,19 +165,22 @@ export async function POST(request: Request) {
     if (mediaType === 'audio') {
       await updateSurveyResponseById(responseId, {
         modalityPrimary,
-        // Lifecycle fix (Phase 1.5): once audio is uploaded, the response is "processing"
-        // until the STT pipeline completes (cron flips to ready/failed).
         processingStatus: 'processing',
         consentAudio: true,
         consentCapturedAt: new Date(),
       })
-    } else {
+    } else if (mediaType === 'video') {
       await updateSurveyResponseById(responseId, {
         modalityPrimary,
-        // Phase 2: once video is uploaded, the response is "processing"
-        // until the STT pipeline completes (cron flips to ready/failed).
         processingStatus: 'processing',
         consentVideo: true,
+        consentCapturedAt: new Date(),
+      })
+    } else if (mediaType === 'image') {
+      // Images don't need processing (no STT), but update modality if this is the first media
+      await updateSurveyResponseById(responseId, {
+        modalityPrimary: modalityPrimary || 'mixed',
+        consentImages: true,
         consentCapturedAt: new Date(),
       })
     }

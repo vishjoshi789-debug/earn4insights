@@ -81,9 +81,10 @@ export const surveyResponses = pgTable('survey_responses', {
   transcriptText: text('transcript_text'),
   transcriptConfidence: real('transcript_confidence'), // 0..1
 
-  // Consent (explicit for audio/video)
+  // Consent (explicit for audio/video/images)
   consentAudio: boolean('consent_audio').default(false).notNull(),
   consentVideo: boolean('consent_video').default(false).notNull(),
+  consentImages: boolean('consent_images').default(false).notNull(),
   consentCapturedAt: timestamp('consent_captured_at'),
 
   // Flexible metadata for future analytics/debugging

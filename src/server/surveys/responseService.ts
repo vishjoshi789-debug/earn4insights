@@ -220,14 +220,30 @@ export async function exportResponsesToCSV(
     return 'No responses to export'
   }
 
-  // Build CSV headers
+  // Build CSV headers (including multimodal/multilingual fields)
   const headers = [
     'Response ID',
     'Submitted At',
     'User Name',
     'User Email',
     ...survey.questions.map(q => q.question),
+    'Modality',
+    'Original Language',
+    'Normalized Language',
+    'Normalized Text',
+    'Transcript',
+    'Sentiment',
+    'Processing Status',
   ]
+
+  // Helper function to escape CSV fields
+  const escapeCSVField = (value: string | undefined | null): string => {
+    if (!value) return ''
+    const str = String(value)
+    // Escape quotes and wrap in quotes if contains comma/newline/quote
+    const escaped = str.replace(/"/g, '""')
+    return escaped.includes(',') || escaped.includes('\n') || escaped.includes('"') ? `"${escaped}"` : escaped
+  }
 
   // Build CSV rows
   const rows = responses.map(response => {
@@ -239,13 +255,15 @@ export async function exportResponsesToCSV(
       ...survey.questions.map(q => {
         const answer = response.answers[q.id]
         if (answer === undefined || answer === null) return ''
-        if (typeof answer === 'string') {
-          // Escape quotes and wrap in quotes if contains comma/newline
-          const escaped = answer.replace(/"/g, '""')
-          return escaped.includes(',') || escaped.includes('\n') ? `"${escaped}"` : escaped
-        }
-        return String(answer)
+        return escapeCSVField(String(answer))
       }),
+      response.modalityPrimary || 'text',
+      response.originalLanguage || '',
+      response.normalizedLanguage || '',
+      escapeCSVField(response.normalizedText),
+      escapeCSVField(response.transcriptText),
+      response.sentiment || '',
+      response.processingStatus || '',
     ]
   })
 

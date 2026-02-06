@@ -48,6 +48,13 @@ type ResponsesTableProps = {
     lastErrorAt?: string | null
     moderationStatus?: string | null
   }>>
+  imageMediaByResponseId?: Record<string, Array<{
+    id: string
+    storageKey: string
+    mimeType: string | null
+    sizeBytes: number | null
+    moderationStatus: string | null
+  }>>
 }
 
 function ReviewOverrideEditor(props: {
@@ -303,6 +310,9 @@ export default function ResponsesTable({ responses, survey, audioMediaByResponse
           firstVideo?.transcriptText ||
           ((response.modalityPrimary || '').toLowerCase() === 'video' ? (response.transcriptText || '') : '') ||
           ''
+
+        const imageItems = imageMediaByResponseId?.[response.id] || []
+        const hasImages = imageItems.length > 0
         
         let category = null
         if (survey.type === 'nps' && rating !== null) {
@@ -340,6 +350,13 @@ export default function ResponsesTable({ responses, survey, audioMediaByResponse
 
                   {/* Video processing badge */}
                   {firstVideo?.status && getProcessingBadge(firstVideo.status, 'Video')}
+
+                  {/* Images badge */}
+                  {hasImages && (
+                    <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
+                      {imageItems.length} image{imageItems.length > 1 ? 's' : ''}
+                    </Badge>
+                  )}
                   
                   {/* Timestamp */}
                   <span className="text-sm text-muted-foreground">
@@ -726,6 +743,42 @@ export default function ResponsesTable({ responses, survey, audioMediaByResponse
                       </div>
                     )}
 
+                    {/* Image feedback gallery */}
+                    {hasImages && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Image feedback ({imageItems.length})</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {imageItems.map((img) => (
+                            <div key={img.id} className="relative group">
+                              <a
+                                href={`/api/dashboard/feedback-media/${img.id}/download`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block"
+                              >
+                                <img
+                                  src={`/api/dashboard/feedback-media/${img.id}/download`}
+                                  alt="Feedback image"
+                                  className="w-full h-24 object-cover rounded border hover:opacity-80 transition-opacity"
+                                />
+                              </a>
+                              {img.moderationStatus && (
+                                <Badge
+                                  variant="outline"
+                                  className="absolute top-1 right-1 text-xs bg-background/90"
+                                >
+                                  {img.moderationStatus}
+                                </Badge>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {img.sizeBytes ? `${(img.sizeBytes / 1024).toFixed(0)} KB` : 'Unknown size'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {survey.questions.map((question) => {
                       const answer = response.answers[question.id]
                       if (!answer) return null
@@ -759,6 +812,10 @@ export default function ResponsesTable({ responses, survey, audioMediaByResponse
           </Card>
         )
       })}
+    </div>
+  )
+}
+)}
     </div>
   )
 }

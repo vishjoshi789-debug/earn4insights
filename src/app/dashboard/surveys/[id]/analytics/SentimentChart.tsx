@@ -39,6 +39,12 @@ export default function SentimentChart({ metrics }: Props) {
       neutral: metrics.byModality.video.neutral,
       negative: metrics.byModality.video.negative,
     },
+    {
+      modality: 'Image',
+      positive: metrics.byModality.image.positive,
+      neutral: metrics.byModality.image.neutral,
+      negative: metrics.byModality.image.negative,
+    },
   ].filter((item) => item.positive + item.neutral + item.negative > 0)
 
   if (metrics.total === 0) {

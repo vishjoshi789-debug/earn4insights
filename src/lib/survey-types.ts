@@ -18,10 +18,11 @@ export type SurveyType = 'nps' | 'csat' | 'custom'
 export type SurveySettings = {
   /**
    * Phase 0 feature flags (default off).
-   * These control whether public survey pages are allowed to upload audio/video.
+   * These control whether public survey pages are allowed to upload media.
    */
   allowAudio?: boolean
   allowVideo?: boolean
+  allowImages?: boolean
 
   /**
    * Reserved for Phase 1+ (limits, retention, etc.)

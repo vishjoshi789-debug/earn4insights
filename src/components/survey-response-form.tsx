@@ -58,6 +58,16 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
   const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
   const [isUploadingVideo, setIsUploadingVideo] = useState(false)
 
+  // Phase 3.5 (images): gated by per-survey flag
+  const allowImages = Boolean(survey.settings?.allowImages)
+  const [consentImages, setConsentImages] = useState(false)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
+  const [imageError, setImageError] = useState<string | null>(null)
+  const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const MAX_IMAGES = 3
+  const MAX_IMAGE_SIZE_MB = 5
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<BlobPart[]>([])
@@ -83,6 +93,8 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       if (videoUrl) URL.revokeObjectURL(videoUrl)
       videoRecorderRef.current?.stop?.()
       videoStreamRef.current?.getTracks()?.forEach(t => t.stop())
+
+      imagePreviewUrls.forEach(url => URL.revokeObjectURL(url))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -390,6 +402,10 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       setError('Please provide consent for video before submitting.')
       return
     }
+    if (allowImages && imageFiles.length > 0 && !consentImages) {
+      setError('Please provide consent for images before submitting.')
+      return
+    }
 
     setIsSubmitting(true)
     setError(null)
@@ -472,7 +488,43 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
         }
 
         setIsUploadingVideo(false)
+      } catch (err) {
+        console.error('Video upload error:', err)
+        setIsUploadingVideo(false)
       }
+    }
+
+    // Upload images if present (Phase 3.5)
+    if (imageFiles.length > 0) {
+      setIsUploadingImages(true)
+      try {
+        for (let i = 0; i < imageFiles.length; i++) {
+          const file = imageFiles[i]
+          const formData = new FormData()
+          formData.append('surveyId', survey.id)
+          formData.append('responseId', created.id)
+          formData.append('consentImages', 'true')
+          formData.append('mediaType', 'image')
+          formData.append('imageIndex', String(i))
+          formData.append('file', file)
+
+          const uploadRes = await fetch('/api/uploads/feedback-media/server', {
+            method: 'POST',
+            body: formData,
+          })
+
+          if (!uploadRes.ok) {
+            const payload = await uploadRes.json().catch(() => ({}))
+            throw new Error(payload?.error || `Image ${i + 1} upload failed`)
+          }
+        }
+
+        setIsUploadingImages(false)
+      } catch (err) {
+        console.error('Image upload error:', err)
+        setIsUploadingImages(false)
+      }
+    }
 
       // Track survey completion
       await trackSurveyCompleteAction(survey.id)
@@ -485,6 +537,7 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       setIsSubmitting(false)
       setIsUploadingAudio(false)
       setIsUploadingVideo(false)
+      setIsUploadingImages(false)
     }
   }
 
@@ -747,6 +800,94 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Phase 3.5: Image Feedback (optional, gated by allowImages) */}
+          {allowImages && (
+            <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="consent-images"
+                  checked={consentImages}
+                  onChange={(e) => setConsentImages(e.target.checked)}
+                  className="mt-1 rounded"
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="consent-images" className="cursor-pointer">
+                    I agree to share my images for feedback review.
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Upload photos (product defects, receipts, etc.). Max {MAX_IMAGES} images, {MAX_IMAGE_SIZE_MB}MB each.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  id="image-upload"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  multiple
+                  onChange={handleImageSelect}
+                  disabled={isSubmitting || isUploadingImages || !consentImages || imageFiles.length >= MAX_IMAGES}
+                  className="hidden"
+                />
+                
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => document.getElementById('image-upload')?.click()}
+                  disabled={isSubmitting || isUploadingImages || !consentImages || imageFiles.length >= MAX_IMAGES}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  {imageFiles.length > 0 ? `Add more images (${imageFiles.length}/${MAX_IMAGES})` : 'Upload images'}
+                </Button>
+
+                {imagePreviewUrls.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {imagePreviewUrls.map((url, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={url}
+                          alt={`Preview ${index + 1}`}
+                          className="w-full h-24 object-cover rounded border"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(index)}
+                          disabled={isSubmitting || isUploadingImages}
+                          className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                        <p className="text-xs text-center mt-1 text-muted-foreground truncate">
+                          {imageFiles[index]?.name}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {isUploadingImages && (
+                  <p className="text-xs text-muted-foreground">
+                    Uploading images…
+                  </p>
+                )}
+
+                {imageError && (
+                  <div className="p-3 bg-destructive/10 border border-destructive rounded-lg">
+                    <p className="text-sm text-destructive font-medium">
+                      {imageError}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

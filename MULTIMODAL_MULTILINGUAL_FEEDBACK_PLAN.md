@@ -380,6 +380,48 @@ Create an “analysis text”:
 
 ## 🧾 Implementation Log (append updates here)
 
+### 2026-02-06: Phase 3.5 — Image Feedback (COMPLETE)
+
+**Goal**: Enable consumers to submit images alongside text/audio/video feedback (product defects, receipts, packaging, etc.).
+
+**Implementation**:
+- ✅ Added `allowImages` feature flag to `SurveySettings` type and DB schema
+- ✅ Extended survey creation form with "Enable image feedback uploads" checkbox
+- ✅ Added `consentImages` field to `survey_responses` and `feedback` tables
+- ✅ Created migration `0008_add_consent_images.sql`
+- ✅ Built multi-image upload UI (max 3 images, 5MB each) with preview/remove functionality
+  - File: `src/components/survey-response-form.tsx`
+- ✅ Extended `/api/uploads/feedback-media/server` to handle `mediaType=image`
+  - Validates MIME types: `image/jpeg`, `image/jpg`, `image/png`, `image/webp`
+  - Enforces 5MB size limit per image
+  - Stores to Vercel Blob with unique filenames (`image-0`, `image-1`, etc.)
+- ✅ Added image gallery display in dashboard responses table with thumbnails and download links
+  - Files: `src/app/dashboard/surveys/[id]/responses/page.tsx`, `ResponsesTable.tsx`
+- ✅ Extended analytics service to include `image` modality metrics
+  - File: `src/server/surveys/analyticsService.ts`
+- ✅ Updated analytics dashboard overview cards (5 cards now: Text, Audio, Video, Image, Total)
+  - Files: `ModalityChart.tsx`, `SentimentChart.tsx`, `ProcessingMetricsCard.tsx`, `page.tsx`
+- ✅ **Enhanced CSV export** with all multimodal fields:
+  - Added columns: Modality, Original Language, Normalized Language, Normalized Text, Transcript, Sentiment, Processing Status
+  - File: `src/server/surveys/responseService.ts`
+- ✅ **Created email digest service** for weekly analytics summaries
+  - Service: `sendSurveyDigestEmail()` generates beautiful HTML digest with all metrics
+  - File: `src/server/surveys/digestService.ts`
+  - Includes: response counts, modality breakdown, sentiment analysis, top languages, processing status
+  - Ready for cron integration
+
+**Key Decisions**:
+- Images don't require processing (no STT/translation) → simpler pipeline
+- Multiple images per response (up to 3) for comprehensive visual feedback
+- Same consent/moderation model as audio/video
+- Images treated as `modalityPrimary='mixed'` when combined with text answers
+- CSV export now provides complete data for offline analysis
+- Email digests can be triggered manually or via cron (future: weekly auto-send)
+
+**Status**: ✅ Complete. Images, enhanced exports, and digest emails fully integrated.
+
+---
+
 ### 2026-02-04
 - Created this living spec file.
 - **Phase 0 (partial)**: Added DB schema foundations for multimodal + multilingual feedback (no UX changes).

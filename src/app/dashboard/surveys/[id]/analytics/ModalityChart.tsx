@@ -11,6 +11,7 @@ const COLORS = {
   text: '#3b82f6', // blue
   audio: '#8b5cf6', // purple
   video: '#ec4899', // pink
+  image: '#f59e0b', // amber
   mixed: '#10b981', // green
 }
 
@@ -19,6 +20,7 @@ export default function ModalityChart({ metrics }: Props) {
     { name: 'Text', value: metrics.text, color: COLORS.text },
     { name: 'Audio', value: metrics.audio, color: COLORS.audio },
     { name: 'Video', value: metrics.video, color: COLORS.video },
+    { name: 'Image', value: metrics.image, color: COLORS.image },
     { name: 'Mixed', value: metrics.mixed, color: COLORS.mixed },
   ].filter((item) => item.value > 0)
 
