@@ -380,6 +380,71 @@ Create an “analysis text”:
 
 ## 🧾 Implementation Log (append updates here)
 
+### 2026-02-06: Phase 4 — Unified Analytics Foundation (IN PROGRESS)
+
+**Goal**: Aggregate feedback from multiple sources (surveys + direct feedback) into unified analytics for brands.
+
+**Milestone 1: Unified Analytics Service** ✅
+- Created `src/server/analytics/unifiedAnalyticsService.ts`
+- **Architecture Pattern**: Source abstraction layer (inspired by Intercom, Amplitude, Zendesk)
+- **Interface-based design**: `IFeedbackSource` for extensibility
+- **Two sources implemented**:
+  - `SurveyResponseSource` - aggregates survey_responses table
+  - `DirectFeedbackSource` - aggregates feedback table
+- **Unified data model**: `UnifiedFeedbackItem` works across all sources
+- **Performance optimized**: SQL FILTER clauses, parallel queries, efficient aggregations
+- **Type-safe**: Full TypeScript with comprehensive interfaces
+- **Extensible**: Easy to add ReviewSource, SocialListeningSource later
+
+**Key Features**:
+- `getUnifiedFeedback(productId)` - fetch all feedback for a product
+- `getUnifiedMetrics(productId)` - calculate aggregated metrics
+- `getUnifiedFeedbackForBrand(productIds[])` - brand-level aggregation
+- Supports filtering by: date, sentiment, modality, language, rating, processing status
+- Returns unified metrics: volume by source, sentiment distribution, modality breakdown
+
+**Milestone 2: Tier System** ✅
+- Created `brand_subscriptions` table schema with migration `0009`
+- Created `src/server/subscriptions/subscriptionService.ts`
+- **Tier structure**: FREE, PRO, ENTERPRISE with clear feature matrix
+- **FREE tier**: Aggregate analytics, trends, max 1 product
+- **PRO tier**: Individual feedback, media playback, CSV export, max 10 products
+- **ENTERPRISE tier**: API access, unlimited products, webhooks
+- Created `src/server/auth/tierMiddleware.ts` for route protection
+- **Hard checks**: `requireTier()`, `requirePaidTier()`, `requireFeature()` (throws errors)
+- **Soft checks**: `checkFeatureAccess()`, `checkProductLimit()` (returns boolean)
+- **Usage limits**: Product count, export count tracking
+- **Upgrade CTAs**: User-friendly messages for each restricted feature
+
+**Milestone 3: Dashboard Integration** ✅
+- Created `/dashboard/analytics/unified` - new unified analytics page
+- **Components**:
+  - `page.tsx` - Main dashboard with tier-based visibility
+  - `UnifiedFeedbackList.tsx` - Client component for displaying feedback items
+  - `UpgradePrompt.tsx` - Beautiful upgrade CTA for restricted features
+- **FREE tier UX**: Shows aggregate metrics + upgrade prompts
+- **PRO tier UX**: Full individual feedback access with media
+- **Features**:
+  - Overview cards (total, by source, sentiment)
+  - Modality breakdown with icons
+  - Individual feedback list (PRO only)
+  - Source badges (survey vs feedback)
+  - Sentiment indicators with emojis
+  - Media attachment indicators
+  - User information display
+- Added navigation link in DashboardShell sidebar
+- **Non-breaking**: Existing dashboards continue working
+
+**Architecture Highlights**:
+- ✅ Single source of truth for subscription features
+- ✅ Graceful degradation (free → pro → enterprise)
+- ✅ User-friendly upgrade messaging
+- ✅ Extensible for future sources (reviews, social)
+
+**Status**: ✅ Phase 4 COMPLETE - Ready to commit and deploy
+
+---
+
 ### 2026-02-06: Phase 3.5 — Image Feedback (COMPLETE)
 
 **Goal**: Enable consumers to submit images alongside text/audio/video feedback (product defects, receipts, packaging, etc.).

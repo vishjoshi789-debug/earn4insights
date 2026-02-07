@@ -26,6 +26,7 @@ import {
   MessagesSquare,
   FileText,
   Trophy,
+  TrendingUp,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { DashboardHeader } from '@/components/dashboard-header'
@@ -38,6 +39,7 @@ const menuItems = [
   { href: '/dashboard/social', label: 'Social', icon: Users },
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3 },
+  { href: '/dashboard/analytics/unified', label: 'Unified Analytics', icon: TrendingUp },
   { href: '/dashboard/rewards', label: 'Rewards', icon: Award },
   { href: '/dashboard/payouts', label: 'Payouts', icon: HandCoins },
   {

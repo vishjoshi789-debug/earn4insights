@@ -205,6 +205,45 @@ export const feedback = pgTable('feedback', {
   multimodalMetadata: jsonb('multimodal_metadata').$type<Record<string, any>>(),
 })
 
+// Brand Subscriptions table (Phase 4: Tier System)
+// Tracks which brands have paid for premium analytics features
+export const brandSubscriptions = pgTable('brand_subscriptions', {
+  id: text('id').primaryKey(),
+  brandId: text('brand_id').notNull().unique(), // User ID of brand owner
+  
+  // Subscription tier
+  tier: text('tier').notNull().default('free'), // 'free' | 'pro' | 'enterprise'
+  status: text('status').notNull().default('active'), // 'active' | 'cancelled' | 'past_due' | 'trialing'
+  
+  // Stripe integration (optional, for future)
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  stripePriceId: text('stripe_price_id'),
+  
+  // Billing
+  currentPeriodStart: timestamp('current_period_start'),
+  currentPeriodEnd: timestamp('current_period_end'),
+  cancelAt: timestamp('cancel_at'),
+  canceledAt: timestamp('canceled_at'),
+  trialStart: timestamp('trial_start'),
+  trialEnd: timestamp('trial_end'),
+  
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  
+  // Feature overrides (for custom plans or granular control)
+  featureOverrides: jsonb('feature_overrides').$type<{
+    canViewIndividualFeedback?: boolean
+    canPlayMedia?: boolean
+    canExportData?: boolean
+    canAccessAPI?: boolean
+    maxProducts?: number
+    maxResponses?: number
+    [key: string]: any
+  }>(),
+})
+
 // User profiles table (for personalization)
 export const userProfiles = pgTable('user_profiles', {
   id: text('id').primaryKey(), // Will match user ID from auth
