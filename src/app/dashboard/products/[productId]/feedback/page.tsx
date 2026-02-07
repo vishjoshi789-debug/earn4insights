@@ -1,19 +1,21 @@
 import { getFeedbackByProduct, getFeedbackStats } from '@/db/repositories/feedbackRepository'
 import { getProductById } from '@/db/repositories/productRepository'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
+import { ExternalLink, Copy, MessageSquare } from 'lucide-react'
+import FeedbackStatusButton from './FeedbackStatusButton'
+import ShareFeedbackLink from './ShareFeedbackLink'
 
 function SentimentBadge({ sentiment }: { sentiment: string | null }) {
   if (!sentiment) return <Badge variant="outline">Unknown</Badge>
-  
   const colors: Record<string, string> = {
     positive: 'bg-green-50 text-green-700 border-green-200',
     negative: 'bg-red-50 text-red-700 border-red-200',
     neutral: 'bg-gray-50 text-gray-700 border-gray-200',
   }
-  
   return (
     <Badge variant="outline" className={colors[sentiment] || ''}>
       {sentiment}
@@ -23,12 +25,8 @@ function SentimentBadge({ sentiment }: { sentiment: string | null }) {
 
 function ModalityBadge({ modality }: { modality: string }) {
   const icons: Record<string, string> = {
-    text: '💬',
-    audio: '🎤',
-    video: '🎥',
-    mixed: '📎',
+    text: '💬', audio: '🎤', video: '🎥', mixed: '📎',
   }
-  
   return (
     <Badge variant="secondary" className="text-xs">
       {icons[modality] || '📝'} {modality}
@@ -55,12 +53,14 @@ export default async function ProductFeedbackPage({
   params: Promise<{ productId: string }>
 }) {
   const { productId } = await params
-  
+
   const [product, feedbackItems, stats] = await Promise.all([
     getProductById(productId),
     getFeedbackByProduct(productId, { limit: 100 }),
     getFeedbackStats(productId),
   ])
+
+  const productName = product?.name || productId
 
   return (
     <div className="space-y-6">
@@ -70,21 +70,28 @@ export default async function ProductFeedbackPage({
           <Link href="/dashboard/products" className="hover:underline">Products</Link>
           <span>/</span>
           <Link href={`/dashboard/products/${productId}`} className="hover:underline">
-            {product?.name || productId}
+            {productName}
           </Link>
           <span>/</span>
           <span>Feedback</span>
         </div>
-        <h1 className="text-2xl md:text-3xl font-headline font-bold">
-          Direct Feedback
-        </h1>
-        <p className="text-muted-foreground">
-          Consumer feedback submitted directly for this product
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-headline font-bold">
+              Direct Feedback
+            </h1>
+            <p className="text-muted-foreground">
+              Consumer feedback submitted directly for {productName}
+            </p>
+          </div>
+        </div>
       </header>
 
+      {/* Shareable Link Card */}
+      <ShareFeedbackLink productId={productId} productName={productName} />
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{stats.totalCount}</div>
@@ -122,15 +129,24 @@ export default async function ProductFeedbackPage({
             <p className="text-sm text-muted-foreground">By Modality</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-2xl font-bold text-blue-600">
+              {feedbackItems.filter((f) => f.status === 'new').length}
+            </div>
+            <p className="text-sm text-muted-foreground">Unreviewed</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Feedback List */}
       {feedbackItems.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">No feedback yet for this product.</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Share the feedback link with consumers to start collecting.
+            <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
+            <p className="text-lg font-semibold mb-1">No feedback yet</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Share the feedback link above with consumers to start collecting.
             </p>
           </CardContent>
         </Card>
@@ -153,19 +169,12 @@ export default async function ProductFeedbackPage({
                           {item.category}
                         </Badge>
                       )}
-                      <Badge variant="outline" className={`text-xs ${
-                        item.status === 'new' ? 'bg-blue-50 text-blue-700' :
-                        item.status === 'reviewed' ? 'bg-yellow-50 text-yellow-700' :
-                        'bg-green-50 text-green-700'
-                      }`}>
-                        {item.status}
-                      </Badge>
                     </div>
 
                     {/* Feedback text */}
                     <p className="text-sm">{item.feedbackText}</p>
 
-                    {/* Normalized text (if different from original) */}
+                    {/* Normalized text */}
                     {item.normalizedText && item.normalizedText !== item.feedbackText && (
                       <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
                         <span className="font-medium">Translated:</span> {item.normalizedText}
@@ -189,6 +198,14 @@ export default async function ProductFeedbackPage({
                         {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Status action button (right side) */}
+                  <div className="flex-shrink-0">
+                    <FeedbackStatusButton
+                      feedbackId={item.id}
+                      currentStatus={item.status}
+                    />
                   </div>
                 </div>
               </CardContent>

@@ -521,7 +521,50 @@ can view/manage this feedback from their dashboards.
 - B) From "Submit Feedback" link: `/submit-feedback` (search/create product)
 - C) From Survey Link: existing survey response flow (unchanged)
 
-**Status**: ✅ Phase 6 COMPLETE - Ready to commit and deploy
+**Status**: ✅ Phase 6 COMPLETE - Committed and pushed
+
+---
+
+### 2026-02-07: Phase 7 — Dashboard Integration & Feedback Management (COMPLETE)
+
+**Goal**: Wire real feedback data into the brand dashboard, replace mock data, add review workflow, 
+shareable feedback links, and feedback stats on the main dashboard.
+
+**Milestone 1: Feedback Dashboard with Real Data** ✅
+- Rewrote `/dashboard/feedback` to use real DB queries instead of `mockProducts`/`mockFeedback`
+  - Aggregate stats per product using SQL `FILTER` clauses
+  - Latest feedback preview per product
+  - Global totals: total count, avg rating, unreviewed, sentiment breakdown
+  - Modality breakdown per product (text/audio/video/mixed)
+  - Empty state with CTA to product list
+  - File: `src/app/dashboard/feedback/page.tsx`
+
+**Milestone 2: Feedback Review Workflow** ✅
+- API: `PATCH /api/dashboard/feedback/[id]/status`
+  - Authenticated (requires session)
+  - Status transitions: `new` → `reviewed` → `addressed`
+  - File: `src/app/api/dashboard/feedback/[id]/status/route.ts`
+- Client component: `FeedbackStatusButton`
+  - Dropdown with status options (New/Reviewed/Addressed)
+  - Inline PATCH call — no page reload required
+  - File: `src/app/dashboard/products/[productId]/feedback/FeedbackStatusButton.tsx`
+
+**Milestone 3: Shareable Feedback Link Widget** ✅
+- `ShareFeedbackLink` component on product feedback pages
+  - Shows the shareable URL: `/submit-feedback/[productId]`
+  - One-click copy to clipboard with confirmation
+  - Open in new tab button
+  - File: `src/app/dashboard/products/[productId]/feedback/ShareFeedbackLink.tsx`
+- Product feedback page now includes the share widget and status buttons
+  - File: `src/app/dashboard/products/[productId]/feedback/page.tsx`
+
+**Milestone 4: Main Dashboard Feedback Stats** ✅
+- Added "Consumer Feedback" section to main dashboard page
+  - Total feedback count, unreviewed count, avg rating, positive/negative ratio
+  - Quick links to unified analytics, surveys, and public feedback form
+  - File: `src/app/dashboard/page.tsx`
+
+**Status**: ✅ Phase 7 COMPLETE - Ready to commit and deploy
 
 ---
 
