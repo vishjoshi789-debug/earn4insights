@@ -59,12 +59,16 @@ export type ProductProfile = {
   }
 }
 
+export type ProductLifecycleStatus = 'verified' | 'pending_verification' | 'merged'
+export type ProductCreationSource = 'brand_onboarding' | 'consumer_feedback' | 'admin_import' | 'api'
+
 export type Product = {
   id: string
   name: string
   description?: string
   platform?: string
   created_at?: string
+  updated_at?: string
   
   features: {
     nps: boolean
@@ -73,4 +77,16 @@ export type Product = {
   }
   
   profile: ProductProfile
+  
+  // Phase 5: Lifecycle & Claiming
+  lifecycleStatus?: ProductLifecycleStatus
+  ownerId?: string
+  claimable?: boolean
+  claimedAt?: string
+  claimedBy?: string
+  mergedIntoId?: string
+  mergedAt?: string
+  createdBy?: string
+  creationSource?: ProductCreationSource
+  nameNormalized?: string
 }

@@ -20,11 +20,37 @@ export const products = pgTable('products', {
   description: text('description'),
   platform: text('platform'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
   
   // Features
   npsEnabled: boolean('nps_enabled').default(false).notNull(),
   feedbackEnabled: boolean('feedback_enabled').default(false).notNull(),
   socialListeningEnabled: boolean('social_listening_enabled').default(false).notNull(),
+  
+  // Phase 5: Product Lifecycle & Claiming
+  // Lifecycle states: 'verified' (brand onboarded), 'pending_verification' (consumer-created),
+  //                   'merged' (duplicate resolved into canonical product)
+  lifecycleStatus: text('lifecycle_status').default('verified').notNull(),
+  
+  // Brand ownership (userId of brand owner, null for unclaimed placeholders)
+  ownerId: text('owner_id'),
+  
+  // Claiming
+  claimable: boolean('claimable').default(false).notNull(), // Can brands claim this product?
+  claimedAt: timestamp('claimed_at'),
+  claimedBy: text('claimed_by'), // userId who claimed it
+  
+  // If merged, points to the canonical product
+  mergedIntoId: text('merged_into_id'),
+  mergedAt: timestamp('merged_at'),
+  
+  // Who created this product (brand onboarding vs consumer placeholder)
+  createdBy: text('created_by'), // userId
+  creationSource: text('creation_source').default('brand_onboarding').notNull(),
+  // 'brand_onboarding' | 'consumer_feedback' | 'admin_import' | 'api'
+  
+  // Search optimization
+  nameNormalized: text('name_normalized'), // lowercase, trimmed, for fuzzy search
   
   // Product profile (stored as JSONB)
   profile: jsonb('profile').$type<{

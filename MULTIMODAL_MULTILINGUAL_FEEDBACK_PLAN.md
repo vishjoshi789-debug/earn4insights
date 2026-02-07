@@ -380,7 +380,65 @@ Create an “analysis text”:
 
 ## 🧾 Implementation Log (append updates here)
 
-### 2026-02-06: Phase 4 — Unified Analytics Foundation (IN PROGRESS)
+### 2026-02-07: Phase 5 — Product Resolution & Claiming (COMPLETE)
+
+**Goal**: Enable product discovery, consumer-created placeholders, brand claiming, and de-duplication.
+
+**Implementation**:
+
+**5.1 Product Schema Extension** ✅
+- Added lifecycle fields to products table: `lifecycle_status`, `owner_id`, `claimable`, `claimed_at`, `claimed_by`, `merged_into_id`, `merged_at`, `created_by`, `creation_source`, `name_normalized`
+- Migration: `drizzle/0010_add_product_lifecycle.sql`
+- Updated Product type: `src/lib/types/product.ts` (added `ProductLifecycleStatus`, `ProductCreationSource`)
+
+**5.2 Product Search API** ✅
+- `GET /api/products/search?q=iPhone&limit=10` - Public fuzzy search
+- Uses PostgreSQL ILIKE for case-insensitive partial matching
+- Returns match scores (100=exact, 90=startsWith, 70=contains)
+- Excludes merged products
+- Returns only safe public fields (no owner info)
+- File: `src/app/api/products/search/route.ts`
+
+**5.3 Placeholder Product Creation** ✅
+- `POST /api/products/placeholder` - Consumer creates placeholder
+- Flow: Consumer types name → system checks for near-duplicates → if high match (>=80%) suggests existing → else creates placeholder
+- Placeholder: `lifecycle_status='pending_verification'`, `claimable=true`, `creation_source='consumer_feedback'`
+- File: `src/app/api/products/placeholder/route.ts`
+
+**5.4 Brand Claim Workflow** ✅
+- `GET /api/dashboard/products/claim` - List claimable products
+- `GET /api/dashboard/products/claim?action=my-products` - List brand's owned products
+- `POST /api/dashboard/products/claim` - Claim a product (assigns ownership, sets verified)
+- Auth-protected (brand must be logged in)
+- File: `src/app/api/dashboard/products/claim/route.ts`
+
+**5.5 Admin De-duplication Tools** ✅
+- `GET /api/dashboard/products/merge?action=pending-review` - List pending products
+- `GET /api/dashboard/products/merge?productId=xxx` - Find duplicates for product
+- `POST /api/dashboard/products/merge` - Merge source into target
+  - Migrates all survey_responses, feedback, and surveys to target product
+  - Marks source as merged with `merged_into_id`
+- File: `src/app/api/dashboard/products/merge/route.ts`
+
+**5.6 Repository Enhancements** ✅
+- `searchProductsByName()` - Fuzzy search with match scoring
+- `findPotentialDuplicates()` - Find near-duplicate products
+- `createPlaceholderProduct()` - Create consumer-submitted placeholder
+- `claimProduct()` - Brand claims product
+- `mergeProduct()` - Merge duplicate into canonical
+- `getProductsByStatus()`, `getProductsByOwner()`, `getClaimableProducts()`
+- File: `src/db/repositories/productRepository.ts`
+
+**Product Lifecycle States**:
+- `verified` - Brand onboarded and confirmed
+- `pending_verification` - Consumer-created, awaiting brand claim
+- `merged` - Duplicate resolved into canonical product
+
+**Status**: ✅ Phase 5 COMPLETE - Ready to commit and deploy
+
+---
+
+### 2026-02-06: Phase 4 — Unified Analytics Foundation (COMPLETE)
 
 **Goal**: Aggregate feedback from multiple sources (surveys + direct feedback) into unified analytics for brands.
 
