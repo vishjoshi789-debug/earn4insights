@@ -1,6 +1,6 @@
 # 🌍🎙️ Multilingual + Multimodal Feedback & Survey Extension (Living Spec)
 
-Last updated: 2026-02-05
+Last updated: 2026-02-07
 
 This is the **single source of truth** for extending the existing feedback & survey system to support:
 - **Multimodal input** (rating + text + audio; video later)
@@ -434,7 +434,94 @@ Create an “analysis text”:
 - `pending_verification` - Consumer-created, awaiting brand claim
 - `merged` - Duplicate resolved into canonical product
 
-**Status**: ✅ Phase 5 COMPLETE - Ready to commit and deploy
+**Status**: ✅ Phase 5 COMPLETE - Committed and deployed
+
+---
+
+### 2026-02-07: Phase 6 — Direct Feedback Flow (COMPLETE)
+
+**Goal**: Create the complete consumer-facing feedback submission flow, independent of surveys. 
+Consumers can discover products, submit multimodal feedback (text + voice + images), and brands 
+can view/manage this feedback from their dashboards.
+
+**Architecture**: Follows the "Separate Pipelines + Common Analytics Layer" pattern:
+- `feedback` table: unstructured consumer reviews (separate from `surveyResponses`)
+- Same processing pipeline: language detection → translation → sentiment analysis
+- Same media storage: Vercel Blob via dedicated upload route
+- Feeds into unified analytics aggregation layer (Phase 4)
+
+**Milestone 1: Feedback Submission API** ✅
+- `POST /api/feedback/submit` — submits text feedback with auto language detection + sentiment
+  - Validates: productId, feedbackText (min 3 chars), rating (1-5), category
+  - Runs `normalizeTextForAnalytics()` for language detection + translation
+  - Runs `analyzeSentiment()` on normalized text
+  - Returns: feedbackId, sentiment, originalLanguage
+  - File: `src/app/api/feedback/submit/route.ts`
+
+**Milestone 2: Feedback Media Upload API** ✅
+- `POST /api/feedback/upload-media` — upload audio, video, or images for a feedback entry
+  - Separate from survey media upload (no surveyId requirement)
+  - Validates content types, sizes (audio 4MB, video 4MB, images 5MB)
+  - Stores in Vercel Blob under `feedback-media/direct/{feedbackId}/`
+  - Updates feedback modality and processing status
+  - File: `src/app/api/feedback/upload-media/route.ts`
+
+**Milestone 3: Product Search Component** ✅
+- Reusable `<ProductSearch>` typeahead component
+  - 300ms debounced search → `/api/products/search`
+  - Shows verified badges, match scores
+  - "Add as new product" fallback → `/api/products/placeholder`
+  - De-duplication: checks for high-confidence matches before creating
+  - File: `src/components/product-search.tsx`
+
+**Milestone 4: Public Feedback Submission Page** ✅
+- `/submit-feedback` — full multimodal feedback form
+  - Step 1: Product search (typeahead with create fallback)
+  - Step 2: Star rating (1-5, interactive, optional)
+  - Step 3: Category selection (general, praise, complaint, bug, feature-request)
+  - Step 4: Voice recording (MediaRecorder, 2min max, consent required)
+  - Step 5: Text feedback (any language, auto-detect)
+  - Step 6: Image upload (up to 3 images, 5MB each, consent required)
+  - Step 7: Optional contact details
+  - Progressive upload: text first → audio → images sequentially
+  - Success state with sentiment + language badges
+  - File: `src/app/submit-feedback/page.tsx`
+
+**Milestone 5: Shareable Product Feedback Links** ✅
+- `/submit-feedback/[productId]` — pre-selected product feedback page
+  - Brands share link: consumers skip product search
+  - Server component loads product, passes to client form
+  - Redirect to generic page if product not found
+  - Files:
+    - `src/app/submit-feedback/[productId]/page.tsx`
+    - `src/app/submit-feedback/[productId]/DirectFeedbackForm.tsx`
+
+**Milestone 6: Brand Dashboard — Feedback Viewer** ✅
+- `/dashboard/products/[productId]/feedback` — view direct feedback for a product
+  - Stats cards: total count, avg rating, sentiment breakdown, modality breakdown
+  - Feedback list with sentiment badges, modality badges, category, status
+  - Shows normalized/translated text and transcripts
+  - Star rating display
+  - File: `src/app/dashboard/products/[productId]/feedback/page.tsx`
+
+**Milestone 7: Feedback Repository** ✅
+- `src/db/repositories/feedbackRepository.ts`
+  - `getFeedbackByProduct()` — paginated, filterable by status/sentiment
+  - `getFeedbackByProductIds()` — brand-wide feedback
+  - `countFeedbackByProduct()` — count query
+  - `getFeedbackStats()` — aggregate stats with SQL FILTER clauses
+  - `updateFeedbackStatus()` — review workflow (new → reviewed → addressed)
+
+**Milestone 8: Navigation + UX** ✅
+- "Submit Feedback" link in main site header (visible to all users)
+- FeedbackMediaType updated to include 'image' in `feedbackMediaRepo.ts`
+
+**Consumer Entry Points** (from Architectural Design):
+- A) From Product Page: `/submit-feedback/[productId]` (product pre-selected)
+- B) From "Submit Feedback" link: `/submit-feedback` (search/create product)
+- C) From Survey Link: existing survey response flow (unchanged)
+
+**Status**: ✅ Phase 6 COMPLETE - Ready to commit and deploy
 
 ---
 

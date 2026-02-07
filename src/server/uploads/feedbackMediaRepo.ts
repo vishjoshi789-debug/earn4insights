@@ -3,7 +3,7 @@ import { db } from '@/db'
 import { feedbackMedia } from '@/db/schema'
 
 export type FeedbackMediaOwnerType = 'survey_response' | 'feedback'
-export type FeedbackMediaType = 'audio' | 'video'
+export type FeedbackMediaType = 'audio' | 'video' | 'image'
 
 export type UpsertFeedbackMediaParams = {
   ownerType: FeedbackMediaOwnerType

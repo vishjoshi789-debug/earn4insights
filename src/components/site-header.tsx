@@ -46,6 +46,12 @@ export function SiteHeader() {
             Rankings
           </Link>
           <Link
+            href="/submit-feedback"
+            className="font-medium transition-colors hover:text-primary"
+          >
+            Submit Feedback
+          </Link>
+          <Link
             href="/community"
             className="font-medium transition-colors hover:text-primary"
           >
