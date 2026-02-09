@@ -178,6 +178,7 @@ export async function updateSurveyResponseById(
     processingStatus: string
     consentAudio: boolean
     consentVideo: boolean
+    consentImages: boolean
     consentCapturedAt: Date
 
     // Phase 1.5+: admin review / overrides
@@ -193,6 +194,7 @@ export async function updateSurveyResponseById(
   if (updates.processingStatus !== undefined) updateData.processingStatus = updates.processingStatus
   if (updates.consentAudio !== undefined) updateData.consentAudio = updates.consentAudio
   if (updates.consentVideo !== undefined) updateData.consentVideo = updates.consentVideo
+  if (updates.consentImages !== undefined) updateData.consentImages = updates.consentImages
   if (updates.consentCapturedAt !== undefined) updateData.consentCapturedAt = updates.consentCapturedAt
   if (updates.originalLanguage !== undefined) updateData.originalLanguage = updates.originalLanguage ?? null
   if (updates.normalizedLanguage !== undefined) updateData.normalizedLanguage = updates.normalizedLanguage ?? null

@@ -176,7 +176,7 @@ function ReviewOverrideEditor(props: {
   )
 }
 
-export default function ResponsesTable({ responses, survey, audioMediaByResponseId, videoMediaByResponseId }: ResponsesTableProps) {
+export default function ResponsesTable({ responses, survey, audioMediaByResponseId, videoMediaByResponseId, imageMediaByResponseId }: ResponsesTableProps) {
   const router = useRouter()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [audioOpenId, setAudioOpenId] = useState<string | null>(null)
@@ -812,10 +812,6 @@ export default function ResponsesTable({ responses, survey, audioMediaByResponse
           </Card>
         )
       })}
-    </div>
-  )
-}
-)}
     </div>
   )
 }

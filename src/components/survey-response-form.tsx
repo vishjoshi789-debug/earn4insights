@@ -389,6 +389,41 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
     }
   }
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImageError(null)
+    const files = Array.from(e.target.files || [])
+    const remaining = MAX_IMAGES - imageFiles.length
+    const selected = files.slice(0, remaining)
+
+    for (const file of selected) {
+      if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+        setImageError(`${file.name} exceeds ${MAX_IMAGE_SIZE_MB}MB limit`)
+        return
+      }
+      if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
+        setImageError(`${file.name} is not a supported image format`)
+        return
+      }
+    }
+
+    const newFiles = [...imageFiles, ...selected]
+    setImageFiles(newFiles)
+
+    const newUrls = selected.map(f => URL.createObjectURL(f))
+    setImagePreviewUrls(prev => [...prev, ...newUrls])
+
+    // Reset input so same file can be re-selected
+    e.target.value = ''
+  }
+
+  const removeImage = (index: number) => {
+    const newFiles = imageFiles.filter((_, i) => i !== index)
+    setImageFiles(newFiles)
+    // Revoke old preview URL to avoid memory leaks
+    URL.revokeObjectURL(imagePreviewUrls[index])
+    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -488,16 +523,11 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
         }
 
         setIsUploadingVideo(false)
-      } catch (err) {
-        console.error('Video upload error:', err)
-        setIsUploadingVideo(false)
       }
-    }
 
-    // Upload images if present (Phase 3.5)
-    if (imageFiles.length > 0) {
-      setIsUploadingImages(true)
-      try {
+      // Upload images if present (Phase 3.5)
+      if (imageFiles.length > 0) {
+        setIsUploadingImages(true)
         for (let i = 0; i < imageFiles.length; i++) {
           const file = imageFiles[i]
           const formData = new FormData()
@@ -518,13 +548,8 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
             throw new Error(payload?.error || `Image ${i + 1} upload failed`)
           }
         }
-
-        setIsUploadingImages(false)
-      } catch (err) {
-        console.error('Image upload error:', err)
         setIsUploadingImages(false)
       }
-    }
 
       // Track survey completion
       await trackSurveyCompleteAction(survey.id)

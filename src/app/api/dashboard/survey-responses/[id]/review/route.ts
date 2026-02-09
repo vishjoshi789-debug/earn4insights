@@ -41,7 +41,7 @@ function cleanText(value: unknown): string | null | undefined {
  */
 export async function POST(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole('brand')
@@ -49,7 +49,7 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: authErrorToStatus(err) })
   }
 
-  const id = context.params.id
+  const { id } = await context.params
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }

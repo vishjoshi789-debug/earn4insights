@@ -282,7 +282,7 @@ class SurveyResponseSource implements IFeedbackSource {
         userName: response.userName || undefined,
         userEmail: response.userEmail || undefined,
         text: response.normalizedText || response.transcriptText || '',
-        originalText: response.normalizedText ? response.transcriptText : undefined,
+        originalText: response.normalizedText ? (response.transcriptText ?? undefined) : undefined,
         modality: (response.modalityPrimary || 'text') as any,
         hasAudio,
         hasVideo,

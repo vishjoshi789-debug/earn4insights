@@ -74,7 +74,7 @@ export async function sendSurveyDigestEmail(params: {
               .slice(0, 5)
               .map(
                 (lang) =>
-                  `<li style="padding: 8px 0;"><strong>${lang.code}:</strong> ${lang.count} responses</li>`
+                  `<li style="padding: 8px 0;"><strong>${lang.language}:</strong> ${lang.count} responses</li>`
               )
               .join('')}
           </ul>

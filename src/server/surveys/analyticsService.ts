@@ -75,8 +75,8 @@ export async function calculateMultimodalAnalytics(params: {
 
   // Build base conditions
   const conditions = [eq(surveyResponses.surveyId, surveyId)]
-  if (dateFrom) conditions.push(gte(surveyResponses.createdAt, dateFrom))
-  if (dateTo) conditions.push(lte(surveyResponses.createdAt, dateTo))
+  if (dateFrom) conditions.push(gte(surveyResponses.submittedAt, dateFrom))
+  if (dateTo) conditions.push(lte(surveyResponses.submittedAt, dateTo))
 
   // Fetch all responses for the survey
   const responses = await db
@@ -85,7 +85,7 @@ export async function calculateMultimodalAnalytics(params: {
       modalityPrimary: surveyResponses.modalityPrimary,
       sentiment: surveyResponses.sentiment,
       originalLanguage: surveyResponses.originalLanguage,
-      createdAt: surveyResponses.createdAt,
+      createdAt: surveyResponses.submittedAt,
     })
     .from(surveyResponses)
     .where(and(...conditions))
@@ -189,6 +189,7 @@ export async function calculateMultimodalAnalytics(params: {
   
   let audioMediaList: Array<{ status: string | null }> = []
   let videoMediaList: Array<{ status: string | null }> = []
+  let imageMediaCount = 0
 
   if (responseIds.length > 0) {
     const mediaList = await db
@@ -207,11 +208,7 @@ export async function calculateMultimodalAnalytics(params: {
     audioMediaList = mediaList.filter((m) => m.mediaType === 'audio')
     videoMediaList = mediaList.filter((m) => m.mediaType === 'video')
     
-    const imageMediaList = mediaList.filter((m) => m.mediaType === 'image')
-    
-    processingMetrics.image = {
-      total: imageMediaList.length,
-    }
+    imageMediaCount = mediaList.filter((m) => m.mediaType === 'image').length
   }
 
   const calculateStatusCounts = (mediaList: Array<{ status: string | null }>) => {
@@ -235,6 +232,7 @@ export async function calculateMultimodalAnalytics(params: {
   const processingMetrics: ProcessingMetrics = {
     audio: calculateStatusCounts(audioMediaList),
     video: calculateStatusCounts(videoMediaList),
+    image: { total: imageMediaCount },
   }
 
   return {

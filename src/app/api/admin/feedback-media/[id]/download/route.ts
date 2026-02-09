@@ -26,13 +26,13 @@ function guessExtensionFromMime(mimeType: string | null): string {
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   if (!authenticateAdmin(request)) {
     return unauthorizedResponse()
   }
 
-  const id = context.params.id
+  const { id } = await context.params
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }

@@ -44,22 +44,28 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
   // Date range filter
   if (filters.dateFrom) {
     const fromDate = new Date(filters.dateFrom)
-    filteredResponses = filteredResponses.filter(r => new Date(r.createdAt) >= fromDate)
+    filteredResponses = filteredResponses.filter(r => new Date(r.submittedAt) >= fromDate)
   }
   if (filters.dateTo) {
     const toDate = new Date(filters.dateTo)
     toDate.setHours(23, 59, 59, 999) // End of day
-    filteredResponses = filteredResponses.filter(r => new Date(r.createdAt) <= toDate)
+    filteredResponses = filteredResponses.filter(r => new Date(r.submittedAt) <= toDate)
   }
 
   // Rating range filter
   if (filters.ratingMin) {
     const minRating = parseInt(filters.ratingMin)
-    filteredResponses = filteredResponses.filter(r => r.rating && r.rating >= minRating)
+    filteredResponses = filteredResponses.filter(r => {
+      const score = r.npsScore ?? null
+      return score !== null && score >= minRating
+    })
   }
   if (filters.ratingMax) {
     const maxRating = parseInt(filters.ratingMax)
-    filteredResponses = filteredResponses.filter(r => r.rating && r.rating <= maxRating)
+    filteredResponses = filteredResponses.filter(r => {
+      const score = r.npsScore ?? null
+      return score !== null && score <= maxRating
+    })
   }
 
   // Language filter
@@ -69,17 +75,19 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
 
   // Modality filter
   if (filters.modality && filters.modality !== 'all') {
+    const modalityFilter = filters.modality
     filteredResponses = filteredResponses.filter(r => {
       const modality = (r.modalityPrimary || 'text').toLowerCase()
-      return modality === filters.modality.toLowerCase()
+      return modality === modalityFilter.toLowerCase()
     })
   }
 
   // Sentiment filter
   if (filters.sentiment && filters.sentiment !== 'all') {
+    const sentimentFilter = filters.sentiment
     filteredResponses = filteredResponses.filter(r => {
       const sentiment = (r.sentiment || '').toLowerCase()
-      return sentiment === filters.sentiment.toLowerCase()
+      return sentiment === sentimentFilter.toLowerCase()
     })
   }
 
@@ -209,48 +217,6 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
     acc[row.ownerId] = list
     return acc
   }, {})
-  
-  // Apply filters
-  let filteredResponses = allResponses
-  
-  if (filters.dateFrom) {
-    filteredResponses = filteredResponses.filter(r => 
-      new Date(r.submittedAt) >= new Date(filters.dateFrom!)
-    )
-  }
-  
-  if (filters.dateTo) {
-    filteredResponses = filteredResponses.filter(r => 
-      new Date(r.submittedAt) <= new Date(filters.dateTo!)
-    )
-  }
-
-  if (filters.ratingMin || filters.ratingMax) {
-    const ratingQuestion = survey.questions.find(q => q.type === 'rating')
-    if (ratingQuestion) {
-      const min = filters.ratingMin ? Number(filters.ratingMin) : null
-      const max = filters.ratingMax ? Number(filters.ratingMax) : null
-      filteredResponses = filteredResponses.filter(r => {
-        const val = Number(r.answers[ratingQuestion.id])
-        if (Number.isNaN(val)) return false
-        if (min !== null && val < min) return false
-        if (max !== null && val > max) return false
-        return true
-      })
-    }
-  }
-
-  if (filters.language) {
-    filteredResponses = filteredResponses.filter(r => (r.originalLanguage || 'und') === filters.language)
-  }
-
-  if (filters.modality) {
-    filteredResponses = filteredResponses.filter(r => (r.modalityPrimary || 'text') === filters.modality)
-  }
-
-  if (filters.sentiment) {
-    filteredResponses = filteredResponses.filter(r => r.sentiment === filters.sentiment)
-  }
 
   const availableLanguages = Array.from(
     new Set(allResponses.map(r => r.originalLanguage || 'und'))

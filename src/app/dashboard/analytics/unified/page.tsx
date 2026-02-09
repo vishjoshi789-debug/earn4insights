@@ -1,4 +1,4 @@
-import { requireAuth } from '@/server/auth/authHelpers'
+import { auth } from '@/lib/auth/auth.config'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { MessageSquare, Mic, Video, TrendingUp, Lock, ArrowUpRight } from 'lucide-react'
 import { getUnifiedMetricsForBrand, getUnifiedFeedbackForBrand } from '@/server/analytics/unifiedAnalyticsService'
 import { getBrandSubscription, getTierDisplayName } from '@/server/subscriptions/subscriptionService'
+import { db } from '@/db'
+import { products } from '@/db/schema'
 import Link from 'next/link'
 import UnifiedFeedbackList from './UnifiedFeedbackList'
 import UpgradePrompt from './UpgradePrompt'
@@ -21,10 +23,11 @@ import UpgradePrompt from './UpgradePrompt'
  */
 
 interface PageProps {
-  searchParams: { [key: string]: string | string[] | undefined }
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-export default async function UnifiedAnalyticsPage({ searchParams }: PageProps) {
+export default async function UnifiedAnalyticsPage({ searchParams: searchParamsPromise }: PageProps) {
+  const searchParams = await searchParamsPromise
   const session = await auth()
   
   if (!session) {

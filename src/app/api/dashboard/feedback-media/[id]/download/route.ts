@@ -29,7 +29,7 @@ function authErrorToStatus(err: unknown): number {
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole('brand')
@@ -37,7 +37,7 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: authErrorToStatus(err) })
   }
 
-  const id = context.params.id
+  const { id } = await context.params
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }
