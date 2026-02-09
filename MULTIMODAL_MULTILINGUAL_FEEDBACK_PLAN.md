@@ -564,7 +564,51 @@ shareable feedback links, and feedback stats on the main dashboard.
   - Quick links to unified analytics, surveys, and public feedback form
   - File: `src/app/dashboard/page.tsx`
 
-**Status**: ✅ Phase 7 COMPLETE - Ready to commit and deploy
+**Status**: ✅ Phase 7 COMPLETE - Committed and pushed
+
+---
+
+### 2026-02-07: Phase 8 — AI-Powered Theme Extraction (COMPLETE)
+
+**Goal**: Automatically identify recurring themes/topics from normalized feedback text using OpenAI GPT, with fallback keyword extraction.
+
+**Milestone 1: Theme Extraction Service** ✅
+- `src/server/themeExtractionService.ts`
+  - `extractThemesFromFeedback()` — sends normalized text to GPT-3.5 for theme identification
+  - Returns: theme name, count, sentiment, example quotes
+  - Fallback: keyword-based extraction when OpenAI fails (15 common keywords)
+  - `extractThemesForProduct()` — gathers normalized text from both `feedback` + `surveyResponses` tables
+  - Sample size cap: 200 items per extraction (cost control)
+  - Low temperature (0.3) for consistent results
+
+**Milestone 2: Database Schema + Repository** ✅
+- Schema: `extracted_themes` table in `src/db/schema.ts`
+  - Fields: productId, theme, count, sentiment, examples (JSONB), extractedAt, extractionMethod
+  - Indexes: product_id, extracted_at, sentiment
+- Migration: `drizzle/0011_add_extracted_themes.sql`
+- Repository: `src/db/repositories/themeRepository.ts`
+  - `saveExtractedThemes()` — batch insert themes
+  - `getLatestThemesForProduct()` — get most recent extraction
+  - `getLatestThemesForProducts()` — brand-wide theme view
+  - `cleanupOldThemes()` — delete themes older than 90 days
+
+**Milestone 3: API Endpoints** ✅
+- `POST /api/dashboard/products/[productId]/extract-themes` — manual trigger (authenticated)
+- `GET /api/cron/extract-themes` — weekly cron job (Sunday 2 AM UTC)
+  - Iterates all non-merged products
+  - 2s delay between products (rate limiting)
+  - Secured by CRON_SECRET bearer token
+
+**Milestone 4: Dashboard UI** ✅
+- `/dashboard/products/[productId]/themes` — themes page
+  - Grid of theme cards with sentiment icons, mention counts, example quotes
+  - "Extract Themes" button for manual trigger
+  - Empty state with explanation
+  - Extraction metadata (feedback count, timestamp)
+- `ExtractThemesButton` client component for async extraction
+- "AI Themes" button added to product overview page
+
+**Status**: ✅ Phase 8 COMPLETE - Ready to commit and deploy
 
 ---
 
