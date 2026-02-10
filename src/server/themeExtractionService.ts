@@ -1,8 +1,13 @@
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy-initialize to avoid build-time crash when OPENAI_API_KEY is not set
+let _openai: OpenAI | null = null
+function getOpenAIClient(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  }
+  return _openai
+}
 
 export type ExtractedTheme = {
   theme: string
@@ -55,7 +60,7 @@ Return ONLY valid JSON:
 }`
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAIClient().chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         { role: 'system', content: 'You are a customer feedback analyst. Extract themes accurately and return only valid JSON.' },
