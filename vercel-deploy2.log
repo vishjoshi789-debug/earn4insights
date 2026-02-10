@@ -1,0 +1,52 @@
+Vercel CLI 50.5.0
+Retrieving project…
+Deploying joshis-projects-51800fce/earn4insights
+Uploading [--------------------] (0.0B/72KB)
+Uploading [=======-------------] (28.2KB/72KB)
+Uploading [===========---------] (41.8KB/72KB)
+Uploading [================----] (60.4KB/72KB)
+Uploading [====================] (72.0KB/72KB)
+Inspect: https://vercel.com/joshis-projects-51800fce/earn4insights/DzdpE6D9q2ix1RZqgs1r2qBAPY6B [18s]
+Production: https://earn4insights-i2y0bqjv7-joshis-projects-51800fce.vercel.app [18s]
+https://earn4insights-i2y0bqjv7-joshis-projects-51800fce.vercel.appBuilding...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Downloading 390 deployment files...
+Building: Restored build cache from previous deployment (FeB9nZw2Tw1sLRkPmxNM3YgJdP9a)
+Building: Running "vercel build"
+Building: Vercel CLI 50.13.2
+Building: Installing dependencies...
+Building: up to date in 2s
+Building: 226 packages are looking for funding
+Building: run `npm fund` for details
+Building: Detected Next.js version: 15.5.9
+Building: Running "npm run build"
+Building: > nextn@0.1.1 build
+Building: > next build
+Building: ▲ Next.js 15.5.9
+Building: - Environments: .env
+Building: - Experiments (use with caution):
+Building: · serverActions
+Building: Creating an optimized production build ...
+Building: Failed to compile.
+Building: ./src/app/dashboard/feedback/page.tsx
+Building: Error:   x Expression expected
+Building: ,-[/vercel/path0/src/app/dashboard/feedback/page.tsx:110:1]
+Building: 107 |       return true
+Building: 108 |     })
+Building: 109 |   }
+Building: 110 |   })
+Building: :    ^
+Building: 111 | }
+Building: 112 |
+Building: 113 | // Get all products (from DB)
+Building: `----
+Building: Caused by:
+Building: Syntax Error
+Building: Import trace for requested module:
+Building: ./src/app/dashboard/feedback/page.tsx
+Building: > Build failed because of webpack errors
+Building: Error: Command "npm run build" exited with 1
+Error: Command "npm run build" exited with 1

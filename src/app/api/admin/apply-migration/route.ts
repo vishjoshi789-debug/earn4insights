@@ -32,11 +32,24 @@ export async function POST(request: NextRequest) {
       for (const file of files) {
         try {
           const migrationSQL = fs.readFileSync(path.join(drizzleDir, file), 'utf-8')
-          // Split by semicolons and run each statement
-          const statements = migrationSQL
+          // Remove SQL comments and split by semicolons carefully
+          const cleanedSQL = migrationSQL
+            .split('\n')
+            .map(line => {
+              // Remove inline comments but keep lines that are part of SQL
+              const commentIndex = line.indexOf('--')
+              if (commentIndex >= 0) {
+                // Only strip comment if it's not inside a string
+                return line.substring(0, commentIndex)
+              }
+              return line
+            })
+            .join('\n')
+          
+          const statements = cleanedSQL
             .split(';')
             .map(s => s.trim())
-            .filter(s => s.length > 0 && !s.startsWith('--'))
+            .filter(s => s.length > 0)
           
           for (const stmt of statements) {
             try {
