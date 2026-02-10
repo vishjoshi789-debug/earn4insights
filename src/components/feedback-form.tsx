@@ -29,22 +29,22 @@ export function FeedbackForm({ productId }: FeedbackFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Transparency Info Box (GDPR Article 13) */}
-      <div className="p-3 bg-blue-900/50 border-l-4 border-blue-600 rounded text-sm text-blue-200">
-        <p className="font-semibold text-blue-900 mb-1">💡 Why we're collecting feedback</p>
-        <ul className="text-xs text-blue-800 space-y-0.5">
+      <div className="p-3 bg-primary/10 border-l-4 border-primary/50 rounded text-sm text-foreground/80">
+        <p className="font-semibold text-foreground mb-1">💡 Why we&apos;re collecting feedback</p>
+        <ul className="text-xs text-muted-foreground space-y-0.5">
           <li>• Improve personalized product recommendations</li>
           <li>• Help other users discover quality products</li>
         </ul>
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1">
+        <label className="block text-sm font-medium text-foreground mb-1">
           Rating (1–5)
         </label>
         <select
           value={rating}
           onChange={(e) => setRating(Number(e.target.value))}
-          className="border rounded px-2 py-1 text-sm"
+          className="border border-border bg-muted text-foreground rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {[1, 2, 3, 4, 5].map((n) => (
             <option key={n} value={n}>
@@ -55,21 +55,21 @@ export function FeedbackForm({ productId }: FeedbackFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1">
+        <label className="block text-sm font-medium text-foreground mb-1">
           Your feedback
         </label>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={4}
-          className="w-full border rounded px-2 py-1 text-sm"
+          className="w-full border border-border bg-muted text-foreground rounded-md px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="Share your thoughts about this product..."
         />
       </div>
 
       <button
         type="submit"
-        className="inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium bg-black text-white hover:bg-black/80"
+        className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
       >
         Submit feedback
       </button>

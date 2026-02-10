@@ -64,19 +64,19 @@ export default async function PublicProductPage({ params }: PageProps) {
     const { profile } = dbProduct
     const { branding, productDetails, context } = profile.data
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <div className="min-h-screen bg-background">
         <ProductViewTracker productId={id} />
-        <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+        <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10">
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 {branding?.logo && (
-                  <div className="relative w-12 h-12 rounded-lg overflow-hidden border bg-white">
+                  <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-border bg-muted">
                     <Image src={branding.logo.url} alt={`${dbProduct.name} logo`} fill className="object-contain p-1" />
                   </div>
                 )}
                 <div>
-                  <h1 className="text-2xl font-bold">{dbProduct.name}</h1>
+                  <h1 className="text-2xl font-bold text-foreground">{dbProduct.name}</h1>
                   {productDetails?.tagline && <p className="text-sm text-muted-foreground">{productDetails.tagline}</p>}
                 </div>
               </div>
@@ -96,7 +96,7 @@ export default async function PublicProductPage({ params }: PageProps) {
               <section>
                 <div className={`grid gap-4 ${branding.productImages.length === 1 ? 'grid-cols-1' : branding.productImages.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                   {branding.productImages.map((image, index) => (
-                    <div key={index} className="relative aspect-video rounded-lg overflow-hidden border bg-white shadow-sm">
+                    <div key={index} className="relative aspect-video rounded-lg overflow-hidden border border-border bg-muted shadow-sm">
                       <Image src={image.url} alt={image.alt || `${dbProduct.name} screenshot ${index + 1}`} fill className="object-cover" />
                     </div>
                   ))}
@@ -105,13 +105,13 @@ export default async function PublicProductPage({ params }: PageProps) {
             )}
             {productDetails?.description && (
               <section>
-                <h2 className="text-3xl font-bold mb-4">About {dbProduct.name}</h2>
+                <h2 className="text-3xl font-bold text-foreground mb-4">About {dbProduct.name}</h2>
                 <Card><CardContent className="pt-6"><p className="text-lg leading-relaxed text-muted-foreground whitespace-pre-line">{productDetails.description}</p></CardContent></Card>
               </section>
             )}
             {productDetails?.keyFeatures && productDetails.keyFeatures.length > 0 && (
               <section>
-                <h2 className="text-3xl font-bold mb-4">Key Features</h2>
+                <h2 className="text-3xl font-bold text-foreground mb-4">Key Features</h2>
                 <div className="grid md:grid-cols-2 gap-4">
                   {productDetails.keyFeatures.map((feature, index) => (
                     <Card key={index}><CardContent className="pt-6"><p>{feature}</p></CardContent></Card>
@@ -121,7 +121,7 @@ export default async function PublicProductPage({ params }: PageProps) {
             )}
             {context?.testimonials && context.testimonials.length > 0 && (
               <section>
-                <h2 className="text-3xl font-bold mb-4">What People Say</h2>
+                <h2 className="text-3xl font-bold text-foreground mb-4">What People Say</h2>
                 <div className="grid md:grid-cols-2 gap-6">
                   {context.testimonials.map((t, i) => (
                     <Card key={i} className="relative"><CardContent className="pt-8 pb-6">
@@ -137,7 +137,7 @@ export default async function PublicProductPage({ params }: PageProps) {
             )}
           </div>
         </main>
-        <footer className="border-t mt-16 py-8 bg-gray-50">
+        <footer className="border-t border-border mt-16 py-8 bg-muted/30">
           <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
             <p>Powered by Earn4Insights &bull; {new Date().getFullYear()}</p>
           </div>
@@ -162,18 +162,18 @@ export default async function PublicProductPage({ params }: PageProps) {
     : 0
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+    <div className="min-h-screen bg-background">
       <ProductViewTracker productId={id} />
 
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
               <Link href="/public-products" className="text-sm text-muted-foreground hover:text-primary mb-1 inline-block">
                 &larr; Back to Products
               </Link>
-              <h1 className="text-2xl font-bold">{mockProduct.name}</h1>
+              <h1 className="text-2xl font-bold text-foreground">{mockProduct.name}</h1>
             </div>
             <Badge variant="secondary" className="text-lg px-4 py-1">
               ${mockProduct.price.toFixed(2)}
@@ -186,7 +186,7 @@ export default async function PublicProductPage({ params }: PageProps) {
         <div className="grid grid-cols-1 gap-12 md:grid-cols-2">
           {/* Left column — Image + Description */}
           <div className="space-y-6">
-            <div className="relative aspect-video w-full overflow-hidden rounded-lg shadow-lg border bg-white">
+            <div className="relative aspect-video w-full overflow-hidden rounded-xl shadow-lg shadow-black/20 border border-border bg-muted">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={imageUrl}
@@ -196,7 +196,7 @@ export default async function PublicProductPage({ params }: PageProps) {
             </div>
 
             <div>
-              <h2 className="text-3xl font-bold mb-2">{mockProduct.name}</h2>
+              <h2 className="text-3xl font-bold text-foreground mb-2">{mockProduct.name}</h2>
               <p className="text-2xl font-semibold text-primary mb-4">
                 ${mockProduct.price.toFixed(2)}
               </p>
@@ -211,7 +211,7 @@ export default async function PublicProductPage({ params }: PageProps) {
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-3">
                     <StarRating rating={Math.round(avgRating)} />
-                    <span className="text-lg font-semibold">{avgRating.toFixed(1)}</span>
+                    <span className="text-lg font-semibold text-foreground">{avgRating.toFixed(1)}</span>
                     <span className="text-sm text-muted-foreground">
                       ({feedbackList.length} review{feedbackList.length !== 1 ? 's' : ''})
                     </span>
@@ -224,7 +224,7 @@ export default async function PublicProductPage({ params }: PageProps) {
           {/* Right column — Feedback form + Reviews */}
           <div className="space-y-8">
             <div>
-              <h2 className="text-2xl font-bold mb-4">Leave Your Feedback</h2>
+              <h2 className="text-2xl font-bold text-foreground mb-4">Leave Your Feedback</h2>
               <FeedbackForm productId={id} />
             </div>
 
@@ -232,7 +232,7 @@ export default async function PublicProductPage({ params }: PageProps) {
 
             {/* Recent Reviews */}
             <div>
-              <h2 className="text-2xl font-bold mb-4">Recent Feedback</h2>
+              <h2 className="text-2xl font-bold text-foreground mb-4">Recent Feedback</h2>
               <div className="space-y-4">
                 {feedbackList.length > 0 ? (
                   feedbackList.map((feedback) => (
@@ -244,7 +244,7 @@ export default async function PublicProductPage({ params }: PageProps) {
                         </Avatar>
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
-                            <p className="font-semibold">{feedback.userName}</p>
+                            <p className="font-semibold text-foreground">{feedback.userName}</p>
                             <p className="text-xs text-muted-foreground">{formatTimeAgo(feedback.timestamp)}</p>
                           </div>
                           <StarRating rating={feedback.rating} />
@@ -276,7 +276,7 @@ export default async function PublicProductPage({ params }: PageProps) {
               <>
                 <Separator />
                 <div>
-                  <h2 className="text-2xl font-bold mb-4">Social Mentions</h2>
+                  <h2 className="text-2xl font-bold text-foreground mb-4">Social Mentions</h2>
                   <div className="space-y-4">
                     {socialMentions.map((post) => (
                       <Card key={post.id}>
@@ -288,7 +288,7 @@ export default async function PublicProductPage({ params }: PageProps) {
                           <div className="flex-1">
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="font-semibold">{post.userName}</p>
+                                <p className="font-semibold text-foreground">{post.userName}</p>
                                 <p className="text-xs text-muted-foreground">{post.userHandle}</p>
                               </div>
                               <Badge variant="outline" className="text-xs capitalize">{post.platform}</Badge>
@@ -314,7 +314,7 @@ export default async function PublicProductPage({ params }: PageProps) {
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-16 py-8 bg-gray-50">
+      <footer className="border-t border-border mt-16 py-8 bg-muted/30">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>Powered by Earn4Insights &bull; {new Date().getFullYear()}</p>
         </div>
