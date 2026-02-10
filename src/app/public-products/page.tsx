@@ -13,7 +13,7 @@ export default function ProductsPage() {
           <li key={product.id} style={{ marginBottom: 8 }}>
             {/* plain HTML link, no fancy components */}
             <a
-              href={`/products/${product.id}`}
+              href={`/public-products/${product.id}`}
               style={{ color: "blue", textDecoration: "underline", cursor: "pointer" }}
             >
               {product.name}

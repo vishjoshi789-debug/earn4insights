@@ -202,12 +202,12 @@ export function ScheduleCampaignForm({ surveys }: Props) {
         {/* Category Filter */}
         <div className="space-y-2">
           <Label htmlFor="category">Interest Category (optional)</Label>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <Select value={categoryFilter || 'all'} onValueChange={(v) => setCategoryFilter(v === 'all' ? '' : v)}>
             <SelectTrigger id="category">
               <SelectValue placeholder="All categories" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All categories</SelectItem>
+              <SelectItem value="all">All categories</SelectItem>
               {CATEGORIES.map(cat => (
                 <SelectItem key={cat} value={cat}>{cat}</SelectItem>
               ))}
@@ -220,12 +220,12 @@ export function ScheduleCampaignForm({ surveys }: Props) {
         <div className="grid grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label htmlFor="age">Age Range</Label>
-            <Select value={ageRange} onValueChange={setAgeRange}>
+            <Select value={ageRange || 'all'} onValueChange={(v) => setAgeRange(v === 'all' ? '' : v)}>
               <SelectTrigger id="age">
                 <SelectValue placeholder="All ages" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All ages</SelectItem>
+                <SelectItem value="all">All ages</SelectItem>
                 {AGE_RANGES.map(age => (
                   <SelectItem key={age} value={age}>{age}</SelectItem>
                 ))}
@@ -235,12 +235,12 @@ export function ScheduleCampaignForm({ surveys }: Props) {
 
           <div className="space-y-2">
             <Label htmlFor="location">Location</Label>
-            <Select value={location} onValueChange={setLocation}>
+            <Select value={location || 'all'} onValueChange={(v) => setLocation(v === 'all' ? '' : v)}>
               <SelectTrigger id="location">
                 <SelectValue placeholder="All locations" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All locations</SelectItem>
+                <SelectItem value="all">All locations</SelectItem>
                 {LOCATIONS.map(loc => (
                   <SelectItem key={loc} value={loc}>{loc}</SelectItem>
                 ))}
@@ -250,12 +250,12 @@ export function ScheduleCampaignForm({ surveys }: Props) {
 
           <div className="space-y-2">
             <Label htmlFor="gender">Gender</Label>
-            <Select value={gender} onValueChange={setGender}>
+            <Select value={gender || 'all'} onValueChange={(v) => setGender(v === 'all' ? '' : v)}>
               <SelectTrigger id="gender">
                 <SelectValue placeholder="All genders" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All genders</SelectItem>
+                <SelectItem value="all">All genders</SelectItem>
                 {GENDERS.map(g => (
                   <SelectItem key={g} value={g}>{g}</SelectItem>
                 ))}

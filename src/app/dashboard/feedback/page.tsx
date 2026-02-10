@@ -10,54 +10,103 @@ import { ExternalLink, MessageSquare, Copy } from 'lucide-react'
 
 // Aggregate stats per product
 async function getProductFeedbackOverview() {
-  const rows = await db
-    .select({
-      productId: feedback.productId,
-      totalCount: count(),
-      avgRating: sql<number>`COALESCE(AVG(${feedback.rating}), 0)`,
-      positiveCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'positive')`,
-      negativeCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'negative')`,
-      neutralCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'neutral')`,
-      newCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.status} = 'new')`,
-      textCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.modalityPrimary} = 'text')`,
-      audioCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.modalityPrimary} = 'audio')`,
-      videoCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.modalityPrimary} = 'video')`,
-      mixedCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.modalityPrimary} = 'mixed')`,
-      latestAt: sql<string>`MAX(${feedback.createdAt})`,
-    })
-    .from(feedback)
-    .groupBy(feedback.productId)
+  try {
+    const rows = await db
+      .select({
+        productId: feedback.productId,
+        totalCount: count(),
+        avgRating: sql<number>`COALESCE(AVG(${feedback.rating}), 0)`,
+        positiveCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'positive')`,
+        negativeCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'negative')`,
+        neutralCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'neutral')`,
+        newCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.status} = 'new')`,
+        textCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.modalityPrimary} = 'text')`,
+        audioCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.modalityPrimary} = 'audio')`,
+        videoCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.modalityPrimary} = 'video')`,
+        mixedCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.modalityPrimary} = 'mixed')`,
+        latestAt: sql<string>`MAX(${feedback.createdAt})`,
+      })
+      .from(feedback)
+      .groupBy(feedback.productId)
 
-  return rows
+    return rows
+  } catch {
+    // Fallback if modality_primary column doesn't exist yet
+    const rows = await db
+      .select({
+        productId: feedback.productId,
+        totalCount: count(),
+        avgRating: sql<number>`COALESCE(AVG(${feedback.rating}), 0)`,
+        positiveCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'positive')`,
+        negativeCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'negative')`,
+        neutralCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'neutral')`,
+        newCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.status} = 'new')`,
+        textCount: sql<number>`${count()}`,
+        audioCount: sql<number>`0`,
+        videoCount: sql<number>`0`,
+        mixedCount: sql<number>`0`,
+        latestAt: sql<string>`MAX(${feedback.createdAt})`,
+      })
+      .from(feedback)
+      .groupBy(feedback.productId)
+
+    return rows
+  }
 }
 
 // Get the latest feedback item per product (for preview)
 async function getLatestFeedbackPerProduct(productIds: string[]) {
   if (productIds.length === 0) return []
 
-  // Get the most recent feedback for each product
-  const latestItems = await db
-    .select({
-      id: feedback.id,
-      productId: feedback.productId,
-      userName: feedback.userName,
-      feedbackText: feedback.feedbackText,
-      sentiment: feedback.sentiment,
-      modalityPrimary: feedback.modalityPrimary,
-      rating: feedback.rating,
-      createdAt: feedback.createdAt,
-    })
-    .from(feedback)
-    .where(sql`${feedback.productId} = ANY(${productIds})`)
-    .orderBy(desc(feedback.createdAt))
-    .limit(productIds.length * 2) // Fetch extra, then dedupe per product
+  try {
+    // Get the most recent feedback for each product
+    const latestItems = await db
+      .select({
+        id: feedback.id,
+        productId: feedback.productId,
+        userName: feedback.userName,
+        feedbackText: feedback.feedbackText,
+        sentiment: feedback.sentiment,
+        modalityPrimary: feedback.modalityPrimary,
+        rating: feedback.rating,
+        createdAt: feedback.createdAt,
+      })
+      .from(feedback)
+      .where(sql`${feedback.productId} = ANY(${productIds})`)
+      .orderBy(desc(feedback.createdAt))
+      .limit(productIds.length * 2)
 
-  // Dedupe: keep only the latest per productId
-  const seen = new Set<string>()
-  return latestItems.filter((item) => {
-    if (seen.has(item.productId)) return false
-    seen.add(item.productId)
-    return true
+    const seen = new Set<string>()
+    return latestItems.filter((item) => {
+      if (seen.has(item.productId)) return false
+      seen.add(item.productId)
+      return true
+    })
+  } catch {
+    // Fallback without modality column
+    const latestItems = await db
+      .select({
+        id: feedback.id,
+        productId: feedback.productId,
+        userName: feedback.userName,
+        feedbackText: feedback.feedbackText,
+        sentiment: feedback.sentiment,
+        modalityPrimary: sql<string>`'text'`.as('modality_primary'),
+        rating: feedback.rating,
+        createdAt: feedback.createdAt,
+      })
+      .from(feedback)
+      .where(sql`${feedback.productId} = ANY(${productIds})`)
+      .orderBy(desc(feedback.createdAt))
+      .limit(productIds.length * 2)
+
+    const seen = new Set<string>()
+    return latestItems.filter((item) => {
+      if (seen.has(item.productId)) return false
+      seen.add(item.productId)
+      return true
+    })
+  }
   })
 }
 

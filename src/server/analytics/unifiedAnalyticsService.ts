@@ -320,59 +320,88 @@ class SurveyResponseSource implements IFeedbackSource {
     
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined
     
-    // Single aggregation query for efficiency
-    const result = await db
-      .select({
-        total: sql<number>`count(*)::int`,
-        modalityText: sql<number>`count(*) FILTER (WHERE modality_primary = 'text')::int`,
-        modalityAudio: sql<number>`count(*) FILTER (WHERE modality_primary = 'audio')::int`,
-        modalityVideo: sql<number>`count(*) FILTER (WHERE modality_primary = 'video')::int`,
-        modalityImage: sql<number>`count(*) FILTER (WHERE modality_primary = 'image')::int`,
-        modalityMixed: sql<number>`count(*) FILTER (WHERE modality_primary = 'mixed')::int`,
-        sentimentPositive: sql<number>`count(*) FILTER (WHERE sentiment = 'positive')::int`,
-        sentimentNeutral: sql<number>`count(*) FILTER (WHERE sentiment = 'neutral')::int`,
-        sentimentNegative: sql<number>`count(*) FILTER (WHERE sentiment = 'negative')::int`,
-        sentimentUnknown: sql<number>`count(*) FILTER (WHERE sentiment IS NULL OR sentiment = '')::int`,
-        processingReady: sql<number>`count(*) FILTER (WHERE processing_status = 'ready')::int`,
-        processingProcessing: sql<number>`count(*) FILTER (WHERE processing_status = 'processing')::int`,
-        processingFailed: sql<number>`count(*) FILTER (WHERE processing_status = 'failed')::int`,
-      })
-      .from(surveyResponses)
-      .where(whereClause)
-    
-    const data = result[0] || {}
-    
-    const total = data.total || 0
-    const processed = (data.processingReady || 0) + (data.processingFailed || 0)
-    const successRate = processed > 0 ? ((data.processingReady || 0) / processed) * 100 : 0
-    
-    return {
-      totalFeedback: total,
-      bySource: {
-        survey: total,
-        feedback: 0,
-        review: 0,
-        social: 0,
-      },
-      byModality: {
-        text: data.modalityText || 0,
-        audio: data.modalityAudio || 0,
-        video: data.modalityVideo || 0,
-        image: data.modalityImage || 0,
-        mixed: data.modalityMixed || 0,
-      },
-      bySentiment: {
-        positive: data.sentimentPositive || 0,
-        neutral: data.sentimentNeutral || 0,
-        negative: data.sentimentNegative || 0,
-        unknown: data.sentimentUnknown || 0,
-      },
-      processingMetrics: {
+    try {
+      // Single aggregation query for efficiency
+      const result = await db
+        .select({
+          total: sql<number>`count(*)::int`,
+          modalityText: sql<number>`count(*) FILTER (WHERE modality_primary = 'text')::int`,
+          modalityAudio: sql<number>`count(*) FILTER (WHERE modality_primary = 'audio')::int`,
+          modalityVideo: sql<number>`count(*) FILTER (WHERE modality_primary = 'video')::int`,
+          modalityImage: sql<number>`count(*) FILTER (WHERE modality_primary = 'image')::int`,
+          modalityMixed: sql<number>`count(*) FILTER (WHERE modality_primary = 'mixed')::int`,
+          sentimentPositive: sql<number>`count(*) FILTER (WHERE sentiment = 'positive')::int`,
+          sentimentNeutral: sql<number>`count(*) FILTER (WHERE sentiment = 'neutral')::int`,
+          sentimentNegative: sql<number>`count(*) FILTER (WHERE sentiment = 'negative')::int`,
+          sentimentUnknown: sql<number>`count(*) FILTER (WHERE sentiment IS NULL OR sentiment = '')::int`,
+          processingReady: sql<number>`count(*) FILTER (WHERE processing_status = 'ready')::int`,
+          processingProcessing: sql<number>`count(*) FILTER (WHERE processing_status = 'processing')::int`,
+          processingFailed: sql<number>`count(*) FILTER (WHERE processing_status = 'failed')::int`,
+        })
+        .from(surveyResponses)
+        .where(whereClause)
+      
+      const data = result[0] || {}
+      
+      const total = data.total || 0
+      const processed = (data.processingReady || 0) + (data.processingFailed || 0)
+      const successRate = processed > 0 ? ((data.processingReady || 0) / processed) * 100 : 0
+      
+      return {
+        totalFeedback: total,
+        bySource: {
+          survey: total,
+          feedback: 0,
+          review: 0,
+          social: 0,
+        },
+        byModality: {
+          text: data.modalityText || 0,
+          audio: data.modalityAudio || 0,
+          video: data.modalityVideo || 0,
+          image: data.modalityImage || 0,
+          mixed: data.modalityMixed || 0,
+        },
+        bySentiment: {
+          positive: data.sentimentPositive || 0,
+          neutral: data.sentimentNeutral || 0,
+          negative: data.sentimentNegative || 0,
+          unknown: data.sentimentUnknown || 0,
+        },
+        processingMetrics: {
         ready: data.processingReady || 0,
         processing: data.processingProcessing || 0,
         failed: data.processingFailed || 0,
         successRate,
       },
+    }
+    } catch {
+      // Fallback if modality_primary/processing_status columns don't exist
+      const result = await db
+        .select({
+          total: sql<number>`count(*)::int`,
+          sentimentPositive: sql<number>`count(*) FILTER (WHERE sentiment = 'positive')::int`,
+          sentimentNeutral: sql<number>`count(*) FILTER (WHERE sentiment = 'neutral')::int`,
+          sentimentNegative: sql<number>`count(*) FILTER (WHERE sentiment = 'negative')::int`,
+        })
+        .from(surveyResponses)
+        .where(whereClause)
+      
+      const data = result[0] || {}
+      const total = data.total || 0
+      
+      return {
+        totalFeedback: total,
+        bySource: { survey: total, feedback: 0, review: 0, social: 0 },
+        byModality: { text: total, audio: 0, video: 0, image: 0, mixed: 0 },
+        bySentiment: {
+          positive: data.sentimentPositive || 0,
+          neutral: data.sentimentNeutral || 0,
+          negative: data.sentimentNegative || 0,
+          unknown: 0,
+        },
+        processingMetrics: { ready: total, processing: 0, failed: 0, successRate: 100 },
+      }
     }
   }
 }
@@ -499,61 +528,92 @@ class DirectFeedbackSource implements IFeedbackSource {
     
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined
     
-    // Aggregation query
-    const result = await db
-      .select({
-        total: sql<number>`count(*)::int`,
-        modalityText: sql<number>`count(*) FILTER (WHERE modality_primary = 'text')::int`,
-        modalityAudio: sql<number>`count(*) FILTER (WHERE modality_primary = 'audio')::int`,
-        modalityVideo: sql<number>`count(*) FILTER (WHERE modality_primary = 'video')::int`,
-        modalityImage: sql<number>`count(*) FILTER (WHERE modality_primary = 'image')::int`,
-        modalityMixed: sql<number>`count(*) FILTER (WHERE modality_primary = 'mixed')::int`,
-        sentimentPositive: sql<number>`count(*) FILTER (WHERE sentiment = 'positive')::int`,
-        sentimentNeutral: sql<number>`count(*) FILTER (WHERE sentiment = 'neutral')::int`,
-        sentimentNegative: sql<number>`count(*) FILTER (WHERE sentiment = 'negative')::int`,
-        sentimentUnknown: sql<number>`count(*) FILTER (WHERE sentiment IS NULL OR sentiment = '')::int`,
-        processingReady: sql<number>`count(*) FILTER (WHERE processing_status = 'ready')::int`,
-        processingProcessing: sql<number>`count(*) FILTER (WHERE processing_status = 'processing')::int`,
-        processingFailed: sql<number>`count(*) FILTER (WHERE processing_status = 'failed')::int`,
-        avgRating: sql<number>`AVG(rating)::float`,
-      })
-      .from(feedback)
-      .where(whereClause)
-    
-    const data = result[0] || {}
-    
-    const total = data.total || 0
-    const processed = (data.processingReady || 0) + (data.processingFailed || 0)
-    const successRate = processed > 0 ? ((data.processingReady || 0) / processed) * 100 : 0
-    
-    return {
-      totalFeedback: total,
-      bySource: {
-        survey: 0,
-        feedback: total,
-        review: 0,
-        social: 0,
-      },
-      byModality: {
-        text: data.modalityText || 0,
-        audio: data.modalityAudio || 0,
-        video: data.modalityVideo || 0,
-        image: data.modalityImage || 0,
-        mixed: data.modalityMixed || 0,
-      },
-      bySentiment: {
-        positive: data.sentimentPositive || 0,
-        neutral: data.sentimentNeutral || 0,
-        negative: data.sentimentNegative || 0,
-        unknown: data.sentimentUnknown || 0,
-      },
-      averageRating: data.avgRating || undefined,
-      processingMetrics: {
-        ready: data.processingReady || 0,
-        processing: data.processingProcessing || 0,
-        failed: data.processingFailed || 0,
-        successRate,
-      },
+    try {
+      // Aggregation query
+      const result = await db
+        .select({
+          total: sql<number>`count(*)::int`,
+          modalityText: sql<number>`count(*) FILTER (WHERE modality_primary = 'text')::int`,
+          modalityAudio: sql<number>`count(*) FILTER (WHERE modality_primary = 'audio')::int`,
+          modalityVideo: sql<number>`count(*) FILTER (WHERE modality_primary = 'video')::int`,
+          modalityImage: sql<number>`count(*) FILTER (WHERE modality_primary = 'image')::int`,
+          modalityMixed: sql<number>`count(*) FILTER (WHERE modality_primary = 'mixed')::int`,
+          sentimentPositive: sql<number>`count(*) FILTER (WHERE sentiment = 'positive')::int`,
+          sentimentNeutral: sql<number>`count(*) FILTER (WHERE sentiment = 'neutral')::int`,
+          sentimentNegative: sql<number>`count(*) FILTER (WHERE sentiment = 'negative')::int`,
+          sentimentUnknown: sql<number>`count(*) FILTER (WHERE sentiment IS NULL OR sentiment = '')::int`,
+          processingReady: sql<number>`count(*) FILTER (WHERE processing_status = 'ready')::int`,
+          processingProcessing: sql<number>`count(*) FILTER (WHERE processing_status = 'processing')::int`,
+          processingFailed: sql<number>`count(*) FILTER (WHERE processing_status = 'failed')::int`,
+          avgRating: sql<number>`AVG(rating)::float`,
+        })
+        .from(feedback)
+        .where(whereClause)
+      
+      const data = result[0] || {}
+      
+      const total = data.total || 0
+      const processed = (data.processingReady || 0) + (data.processingFailed || 0)
+      const successRate = processed > 0 ? ((data.processingReady || 0) / processed) * 100 : 0
+      
+      return {
+        totalFeedback: total,
+        bySource: {
+          survey: 0,
+          feedback: total,
+          review: 0,
+          social: 0,
+        },
+        byModality: {
+          text: data.modalityText || 0,
+          audio: data.modalityAudio || 0,
+          video: data.modalityVideo || 0,
+          image: data.modalityImage || 0,
+          mixed: data.modalityMixed || 0,
+        },
+        bySentiment: {
+          positive: data.sentimentPositive || 0,
+          neutral: data.sentimentNeutral || 0,
+          negative: data.sentimentNegative || 0,
+          unknown: data.sentimentUnknown || 0,
+        },
+        averageRating: data.avgRating || undefined,
+        processingMetrics: {
+          ready: data.processingReady || 0,
+          processing: data.processingProcessing || 0,
+          failed: data.processingFailed || 0,
+          successRate,
+        },
+      }
+    } catch {
+      // Fallback if modality_primary/processing_status columns don't exist
+      const result = await db
+        .select({
+          total: sql<number>`count(*)::int`,
+          sentimentPositive: sql<number>`count(*) FILTER (WHERE sentiment = 'positive')::int`,
+          sentimentNeutral: sql<number>`count(*) FILTER (WHERE sentiment = 'neutral')::int`,
+          sentimentNegative: sql<number>`count(*) FILTER (WHERE sentiment = 'negative')::int`,
+          avgRating: sql<number>`AVG(rating)::float`,
+        })
+        .from(feedback)
+        .where(whereClause)
+      
+      const data = result[0] || {}
+      const total = data.total || 0
+      
+      return {
+        totalFeedback: total,
+        bySource: { survey: 0, feedback: total, review: 0, social: 0 },
+        byModality: { text: total, audio: 0, video: 0, image: 0, mixed: 0 },
+        bySentiment: {
+          positive: data.sentimentPositive || 0,
+          neutral: data.sentimentNeutral || 0,
+          negative: data.sentimentNegative || 0,
+          unknown: 0,
+        },
+        averageRating: data.avgRating || undefined,
+        processingMetrics: { ready: total, processing: 0, failed: 0, successRate: 100 },
+      }
     }
   }
 }
@@ -590,7 +650,14 @@ export class UnifiedAnalyticsService {
     
     // Fetch from all sources in parallel (cost-optimized)
     const results = await Promise.all(
-      activeSources.map(source => source.fetchItems(filters))
+      activeSources.map(async source => {
+        try {
+          return await source.fetchItems(filters)
+        } catch (err) {
+          console.error('[UnifiedAnalytics] Source fetch error (likely missing columns):', err)
+          return [] // Gracefully return empty if source fails
+        }
+      })
     )
     
     // Flatten and sort
@@ -622,7 +689,14 @@ export class UnifiedAnalyticsService {
     
     // Calculate metrics from all sources in parallel
     const results = await Promise.all(
-      activeSources.map(source => source.calculateMetrics(filters))
+      activeSources.map(async source => {
+        try {
+          return await source.calculateMetrics(filters)
+        } catch (err) {
+          console.error('[UnifiedAnalytics] Metrics calculation error:', err)
+          return {} as Partial<UnifiedMetrics>
+        }
+      })
     )
     
     // Merge metrics
