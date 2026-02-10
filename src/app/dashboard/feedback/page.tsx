@@ -107,7 +107,6 @@ async function getLatestFeedbackPerProduct(productIds: string[]) {
       return true
     })
   }
-  })
 }
 
 // Get all products (from DB)
