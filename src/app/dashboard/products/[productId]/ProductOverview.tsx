@@ -272,12 +272,6 @@ export default function ProductOverview({
               </Link>
             </Button>
 
-            <Button asChild variant="outline">
-              <Link href={`/dashboard/products/${product.id}/themes`}>
-                AI Themes
-              </Link>
-            </Button>
-
             <Button asChild>
               <Link href={`/dashboard/products/${product.id}/social`}>
                 View Social Listening
