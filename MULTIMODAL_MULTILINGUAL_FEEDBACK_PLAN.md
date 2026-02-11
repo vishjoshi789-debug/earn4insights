@@ -1,6 +1,6 @@
 # 🌍🎙️ Multilingual + Multimodal Feedback & Survey Extension (Living Spec)
 
-Last updated: 2026-02-07
+Last updated: 2026-02-11
 
 This is the **single source of truth** for extending the existing feedback & survey system to support:
 - **Multimodal input** (rating + text + audio; video later)
@@ -153,13 +153,16 @@ NOTE: Don't right away start implementing . first tell me what is possible what 
 
 ## 🗺️ Phased Implementation Plan (high-level)
 
-### Phase 0 — Foundations (no UX disruption)
+> **All 9 phases (0 → 8) are COMPLETE and deployed to production.**
+> Live at: https://earn4insights.vercel.app
+
+### Phase 0 — Foundations (no UX disruption) ✅
 - [x] Add schema support for modality + processing states (no behavior change)
 - [x] Add upload infrastructure (object storage + signed URLs)
 - [x] Add feature flags per survey/campaign (e.g., `allowAudio`, `allowVideo`)
 
-### Phase 1 — Audio + multilingual normalization (core value)
-- [x] UX: rating + “Tap to record” voice input + “Type instead” (progressive disclosure)
+### Phase 1 — Audio + multilingual normalization (core value) ✅
+- [x] UX: rating + "Tap to record" voice input + "Type instead" (progressive disclosure)
 - [x] Record in browser via `MediaRecorder` (mobile-friendly)
 - [x] Upload audio (Phase 1 uses server upload route + Blob storage)
 - [x] Background transcription (STT)
@@ -167,6 +170,67 @@ NOTE: Don't right away start implementing . first tell me what is possible what 
 - [x] Translation → `normalized_text` (analytics language, e.g., English)
 - [x] Sentiment on normalized text (treat as signal, not truth)
 - [x] Robust error handling + non-blocking UX
+
+### Phase 1.5 — Hardening + Admin/ops (quality) ✅
+- [x] Retry tracking + exponential backoff for failed media processing
+- [x] Processing timeout detection (re-queue stuck jobs)
+- [x] Admin review tools (override language, edit transcript, clear fields)
+- [x] Non-blocking consumer UX with processing status polling
+- [x] Cost controls: audio retention cleanup (auto-delete raw after N days)
+- [x] File size limits + duration caps
+
+### Phase 2 — Video feedback (optional, gated) ✅
+- [x] Video recording UI (record → preview → upload, 15s cap)
+- [x] Server upload with consent + content-type validation
+- [x] Video STT pipeline (Whisper transcription + translation)
+- [x] Moderation queue (hide/unhide, moderation status tracking)
+- [x] Video retention cleanup (short default window, 7 days)
+- [x] Dashboard playback + download + processing status
+
+### Phase 3.5 — Image feedback ✅
+- [x] Multi-image upload (up to 3 images, 5MB each) with preview/remove
+- [x] Image gallery in dashboard with thumbnails + download
+- [x] Enhanced CSV export with all multimodal fields
+- [x] Email digest service for weekly analytics summaries
+- [x] `consentImages` field + `allowImages` feature flag
+
+### Phase 4 — Unified Analytics Foundation ✅
+- [x] Unified analytics service (source abstraction: surveys + direct feedback)
+- [x] Tier/subscription system (FREE / PRO / ENTERPRISE feature matrix)
+- [x] Unified analytics dashboard with tier-based visibility
+- [x] Upgrade prompts for restricted features
+- [x] `brand_subscriptions` table + tier middleware
+
+### Phase 5 — Product Resolution & Claiming ✅
+- [x] Product lifecycle states (verified / pending_verification / merged)
+- [x] Fuzzy product search API with match scoring
+- [x] Consumer placeholder product creation (with de-duplication check)
+- [x] Brand claim workflow (browse claimable → claim → verified)
+- [x] Admin de-duplication / merge tools (migrate feedback + surveys to target)
+
+### Phase 6 — Direct Feedback Flow ✅
+- [x] Public feedback submission page (`/submit-feedback`) with multimodal input
+- [x] Product search typeahead component with "add new" fallback
+- [x] Feedback submission API (auto language detection + sentiment)
+- [x] Feedback media upload API (audio, video, images)
+- [x] Shareable product feedback links (`/submit-feedback/[productId]`)
+- [x] Brand dashboard feedback viewer with stats + modality breakdown
+- [x] Feedback repository with pagination + filtering
+
+### Phase 7 — Dashboard Integration & Feedback Management ✅
+- [x] Dashboard feedback page rewritten with real DB data (replaced mock data)
+- [x] Feedback review workflow (new → reviewed → addressed) with status API
+- [x] Shareable feedback link widget on product pages
+- [x] Main dashboard feedback stats section (total, unreviewed, avg rating)
+
+### Phase 8 — AI-Powered Theme Extraction ✅
+- [x] Theme extraction service (OpenAI GPT-4o-mini + keyword fallback)
+- [x] `extracted_themes` table + repository (save, query, cleanup)
+- [x] Manual extraction API (`POST /api/dashboard/products/[productId]/extract-themes`)
+- [x] Cron extraction API (`GET /api/cron/extract-themes`)
+- [x] Themes dashboard page with sentiment cards, mention bars, example quotes
+- [x] "AI Themes" button on product overview page
+
 
 ---
 
@@ -608,7 +672,7 @@ shareable feedback links, and feedback stats on the main dashboard.
 - `ExtractThemesButton` client component for async extraction
 - "AI Themes" button added to product overview page
 
-**Status**: ✅ Phase 8 COMPLETE - Ready to commit and deploy
+**Status**: ✅ Phase 8 COMPLETE - Committed (`e6dce5a`) and deployed to Vercel (2026-02-11)
 
 ---
 
