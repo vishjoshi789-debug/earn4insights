@@ -12,8 +12,9 @@ import {
 type ViewType = 'overview' | 'live' | 'visitors' | 'pages' | 'devices' | 'geo' | 'events' | 'timeline'
 
 export default function AdminAnalyticsPage() {
-  const [adminKey, setAdminKey] = useState('')
-  const [authenticated, setAuthenticated] = useState(false)
+  const [inputKey, setInputKey] = useState('')
+  const [adminKey, setAdminKey] = useState<string | null>(null)
+  const [authError, setAuthError] = useState('')
   const [view, setView] = useState<ViewType>('overview')
   const [hours, setHours] = useState(24)
   const [data, setData] = useState<any>(null)
@@ -21,31 +22,55 @@ export default function AdminAnalyticsPage() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<string>('')
 
-  const fetchData = useCallback(async (v?: ViewType) => {
+  // Try to restore key from sessionStorage on mount
+  useEffect(() => {
+    const saved = sessionStorage.getItem('e4i_admin_key')
+    if (saved) setAdminKey(saved)
+  }, [])
+
+  const fetchData = useCallback(async (key: string, v?: ViewType) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/analytics?view=${v || view}&hours=${hours}&key=${adminKey}`)
+      const res = await fetch(`/api/admin/analytics?view=${v || view}&hours=${hours}&key=${encodeURIComponent(key)}`)
       const json = await res.json()
       if (res.ok) {
         setData(json)
         setLastUpdated(new Date().toLocaleTimeString())
-      } else {
-        if (res.status === 401) setAuthenticated(false)
       }
     } catch { }
     setLoading(false)
-  }, [view, hours, adminKey])
+  }, [view, hours])
 
   // Auto-refresh every 10 seconds
   useEffect(() => {
-    if (!authenticated || !autoRefresh) return
-    fetchData()
-    const interval = setInterval(() => fetchData(), 10000)
+    if (!adminKey || !autoRefresh) return
+    fetchData(adminKey)
+    const interval = setInterval(() => fetchData(adminKey), 10000)
     return () => clearInterval(interval)
-  }, [authenticated, autoRefresh, view, hours, fetchData])
+  }, [adminKey, autoRefresh, view, hours, fetchData])
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setAuthError('')
+    // Verify the key actually works before granting access
+    try {
+      const res = await fetch(`/api/admin/analytics?view=overview&hours=24&key=${encodeURIComponent(inputKey)}`)
+      if (res.ok) {
+        setAdminKey(inputKey)
+        sessionStorage.setItem('e4i_admin_key', inputKey)
+        const json = await res.json()
+        setData(json)
+        setLastUpdated(new Date().toLocaleTimeString())
+      } else {
+        setAuthError('Invalid admin key. Please try again.')
+      }
+    } catch {
+      setAuthError('Connection error. Please try again.')
+    }
+  }
 
   // Auth screen
-  if (!authenticated) {
+  if (!adminKey) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
@@ -56,17 +81,17 @@ export default function AdminAnalyticsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={(e) => {
-              e.preventDefault()
-              setAuthenticated(true)
-            }} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4">
               <input
                 type="password"
                 placeholder="Enter admin key..."
-                value={adminKey}
-                onChange={(e) => setAdminKey(e.target.value)}
+                value={inputKey}
+                onChange={(e) => setInputKey(e.target.value)}
                 className="w-full px-3 py-2 rounded-md border bg-background text-foreground"
               />
+              {authError && (
+                <p className="text-sm text-red-400">{authError}</p>
+              )}
               <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700">
                 Access Dashboard
               </Button>
