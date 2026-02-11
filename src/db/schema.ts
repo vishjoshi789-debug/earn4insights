@@ -470,6 +470,65 @@ export const extractedThemes = pgTable('extracted_themes', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ── Deep Analytics: Every user interaction ────────────────────────
+export const analyticsEvents = pgTable('analytics_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+
+  // Session + user
+  sessionId: text('session_id').notNull(),
+  userId: text('user_id'),             // null for anonymous visitors
+  userRole: text('user_role'),         // 'brand' | 'consumer' | null
+  anonymousId: text('anonymous_id'),   // browser fingerprint
+
+  // Event
+  eventType: text('event_type').notNull(),     // 'page_view' | 'click' | 'scroll' | 'form_submit' | 'signup' | 'login' | 'logout' | 'payment' | 'custom'
+  eventName: text('event_name').notNull(),     // e.g. 'button_click', 'page_view', 'feedback_submitted'
+  eventData: jsonb('event_data').$type<Record<string, any>>(), // flexible payload
+
+  // Page context
+  pageUrl: text('page_url').notNull(),
+  pageTitle: text('page_title'),
+  pagePath: text('page_path'),
+  referrer: text('referrer'),
+  utmSource: text('utm_source'),
+  utmMedium: text('utm_medium'),
+  utmCampaign: text('utm_campaign'),
+
+  // Click details (for click events)
+  elementTag: text('element_tag'),       // 'BUTTON', 'A', 'INPUT', etc.
+  elementText: text('element_text'),     // button/link text content
+  elementId: text('element_id'),         // DOM id
+  elementClass: text('element_class'),   // CSS classes
+  clickX: integer('click_x'),
+  clickY: integer('click_y'),
+
+  // Device + browser
+  deviceType: text('device_type'),       // 'desktop' | 'mobile' | 'tablet'
+  browser: text('browser'),              // 'Chrome 120', 'Safari 17', etc.
+  os: text('os'),                        // 'Windows 11', 'iOS 17', 'Android 14', etc.
+  screenWidth: integer('screen_width'),
+  screenHeight: integer('screen_height'),
+  viewportWidth: integer('viewport_width'),
+  viewportHeight: integer('viewport_height'),
+  language: text('language'),            // browser language, e.g. 'en-US'
+
+  // Location (from server-side IP lookup)
+  country: text('country'),
+  region: text('region'),
+  city: text('city'),
+  timezone: text('timezone'),
+  ip: text('ip'),
+
+  // Timing
+  sessionStart: timestamp('session_start'),
+  timeOnPage: integer('time_on_page'),   // seconds
+  scrollDepth: integer('scroll_depth'),  // percentage 0-100
+  pageLoadTime: integer('page_load_time'), // milliseconds
+
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -506,3 +565,5 @@ export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
 export type ExtractedTheme = typeof extractedThemes.$inferSelect
 export type NewExtractedTheme = typeof extractedThemes.$inferInsert
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect
+export type NewAnalyticsEvent = typeof analyticsEvents.$inferInsert
