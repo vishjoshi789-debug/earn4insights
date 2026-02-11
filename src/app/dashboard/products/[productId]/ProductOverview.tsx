@@ -285,6 +285,12 @@ export default function ProductOverview({
                   : 'Complete product profile'}
               </Link>
             </Button>
+
+            <Button asChild className="bg-purple-600 hover:bg-purple-700 text-white">
+              <Link href={`/dashboard/products/${product.id}/themes`}>
+                AI Themes
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 

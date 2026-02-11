@@ -456,6 +456,20 @@ export const demographicPerformance = pgTable('demographic_performance', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
+// ── Phase 8: AI-Powered Theme Extraction ──────────────────────────
+export const extractedThemes = pgTable('extracted_themes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  productId: text('product_id').notNull(),
+  theme: text('theme').notNull(),
+  mentionCount: integer('mention_count').notNull().default(0),
+  sentiment: text('sentiment').notNull().default('mixed'), // 'positive' | 'negative' | 'neutral' | 'mixed'
+  examples: jsonb('examples').$type<string[]>().default([]),
+  totalFeedbackAnalyzed: integer('total_feedback_analyzed').notNull().default(0),
+  extractedAt: timestamp('extracted_at').defaultNow().notNull(),
+  extractionMethod: text('extraction_method').notNull().default('keyword'), // 'openai' | 'keyword'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -490,3 +504,5 @@ export type DemographicPerformance = typeof demographicPerformance.$inferSelect
 export type NewDemographicPerformance = typeof demographicPerformance.$inferInsert
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
+export type ExtractedTheme = typeof extractedThemes.$inferSelect
+export type NewExtractedTheme = typeof extractedThemes.$inferInsert
