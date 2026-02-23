@@ -24,6 +24,8 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   const [location, setLocation] = useState<string>('')
   const [language, setLanguage] = useState<string>('English')
   const [education, setEducation] = useState<string>('')
+  const [profession, setProfession] = useState<string>('')
+  const [fieldOfStudy, setFieldOfStudy] = useState<string>('')
   const [culture, setCulture] = useState<string>('')
   const [aspirations, setAspirations] = useState<string[]>([])
 
@@ -72,7 +74,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
 
   // Validation functions for each step
   const isStep2Valid = () => {
-    return gender && ageRange && location && education && culture
+    return gender && ageRange && location && education && profession && culture
   }
 
   const isStep3Valid = () => {
@@ -92,13 +94,15 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
 
   const calculateCompletion = () => {
     let filledFields = 0
-    let totalFields = 13 // All mandatory fields
+    let totalFields = 15 // All mandatory fields (added profession + fieldOfStudy)
     
-    // Demographics (6 fields)
+    // Demographics (8 fields)
     if (gender) filledFields++
     if (ageRange) filledFields++
     if (location) filledFields++
     if (education) filledFields++
+    if (profession) filledFields++
+    if (fieldOfStudy) filledFields++
     if (culture) filledFields++
     filledFields++ // language always filled
     
@@ -127,6 +131,8 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         location,
         language,
         education,
+        profession,
+        fieldOfStudy,
         culture,
         aspirations
       }
@@ -324,7 +330,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
 
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="education">Education</Label>
+                  <Label htmlFor="education">Education *</Label>
                   <FieldTooltip content="Match with relevant research and surveys" />
                 </div>
                 <Select value={education} onValueChange={setEducation}>
@@ -336,6 +342,62 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                     <SelectItem value="bachelors">Bachelor's Degree</SelectItem>
                     <SelectItem value="masters">Master's Degree</SelectItem>
                     <SelectItem value="phd">PhD</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="profession">Profession *</Label>
+                  <FieldTooltip content="Helps us show career-relevant products and surveys" />
+                </div>
+                <Select value={profession} onValueChange={setProfession}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select your profession" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="student">Student</SelectItem>
+                    <SelectItem value="software-engineer">Software Engineer / IT</SelectItem>
+                    <SelectItem value="doctor">Doctor / Healthcare</SelectItem>
+                    <SelectItem value="teacher">Teacher / Education</SelectItem>
+                    <SelectItem value="business">Business / Management</SelectItem>
+                    <SelectItem value="finance">Finance / Accounting</SelectItem>
+                    <SelectItem value="designer">Designer / Creative</SelectItem>
+                    <SelectItem value="scientist">Scientist / Researcher</SelectItem>
+                    <SelectItem value="marketing">Marketing / Sales</SelectItem>
+                    <SelectItem value="legal">Legal / Law</SelectItem>
+                    <SelectItem value="government">Government / Public Sector</SelectItem>
+                    <SelectItem value="freelancer">Freelancer / Self-employed</SelectItem>
+                    <SelectItem value="homemaker">Homemaker</SelectItem>
+                    <SelectItem value="retired">Retired</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="fieldOfStudy">Field of Study</Label>
+                  <FieldTooltip content="Match surveys and products with your expertise area" />
+                </div>
+                <Select value={fieldOfStudy} onValueChange={setFieldOfStudy}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select field (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="computer-science">Computer Science / IT</SelectItem>
+                    <SelectItem value="engineering">Engineering</SelectItem>
+                    <SelectItem value="medicine">Medicine / Health Sciences</SelectItem>
+                    <SelectItem value="business-admin">Business / MBA</SelectItem>
+                    <SelectItem value="arts-humanities">Arts & Humanities</SelectItem>
+                    <SelectItem value="social-sciences">Social Sciences</SelectItem>
+                    <SelectItem value="natural-sciences">Natural Sciences</SelectItem>
+                    <SelectItem value="law">Law</SelectItem>
+                    <SelectItem value="education">Education</SelectItem>
+                    <SelectItem value="design">Design / Architecture</SelectItem>
+                    <SelectItem value="economics">Economics / Finance</SelectItem>
+                    <SelectItem value="media">Media / Communications</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>

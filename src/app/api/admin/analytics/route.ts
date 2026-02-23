@@ -196,6 +196,7 @@ async function getVisitors(since: Date) {
 async function getVisitorDetail(since: Date, params: URLSearchParams) {
   const visitorId = params.get('visitorId')
   const userId = params.get('userId')
+  const eventLimit = Math.min(parseInt(params.get('limit') || '50'), 500)
 
   if (!visitorId && !userId) {
     return { success: false, error: 'Missing visitorId or userId' }
@@ -228,7 +229,7 @@ async function getVisitorDetail(since: Date, params: URLSearchParams) {
     .from(analyticsEvents)
     .where(whereClause)
     .orderBy(desc(analyticsEvents.createdAt))
-    .limit(50)
+    .limit(eventLimit)
 
   const resolvedUserId = userId || events.find((e) => e.userId)?.userId || null
 

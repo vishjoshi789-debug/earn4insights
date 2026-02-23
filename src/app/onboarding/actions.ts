@@ -11,6 +11,8 @@ export async function completeOnboarding(data: {
     location?: string
     language?: string
     education?: string
+    profession?: string
+    fieldOfStudy?: string
     culture?: string
     aspirations?: string[]
   }

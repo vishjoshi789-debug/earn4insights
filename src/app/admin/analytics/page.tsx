@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Activity, Users, Eye, MousePointerClick, Globe, Monitor, Smartphone,
-  Tablet, Clock, RefreshCw, BarChart3, MapPin, Loader2, ShieldCheck
+  Tablet, Clock, RefreshCw, BarChart3, MapPin, Loader2, ShieldCheck,
+  Search, Filter, ChevronDown, History
 } from 'lucide-react'
 
 type ViewType = 'overview' | 'live' | 'visitors' | 'pages' | 'devices' | 'geo' | 'events' | 'timeline'
@@ -281,10 +282,20 @@ function VisitorsView({
   const [openVisitorId, setOpenVisitorId] = useState<string | null>(null)
   const [detail, setDetail] = useState<any | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [fullHistoryLoading, setFullHistoryLoading] = useState(false)
+  const [fullHistoryEvents, setFullHistoryEvents] = useState<any[] | null>(null)
+
+  // Filter / search state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterCountry, setFilterCountry] = useState('')
+  const [filterRole, setFilterRole] = useState('')
+  const [filterGender, setFilterGender] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
 
   const loadVisitorDetail = useCallback(async (visitorId: string) => {
     setDetailLoading(true)
     setDetail(null)
+    setFullHistoryEvents(null)
     try {
       const res = await fetch(
         `/api/admin/analytics?view=visitor&hours=${hours}&key=${encodeURIComponent(adminKey)}&visitorId=${encodeURIComponent(visitorId)}`
@@ -298,6 +309,21 @@ function VisitorsView({
     }
   }, [adminKey, hours])
 
+  const loadFullHistory = useCallback(async (visitorId: string) => {
+    setFullHistoryLoading(true)
+    try {
+      const res = await fetch(
+        `/api/admin/analytics?view=visitor&hours=8760&key=${encodeURIComponent(adminKey)}&visitorId=${encodeURIComponent(visitorId)}&limit=500`
+      )
+      const json = await res.json()
+      if (res.ok) setFullHistoryEvents(json.events || [])
+    } catch {
+      // ignore
+    } finally {
+      setFullHistoryLoading(false)
+    }
+  }, [adminKey])
+
   const getDemographic = (demographics: any, key: string) => {
     if (!demographics || typeof demographics !== 'object') return null
     return demographics[key] || null
@@ -309,9 +335,104 @@ function VisitorsView({
     return Array.isArray(cats) ? cats : []
   }
 
+  // Build filter option lists from actual data
+  const uniqueCountries = Array.from(new Set(visitors.map(v => v.country).filter(Boolean))).sort()
+  const uniqueRoles = Array.from(new Set(visitors.map(v => v.userRole || v.userAccountRole).filter(Boolean))).sort()
+  const uniqueGenders = Array.from(new Set(visitors.map(v => getDemographic(v.demographics, 'gender')).filter(Boolean))).sort()
+
+  // Apply filters
+  const filteredVisitors = visitors.filter(v => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      const email = (v.email || '').toLowerCase()
+      const name = (v.userName || '').toLowerCase()
+      const vid = (v.visitorId || '').toLowerCase()
+      const uid = (v.userId || '').toLowerCase()
+      if (!email.includes(q) && !name.includes(q) && !vid.includes(q) && !uid.includes(q)) return false
+    }
+    if (filterCountry && v.country !== filterCountry) return false
+    if (filterRole && (v.userRole || v.userAccountRole) !== filterRole) return false
+    if (filterGender && getDemographic(v.demographics, 'gender') !== filterGender) return false
+    return true
+  })
+
+  const activeFilterCount = [filterCountry, filterRole, filterGender].filter(Boolean).length
+
   return (
-    <div className="space-y-2">
-      <p className="text-sm text-muted-foreground">{visitors.length} unique visitors</p>
+    <div className="space-y-3">
+      {/* Search & Filter Bar */}
+      <div className="space-y-2">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search by email, name, or visitor ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-md border bg-background text-foreground text-sm"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant={showFilters ? 'default' : 'outline'}
+            className={showFilters ? 'bg-purple-600' : ''}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="w-4 h-4 mr-1" />
+            Filters
+            {activeFilterCount > 0 && (
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">{activeFilterCount}</Badge>
+            )}
+          </Button>
+        </div>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 rounded-lg border bg-card">
+            <select
+              value={filterCountry}
+              onChange={(e) => setFilterCountry(e.target.value)}
+              className="px-2 py-1.5 rounded-md border bg-background text-foreground text-sm"
+            >
+              <option value="">All Countries</option>
+              {uniqueCountries.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              className="px-2 py-1.5 rounded-md border bg-background text-foreground text-sm"
+            >
+              <option value="">All Roles</option>
+              {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <select
+              value={filterGender}
+              onChange={(e) => setFilterGender(e.target.value)}
+              className="px-2 py-1.5 rounded-md border bg-background text-foreground text-sm"
+            >
+              <option value="">All Genders</option>
+              {uniqueGenders.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+            {activeFilterCount > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs text-muted-foreground"
+                onClick={() => { setFilterCountry(''); setFilterRole(''); setFilterGender('') }}
+              >
+                Clear all
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        {filteredVisitors.length === visitors.length
+          ? `${visitors.length} unique visitors`
+          : `${filteredVisitors.length} of ${visitors.length} visitors shown`}
+      </p>
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -319,6 +440,7 @@ function VisitorsView({
               <th className="pb-2 pr-4">Visitor</th>
               <th className="pb-2 pr-4">Email</th>
               <th className="pb-2 pr-4">Role</th>
+              <th className="pb-2 pr-4">Profession</th>
               <th className="pb-2 pr-4">Gender</th>
               <th className="pb-2 pr-4">Age</th>
               <th className="pb-2 pr-4">Interests</th>
@@ -330,7 +452,7 @@ function VisitorsView({
             </tr>
           </thead>
           <tbody>
-            {visitors.map((v, i) => (
+            {filteredVisitors.map((v, i) => (
               <Fragment key={v.visitorId || i}>
                 <tr
                   className="border-b border-border/50 cursor-pointer hover:bg-muted/30"
@@ -340,6 +462,7 @@ function VisitorsView({
                     if (openVisitorId === id) {
                       setOpenVisitorId(null)
                       setDetail(null)
+                      setFullHistoryEvents(null)
                       return
                     }
                     setOpenVisitorId(id)
@@ -357,6 +480,9 @@ function VisitorsView({
                     {v.email ? <span className="text-purple-300">{v.email}</span> : '—'}
                   </td>
                   <td className="py-2 pr-4">{v.userRole || '—'}</td>
+                  <td className="py-2 pr-4 text-xs">
+                    {getDemographic(v.demographics, 'profession') || '—'}
+                  </td>
                   <td className="py-2 pr-4 text-xs">
                     {getDemographic(v.demographics, 'gender') || '—'}
                   </td>
@@ -382,7 +508,7 @@ function VisitorsView({
 
                 {openVisitorId === v.visitorId && (
                   <tr className="border-b border-border/50">
-                    <td className="py-3" colSpan={11}>
+                    <td className="py-3" colSpan={12}>
                       <div className="rounded-lg border bg-card p-3 space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                           <div className="text-sm font-medium">Visitor Details</div>
@@ -395,7 +521,7 @@ function VisitorsView({
                           <div className="text-sm text-muted-foreground">Loading recent history…</div>
                         ) : detail?.success ? (
                           <>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-sm">
                               <div className="rounded-md bg-muted/30 p-2">
                                 <div className="text-xs text-muted-foreground">Account</div>
                                 <div className="truncate">
@@ -406,6 +532,12 @@ function VisitorsView({
                                 <div className="text-xs text-muted-foreground">Profession</div>
                                 <div className="truncate">
                                   {getDemographic(detail.profile?.demographics, 'profession') || '—'}
+                                </div>
+                              </div>
+                              <div className="rounded-md bg-muted/30 p-2">
+                                <div className="text-xs text-muted-foreground">Field of Study</div>
+                                <div className="truncate">
+                                  {getDemographic(detail.profile?.demographics, 'fieldOfStudy') || '—'}
                                 </div>
                               </div>
                               <div className="rounded-md bg-muted/30 p-2">
@@ -421,9 +553,34 @@ function VisitorsView({
                             </div>
 
                             <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Recent events (latest 50)</div>
-                              <div className="space-y-1 max-h-64 overflow-y-auto">
-                                {(detail.events || []).slice(0, 20).map((e: any) => (
+                              <div className="flex items-center justify-between">
+                                <div className="text-xs text-muted-foreground">
+                                  {fullHistoryEvents
+                                    ? `All events (${fullHistoryEvents.length} total)`
+                                    : `Recent events (latest 50 in time window)`}
+                                </div>
+                                {!fullHistoryEvents && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs h-7 px-2"
+                                    disabled={fullHistoryLoading}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      loadFullHistory(v.visitorId)
+                                    }}
+                                  >
+                                    {fullHistoryLoading ? (
+                                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                    ) : (
+                                      <History className="w-3 h-3 mr-1" />
+                                    )}
+                                    View full history
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="space-y-1 max-h-72 overflow-y-auto">
+                                {(fullHistoryEvents || detail.events || []).slice(0, fullHistoryEvents ? 500 : 20).map((e: any) => (
                                   <div key={e.id} className="flex items-center gap-2 text-xs rounded-md border bg-background px-2 py-1">
                                     <Badge variant="outline" className="text-[10px]">{e.eventType}</Badge>
                                     <span className="truncate max-w-[180px] text-muted-foreground">{e.pagePath || '/'}</span>
@@ -433,8 +590,8 @@ function VisitorsView({
                                     <span className="ml-auto whitespace-nowrap text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</span>
                                   </div>
                                 ))}
-                                {(detail.events || []).length === 0 && (
-                                  <div className="text-sm text-muted-foreground py-2">No events found in this time window.</div>
+                                {(fullHistoryEvents || detail.events || []).length === 0 && (
+                                  <div className="text-sm text-muted-foreground py-2">No events found.</div>
                                 )}
                               </div>
                             </div>
@@ -448,6 +605,15 @@ function VisitorsView({
                 )}
               </Fragment>
             ))}
+            {filteredVisitors.length === 0 && (
+              <tr>
+                <td colSpan={12} className="py-8 text-center text-muted-foreground">
+                  {searchQuery || activeFilterCount > 0
+                    ? 'No visitors match your search/filters.'
+                    : 'No visitors found in this time window.'}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
