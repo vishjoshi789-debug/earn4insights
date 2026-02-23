@@ -744,7 +744,7 @@ export default async function BrandAnalyticsPage() {
                   </thead>
                   <tbody>
                     {productPerformance.map(product => (
-                      <tr key={product.id} className="border-b hover:bg-muted/50">
+                      <tr key={product.id} className="border-b hover:bg-muted/50 cursor-pointer transition-colors">
                         <td className="py-2 px-2 font-medium">{product.name}</td>
                         <td className="py-2 px-2 text-muted-foreground">{product.category}</td>
                         <td className="py-2 px-2 text-right">{product.totalViews}</td>
