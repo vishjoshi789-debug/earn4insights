@@ -118,25 +118,27 @@ export function ConsentRenewalModal({
       }
     }}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl">
-            <Shield className="h-6 w-6 text-blue-600" />
-            Time to Review Your Privacy Settings
-          </DialogTitle>
-          <DialogDescription className="text-base">
-            It's been over a year since you last updated your privacy preferences. 
-            Please review and confirm your choices below.
-          </DialogDescription>
-        </DialogHeader>
+        <div className="rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-secondary/10 border border-primary/20 p-5 -mx-2 -mt-2 mb-2">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Shield className="h-6 w-6 text-primary" />
+              Time to Review Your Privacy Settings
+            </DialogTitle>
+            <DialogDescription className="text-base text-muted-foreground">
+              It's been over a year since you last updated your privacy preferences. 
+              Please review and confirm your choices below.
+            </DialogDescription>
+          </DialogHeader>
 
-        <Alert className="bg-blue-900/50 border-blue-700">
-          <Info className="h-4 w-4 text-blue-600" />
-          <AlertDescription className="text-blue-800 dark:text-blue-200">
-            <strong>Why we're asking:</strong> Under GDPR regulations, we must periodically 
-            re-confirm your consent to process your personal data. This ensures you remain 
-            in control of your information.
-          </AlertDescription>
-        </Alert>
+          <Alert className="mt-4 bg-primary/10 border-primary/30">
+            <Info className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-muted-foreground">
+              <strong className="text-foreground">Why we're asking:</strong> Under GDPR regulations, we must periodically 
+              re-confirm your consent to process your personal data. This ensures you remain 
+              in control of your information.
+            </AlertDescription>
+          </Alert>
+        </div>
 
         <div className="space-y-4 py-4">
           <div className="space-y-4">

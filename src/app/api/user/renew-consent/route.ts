@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { userProfiles } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 
+
 /**
  * Renew User Consent
  * 
@@ -36,10 +37,17 @@ export async function POST(request: NextRequest) {
 
     console.log(`[ConsentRenewal] User ${userId} renewing consent...`)
 
-    // Get current profile
-    const profile = await db.query.userProfiles.findFirst({
+    // Get current profile — try by ID first, then by email as fallback
+    // (profile.id may differ from session.user.id if created via different auth provider)
+    let profile = await db.query.userProfiles.findFirst({
       where: eq(userProfiles.id, userId)
     })
+
+    if (!profile && session.user.email) {
+      profile = await db.query.userProfiles.findFirst({
+        where: eq(userProfiles.email, session.user.email)
+      })
+    }
 
     if (!profile) {
       return NextResponse.json(
@@ -59,16 +67,16 @@ export async function POST(request: NextRequest) {
       userAgent: request.headers.get('user-agent') || 'unknown'
     }
 
-    // Update the profile
+    // Update the profile using profile.id (which may differ from session userId)
     await db
       .update(userProfiles)
       .set({
         consent: updatedConsent,
         updatedAt: new Date()
       })
-      .where(eq(userProfiles.id, userId))
+      .where(eq(userProfiles.id, profile.id))
 
-    console.log(`[ConsentRenewal] ✓ User ${userId} consent renewed (version ${updatedConsent.version})`)
+    console.log(`[ConsentRenewal] ✓ User ${profile.id} consent renewed (version ${updatedConsent.version})`)
 
     return NextResponse.json({
       success: true,
