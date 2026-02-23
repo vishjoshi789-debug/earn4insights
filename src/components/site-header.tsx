@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Bell, MessageSquareText, Menu } from 'lucide-react';
+import { User, Bell, MessageSquareText, Menu, LayoutDashboard, Package, MessageSquare, BarChart3, Award, Users, HandCoins, MessagesSquare, FileText, Trophy, TrendingUp, PackagePlus, Settings } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -58,36 +58,33 @@ export function SiteHeader() {
                 </div>
               </SheetTitle>
             </SheetHeader>
-            <nav className="flex flex-col gap-4 mt-6">
-              <Link
-                href="/top-products"
-                className="text-base font-medium transition-colors hover:text-primary"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Rankings
-              </Link>
-              <Link
-                href="/submit-feedback"
-                className="text-base font-medium transition-colors hover:text-primary"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Submit Feedback
-              </Link>
-              <Link
-                href="/community"
-                className="text-base font-medium transition-colors hover:text-primary"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Community
-              </Link>
+            <nav className="flex flex-col gap-1 mt-6 overflow-y-auto">
+              {/* Public Pages */}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">Explore</p>
+              <MobileNavLink href="/top-products" icon={Trophy} label="Rankings" onClick={() => setMobileMenuOpen(false)} />
+              <MobileNavLink href="/submit-feedback" icon={MessageSquare} label="Submit Feedback" onClick={() => setMobileMenuOpen(false)} />
+              <MobileNavLink href="/community" icon={MessagesSquare} label="Community" onClick={() => setMobileMenuOpen(false)} />
+
               {user && (
-                <Link
-                  href="/dashboard"
-                  className="text-base font-medium transition-colors hover:text-primary"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Dashboard
-                </Link>
+                <>
+                  <div className="border-t my-3" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">Dashboard</p>
+                  <MobileNavLink href="/dashboard" icon={LayoutDashboard} label="Overview" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/products" icon={Package} label="Products" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/rankings" icon={Trophy} label="Weekly Top 10" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/feedback" icon={MessageSquare} label="Feedback" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/social" icon={Users} label="Social" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/community" icon={MessagesSquare} label="Community" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/surveys" icon={BarChart3} label="Surveys & NPS" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/analytics/unified" icon={TrendingUp} label="Unified Analytics" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/rewards" icon={Award} label="Rewards" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/payouts" icon={HandCoins} label="Payouts" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/detailed-analytics" icon={FileText} label="Detailed Analytics" onClick={() => setMobileMenuOpen(false)} />
+                  <MobileNavLink href="/dashboard/launch" icon={PackagePlus} label="Launch Product" onClick={() => setMobileMenuOpen(false)} />
+
+                  <div className="border-t my-3" />
+                  <MobileNavLink href="/dashboard/settings" icon={Settings} label="Settings" onClick={() => setMobileMenuOpen(false)} />
+                </>
               )}
             </nav>
           </SheetContent>
@@ -218,5 +215,28 @@ export function SiteHeader() {
         </div>
       </div>
     </header>
+  );
+}
+
+function MobileNavLink({
+  href,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-md px-2 py-2.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+      onClick={onClick}
+    >
+      <Icon className="h-4 w-4 text-muted-foreground" />
+      {label}
+    </Link>
   );
 }

@@ -1,8 +1,23 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+interface SheetContextValue {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+const SheetContext = React.createContext<SheetContextValue>({
+  open: false,
+  onOpenChange: () => {},
+});
+
+function useSheet() {
+  return React.useContext(SheetContext);
+}
 
 interface SheetProps {
   open?: boolean;
@@ -10,31 +25,22 @@ interface SheetProps {
   children: React.ReactNode;
 }
 
-function Sheet({ open, onOpenChange, children }: SheetProps) {
+function Sheet({ open = false, onOpenChange = () => {}, children }: SheetProps) {
   return (
-    <>
-      {React.Children.map(children, (child) => {
-        if (React.isValidElement(child)) {
-          return React.cloneElement(child as React.ReactElement<any>, {
-            open,
-            onOpenChange,
-          });
-        }
-        return child;
-      })}
-    </>
+    <SheetContext.Provider value={{ open, onOpenChange }}>
+      {children}
+    </SheetContext.Provider>
   );
 }
 
 interface SheetTriggerProps {
   asChild?: boolean;
   children: React.ReactNode;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
 
-function SheetTrigger({ asChild, children, onOpenChange }: SheetTriggerProps) {
-  const handleClick = () => onOpenChange?.(true);
+function SheetTrigger({ asChild, children }: SheetTriggerProps) {
+  const { onOpenChange } = useSheet();
+  const handleClick = () => onOpenChange(true);
 
   if (asChild && React.isValidElement(children)) {
     return React.cloneElement(children as React.ReactElement<any>, {
@@ -53,22 +59,20 @@ interface SheetContentProps {
   children: React.ReactNode;
   className?: string;
   side?: 'left' | 'right' | 'top' | 'bottom';
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
 
 function SheetContent({
   children,
   className,
   side = 'right',
-  open,
-  onOpenChange,
 }: SheetContentProps) {
+  const { open, onOpenChange } = useSheet();
+
   // Close on Escape key
   React.useEffect(() => {
     if (!open) return;
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onOpenChange?.(false);
+      if (e.key === 'Escape') onOpenChange(false);
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
@@ -95,24 +99,24 @@ function SheetContent({
     bottom: 'inset-x-0 bottom-0 h-auto border-t animate-in slide-in-from-bottom',
   };
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-black/50 animate-in fade-in-0"
-        onClick={() => onOpenChange?.(false)}
+        className="fixed inset-0 z-[100] bg-black/60"
+        onClick={() => onOpenChange(false)}
       />
       {/* Panel */}
       <div
         className={cn(
-          'fixed z-50 flex flex-col gap-4 bg-background p-6 shadow-lg',
+          'fixed z-[101] flex flex-col bg-background p-6 shadow-lg overflow-y-auto',
           sideClasses[side],
           className,
         )}
       >
         <button
           type="button"
-          onClick={() => onOpenChange?.(false)}
+          onClick={() => onOpenChange(false)}
           className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           <X className="h-4 w-4" />
@@ -120,13 +124,14 @@ function SheetContent({
         </button>
         {children}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
 function SheetHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex flex-col space-y-2 text-center sm:text-left', className)} {...props} />
+    <div className={cn('flex flex-col space-y-2 text-left', className)} {...props} />
   );
 }
 
