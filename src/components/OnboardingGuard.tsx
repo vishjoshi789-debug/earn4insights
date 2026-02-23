@@ -24,11 +24,14 @@ export async function OnboardingGuard({
   }
   
   // Ensure user profile exists (create if needed)
-  await ensureUserProfile(session.user.id, session.user.email)
+  const profile = await ensureUserProfile(session.user.id, session.user.email)
   
   // Check if onboarding is complete (unless skipped)
+  // Use the profile directly rather than re-fetching by userId,
+  // because the profile.id may differ from session.user.id
+  // (e.g. profile was created under a different auth provider)
   if (!skipOnboarding) {
-    const onboardingComplete = await hasCompletedOnboarding(session.user.id)
+    const onboardingComplete = await hasCompletedOnboarding(profile.id)
     
     if (!onboardingComplete) {
       redirect('/onboarding')
