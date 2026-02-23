@@ -89,22 +89,22 @@ export default function RankingsPage() {
   const totalProducts = Object.values(rankings).reduce((sum, r) => sum + r.products.length, 0)
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 sm:p-6 space-y-6 max-w-full overflow-hidden">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Trophy className="h-8 w-8 text-yellow-500" />
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+            <Trophy className="h-7 w-7 sm:h-8 sm:w-8 text-yellow-500" />
             Weekly Rankings
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             Manage and view your weekly rankings
           </p>
         </div>
         <Button 
           onClick={generateRankings} 
           disabled={generating}
-          className="gap-2"
+          className="gap-2 w-full sm:w-auto"
         >
           <RefreshCw className={`h-4 w-4 ${generating ? 'animate-spin' : ''}`} />
           {generating ? 'Generating...' : 'Generate Rankings'}
@@ -136,9 +136,9 @@ export default function RankingsPage() {
                   self.findIndex((t: any) => t.id === p.id) === index
                 )
                 .map((p: any) => (
-                  <div key={p.id} className="flex justify-between">
-                    <span>{p.name}</span>
-                    <span className={p.hasCategory ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                  <div key={p.id} className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
+                    <span className="truncate">{p.name}</span>
+                    <span className={`text-xs sm:text-sm ${p.hasCategory ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {p.category} • {p.responseCount} responses
                     </span>
                   </div>
@@ -153,20 +153,8 @@ export default function RankingsPage() {
         </Card>
       )}
 
-      {/* </p>
-        </div>
-        <Button 
-          onClick={generateRankings} 
-          disabled={generating}
-          className="gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${generating ? 'animate-spin' : ''}`} />
-          {generating ? 'Generating...' : 'Generate Rankings'}
-        </Button>
-      </div>
-
       {/* Overview Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Categories Ranked</CardTitle>
@@ -318,7 +306,7 @@ function CategoryRankingView({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4">
         <div>
           <p className="text-sm text-muted-foreground">
             {new Date(ranking.weekStart).toLocaleDateString()} - {new Date(ranking.weekEnd).toLocaleDateString()}
@@ -327,7 +315,7 @@ function CategoryRankingView({
             Generated on {new Date(ranking.generatedAt).toLocaleString()}
           </p>
         </div>
-        <Button variant="outline" size="sm" asChild>
+        <Button variant="outline" size="sm" className="w-full sm:w-auto" asChild>
           <Link href={`/top-products/${category.toLowerCase()}`}>
             View Public Page
           </Link>
@@ -359,38 +347,38 @@ function ProductRankCard({ product, rank }: { product: RankedProduct; rank: numb
 
   return (
     <Card className="hover:shadow-md transition-shadow">
-      <CardContent className="p-4">
-        <div className="flex items-start gap-4">
-          <div className={`text-3xl font-bold ${getMedalColor(rank)} min-w-[40px]`}>
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <div className={`text-2xl sm:text-3xl font-bold ${getMedalColor(rank)} min-w-[32px] sm:min-w-[40px]`}>
             #{rank}
           </div>
           
-          <div className="flex-1">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-semibold text-lg">{product.productName}</h3>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge variant={getBadgeVariant(rank)}>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
+              <div className="min-w-0">
+                <h3 className="font-semibold text-base sm:text-lg truncate">{product.productName}</h3>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-2">
+                  <Badge variant={getBadgeVariant(rank)} className="text-xs">
                     Score: {product.rankingScore.toFixed(2)}
                   </Badge>
                   {product.metrics.npsScore !== null && (
-                    <Badge variant="outline">
+                    <Badge variant="outline" className="text-xs">
                       NPS: {product.metrics.npsScore.toFixed(1)}
                     </Badge>
                   )}
                   {product.metrics.sentimentScore !== null && (
-                    <Badge variant="outline">
+                    <Badge variant="outline" className="text-xs">
                       Sentiment: {(product.metrics.sentimentScore * 100).toFixed(0)}%
                     </Badge>
                   )}
-                  <Badge variant="outline">
+                  <Badge variant="outline" className="text-xs">
                     {product.metrics.totalResponses} responses
                   </Badge>
                 </div>
               </div>
               
               {product.previousRank && (
-                <div className="text-right">
+                <div className="text-left sm:text-right">
                   <div className="text-sm text-muted-foreground">Previous Rank</div>
                   <div className={`text-lg font-bold ${
                     product.previousRank > rank ? 'text-green-600' : 
@@ -406,7 +394,7 @@ function ProductRankCard({ product, rank }: { product: RankedProduct; rank: numb
             </div>
 
             {/* Metrics Breakdown */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-sm">
               <div>
                 <div className="text-muted-foreground">Completion</div>
                 <div className="font-medium">{(product.metrics.surveyCompletionRate * 100).toFixed(1)}%</div>
