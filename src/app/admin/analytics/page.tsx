@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -178,7 +178,9 @@ export default function AdminAnalyticsPage() {
         <>
           {view === 'overview' && data?.data && <OverviewView data={data.data} />}
           {view === 'live' && data?.events && <LiveFeedView events={data.events} />}
-          {view === 'visitors' && data?.visitors && <VisitorsView visitors={data.visitors} />}
+          {view === 'visitors' && data?.visitors && (
+            <VisitorsView visitors={data.visitors} adminKey={adminKey} hours={hours} />
+          )}
           {view === 'pages' && data?.pages && <PagesView pages={data.pages} />}
           {view === 'devices' && <DevicesView data={data} />}
           {view === 'geo' && <GeoView data={data} />}
@@ -267,7 +269,46 @@ function LiveFeedView({ events }: { events: any[] }) {
 
 // ── Visitors ──────────────────────────────────────────────────────
 
-function VisitorsView({ visitors }: { visitors: any[] }) {
+function VisitorsView({
+  visitors,
+  adminKey,
+  hours,
+}: {
+  visitors: any[]
+  adminKey: string
+  hours: number
+}) {
+  const [openVisitorId, setOpenVisitorId] = useState<string | null>(null)
+  const [detail, setDetail] = useState<any | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  const loadVisitorDetail = useCallback(async (visitorId: string) => {
+    setDetailLoading(true)
+    setDetail(null)
+    try {
+      const res = await fetch(
+        `/api/admin/analytics?view=visitor&hours=${hours}&key=${encodeURIComponent(adminKey)}&visitorId=${encodeURIComponent(visitorId)}`
+      )
+      const json = await res.json()
+      if (res.ok) setDetail(json)
+    } catch {
+      // ignore
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [adminKey, hours])
+
+  const getDemographic = (demographics: any, key: string) => {
+    if (!demographics || typeof demographics !== 'object') return null
+    return demographics[key] || null
+  }
+
+  const getInterestCategories = (interests: any): string[] => {
+    if (!interests || typeof interests !== 'object') return []
+    const cats = interests.productCategories
+    return Array.isArray(cats) ? cats : []
+  }
+
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted-foreground">{visitors.length} unique visitors</p>
@@ -276,7 +317,11 @@ function VisitorsView({ visitors }: { visitors: any[] }) {
           <thead>
             <tr className="text-left text-muted-foreground border-b">
               <th className="pb-2 pr-4">Visitor</th>
+              <th className="pb-2 pr-4">Email</th>
               <th className="pb-2 pr-4">Role</th>
+              <th className="pb-2 pr-4">Gender</th>
+              <th className="pb-2 pr-4">Age</th>
+              <th className="pb-2 pr-4">Interests</th>
               <th className="pb-2 pr-4">Sessions</th>
               <th className="pb-2 pr-4">Events</th>
               <th className="pb-2 pr-4">Device</th>
@@ -286,17 +331,122 @@ function VisitorsView({ visitors }: { visitors: any[] }) {
           </thead>
           <tbody>
             {visitors.map((v, i) => (
-              <tr key={i} className="border-b border-border/50">
-                <td className="py-2 pr-4 font-mono text-xs">
-                  {v.userId ? <span className="text-green-400">{v.userId.slice(0, 12)}...</span> : <span className="text-muted-foreground">{v.visitorId?.slice(0, 8)}... (anon)</span>}
-                </td>
-                <td className="py-2 pr-4">{v.userRole || '—'}</td>
-                <td className="py-2 pr-4">{v.sessionCount}</td>
-                <td className="py-2 pr-4">{v.eventCount}</td>
-                <td className="py-2 pr-4 text-xs">{v.browser} / {v.os} / {v.deviceType}</td>
-                <td className="py-2 pr-4">{[v.city, v.country].filter(Boolean).join(', ') || '—'}</td>
-                <td className="py-2 text-xs text-muted-foreground">{v.lastSeen ? new Date(v.lastSeen).toLocaleString() : '—'}</td>
-              </tr>
+              <Fragment key={v.visitorId || i}>
+                <tr
+                  className="border-b border-border/50 cursor-pointer hover:bg-muted/30"
+                  onClick={() => {
+                    const id = v.visitorId as string
+                    if (!id) return
+                    if (openVisitorId === id) {
+                      setOpenVisitorId(null)
+                      setDetail(null)
+                      return
+                    }
+                    setOpenVisitorId(id)
+                    loadVisitorDetail(id)
+                  }}
+                >
+                  <td className="py-2 pr-4 font-mono text-xs">
+                    {v.userId ? (
+                      <span className="text-green-400">{String(v.userId).slice(0, 12)}...</span>
+                    ) : (
+                      <span className="text-muted-foreground">{String(v.visitorId || '').slice(0, 8)}... (anon)</span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-4 text-xs">
+                    {v.email ? <span className="text-purple-300">{v.email}</span> : '—'}
+                  </td>
+                  <td className="py-2 pr-4">{v.userRole || '—'}</td>
+                  <td className="py-2 pr-4 text-xs">
+                    {getDemographic(v.demographics, 'gender') || '—'}
+                  </td>
+                  <td className="py-2 pr-4 text-xs">
+                    {getDemographic(v.demographics, 'ageRange') || '—'}
+                  </td>
+                  <td className="py-2 pr-4 text-xs">
+                    {getInterestCategories(v.interests).length ? (
+                      <span className="text-muted-foreground">
+                        {getInterestCategories(v.interests).slice(0, 3).join(', ')}
+                        {getInterestCategories(v.interests).length > 3 ? '…' : ''}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="py-2 pr-4">{v.sessionCount}</td>
+                  <td className="py-2 pr-4">{v.eventCount}</td>
+                  <td className="py-2 pr-4 text-xs">{v.browser} / {v.os} / {v.deviceType}</td>
+                  <td className="py-2 pr-4">{[v.city, v.country].filter(Boolean).join(', ') || '—'}</td>
+                  <td className="py-2 text-xs text-muted-foreground">{v.lastSeen ? new Date(v.lastSeen).toLocaleString() : '—'}</td>
+                </tr>
+
+                {openVisitorId === v.visitorId && (
+                  <tr className="border-b border-border/50">
+                    <td className="py-3" colSpan={11}>
+                      <div className="rounded-lg border bg-card p-3 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <div className="text-sm font-medium">Visitor Details</div>
+                          <div className="text-xs text-muted-foreground">
+                            Click row to collapse
+                          </div>
+                        </div>
+
+                        {detailLoading ? (
+                          <div className="text-sm text-muted-foreground">Loading recent history…</div>
+                        ) : detail?.success ? (
+                          <>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                              <div className="rounded-md bg-muted/30 p-2">
+                                <div className="text-xs text-muted-foreground">Account</div>
+                                <div className="truncate">
+                                  {detail.account?.email || 'Anonymous'}
+                                </div>
+                              </div>
+                              <div className="rounded-md bg-muted/30 p-2">
+                                <div className="text-xs text-muted-foreground">Profession</div>
+                                <div className="truncate">
+                                  {getDemographic(detail.profile?.demographics, 'profession') || '—'}
+                                </div>
+                              </div>
+                              <div className="rounded-md bg-muted/30 p-2">
+                                <div className="text-xs text-muted-foreground">Onboarding</div>
+                                <div>
+                                  {detail.profile?.onboardingComplete ? (
+                                    <Badge variant="outline" className="text-xs border-green-700 text-green-400 bg-green-900/20">Complete</Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs">Unknown/Incomplete</Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground">Recent events (latest 50)</div>
+                              <div className="space-y-1 max-h-64 overflow-y-auto">
+                                {(detail.events || []).slice(0, 20).map((e: any) => (
+                                  <div key={e.id} className="flex items-center gap-2 text-xs rounded-md border bg-background px-2 py-1">
+                                    <Badge variant="outline" className="text-[10px]">{e.eventType}</Badge>
+                                    <span className="truncate max-w-[180px] text-muted-foreground">{e.pagePath || '/'}</span>
+                                    {e.elementText && (
+                                      <span className="truncate max-w-[160px] text-purple-300">“{e.elementText}”</span>
+                                    )}
+                                    <span className="ml-auto whitespace-nowrap text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</span>
+                                  </div>
+                                ))}
+                                {(detail.events || []).length === 0 && (
+                                  <div className="text-sm text-muted-foreground py-2">No events found in this time window.</div>
+                                )}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">No details available.</div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>

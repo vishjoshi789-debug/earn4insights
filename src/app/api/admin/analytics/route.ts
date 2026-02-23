@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { analyticsEvents } from '@/db/schema'
-import { desc, sql, eq, gte, and, count } from 'drizzle-orm'
+import { analyticsEvents, users, userProfiles } from '@/db/schema'
+import { desc, sql, eq, gte, and, count, inArray } from 'drizzle-orm'
 
 const ADMIN_SECRET = process.env.ANALYTICS_ADMIN_SECRET || process.env.ADMIN_API_KEY || 'e4i-admin-2026'
 
@@ -35,6 +35,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(await getLiveEvents(since))
       case 'visitors':
         return NextResponse.json(await getVisitors(since))
+      case 'visitor':
+        return NextResponse.json(await getVisitorDetail(since, request.nextUrl.searchParams))
       case 'pages':
         return NextResponse.json(await getPages(since))
       case 'devices':
@@ -131,7 +133,151 @@ async function getVisitors(since: Date) {
     .orderBy(sql`MAX(${analyticsEvents.createdAt}) DESC`)
     .limit(100)
 
-  return { success: true, visitors }
+  // Enrich logged-in visitors with profile demographics/interests.
+  // We join via users.email -> user_profiles.email to handle cases where
+  // user_profiles.id doesn't match analyticsEvents.userId.
+  const userIds = visitors
+    .map((v) => v.userId)
+    .filter((id): id is string => !!id)
+
+  if (userIds.length === 0) {
+    return { success: true, visitors }
+  }
+
+  const userRows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      role: users.role,
+    })
+    .from(users)
+    .where(inArray(users.id, Array.from(new Set(userIds))))
+
+  const emailByUserId = new Map(userRows.map((u) => [u.id, u.email]))
+  const userMetaByUserId = new Map(userRows.map((u) => [u.id, { name: u.name, role: u.role }]))
+  const emails = Array.from(new Set(userRows.map((u) => u.email)))
+
+  const profileRows = await db
+    .select({
+      email: userProfiles.email,
+      demographics: userProfiles.demographics,
+      interests: userProfiles.interests,
+      behavioral: userProfiles.behavioral,
+      onboardingComplete: userProfiles.onboardingComplete,
+    })
+    .from(userProfiles)
+    .where(inArray(userProfiles.email, emails))
+
+  const profileByEmail = new Map(profileRows.map((p) => [p.email, p]))
+
+  const enriched = visitors.map((v) => {
+    if (!v.userId) return v
+    const email = emailByUserId.get(v.userId) || null
+    const meta = userMetaByUserId.get(v.userId) || null
+    const profile = email ? profileByEmail.get(email) || null : null
+    return {
+      ...v,
+      email,
+      userName: meta?.name || null,
+      userAccountRole: meta?.role || null,
+      demographics: profile?.demographics || null,
+      interests: profile?.interests || null,
+      onboardingComplete: profile?.onboardingComplete ?? null,
+      behavioral: profile?.behavioral || null,
+    }
+  })
+
+  return { success: true, visitors: enriched }
+}
+
+// ── Visitor detail (recent history + profile) ─────────────────────
+
+async function getVisitorDetail(since: Date, params: URLSearchParams) {
+  const visitorId = params.get('visitorId')
+  const userId = params.get('userId')
+
+  if (!visitorId && !userId) {
+    return { success: false, error: 'Missing visitorId or userId' }
+  }
+
+  const whereClause = userId
+    ? and(gte(analyticsEvents.createdAt, since), eq(analyticsEvents.userId, userId))
+    : and(
+        gte(analyticsEvents.createdAt, since),
+        sql`COALESCE(${analyticsEvents.userId}, ${analyticsEvents.anonymousId}) = ${visitorId}`
+      )
+
+  const events = await db
+    .select({
+      id: analyticsEvents.id,
+      sessionId: analyticsEvents.sessionId,
+      userId: analyticsEvents.userId,
+      userRole: analyticsEvents.userRole,
+      eventType: analyticsEvents.eventType,
+      eventName: analyticsEvents.eventName,
+      pagePath: analyticsEvents.pagePath,
+      pageUrl: analyticsEvents.pageUrl,
+      elementText: analyticsEvents.elementText,
+      elementTag: analyticsEvents.elementTag,
+      country: analyticsEvents.country,
+      city: analyticsEvents.city,
+      createdAt: analyticsEvents.createdAt,
+      eventData: analyticsEvents.eventData,
+    })
+    .from(analyticsEvents)
+    .where(whereClause)
+    .orderBy(desc(analyticsEvents.createdAt))
+    .limit(50)
+
+  const resolvedUserId = userId || events.find((e) => e.userId)?.userId || null
+
+  let account: { id: string; email: string; name: string | null; role: string } | null = null
+  let profile: {
+    email: string
+    demographics: any
+    interests: any
+    behavioral: any
+    onboardingComplete: boolean
+  } | null = null
+
+  if (resolvedUserId) {
+    const [u] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+      })
+      .from(users)
+      .where(eq(users.id, resolvedUserId))
+      .limit(1)
+
+    if (u) {
+      account = u
+      const [p] = await db
+        .select({
+          email: userProfiles.email,
+          demographics: userProfiles.demographics,
+          interests: userProfiles.interests,
+          behavioral: userProfiles.behavioral,
+          onboardingComplete: userProfiles.onboardingComplete,
+        })
+        .from(userProfiles)
+        .where(eq(userProfiles.email, u.email))
+        .limit(1)
+      if (p) profile = p
+    }
+  }
+
+  return {
+    success: true,
+    visitorId: visitorId || null,
+    userId: resolvedUserId,
+    account,
+    profile,
+    events,
+  }
 }
 
 // ── Top pages ─────────────────────────────────────────────────────
