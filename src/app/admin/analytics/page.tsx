@@ -335,10 +335,18 @@ function VisitorsView({
     return Array.isArray(cats) ? cats : []
   }
 
-  // Build filter option lists from actual data
+  // Predefined filter options (always available)
+  const genderOptions = ['male', 'female', 'non-binary', 'prefer-not-to-say']
+  const roleOptions = ['user', 'brand', 'admin']
+
+  // Dynamic country list from actual visitor data
   const uniqueCountries = Array.from(new Set(visitors.map(v => v.country).filter(Boolean))).sort()
-  const uniqueRoles = Array.from(new Set(visitors.map(v => v.userRole || v.userAccountRole).filter(Boolean))).sort()
-  const uniqueGenders = Array.from(new Set(visitors.map(v => getDemographic(v.demographics, 'gender')).filter(Boolean))).sort()
+
+  // Merge predefined + any extra values from data
+  const dataGenders = visitors.map(v => getDemographic(v.demographics, 'gender')).filter(Boolean)
+  const allGenders = Array.from(new Set([...genderOptions, ...dataGenders]))
+  const dataRoles = visitors.map(v => v.userRole || v.userAccountRole).filter(Boolean)
+  const allRoles = Array.from(new Set([...roleOptions, ...dataRoles]))
 
   // Apply filters
   const filteredVisitors = visitors.filter(v => {
@@ -348,11 +356,18 @@ function VisitorsView({
       const name = (v.userName || '').toLowerCase()
       const vid = (v.visitorId || '').toLowerCase()
       const uid = (v.userId || '').toLowerCase()
-      if (!email.includes(q) && !name.includes(q) && !vid.includes(q) && !uid.includes(q)) return false
+      const profession = (getDemographic(v.demographics, 'profession') || '').toLowerCase()
+      if (!email.includes(q) && !name.includes(q) && !vid.includes(q) && !uid.includes(q) && !profession.includes(q)) return false
     }
     if (filterCountry && v.country !== filterCountry) return false
-    if (filterRole && (v.userRole || v.userAccountRole) !== filterRole) return false
-    if (filterGender && getDemographic(v.demographics, 'gender') !== filterGender) return false
+    if (filterRole) {
+      const vRole = (v.userRole || v.userAccountRole || '').toLowerCase()
+      if (vRole !== filterRole.toLowerCase()) return false
+    }
+    if (filterGender) {
+      const vGender = (getDemographic(v.demographics, 'gender') || '').toLowerCase()
+      if (vGender !== filterGender.toLowerCase()) return false
+    }
     return true
   })
 
@@ -403,7 +418,7 @@ function VisitorsView({
               className="px-2 py-1.5 rounded-md border bg-background text-foreground text-sm"
             >
               <option value="">All Roles</option>
-              {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
+              {allRoles.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
             </select>
             <select
               value={filterGender}
@@ -411,7 +426,11 @@ function VisitorsView({
               className="px-2 py-1.5 rounded-md border bg-background text-foreground text-sm"
             >
               <option value="">All Genders</option>
-              {uniqueGenders.map(g => <option key={g} value={g}>{g}</option>)}
+              {allGenders.map(g => (
+                <option key={g} value={g}>
+                  {g === 'prefer-not-to-say' ? 'Prefer not to say' : g === 'non-binary' ? 'Non-binary' : g.charAt(0).toUpperCase() + g.slice(1)}
+                </option>
+              ))}
             </select>
             {activeFilterCount > 0 && (
               <Button
