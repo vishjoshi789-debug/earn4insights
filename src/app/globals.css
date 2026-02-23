@@ -107,31 +107,10 @@
   button {
     @apply transition-all duration-200;
   }
-
-  /* Prevent iOS auto-zoom on select/input focus (16px threshold) */
-  select,
-  input[type="text"],
-  input[type="email"],
-  input[type="password"],
-  textarea {
-    font-size: 16px;
-  }
-
-  @media (min-width: 640px) {
-    select,
-    input[type="text"],
-    input[type="email"],
-    input[type="password"],
-    textarea {
-      font-size: inherit;
-    }
-  }
 }
 
-/* Prevent Radix popper from causing viewport reflow on mobile */
-[data-radix-popper-content-wrapper] {
-  will-change: transform;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  contain: layout style;
+/* Prevent horizontal overflow from causing viewport contraction on mobile */
+html,
+body {
+  overflow-x: hidden;
 }
