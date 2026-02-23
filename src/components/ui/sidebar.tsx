@@ -68,19 +68,28 @@ type SidebarProps = {
 };
 
 export function Sidebar({ children }: SidebarProps) {
-  const { isMobile, isOpen } = useSidebar();
+  const { isMobile, isOpen, toggle } = useSidebar();
 
   return (
-    <aside
-      className={cn(
-        'z-40 flex w-64 flex-col border-r bg-card text-card-foreground transition-transform lg:relative lg:translate-x-0',
-        isMobile && 'fixed inset-y-0 left-0 shadow-lg',
-        isMobile && !isOpen && '-translate-x-full',
-        isMobile && isOpen && 'translate-x-0'
+    <>
+      {/* Backdrop overlay on mobile */}
+      {isMobile && isOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 transition-opacity"
+          onClick={toggle}
+        />
       )}
-    >
-      {children}
-    </aside>
+      <aside
+        className={cn(
+          'z-40 flex w-64 flex-col border-r bg-card text-card-foreground transition-transform lg:relative lg:translate-x-0',
+          isMobile && 'fixed inset-y-0 left-0 shadow-lg',
+          isMobile && !isOpen && '-translate-x-full',
+          isMobile && isOpen && 'translate-x-0'
+        )}
+      >
+        {children}
+      </aside>
+    </>
   );
 }
 

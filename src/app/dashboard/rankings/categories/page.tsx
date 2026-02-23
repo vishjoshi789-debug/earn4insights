@@ -195,9 +195,9 @@ export default function AssignCategoriesPage() {
         ) : (
           products.map((product) => (
             <Card key={product.id}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="font-semibold text-lg">{product.name}</h3>
                       {product.hasCategory && (
@@ -218,14 +218,14 @@ export default function AssignCategoriesPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                     <Select
                       value={selectedCategories[product.id] || ''}
                       onValueChange={(value) => 
                         setSelectedCategories({ ...selectedCategories, [product.id]: value as ProductCategory })
                       }
                     >
-                      <SelectTrigger className="w-[250px]">
+                      <SelectTrigger className="w-full sm:w-[250px]">
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
