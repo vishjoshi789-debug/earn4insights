@@ -744,7 +744,7 @@ export default async function BrandAnalyticsPage() {
                   </thead>
                   <tbody>
                     {productPerformance.map(product => (
-                      <tr key={product.id} className="border-b hover:bg-gray-50">
+                      <tr key={product.id} className="border-b hover:bg-muted/50">
                         <td className="py-2 px-2 font-medium">{product.name}</td>
                         <td className="py-2 px-2 text-muted-foreground">{product.category}</td>
                         <td className="py-2 px-2 text-right">{product.totalViews}</td>
@@ -756,9 +756,9 @@ export default async function BrandAnalyticsPage() {
                         </td>
                         <td className="py-2 px-2">
                           <div className="flex gap-1 text-xs">
-                            <span className="text-green-600">+{product.sentiment.positive}</span>
-                            <span className="text-gray-600">={product.sentiment.neutral}</span>
-                            <span className="text-red-600">-{product.sentiment.negative}</span>
+                            <span className="text-green-600 dark:text-green-400">+{product.sentiment.positive}</span>
+                            <span className="text-gray-600 dark:text-gray-400">={product.sentiment.neutral}</span>
+                            <span className="text-red-600 dark:text-red-400">-{product.sentiment.negative}</span>
                           </div>
                         </td>
                       </tr>
