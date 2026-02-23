@@ -70,7 +70,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-headline font-bold mb-2">
-          Brand Pulse Dashboard
+          Earn4Insights Dashboard
         </h1>
         <p className="text-muted-foreground">
           Overview of your products, feedback, and community activity.
