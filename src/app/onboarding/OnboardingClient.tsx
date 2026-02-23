@@ -405,8 +405,8 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     const completion = calculateCompletion()
     
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <Card className="max-w-4xl w-full">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 overflow-visible">
+        <Card className="max-w-4xl w-full overflow-visible sm:max-w-2xl sm:w-full md:max-w-3xl md:w-full lg:max-w-4xl lg:w-full" style={{ width: '100%', maxWidth: '100vw', overflow: 'visible' }}>
           <CardHeader>
             <ProgressIndicator currentStep={3} steps={progressSteps} />
             <div className="flex items-center justify-between mt-4">
@@ -422,7 +422,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 overflow-visible" style={{ width: '100%', maxWidth: '100vw', overflow: 'visible' }}>
             {/* Privacy Assurance Banner */}
             <div className="bg-blue-900/50 border-2 border-blue-700 rounded-lg p-4">
               <div className="flex items-start gap-3">
