@@ -27,8 +27,8 @@ const CATEGORIES: { value: FeedbackCategory; label: string; emoji: string }[] = 
 const MAX_IMAGES = 3
 const MAX_IMAGE_SIZE_MB = 5
 const MAX_AUDIO_DURATION_S = 120
-const MAX_VIDEO_DURATION_S = 15
-const MAX_VIDEO_SIZE_MB = 4
+const MAX_VIDEO_DURATION_S = 60
+const MAX_VIDEO_SIZE_MB = 10
 
 export default function SubmitFeedbackPage() {
   const searchParams = useSearchParams()

@@ -6,7 +6,7 @@ import { feedback } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024  // 4MB
-const MAX_VIDEO_BYTES = 4 * 1024 * 1024  // 4MB
+const MAX_VIDEO_BYTES = 10 * 1024 * 1024  // 10MB
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024  // 5MB
 
 const ALLOWED_AUDIO_CONTENT_TYPES = new Set([
@@ -23,7 +23,7 @@ const ALLOWED_IMAGE_CONTENT_TYPES = new Set([
   'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
 ])
 
-const MAX_VIDEO_DURATION_MS = 15_000
+const MAX_VIDEO_DURATION_MS = 60_000
 
 function asString(value: FormDataEntryValue | null): string | null {
   if (!value) return null
