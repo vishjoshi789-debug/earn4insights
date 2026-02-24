@@ -145,12 +145,15 @@ type SidebarMenuButtonProps = {
   asChild?: boolean;
   isActive?: boolean;
   tooltip?: string;
+  [key: string]: any;
 };
 
 export function SidebarMenuButton({
   children,
   asChild,
   isActive,
+  tooltip,
+  ...rest
 }: SidebarMenuButtonProps) {
   const baseClasses =
     'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ' +
@@ -164,11 +167,12 @@ export function SidebarMenuButton({
         className,
         (children as React.ReactElement<any>).props.className
       ),
+      ...rest,
     });
   }
 
   return (
-    <button type="button" className={className}>
+    <button type="button" className={className} {...rest}>
       {children}
     </button>
   );

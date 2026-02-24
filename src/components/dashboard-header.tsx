@@ -19,6 +19,8 @@ import {
   Star,
   CheckCheck,
   MessageSquareText,
+  LogOut,
+  Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -27,15 +29,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { signOut, useSession } from 'next-auth/react';
 
 export function DashboardHeader() {
   const { isMobile } = useSidebar();
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
+  const { data: session } = useSession();
 
   const user = {
-    name: 'Admin',
-    email: 'admin@brandpulse.com',
+    name: session?.user?.name || 'User',
+    email: session?.user?.email || 'user@example.com',
   };
 
   return (
@@ -50,7 +54,7 @@ export function DashboardHeader() {
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
+                <Button variant="ghost" size="icon" className="relative" data-tour="notifications">
                   <Bell className="h-5 w-5" />
                   <span className="absolute top-1 right-1.5 h-2 w-2 rounded-full bg-primary"></span>
                   <span className="sr-only">Notifications</span>
@@ -69,7 +73,7 @@ export function DashboardHeader() {
               <div className="grid gap-0.5">
                 <p className="font-medium">New Survey Response</p>
                 <p className="text-xs text-muted-foreground">
-                  You have a new response for the "Q2 Product Satisfaction"
+                  You have a new response for the &quot;Q2 Product Satisfaction&quot;
                   survey.
                 </p>
               </div>
@@ -104,6 +108,7 @@ export function DashboardHeader() {
                 <Button
                   variant="ghost"
                   className="relative h-9 w-9 rounded-full hover:bg-accent hover:text-accent-foreground"
+                  data-tour="user-menu"
                 >
                   <Avatar className="h-9 w-9">
                     <AvatarImage src="/avatars/01.png" alt={user.name} />
@@ -131,8 +136,26 @@ export function DashboardHeader() {
             <DropdownMenuItem asChild>
               <Link href="/dashboard/settings">Settings</Link>
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setUserMenuOpen(false);
+                if (typeof window !== 'undefined' && (window as any).__startProductTour) {
+                  (window as any).__startProductTour();
+                }
+              }}
+              className="cursor-pointer"
+            >
+              <Sparkles className="mr-2 h-4 w-4 text-purple-500" />
+              Restart Product Tour
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Log out</DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              className="text-red-600 cursor-pointer"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Log out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </TooltipProvider>
