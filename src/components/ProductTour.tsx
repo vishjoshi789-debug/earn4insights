@@ -118,7 +118,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-submit-feedback"]',
     title: '✍️ Submit Feedback',
-    description: 'Your voice matters! Write reviews, record voice feedback, or upload photos. You can review any product and earn 25 points per submission.',
+    description: 'Your voice matters! Write reviews, record voice or video feedback, upload photos — in any language. Earn 25 points per submission.',
     role: 'consumer',
     position: 'right',
     icon: '✍️',

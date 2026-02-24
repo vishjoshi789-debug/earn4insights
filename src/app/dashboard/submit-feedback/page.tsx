@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   MessageSquare, Star, Send, CheckCircle,
-  Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera
+  Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera,
+  Video, VideoOff
 } from 'lucide-react'
 import ProductSearch from '@/components/product-search'
 import Link from 'next/link'
@@ -26,6 +27,8 @@ const CATEGORIES: { value: FeedbackCategory; label: string; emoji: string }[] = 
 const MAX_IMAGES = 3
 const MAX_IMAGE_SIZE_MB = 5
 const MAX_AUDIO_DURATION_S = 120
+const MAX_VIDEO_DURATION_S = 15
+const MAX_VIDEO_SIZE_MB = 4
 
 export default function SubmitFeedbackPage() {
   const searchParams = useSearchParams()
@@ -60,12 +63,25 @@ export default function SubmitFeedbackPage() {
   const audioChunksRef = useRef<Blob[]>([])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Video recording state
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false)
+  const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [videoDuration, setVideoDuration] = useState(0)
+  const [hasVideoSupport, setHasVideoSupport] = useState(false)
+  const videoRecorderRef = useRef<MediaRecorder | null>(null)
+  const videoChunksRef = useRef<Blob[]>([])
+  const videoTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const videoPreviewRef = useRef<HTMLVideoElement | null>(null)
+  const videoStreamRef = useRef<MediaStream | null>(null)
+
   // Image upload state
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
 
   // Consent
   const [consentAudio, setConsentAudio] = useState(false)
+  const [consentVideo, setConsentVideo] = useState(false)
   const [consentImages, setConsentImages] = useState(false)
 
   // UI state
@@ -79,19 +95,21 @@ export default function SubmitFeedbackPage() {
     originalLanguage: string | null
   } | null>(null)
 
-  // Check for audio recording support
+  // Check for audio & video recording support
   useEffect(() => {
-    setHasAudioSupport(
-      typeof navigator !== 'undefined' &&
+    const hasMedia = typeof navigator !== 'undefined' &&
       !!navigator.mediaDevices &&
       typeof navigator.mediaDevices.getUserMedia === 'function'
-    )
+    setHasAudioSupport(hasMedia)
+    setHasVideoSupport(hasMedia)
   }, [])
 
   // Cleanup URLs on unmount
   useEffect(() => {
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl)
+      if (videoUrl) URL.revokeObjectURL(videoUrl)
+      if (videoStreamRef.current) videoStreamRef.current.getTracks().forEach(t => t.stop())
       imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url))
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -159,6 +177,90 @@ export default function SubmitFeedbackPage() {
     setRecordingDuration(0)
   }, [audioUrl])
 
+  // Video recording
+  const startVideoRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      videoStreamRef.current = stream
+
+      // Show live preview
+      if (videoPreviewRef.current) {
+        videoPreviewRef.current.srcObject = stream
+        videoPreviewRef.current.play()
+      }
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : MediaRecorder.isTypeSupported('video/webm')
+          ? 'video/webm'
+          : 'video/mp4'
+
+      const recorder = new MediaRecorder(stream, { mimeType })
+      videoChunksRef.current = []
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) videoChunksRef.current.push(e.data)
+      }
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop())
+        videoStreamRef.current = null
+        const blob = new Blob(videoChunksRef.current, { type: mimeType })
+
+        if (blob.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+          setError(`Video exceeds ${MAX_VIDEO_SIZE_MB}MB limit. Try a shorter clip.`)
+          setIsRecordingVideo(false)
+          if (videoTimerRef.current) clearInterval(videoTimerRef.current)
+          return
+        }
+
+        setVideoBlob(blob)
+        setVideoUrl(URL.createObjectURL(blob))
+        setIsRecordingVideo(false)
+        if (videoTimerRef.current) clearInterval(videoTimerRef.current)
+      }
+
+      recorder.start(1000)
+      videoRecorderRef.current = recorder
+      setIsRecordingVideo(true)
+      setVideoDuration(0)
+
+      videoTimerRef.current = setInterval(() => {
+        setVideoDuration(d => {
+          if (d >= MAX_VIDEO_DURATION_S) {
+            recorder.stop()
+            return d
+          }
+          return d + 1
+        })
+      }, 1000)
+    } catch (err) {
+      console.error('Failed to start video recording:', err)
+      setError('Camera access denied. Please allow camera access to record video.')
+    }
+  }, [])
+
+  const stopVideoRecording = useCallback(() => {
+    if (videoRecorderRef.current && videoRecorderRef.current.state === 'recording') {
+      videoRecorderRef.current.stop()
+    }
+    if (videoTimerRef.current) {
+      clearInterval(videoTimerRef.current)
+      videoTimerRef.current = null
+    }
+  }, [])
+
+  const removeVideo = useCallback(() => {
+    if (videoUrl) URL.revokeObjectURL(videoUrl)
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach(t => t.stop())
+      videoStreamRef.current = null
+    }
+    setVideoBlob(null)
+    setVideoUrl(null)
+    setVideoDuration(0)
+  }, [videoUrl])
+
   // Image handling
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -213,6 +315,13 @@ export default function SubmitFeedbackPage() {
       return
     }
 
+    const hasVideo = videoBlob !== null
+
+    if (hasVideo && !consentVideo) {
+      setError('Please consent to video recording storage.')
+      return
+    }
+
     if (hasImages && !consentImages) {
       setError('Please consent to image storage.')
       return
@@ -255,7 +364,18 @@ export default function SubmitFeedbackPage() {
         await fetch('/api/feedback/upload-media', { method: 'POST', body: audioForm })
       }
 
-      // Step 3: Upload images if present
+      // Step 3: Upload video if present
+      if (hasVideo && videoBlob) {
+        setUploadProgress('Uploading video...')
+        const videoForm = new FormData()
+        videoForm.append('feedbackId', feedbackId)
+        videoForm.append('mediaType', 'video')
+        videoForm.append('file', videoBlob, 'video.webm')
+        videoForm.append('durationMs', String(videoDuration * 1000))
+        await fetch('/api/feedback/upload-media', { method: 'POST', body: videoForm })
+      }
+
+      // Step 4: Upload images if present
       if (hasImages) {
         for (let i = 0; i < imageFiles.length; i++) {
           setUploadProgress(`Uploading image ${i + 1} of ${imageFiles.length}...`)
@@ -309,6 +429,11 @@ export default function SubmitFeedbackPage() {
                   🎤 Voice attached
                 </Badge>
               )}
+              {videoBlob && (
+                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-400">
+                  🎥 Video attached
+                </Badge>
+              )}
               {imageFiles.length > 0 && (
                 <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400">
                   📷 {imageFiles.length} image(s) attached
@@ -329,10 +454,12 @@ export default function SubmitFeedbackPage() {
                 setCategory('general')
                 setSelectedProduct(null)
                 removeAudio()
+                removeVideo()
                 imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url))
                 setImageFiles([])
                 setImagePreviewUrls([])
                 setConsentAudio(false)
+                setConsentVideo(false)
                 setConsentImages(false)
               }}>
                 Submit Another
@@ -356,7 +483,7 @@ export default function SubmitFeedbackPage() {
           Submit Feedback
         </h1>
         <p className="text-muted-foreground mt-2">
-          Share your experience with any product. Speak, type, or upload photos — in any language!
+          Share your experience with any product. Speak, type, record video, or upload photos — in any language!
         </p>
       </div>
 
@@ -474,10 +601,68 @@ export default function SubmitFeedbackPage() {
           </Card>
         )}
 
-        {/* Step 5: Text Feedback */}
+        {/* Step 5: Video Feedback */}
+        {hasVideoSupport && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Video className="w-5 h-5" /> {hasAudioSupport ? '5' : '4'}. Video Feedback (optional)
+              </CardTitle>
+              <CardDescription>Record a short video review — up to {MAX_VIDEO_DURATION_S} seconds</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {videoUrl ? (
+                <div className="space-y-3">
+                  <div className="relative rounded-lg overflow-hidden border bg-black">
+                    <video src={videoUrl} controls className="w-full max-h-64" />
+                    <Button type="button" variant="ghost" size="sm" onClick={removeVideo}
+                      className="absolute top-2 right-2 bg-black/50 text-white hover:bg-black/70">
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Video className="w-4 h-4" />
+                    <span>{formatTime(videoDuration)} recorded</span>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={consentVideo} onChange={(e) => setConsentVideo(e.target.checked)} className="rounded" />
+                    I consent to my video recording being stored and processed
+                  </label>
+                </div>
+              ) : isRecordingVideo ? (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <div className="relative w-full max-w-sm rounded-lg overflow-hidden border bg-black">
+                    <video ref={videoPreviewRef} muted autoPlay playsInline className="w-full max-h-48 object-cover" />
+                    <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded-full animate-pulse">
+                      <span className="w-2 h-2 bg-white rounded-full" /> REC
+                    </div>
+                    <div className="absolute bottom-2 right-2 bg-black/60 text-white text-sm font-mono px-2 py-0.5 rounded">
+                      {formatTime(videoDuration)} / {formatTime(MAX_VIDEO_DURATION_S)}
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Recording... (max {MAX_VIDEO_DURATION_S}s)</p>
+                  <Button type="button" variant="destructive" size="lg" onClick={stopVideoRecording} className="gap-2">
+                    <Square className="w-4 h-4" /> Stop Recording
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <Button type="button" variant="outline" size="lg" onClick={startVideoRecording}
+                    className="w-20 h-20 rounded-full p-0 border-2 border-dashed hover:border-primary hover:bg-primary/5">
+                    <Video className="w-8 h-8" />
+                  </Button>
+                  <p className="text-sm text-muted-foreground">Tap to start video recording</p>
+                  <p className="text-xs text-muted-foreground">Max {MAX_VIDEO_DURATION_S} seconds • {MAX_VIDEO_SIZE_MB}MB limit</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 6: Text Feedback */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">{hasAudioSupport ? '5' : '4'}. Your Feedback (text)</CardTitle>
+            <CardTitle className="text-lg">{hasAudioSupport && hasVideoSupport ? '6' : hasAudioSupport || hasVideoSupport ? '5' : '4'}. Your Feedback (text)</CardTitle>
             <CardDescription>Write in any language — we auto-detect and translate for analytics</CardDescription>
           </CardHeader>
           <CardContent>
@@ -499,7 +684,7 @@ export default function SubmitFeedbackPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Camera className="w-5 h-5" /> {hasAudioSupport ? '6' : '5'}. Upload Photos (optional)
+              <Camera className="w-5 h-5" /> {hasAudioSupport && hasVideoSupport ? '7' : hasAudioSupport || hasVideoSupport ? '6' : '5'}. Upload Photos (optional)
             </CardTitle>
             <CardDescription>Add up to {MAX_IMAGES} images ({MAX_IMAGE_SIZE_MB}MB each)</CardDescription>
           </CardHeader>

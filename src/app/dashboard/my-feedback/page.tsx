@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   ClipboardList, Star, MessageSquare, Loader2,
   ThumbsUp, ThumbsDown, Minus, PenSquare, Clock,
-  CheckCircle2, Eye, Mic, Camera, Globe
+  CheckCircle2, Eye, Mic, Camera, Globe, Video
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -81,8 +81,8 @@ export default function MyFeedbackPage() {
   const getModalityIcon = (modality: string) => {
     switch (modality) {
       case 'audio': return <Mic className="w-3.5 h-3.5" />
-      case 'video': return <Camera className="w-3.5 h-3.5" />
-      case 'mixed': return <><Mic className="w-3.5 h-3.5" /><Camera className="w-3.5 h-3.5" /></>
+      case 'video': return <Video className="w-3.5 h-3.5" />
+      case 'mixed': return <><Mic className="w-3.5 h-3.5" /><Video className="w-3.5 h-3.5" /></>
       default: return <MessageSquare className="w-3.5 h-3.5" />
     }
   }
