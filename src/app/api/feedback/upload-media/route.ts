@@ -4,6 +4,7 @@ import { upsertFeedbackMedia } from '@/server/uploads/feedbackMediaRepo'
 import { db } from '@/db'
 import { feedback } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import { auth } from '@/lib/auth/auth.config'
 
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024  // 4MB
 const MAX_VIDEO_BYTES = 10 * 1024 * 1024  // 10MB
@@ -57,6 +58,12 @@ function asInt(value: FormDataEntryValue | null): number | null {
  */
 export async function POST(request: Request) {
   try {
+    // Auth check — only logged-in users can upload media
+    const session = await auth()
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
     const form = await request.formData()
 
     const feedbackId = asString(form.get('feedbackId'))
@@ -78,15 +85,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Valid file is required' }, { status: 400 })
     }
 
-    // Verify feedback exists
+    // Verify feedback exists AND belongs to the current user
     const [existingFeedback] = await db
-      .select({ id: feedback.id })
+      .select({ id: feedback.id, userEmail: feedback.userEmail })
       .from(feedback)
       .where(eq(feedback.id, feedbackId))
       .limit(1)
 
     if (!existingFeedback) {
       return NextResponse.json({ error: 'Feedback not found' }, { status: 404 })
+    }
+
+    if (existingFeedback.userEmail !== session.user.email) {
+      return NextResponse.json({ error: 'You can only upload media to your own feedback' }, { status: 403 })
     }
 
     // Size limits

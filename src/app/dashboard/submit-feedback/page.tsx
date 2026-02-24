@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   MessageSquare, Star, Send, CheckCircle,
   Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera,
-  Video, VideoOff
+  Video, VideoOff, Shield, AlertTriangle, Info, Sparkles
 } from 'lucide-react'
 import ProductSearch from '@/components/product-search'
 import Link from 'next/link'
@@ -29,6 +29,40 @@ const MAX_IMAGE_SIZE_MB = 5
 const MAX_AUDIO_DURATION_S = 120
 const MAX_VIDEO_DURATION_S = 60
 const MAX_VIDEO_SIZE_MB = 10
+const MIN_TEXT_LENGTH = 20
+const MAX_TEXT_LENGTH = 5000
+
+// Quality score: 0-100 based on completeness of feedback
+function calculateQualityScore(opts: {
+  hasProduct: boolean
+  textLength: number
+  hasRating: boolean
+  hasAudio: boolean
+  hasVideo: boolean
+  imageCount: number
+}) {
+  let score = 0
+  if (opts.hasProduct) score += 10
+  if (opts.hasRating) score += 10
+  // Text quality: 0-30 based on length
+  if (opts.textLength >= MIN_TEXT_LENGTH) score += 10
+  if (opts.textLength >= 50) score += 10
+  if (opts.textLength >= 100) score += 10
+  // Multimodal bonuses
+  if (opts.hasAudio) score += 20
+  if (opts.hasVideo) score += 20
+  if (opts.imageCount >= 1) score += 5
+  if (opts.imageCount >= 2) score += 5
+  return Math.min(100, score)
+}
+
+function getQualityLabel(score: number): { label: string; color: string; emoji: string } {
+  if (score >= 80) return { label: 'Excellent', color: 'text-green-600', emoji: '🌟' }
+  if (score >= 60) return { label: 'Great', color: 'text-blue-600', emoji: '👍' }
+  if (score >= 40) return { label: 'Good', color: 'text-yellow-600', emoji: '📝' }
+  if (score >= 20) return { label: 'Basic', color: 'text-orange-600', emoji: '✏️' }
+  return { label: 'Getting started', color: 'text-muted-foreground', emoji: '🔰' }
+}
 
 export default function SubmitFeedbackPage() {
   const searchParams = useSearchParams()
@@ -301,12 +335,12 @@ export default function SubmitFeedbackPage() {
       return
     }
 
-    const hasText = feedbackText.trim().length >= 3
+    const hasText = feedbackText.trim().length >= MIN_TEXT_LENGTH
     const hasAudio = audioBlob !== null
     const hasImages = imageFiles.length > 0
 
     if (!hasText && !hasAudio) {
-      setError('Please provide text feedback or record a voice message.')
+      setError(`Please provide text feedback (at least ${MIN_TEXT_LENGTH} characters) or record a voice message.`)
       return
     }
 
@@ -337,11 +371,9 @@ export default function SubmitFeedbackPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productId: selectedProduct.id,
-          feedbackText: hasText ? feedbackText.trim() : '(Voice feedback)',
+          feedbackText: hasText ? feedbackText.trim() : '(Voice/video feedback)',
           rating: rating || undefined,
           category,
-          userName: session?.user?.name || undefined,
-          userEmail: session?.user?.email || undefined,
         }),
       })
 
@@ -487,6 +519,19 @@ export default function SubmitFeedbackPage() {
         </p>
       </div>
 
+      {/* Authenticity Notice */}
+      <div className="flex items-start gap-3 p-4 rounded-lg bg-primary/5 border border-primary/20">
+        <Shield className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+        <div className="text-sm">
+          <p className="font-semibold text-primary">Quality Matters — Authentic Feedback Only</p>
+          <p className="text-muted-foreground mt-1">
+            Voice and video recordings help brands deeply understand your experience — they&apos;re highly encouraged 
+            for better analytics and product improvement. Submissions are verified for authenticity. 
+            Duplicate or low-effort feedback will be flagged. Max 5 submissions per hour.
+          </p>
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Step 1: Product Selection */}
         <Card>
@@ -560,9 +605,10 @@ export default function SubmitFeedbackPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Mic className="w-5 h-5" /> 4. Voice Feedback (optional)
+                <Mic className="w-5 h-5" /> 4. Voice Feedback
+                <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">Recommended</Badge>
               </CardTitle>
-              <CardDescription>Tap the mic to record your thoughts — easier than typing!</CardDescription>
+              <CardDescription>Record your thoughts — voice conveys emotion that text can&apos;t, helping brands truly understand your experience</CardDescription>
             </CardHeader>
             <CardContent>
               {audioUrl ? (
@@ -606,9 +652,10 @@ export default function SubmitFeedbackPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Video className="w-5 h-5" /> {hasAudioSupport ? '5' : '4'}. Video Feedback (optional)
+                <Video className="w-5 h-5" /> {hasAudioSupport ? '5' : '4'}. Video Feedback
+                <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">Recommended</Badge>
               </CardTitle>
-              <CardDescription>Record a short video review — up to {MAX_VIDEO_DURATION_S} seconds</CardDescription>
+              <CardDescription>Show your experience — video gives the most detailed insight for deep product analysis</CardDescription>
             </CardHeader>
             <CardContent>
               {videoUrl ? (
@@ -668,15 +715,26 @@ export default function SubmitFeedbackPage() {
           <CardContent>
             <textarea
               value={feedbackText}
-              onChange={(e) => setFeedbackText(e.target.value)}
+              onChange={(e) => {
+                if (e.target.value.length <= MAX_TEXT_LENGTH) setFeedbackText(e.target.value)
+              }}
               rows={5}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="Share your experience, thoughts, or suggestions..."
+              className={`w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                feedbackText.length > 0 && feedbackText.trim().length < MIN_TEXT_LENGTH
+                  ? 'border-orange-400'
+                  : 'border-input'
+              }`}
+              placeholder="Share your experience, thoughts, or suggestions (minimum 20 characters)..."
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              {feedbackText.length} characters
-              {audioBlob && ' (optional if you recorded audio)'}
-            </p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-muted-foreground">
+                {feedbackText.length > 0 && feedbackText.trim().length < MIN_TEXT_LENGTH && (
+                  <span className="text-orange-500">At least {MIN_TEXT_LENGTH} characters needed ({MIN_TEXT_LENGTH - feedbackText.trim().length} more) • </span>
+                )}
+                {feedbackText.length} / {MAX_TEXT_LENGTH} characters
+              </p>
+              {audioBlob && <p className="text-xs text-muted-foreground">Text is optional when voice is attached</p>}
+            </div>
           </CardContent>
         </Card>
 
@@ -684,9 +742,9 @@ export default function SubmitFeedbackPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Camera className="w-5 h-5" /> {hasAudioSupport && hasVideoSupport ? '7' : hasAudioSupport || hasVideoSupport ? '6' : '5'}. Upload Photos (optional)
+              <Camera className="w-5 h-5" /> {hasAudioSupport && hasVideoSupport ? '7' : hasAudioSupport || hasVideoSupport ? '6' : '5'}. Upload Photos
             </CardTitle>
-            <CardDescription>Add up to {MAX_IMAGES} images ({MAX_IMAGE_SIZE_MB}MB each)</CardDescription>
+            <CardDescription>Visual evidence helps brands see exactly what you experienced — up to {MAX_IMAGES} images ({MAX_IMAGE_SIZE_MB}MB each)</CardDescription>
           </CardHeader>
           <CardContent>
             {imagePreviewUrls.length > 0 && (
@@ -718,6 +776,54 @@ export default function SubmitFeedbackPage() {
           </CardContent>
         </Card>
 
+        {/* Quality Score */}
+        {selectedProduct && (
+          <Card>
+            <CardContent className="pt-6">
+              {(() => {
+                const score = calculateQualityScore({
+                  hasProduct: !!selectedProduct,
+                  textLength: feedbackText.trim().length,
+                  hasRating: rating !== null,
+                  hasAudio: audioBlob !== null,
+                  hasVideo: videoBlob !== null,
+                  imageCount: imageFiles.length,
+                })
+                const quality = getQualityLabel(score)
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-primary" />
+                        <span className="text-sm font-medium">Feedback Quality Score</span>
+                      </div>
+                      <span className={`text-sm font-semibold ${quality.color}`}>{quality.emoji} {quality.label} ({score}/100)</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2.5">
+                      <div
+                        className={`h-2.5 rounded-full transition-all duration-500 ${
+                          score >= 80 ? 'bg-green-500' :
+                          score >= 60 ? 'bg-blue-500' :
+                          score >= 40 ? 'bg-yellow-500' :
+                          score >= 20 ? 'bg-orange-500' : 'bg-gray-400'
+                        }`}
+                        style={{ width: `${score}%` }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {!rating && <Badge variant="outline" className="text-xs">+ Add rating</Badge>}
+                      {feedbackText.trim().length < 100 && <Badge variant="outline" className="text-xs">+ Write more details</Badge>}
+                      {!audioBlob && <Badge variant="outline" className="text-xs text-primary border-primary/30">+ Add voice for +20 pts</Badge>}
+                      {!videoBlob && <Badge variant="outline" className="text-xs text-primary border-primary/30">+ Add video for +20 pts</Badge>}
+                      {imageFiles.length === 0 && <Badge variant="outline" className="text-xs">+ Add photos</Badge>}
+                    </div>
+                  </div>
+                )
+              })()}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Error */}
         {error && (
           <div className="p-4 bg-destructive/10 border border-destructive rounded-lg">
@@ -738,7 +844,7 @@ export default function SubmitFeedbackPage() {
           type="submit"
           size="lg"
           className="w-full gap-2"
-          disabled={isSubmitting || !selectedProduct || (feedbackText.trim().length < 3 && !audioBlob)}
+          disabled={isSubmitting || !selectedProduct || (feedbackText.trim().length < MIN_TEXT_LENGTH && !audioBlob)}
         >
           {isSubmitting ? (
             <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</>
@@ -748,8 +854,9 @@ export default function SubmitFeedbackPage() {
         </Button>
 
         <p className="text-xs text-muted-foreground text-center">
-          By submitting, you agree that your feedback may be shared with the product&apos;s brand
-          for improvement purposes. You&apos;ll earn reward points for every submission!
+          By submitting, you confirm this is genuine feedback based on your real experience.
+          Spam, duplicate, or fake submissions may result in point deductions.
+          You&apos;ll earn reward points for quality feedback!
         </p>
       </form>
     </div>
