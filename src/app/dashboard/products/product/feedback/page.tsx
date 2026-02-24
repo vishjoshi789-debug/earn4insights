@@ -1,5 +1,5 @@
 import { getProductById } from '@/lib/product/store'
-import ProductOverview from './ProductOverview'
+import { redirect } from 'next/navigation'
 
 export default function ProductPage({
   searchParams,
@@ -18,5 +18,5 @@ export default function ProductPage({
     return <div className="p-6">Product not found</div>
   }
 
-  return <ProductOverview product={product} />
+  redirect(`/dashboard/products/${productId}/feedback`)
 }

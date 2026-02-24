@@ -9,15 +9,14 @@ export async function launchProduct(formData: FormData) {
   const product: Product = {
     id: crypto.randomUUID(),
     name: formData.get('name') as string,
-    platform: formData.get('platform') as any,
-    domain: formData.get('domain') as string,
+    platform: formData.get('platform') as string,
     description: formData.get('description') as string,
-    status: 'launched',
     features: {
       nps: true,
       feedback: true,
       social_listening: true,
     },
+    profile: { currentStep: 1, isComplete: false, data: {} },
     created_at: new Date().toISOString(),
   }
 
