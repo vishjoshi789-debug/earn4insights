@@ -1,29 +1,13 @@
-// ✅ Paste from here (at the very top of the file, starting line 1)
-import React from "react";
-
-type PageProps = {
-  params: Promise<{ id: string }>
-};
-
-
-
-
 import data from "./placeholder-images.json";
 
-/**
- * This is the shape your app actually uses in pages:
- * - imageUrl: for <Image src=...>
- * - imageHint: for data-ai-hint
- */
 export type ImagePlaceholder = {
   id: number;
-  imageUrl: string;
+  imageUrl: string;      // always a string for <Image src=...>
   imageHint?: string;
   alt?: string;
 };
 
-// The JSON may contain fields like: id, url, imageUrl, alt, hint...
-// We normalize it here so the rest of the app always sees the same shape.
+// Normalize whatever is in placeholder-images.json into the shape above
 export const PlaceHolderImages: ImagePlaceholder[] = (data as any[]).map(
   (item, index) => {
     const id =

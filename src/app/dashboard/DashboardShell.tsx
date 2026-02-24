@@ -29,6 +29,10 @@ import {
   TrendingUp,
   PenSquare,
   ClipboardList,
+  Activity,
+  Bell,
+  Globe,
+  Upload,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -57,6 +61,9 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys' },
   { href: '/dashboard/analytics/unified', label: 'Unified Analytics', icon: TrendingUp, tourId: 'nav-analytics', role: 'brand' },
+  { href: '/dashboard/analytics/feature-insights', label: 'Feature Insights', icon: Activity, tourId: 'nav-feature-insights', role: 'brand' },
+  { href: '/dashboard/analytics/weekly-digest', label: 'Weekly Digest', icon: Bell, tourId: 'nav-weekly-digest', role: 'brand' },
+  { href: '/dashboard/analytics/category-intelligence', label: 'Category Intelligence', icon: Globe, tourId: 'nav-category-intelligence' },
   { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards' },
   { href: '/dashboard/payouts', label: 'Payouts', icon: HandCoins, tourId: 'nav-payouts' },
   {
@@ -71,6 +78,13 @@ const menuItems: MenuItem[] = [
     label: 'Launch Product',
     icon: PackagePlus,
     tourId: 'nav-launch',
+    role: 'brand',
+  },
+  {
+    href: '/dashboard/import',
+    label: 'Import Data',
+    icon: Upload,
+    tourId: 'nav-import',
     role: 'brand',
   },
 ]

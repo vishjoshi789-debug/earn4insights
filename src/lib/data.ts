@@ -481,7 +481,7 @@ export const mockPayoutRequests: PayoutRequest[] = [
 
 export type SurveyQuestion = {
   id: string;
-  type: 'nps' | 'rating' | 'text' | 'multiple-choice';
+  type: 'nps' | 'text' | 'mcq';
   question: string;
   required: boolean;
   options?: string[];

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Quote } from 'lucide-react'
 import type { Product } from '@/lib/types/product'
+import { ProductHealthCard } from '@/components/analytics/ProductHealthCard'
 
 export default function ProductOverview({
   product,
@@ -88,6 +89,11 @@ export default function ProductOverview({
             value={formatUserBase(profile.data.context?.userBase)}
           />
         </div>
+
+        {/* =======================
+            2.1 HEALTH SCORE & AI SUMMARY
+        ======================== */}
+        <ProductHealthCard productId={product.id} />
 
         {/* =======================
             2.5 PRODUCT DETAILS (NEW)

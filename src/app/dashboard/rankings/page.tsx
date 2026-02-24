@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Trophy, TrendingUp, Calendar, Sparkles, RefreshCw, ExternalLink, MessageSquare } from 'lucide-react'
+import { Trophy, TrendingUp, Calendar, Sparkles, RefreshCw, ExternalLink, MessageSquare, Heart } from 'lucide-react'
 import { PRODUCT_CATEGORIES, CATEGORY_ICONS, getCategoryName } from '@/lib/categories'
 import type { ProductCategory } from '@/lib/categories'
 import type { WeeklyRanking, RankedProduct } from '@/lib/types/ranking'
@@ -254,6 +254,18 @@ export default function RankingsPage() {
             </Link>
           </Button>
           <Button variant="outline" className="w-full justify-start gap-2" asChild>
+            <Link href="/dashboard/analytics/category-intelligence">
+              <Heart className="h-4 w-4" />
+              Category Intelligence
+            </Link>
+          </Button>
+          <Button variant="outline" className="w-full justify-start gap-2" asChild>
+            <Link href="/dashboard/analytics/feature-insights">
+              <Sparkles className="h-4 w-4" />
+              Feature Insights
+            </Link>
+          </Button>
+          <Button variant="outline" className="w-full justify-start gap-2" asChild>
             <Link href="/dashboard/rankings/categories">
               <Sparkles className="h-4 w-4" />
               Manage Product Categories
@@ -332,6 +344,19 @@ function CategoryRankingView({
 }
 
 function ProductRankCard({ product, rank }: { product: RankedProduct; rank: number }) {
+  const [healthScore, setHealthScore] = useState<{ score: number; grade: string } | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/analytics/health-score/${product.productId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.dataPoints > 0) {
+          setHealthScore({ score: data.healthScore, grade: data.grade })
+        }
+      })
+      .catch(() => {})
+  }, [product.productId])
+
   const getMedalColor = (rank: number) => {
     if (rank === 1) return 'text-yellow-500'
     if (rank === 2) return 'text-gray-400'
@@ -374,6 +399,21 @@ function ProductRankCard({ product, rank }: { product: RankedProduct; rank: numb
                   <Badge variant="outline" className="text-xs">
                     {product.metrics.totalResponses} responses
                   </Badge>
+                  {healthScore && (
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${
+                        healthScore.grade === 'A' ? 'border-green-500 text-green-600' :
+                        healthScore.grade === 'B' ? 'border-blue-500 text-blue-600' :
+                        healthScore.grade === 'C' ? 'border-yellow-500 text-yellow-600' :
+                        healthScore.grade === 'D' ? 'border-orange-500 text-orange-600' :
+                        'border-red-500 text-red-600'
+                      }`}
+                    >
+                      <Heart className="h-3 w-3 mr-1" />
+                      {healthScore.score} ({healthScore.grade})
+                    </Badge>
+                  )}
                 </div>
               </div>
               
