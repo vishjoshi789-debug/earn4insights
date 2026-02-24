@@ -27,20 +27,36 @@ import {
   FileText,
   Trophy,
   TrendingUp,
+  PenSquare,
+  ClipboardList,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { DashboardHeader } from '@/components/dashboard-header'
 import { ProductTour } from '@/components/ProductTour'
 
-const menuItems = [
+type MenuItem = {
+  href: string
+  label: string
+  icon: any
+  tourId: string
+  /** If set, only show this item for the given role. Omit for all roles. */
+  role?: 'brand' | 'consumer'
+}
+
+const menuItems: MenuItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, tourId: 'nav-dashboard' },
   { href: '/dashboard/products', label: 'Products', icon: Package, tourId: 'nav-products' },
   { href: '/dashboard/rankings', label: 'Weekly Top 10 products', icon: Trophy, tourId: 'nav-rankings' },
-  { href: '/dashboard/feedback', label: 'Feedback', icon: MessageSquare, tourId: 'nav-feedback' },
+  // Brand: sees aggregated feedback from consumers
+  { href: '/dashboard/feedback', label: 'Feedback', icon: MessageSquare, tourId: 'nav-feedback', role: 'brand' },
+  // Consumer: submit new feedback + view their history
+  { href: '/dashboard/submit-feedback', label: 'Submit Feedback', icon: PenSquare, tourId: 'nav-submit-feedback', role: 'consumer' },
+  { href: '/dashboard/my-feedback', label: 'My Feedback', icon: ClipboardList, tourId: 'nav-my-feedback', role: 'consumer' },
   { href: '/dashboard/social', label: 'Social', icon: Users, tourId: 'nav-social' },
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys' },
-  { href: '/dashboard/analytics/unified', label: 'Unified Analytics', icon: TrendingUp, tourId: 'nav-analytics' },
+  { href: '/dashboard/analytics/unified', label: 'Unified Analytics', icon: TrendingUp, tourId: 'nav-analytics', role: 'brand' },
   { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards' },
   { href: '/dashboard/payouts', label: 'Payouts', icon: HandCoins, tourId: 'nav-payouts' },
   {
@@ -48,12 +64,14 @@ const menuItems = [
     label: 'Detailed product analytics',
     icon: FileText,
     tourId: 'nav-detailed-analytics',
+    role: 'brand',
   },
   {
     href: '/dashboard/launch',
     label: 'Launch Product',
     icon: PackagePlus,
     tourId: 'nav-launch',
+    role: 'brand',
   },
 ]
 
@@ -63,6 +81,13 @@ export default function DashboardShell({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const { data: session } = useSession()
+  const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | undefined
+
+  // Filter menu items by user role — show items with no role restriction + items matching user's role
+  const visibleItems = menuItems.filter(
+    (item) => !item.role || item.role === userRole
+  )
 
   return (
     <SidebarProvider>
@@ -78,7 +103,7 @@ export default function DashboardShell({
 
         <SidebarContent>
           <SidebarMenu>
-            {menuItems.map((item) => (
+            {visibleItems.map((item) => (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
                   asChild

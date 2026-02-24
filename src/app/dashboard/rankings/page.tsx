@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Trophy, TrendingUp, Calendar, Sparkles, RefreshCw, ExternalLink } from 'lucide-react'
+import { Trophy, TrendingUp, Calendar, Sparkles, RefreshCw, ExternalLink, MessageSquare } from 'lucide-react'
 import { PRODUCT_CATEGORIES, CATEGORY_ICONS, getCategoryName } from '@/lib/categories'
 import type { ProductCategory } from '@/lib/categories'
 import type { WeeklyRanking, RankedProduct } from '@/lib/types/ranking'
@@ -411,6 +411,16 @@ function ProductRankCard({ product, rank }: { product: RankedProduct; rank: numb
                 <div className="text-muted-foreground">Responses</div>
                 <div className="font-medium">{product.metrics.totalResponses}</div>
               </div>
+            </div>
+
+            {/* Give Feedback CTA */}
+            <div className="mt-3 pt-3 border-t">
+              <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto" asChild>
+                <Link href={`/dashboard/submit-feedback?productId=${product.productId}&productName=${encodeURIComponent(product.productName)}`}>
+                  <MessageSquare className="h-4 w-4" />
+                  Give Feedback
+                </Link>
+              </Button>
             </div>
           </div>
         </div>
