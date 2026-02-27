@@ -21,56 +21,20 @@ export default async function RecommendationsPage() {
       redirect('/api/auth/signin')
     }
 
-    // Get user profile
-    const userProfile = await db
-      .select()
-      .from(userProfiles)
-      .where(eq(userProfiles.id, session.user.id))
-      .limit(1)
-      .catch((err) => {
-        console.error('[Recommendations] Database error fetching profile:', err)
-        throw err
-      })
-
-    if (!userProfile[0]) {
-      console.log('[Recommendations] No profile found, redirecting to onboarding')
-      redirect('/onboarding')
+    // Get user profile (optional — page works without one)
+    let hasProfile = false
+    try {
+      const userProfile = await db
+        .select()
+        .from(userProfiles)
+        .where(eq(userProfiles.id, session.user.id))
+        .limit(1)
+      hasProfile = !!(userProfile[0]?.onboardingComplete)
+    } catch (err) {
+      console.error('[Recommendations] Error fetching profile (non-fatal):', err)
     }
 
-    const profile = userProfile[0]
-
-    // Check if onboarding is complete (gracefully handle missing field)
-    const isOnboardingComplete = profile.onboardingComplete ?? false
-  
-    if (!isOnboardingComplete) {
-      return (
-        <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-headline font-bold mb-2 flex items-center gap-2">
-            <Sparkles className="h-8 w-8 text-purple-500" />
-            For You
-          </h1>
-          <p className="text-muted-foreground">
-            Personalized product recommendations based on your interests and activity
-          </p>
-        </div>
-
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Complete Your Profile</AlertTitle>
-          <AlertDescription>
-            To get personalized recommendations, please complete your onboarding first.
-            <br />
-            <Button asChild className="mt-4" size="sm">
-              <Link href="/onboarding">Complete Onboarding</Link>
-            </Button>
-          </AlertDescription>
-        </Alert>
-      </div>
-    )
-  }
-
-  // Get personalized recommendations
+    // Get personalized recommendations
   let recommendations: Array<{
     productId: string
     score: number
@@ -141,6 +105,21 @@ export default async function RecommendationsPage() {
           Personalized product recommendations based on your interests and activity
         </p>
       </div>
+
+      {!hasProfile && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Complete Your Profile for Better Matches</AlertTitle>
+          <AlertDescription>
+            Tell us about your interests so we can personalize your recommendations.
+            <div className="mt-3">
+              <Button asChild size="sm">
+                <Link href="/onboarding">Complete Profile</Link>
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {recommendationsWithProducts.length === 0 ? (
         <Alert>
