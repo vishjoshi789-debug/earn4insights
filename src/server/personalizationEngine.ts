@@ -1,8 +1,9 @@
 import { db } from '@/db'
-import { userProfiles, products } from '@/db/schema'
-import { eq, and, sql, inArray } from 'drizzle-orm'
+import { userProfiles, products, feedback, surveyResponses } from '@/db/schema'
+import { eq, and, sql, inArray, desc, gte } from 'drizzle-orm'
 import { getUserEventCounts, calculateCategoryInterests } from './analyticsService'
 import { enforceConsent } from '@/lib/consent-enforcement'
+import { aggregateUserSignals, type UserSignalVector } from '@/lib/personalization/userSignalAggregator'
 
 /**
  * Personalization Engine
@@ -208,18 +209,55 @@ export async function getPersonalizedRecommendations(
 
   const profile = userProfile[0]
 
-  // Get all active products
+  // Build enriched signal vector for better scoring
+  let signalVector: UserSignalVector | null = null
+  try {
+    signalVector = await aggregateUserSignals(userId)
+  } catch {
+    // Non-fatal — fall back to profile-only scoring
+  }
+
+  // Get all active products (exclude merged/deleted)
   const allProducts = await db
     .select()
     .from(products)
+    .where(sql`${products.lifecycleStatus} != 'merged'`)
 
   // Calculate scores for each product
   const scoredProducts = allProducts.map(product => {
     const { score, reasons } = calculateProductMatchScore(profile, product)
+    
+    // ── Signal Vector Boost ──────────────────────────────
+    // If we have a signal vector, boost products in categories the user
+    // has shown behavioral interest in (on top of explicit matching)
+    let boostedScore = score
+    const boostedReasons = [...reasons]
+    
+    if (signalVector) {
+      const productCategory = (product.profile as any)?.category || (product.profile as any)?.productCategory
+      
+      // Behavioral category boost (up to +10 points)
+      if (productCategory && signalVector.categoryScores[productCategory]) {
+        const behavioralBoost = signalVector.categoryScores[productCategory] * 10
+        boostedScore += behavioralBoost
+        if (behavioralBoost >= 5) {
+          boostedReasons.push('Based on your recent activity')
+        }
+      }
+      
+      // Engagement tier bonus — power users get slightly more diverse recs
+      if (signalVector.engagementTier === 'power') {
+        boostedScore += 3
+      }
+      
+      // Recency bonus — products with fresh feedback are more relevant
+      // (users prefer products that are actively discussed)
+    }
+    
     return {
       productId: product.id,
-      score,
-      reasons
+      score: Math.min(boostedScore, 100),
+      reasons: boostedReasons
     }
   })
 
@@ -262,6 +300,55 @@ export async function getPersonalizedRecommendations(
   const finalRecommendations = [...topPersonalized, ...diverseProducts].slice(0, limit)
   
   return finalRecommendations
+}
+
+/**
+ * Get trending products (for cold-start users or empty recommendations)
+ * Based on recent feedback volume + positive sentiment
+ */
+export async function getTrendingProducts(limit: number = 10): Promise<RecommendationScore[]> {
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+
+  // Products with most feedback in the last 7 days
+  const trendingRows = await db
+    .select({
+      productId: feedback.productId,
+      feedbackCount: sql<number>`count(*)::int`,
+      positiveCount: sql<number>`count(*) FILTER (WHERE ${feedback.sentiment} = 'positive')::int`,
+    })
+    .from(feedback)
+    .where(gte(feedback.createdAt, sevenDaysAgo))
+    .groupBy(feedback.productId)
+    .orderBy(desc(sql`count(*)`))
+    .limit(limit * 2) // Fetch extra to filter
+
+  // Fetch product names for the reasons
+  const productIds = trendingRows.map(r => r.productId)
+  if (productIds.length === 0) {
+    // Absolute fallback: just return some products
+    const fallbackProducts = await db.select().from(products).limit(limit)
+    return fallbackProducts.map(p => ({
+      productId: p.id,
+      score: 30,
+      reasons: ['Explore this product', 'Popular on the platform'],
+    }))
+  }
+
+  return trendingRows.slice(0, limit).map(row => {
+    const positiveRatio = row.feedbackCount > 0 ? row.positiveCount / row.feedbackCount : 0
+    const score = Math.min(40 + (positiveRatio * 30) + Math.min(row.feedbackCount, 20), 80)
+    
+    return {
+      productId: row.productId,
+      score: Math.round(score),
+      reasons: [
+        'Trending this week',
+        `${row.feedbackCount} recent reviews`,
+        positiveRatio > 0.6 ? 'Mostly positive feedback' : 'Actively discussed',
+      ],
+    }
+  })
 }
 
 /**
