@@ -4,10 +4,10 @@ import { generatePublicSummary } from '@/lib/analytics/publicSummary'
 // Public route — no auth required (this is the public product summary)
 export async function GET(
   request: NextRequest,
-  { params }: { params: { productId: string } }
+  { params }: { params: Promise<{ productId: string }> }
 ) {
   try {
-    const { productId } = params
+    const { productId } = await params
     if (!productId) {
       return NextResponse.json({ error: 'Product ID is required' }, { status: 400 })
     }

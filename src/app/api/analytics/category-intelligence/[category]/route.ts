@@ -6,7 +6,7 @@ import type { ProductCategory } from '@/lib/categories'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { category: string } }
+  { params }: { params: Promise<{ category: string }> }
 ) {
   try {
     const session = await auth()
@@ -14,7 +14,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const category = params.category?.toUpperCase() as ProductCategory
+    const { category: rawCategory } = await params
+    const category = rawCategory?.toUpperCase() as ProductCategory
     if (!category || !PRODUCT_CATEGORIES[category]) {
       return NextResponse.json(
         { error: 'Invalid category', validCategories: Object.keys(PRODUCT_CATEGORIES) },

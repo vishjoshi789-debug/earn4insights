@@ -4,7 +4,7 @@ import { calculateProductHealthScore } from '@/lib/analytics/productHealthScore'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { productId: string } }
+  { params }: { params: Promise<{ productId: string }> }
 ) {
   try {
     const session = await auth()
@@ -12,7 +12,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { productId } = params
+    const { productId } = await params
     if (!productId) {
       return NextResponse.json({ error: 'Product ID is required' }, { status: 400 })
     }

@@ -1,11 +1,11 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 
-export default function ProductNpsPage({
+export default async function ProductNpsPage({
   searchParams,
 }: {
-  searchParams: { productId?: string }
+  searchParams: Promise<{ productId?: string }>
 }) {
-  const productId = searchParams.productId
+  const { productId } = await searchParams
 
   if (!productId) {
     return <div className="p-6">Invalid product</div>

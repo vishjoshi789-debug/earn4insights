@@ -1,29 +1,15 @@
-'use server'
-
 import { redirect } from 'next/navigation'
-import { Product } from '@/lib/types/product'
-import { initializeProductData } from '@/lib/product/initProduct'
-import { addProduct } from '@/lib/product/store'
 
-export async function launchProduct(formData: FormData) {
-  const product: Product = {
-    id: crypto.randomUUID(),
-    name: formData.get('name') as string,
-    platform: formData.get('platform') as string,
-    description: formData.get('description') as string,
-    features: {
-      nps: true,
-      feedback: true,
-      social_listening: true,
-    },
-    profile: { currentStep: 1, isComplete: false, data: {} },
-    created_at: new Date().toISOString(),
+export default async function ProductPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ productId?: string }>
+}) {
+  const { productId } = await searchParams
+
+  if (!productId) {
+    redirect('/dashboard/products')
   }
 
-  // 🔒 GUARANTEED persistence
-  await addProduct(product)
-
-  initializeProductData(product.id)
-
-  redirect(`/dashboard/products/product?productId=${product.id}`)
+  redirect(`/dashboard/products/${productId}`)
 }
