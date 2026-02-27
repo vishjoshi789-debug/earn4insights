@@ -90,7 +90,9 @@ export default async function RecommendationsPage() {
         reasons: ['Trending product', 'Popular with other users']
       }))
     }
-  } catch (error) {
+  } catch (error: any) {
+    // Let Next.js redirects pass through (e.g. from consent enforcement)
+    if (error?.digest?.includes('NEXT_REDIRECT')) throw error
     console.error('[Recommendations] Error fetching:', error)
     // Fallback to showing some products
     const fallbackProducts = await db.select().from(products).limit(10)
@@ -236,7 +238,9 @@ export default async function RecommendationsPage() {
       </Alert>
     </div>
   )
-  } catch (error) {
+  } catch (error: any) {
+    // Let Next.js redirects pass through — redirect() throws a special error
+    if (error?.digest?.includes('NEXT_REDIRECT')) throw error
     console.error('[Recommendations] Fatal error:', error)
     return (
       <div className="space-y-6">
