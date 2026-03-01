@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { signInAction, signInWithGoogleAction } from '@/lib/actions/auth.actions'
 import { Loader2, AlertCircle } from 'lucide-react'
+import { Logo } from '@/components/logo'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -42,9 +43,16 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
       <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-          <CardDescription>
+        <CardHeader className="space-y-3">
+          <div className="flex flex-col items-center gap-1">
+            <Logo size={48} />
+            <span className="font-headline font-bold text-lg">Earn4Insights</span>
+            <span className="text-[10px] text-muted-foreground">
+              Real Voices. Measurable Intelligence.
+            </span>
+          </div>
+          <CardTitle className="text-2xl font-bold text-center">Welcome back</CardTitle>
+          <CardDescription className="text-center">
             Sign in to your account to continue
           </CardDescription>
         </CardHeader>

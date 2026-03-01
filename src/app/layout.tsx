@@ -23,8 +23,13 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Earn4Insights - Customer Intelligence Platform',
-  description: 'Turn customer feedback into product success. Launch products with confidence through real-time insights and rankings.',
+  title: 'Earn4Insights — Real Voices. Measurable Intelligence.',
+  description: 'Where consumer voice powers better products. Multimodal and multilingual feedback transformed into real-time product intelligence — helping brands build smarter and consumers shape the products they use.',
+  openGraph: {
+    title: 'Earn4Insights — Real Voices. Measurable Intelligence.',
+    description: 'Where consumer voice powers better products. Multimodal feedback, multilingual intelligence, real-time analytics and personalized recommendations.',
+    images: [{ url: '/logo.png', width: 512, height: 512, alt: 'Earn4Insights' }],
+  },
 }
 
 export default function RootLayout({

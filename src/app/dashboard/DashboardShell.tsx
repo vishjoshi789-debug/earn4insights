@@ -111,10 +111,15 @@ export default function DashboardShell({
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <div className="flex items-center gap-2" data-tour="welcome">
-            <Logo />
-            <span className="text-lg font-headline font-semibold">
-              Earn4Insights
+          <div className="flex flex-col gap-1" data-tour="welcome">
+            <div className="flex items-center gap-2">
+              <Logo size={36} />
+              <span className="text-lg font-headline font-semibold">
+                Earn4Insights
+              </span>
+            </div>
+            <span className="text-[10px] text-muted-foreground leading-tight pl-1">
+              Real Voices. Measurable Intelligence.
             </span>
           </div>
         </SidebarHeader>

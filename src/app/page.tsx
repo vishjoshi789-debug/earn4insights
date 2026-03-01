@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ArrowRight, BarChart3, MessageSquare, TrendingUp, Users, Building2 } from 'lucide-react'
@@ -16,12 +17,14 @@ export default function HomePage() {
             </span>
             <span className="text-primary font-medium">Now Live</span>
           </div>
+          <div className="flex justify-center mb-6">
+            <Image src="/logo.png" alt="Earn4Insights" width={72} height={72} priority />
+          </div>
           <h1 className="text-balance text-foreground">
-            Turn Customer Feedback Into Product Success
+            Where Consumer Voice Powers Better Products.
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg">
-            Launch products with confidence. Get instant feedback, track rankings, 
-            and understand what drives customer satisfaction.
+          <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed">
+            Multimodal and multilingual feedback transformed into real-time product intelligence — helping brands build smarter and consumers shape the products they use. Launch with confidence through personalized recommendations, live analytics, and structured rankings.
           </p>
           <div className="mt-10 flex items-center justify-center gap-4">
             <Button size="lg" asChild className="gap-2 bg-primary hover:bg-primary/90">
@@ -247,8 +250,11 @@ export default function HomePage() {
             
             <div>
               <h4 className="text-sm font-semibold text-foreground">Earn4Insights</h4>
-              <p className="mt-4 text-sm text-muted-foreground">
-                Empowering brands and consumers through intelligent feedback.
+              <p className="mt-2 text-xs italic text-muted-foreground">
+                Real Voices. Measurable Intelligence.
+              </p>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Multimodal feedback. Multilingual intelligence. Real-time analytics and personalized recommendations — structured for brands, rewarding consumers.
               </p>
             </div>
           </div>

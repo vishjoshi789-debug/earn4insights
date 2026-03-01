@@ -52,9 +52,14 @@ export function SiteHeader() {
           <SheetContent side="left">
             <SheetHeader>
               <SheetTitle>
-                <div className="flex items-center gap-2">
-                  <Logo />
-                  <span className="font-bold font-headline text-lg">Earn4Insights</span>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <Logo size={36} />
+                    <span className="font-bold font-headline text-lg">Earn4Insights</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-normal leading-tight pl-1">
+                    Real Voices. Measurable Intelligence.
+                  </span>
                 </div>
               </SheetTitle>
             </SheetHeader>
@@ -91,10 +96,15 @@ export function SiteHeader() {
         </Sheet>
 
         <Link href="/" className="mr-6 flex items-center space-x-2 group">
-          <Logo />
-          <span className="font-bold font-headline text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all">
-            Earn4Insights
-          </span>
+          <Logo size={36} />
+          <div className="flex flex-col">
+            <span className="font-bold font-headline text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all leading-tight">
+              Earn4Insights
+            </span>
+            <span className="text-[9px] text-muted-foreground leading-tight">
+              Real Voices. Measurable Intelligence.
+            </span>
+          </div>
         </Link>
         <nav className="hidden flex-1 items-center gap-6 text-sm md:flex">
           <Link

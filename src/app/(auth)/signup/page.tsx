@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { signUpAction, signInWithGoogleAction } from '@/lib/actions/auth.actions'
 import { Loader2, AlertCircle } from 'lucide-react'
+import { Logo } from '@/components/logo'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -51,9 +52,16 @@ export default function SignupPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
       <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-          <CardDescription>
+        <CardHeader className="space-y-3">
+          <div className="flex flex-col items-center gap-1">
+            <Logo size={48} />
+            <span className="font-headline font-bold text-lg">Earn4Insights</span>
+            <span className="text-[10px] text-muted-foreground">
+              Real Voices. Measurable Intelligence.
+            </span>
+          </div>
+          <CardTitle className="text-2xl font-bold text-center">Create an account</CardTitle>
+          <CardDescription className="text-center">
             Choose your account type and get started
           </CardDescription>
         </CardHeader>
