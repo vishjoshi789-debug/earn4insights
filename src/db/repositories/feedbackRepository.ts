@@ -1,6 +1,6 @@
 import { db } from '@/db'
-import { feedback } from '@/db/schema'
-import { eq, desc, and, sql, count } from 'drizzle-orm'
+import { feedback, feedbackMedia } from '@/db/schema'
+import { eq, desc, and, sql, count, inArray } from 'drizzle-orm'
 
 export type FeedbackItem = {
   id: string
@@ -175,4 +175,60 @@ export async function updateFeedbackStatus(
     .returning()
 
   return updated
+}
+
+export type MediaItem = {
+  id: string
+  ownerId: string
+  mediaType: string
+  storageKey: string
+  mimeType: string | null
+  durationMs: number | null
+  status: string
+  moderationStatus: string | null
+}
+
+/**
+ * Get all media attachments for a list of feedback IDs.
+ * Returns a Map<feedbackId, MediaItem[]> for O(1) lookup per feedback.
+ */
+export async function getMediaForFeedbackIds(
+  feedbackIds: string[]
+): Promise<Map<string, MediaItem[]>> {
+  const result = new Map<string, MediaItem[]>()
+  if (feedbackIds.length === 0) return result
+
+  try {
+    const rows = await db
+      .select({
+        id: feedbackMedia.id,
+        ownerId: feedbackMedia.ownerId,
+        mediaType: feedbackMedia.mediaType,
+        storageKey: feedbackMedia.storageKey,
+        mimeType: feedbackMedia.mimeType,
+        durationMs: feedbackMedia.durationMs,
+        status: feedbackMedia.status,
+        moderationStatus: feedbackMedia.moderationStatus,
+      })
+      .from(feedbackMedia)
+      .where(
+        and(
+          eq(feedbackMedia.ownerType, 'feedback'),
+          inArray(feedbackMedia.ownerId, feedbackIds)
+        )
+      )
+
+    for (const row of rows) {
+      // Skip hidden/deleted media
+      if (row.moderationStatus === 'hidden' || row.status === 'deleted') continue
+      const existing = result.get(row.ownerId) || []
+      existing.push(row)
+      result.set(row.ownerId, existing)
+    }
+  } catch (err) {
+    // feedback_media table might not exist yet — return empty
+    console.error('[getMediaForFeedbackIds] Error (non-fatal):', err)
+  }
+
+  return result
 }

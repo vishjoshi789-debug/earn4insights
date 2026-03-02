@@ -1,4 +1,5 @@
-import { getFeedbackByProduct, getFeedbackStats } from '@/db/repositories/feedbackRepository'
+import { getFeedbackByProduct, getFeedbackStats, getMediaForFeedbackIds } from '@/db/repositories/feedbackRepository'
+import type { MediaItem } from '@/db/repositories/feedbackRepository'
 import { getProductById } from '@/db/repositories/productRepository'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -59,6 +60,10 @@ export default async function ProductFeedbackPage({
     getFeedbackByProduct(productId, { limit: 100 }),
     getFeedbackStats(productId),
   ])
+
+  // Fetch media for all feedback items
+  const feedbackIds = feedbackItems.map((f) => f.id)
+  const mediaMap = await getMediaForFeedbackIds(feedbackIds)
 
   const productName = product?.name || productId
 
@@ -188,6 +193,9 @@ export default async function ProductFeedbackPage({
                       </div>
                     )}
 
+                    {/* Media Attachments */}
+                    <FeedbackMediaSection media={mediaMap.get(item.id) || []} />
+
                     {/* Footer */}
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <StarDisplay rating={item.rating} />
@@ -210,6 +218,82 @@ export default async function ProductFeedbackPage({
                 </div>
               </CardContent>
             </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Media attachment renderer ── */
+function FeedbackMediaSection({ media }: { media: MediaItem[] }) {
+  if (media.length === 0) return null
+
+  const audioItems = media.filter((m) => m.mediaType === 'audio')
+  const videoItems = media.filter((m) => m.mediaType === 'video')
+  const imageItems = media.filter((m) => m.mediaType === 'image')
+
+  return (
+    <div className="space-y-2 mt-2">
+      {/* Audio player(s) */}
+      {audioItems.map((a) => (
+        <div key={a.id} className="flex items-center gap-2 bg-muted/40 rounded-lg p-2">
+          <span className="text-sm">🎤</span>
+          <audio controls preload="metadata" className="h-8 flex-1 min-w-0">
+            <source src={a.storageKey} type={a.mimeType || 'audio/webm'} />
+            Your browser does not support audio playback.
+          </audio>
+          {a.durationMs && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {Math.round(a.durationMs / 1000)}s
+            </span>
+          )}
+        </div>
+      ))}
+
+      {/* Video player(s) */}
+      {videoItems.map((v) => (
+        <div key={v.id} className="rounded-lg overflow-hidden border bg-black">
+          <video
+            controls
+            preload="metadata"
+            className="w-full max-h-[300px]"
+            playsInline
+          >
+            <source src={v.storageKey} type={v.mimeType || 'video/webm'} />
+            Your browser does not support video playback.
+          </video>
+          {v.durationMs && (
+            <div className="text-xs text-muted-foreground px-2 py-1 bg-muted/40">
+              🎥 Video · {Math.round(v.durationMs / 1000)}s
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Image gallery */}
+      {imageItems.length > 0 && (
+        <div className={`grid gap-2 ${
+          imageItems.length === 1 ? 'grid-cols-1' :
+          imageItems.length === 2 ? 'grid-cols-2' :
+          'grid-cols-3'
+        }`}>
+          {imageItems.map((img) => (
+            <a
+              key={img.id}
+              href={img.storageKey}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-lg overflow-hidden border hover:ring-2 hover:ring-primary transition-all"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img.storageKey}
+                alt="Feedback attachment"
+                className="w-full h-auto max-h-[200px] object-cover"
+                loading="lazy"
+              />
+            </a>
           ))}
         </div>
       )}
