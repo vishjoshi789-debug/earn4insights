@@ -68,8 +68,8 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/analytics/consumer-intelligence', label: 'Consumer Intelligence', icon: Brain, tourId: 'nav-consumer-intelligence', role: 'brand' },
   { href: '/dashboard/analytics/weekly-digest', label: 'Weekly Digest', icon: Bell, tourId: 'nav-weekly-digest', role: 'brand' },
   { href: '/dashboard/analytics/category-intelligence', label: 'Category Intelligence', icon: Globe, tourId: 'nav-category-intelligence' },
-  { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards' },
-  { href: '/dashboard/payouts', label: 'Payouts', icon: HandCoins, tourId: 'nav-payouts' },
+  { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards', role: 'consumer' },
+  { href: '/dashboard/payouts', label: 'Payouts', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer' },
   {
     href: '/dashboard/detailed-analytics',
     label: 'Detailed product analytics',

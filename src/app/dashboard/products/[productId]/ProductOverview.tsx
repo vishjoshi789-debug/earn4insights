@@ -259,44 +259,58 @@ export default function ProductOverview({
         </Card>
 
         {/* =======================
-            4. NEXT ACTIONS
+            4. QUICK ACTIONS
         ======================== */}
         <Card>
           <CardHeader>
-            <CardTitle>Next steps</CardTitle>
+            <CardTitle>Quick actions</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col md:flex-row gap-3">
-            <Button asChild>
-              <Link href={`/dashboard/products/${product.id}/nps`}>
-                View NPS
-              </Link>
-            </Button>
+          <CardContent className="space-y-3">
+            {/* Primary actions — most useful for brands */}
+            <div className="flex flex-col md:flex-row gap-3">
+              <Button asChild>
+                <Link href={`/dashboard/products/${product.id}/feedback`}>
+                  📩 View All Feedback
+                </Link>
+              </Button>
 
-            <Button asChild variant="outline">
-              <Link href={`/dashboard/products/${product.id}/feedback`}>
-                View Feedback
-              </Link>
-            </Button>
+              <Button asChild className="bg-purple-600 hover:bg-purple-700 text-white">
+                <Link href={`/dashboard/products/${product.id}/themes`}>
+                  🧠 AI Themes
+                </Link>
+              </Button>
 
-            <Button asChild>
-              <Link href={`/dashboard/products/${product.id}/social`}>
-                View Social Listening
-              </Link>
-            </Button>
+              <Button asChild variant="outline">
+                <Link href={`/dashboard/products/${product.id}/profile`}>
+                  {profile.isComplete
+                    ? '✏️ Edit product profile'
+                    : '📝 Complete product profile'}
+                </Link>
+              </Button>
 
-            <Button asChild>
-              <Link href={`/dashboard/products/${product.id}/profile`}>
-                {profile.isComplete
-                  ? 'Edit product profile'
-                  : 'Complete product profile'}
-              </Link>
-            </Button>
+              <Button asChild variant="outline">
+                <Link href={`/dashboard/analytics/unified`}>
+                  📊 Unified Analytics
+                </Link>
+              </Button>
+            </div>
 
-            <Button asChild className="bg-purple-600 hover:bg-purple-700 text-white">
-              <Link href={`/dashboard/products/${product.id}/themes`}>
-                AI Themes
-              </Link>
-            </Button>
+            {/* Secondary — coming soon features */}
+            <div className="flex flex-col md:flex-row gap-3">
+              <Button asChild variant="ghost" className="text-muted-foreground">
+                <Link href={`/dashboard/products/${product.id}/nps`}>
+                  📋 NPS Dashboard
+                  <span className="ml-1 text-[10px] bg-muted px-1.5 py-0.5 rounded">Soon</span>
+                </Link>
+              </Button>
+
+              <Button asChild variant="ghost" className="text-muted-foreground">
+                <Link href={`/dashboard/products/${product.id}/social`}>
+                  🌐 Social Listening
+                  <span className="ml-1 text-[10px] bg-muted px-1.5 py-0.5 rounded">Soon</span>
+                </Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
