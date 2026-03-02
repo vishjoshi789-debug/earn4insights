@@ -5,6 +5,7 @@ import { analyzeSentiment } from '@/server/sentimentService'
 import { normalizeTextForAnalytics } from '@/server/textNormalizationService'
 import { auth } from '@/lib/auth/auth.config'
 import { eq, and, gte, sql, desc } from 'drizzle-orm'
+import { computeRelevanceScore } from '@/lib/personalization/smartDistributionService'
 
 // ── Anti-fraud constants ──────────────────────────────────────
 const MAX_TEXT_LENGTH = 5000
@@ -245,11 +246,23 @@ export async function POST(request: Request) {
       })
       .returning()
 
+    // ── 8. Compute relevance score (non-blocking) ──────────────
+    // Uses ALL available data: onboarding demographics, interests,
+    // behavioral history, events, purchase data — gated by consent
+    let relevance: { score: number; tier: string } | null = null
+    try {
+      const relevanceResult = await computeRelevanceScore(userEmail, productId)
+      relevance = { score: relevanceResult.score, tier: relevanceResult.tier }
+    } catch (err) {
+      console.error('[Feedback] Relevance scoring failed (non-blocking):', err)
+    }
+
     return NextResponse.json({
       success: true,
       feedbackId: created.id,
       sentiment: sentimentResult || null,
       originalLanguage: originalLanguage || null,
+      relevance,
       message: 'Thank you for your feedback!',
     })
   } catch (error) {
