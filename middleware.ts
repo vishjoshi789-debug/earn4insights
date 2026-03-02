@@ -24,8 +24,11 @@ export default auth((req: NextRequest & { auth: any }) => {
     return NextResponse.redirect(new URL(redirectUrl, nextUrl))
   }
 
-  // Allow onboarding route for logged-in users (no role check)
+  // Onboarding is consumer-only — redirect brands to their dashboard
   if (isOnboardingRoute && isLoggedIn) {
+    if (req.auth?.user?.role === 'brand') {
+      return NextResponse.redirect(new URL('/dashboard', nextUrl))
+    }
     return NextResponse.next()
   }
 

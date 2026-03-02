@@ -26,11 +26,14 @@ export async function OnboardingGuard({
   // Ensure user profile exists (create if needed)
   const profile = await ensureUserProfile(session.user.id, session.user.email)
   
-  // Check if onboarding is complete (unless skipped)
+  // Brands don't need consumer onboarding — skip entirely
+  const isBrand = session.user.role === 'brand'
+
+  // Check if onboarding is complete (unless skipped or brand user)
   // Use the profile directly rather than re-fetching by userId,
   // because the profile.id may differ from session.user.id
   // (e.g. profile was created under a different auth provider)
-  if (!skipOnboarding) {
+  if (!skipOnboarding && !isBrand) {
     const onboardingComplete = await hasCompletedOnboarding(profile.id)
     
     if (!onboardingComplete) {

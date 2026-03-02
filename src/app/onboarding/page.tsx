@@ -10,9 +10,14 @@ export default async function OnboardingPage() {
     redirect('/api/auth/signin')
   }
 
+  // Brands don't need consumer onboarding — send them to their dashboard
+  if (session.user.role === 'brand') {
+    redirect('/dashboard')
+  }
+
   return (
     <EnsureProfile>
-      <OnboardingClient userRole={session.user.role || 'brand'} />
+      <OnboardingClient userRole={session.user.role || 'consumer'} />
     </EnsureProfile>
   )
 }
