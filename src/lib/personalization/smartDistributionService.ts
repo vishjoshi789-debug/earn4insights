@@ -564,3 +564,30 @@ function emptyBreakdown(): ConsumerScore['breakdown'] {
     recencyBonus: 0,
   }
 }
+
+// ── Direct Trigger Functions (for server actions — no fetch needed) ──
+
+/**
+ * Call directly from server actions after a brand launches a product.
+ * Finds ideal consumers and queues notifications.
+ */
+export async function triggerProductLaunchNotifications(
+  productId: string
+): Promise<{ notified: number; topScores: number[] }> {
+  return notifyIdealConsumers(productId, 'product_launch')
+}
+
+/**
+ * Call directly from server actions after a brand creates/activates a survey.
+ * Finds ideal consumers for the survey's product and queues notifications.
+ */
+export async function triggerSurveyNotifications(
+  productId: string,
+  surveyId: string,
+  surveyTitle: string
+): Promise<{ notified: number; topScores: number[] }> {
+  return notifyIdealConsumers(productId, 'new_survey', {
+    surveyId,
+    surveyTitle,
+  })
+}
