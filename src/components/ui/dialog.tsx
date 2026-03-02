@@ -94,13 +94,10 @@ export function DialogContent({ children, className, ...rest }: DialogContentPro
 
   return (
     <div
-      className={
-        className ??
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-      }
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
       {...rest}
     >
-      <div className="max-w-lg w-full rounded-lg bg-white p-6 shadow-lg">
+      <div className={`w-full rounded-lg bg-card text-card-foreground border border-border p-6 shadow-lg ${className ?? 'max-w-lg'}`}>
         {children}
       </div>
     </div>
@@ -129,7 +126,7 @@ export function DialogTitle(props: React.HTMLAttributes<HTMLHeadingElement>) {
 export function DialogDescription(props: React.HTMLAttributes<HTMLParagraphElement>) {
   const { className, ...rest } = props;
   return (
-    <p className={className ?? "mt-1 text-sm text-gray-600"} {...rest} />
+    <p className={className ?? "mt-1 text-sm text-muted-foreground"} {...rest} />
   );
 }
 

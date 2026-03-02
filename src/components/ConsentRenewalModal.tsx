@@ -20,6 +20,7 @@ interface ConsentRenewalModalProps {
   userId: string
   currentConsent: any
   consentGrantedAt: string | null
+  userRole?: string
   onRenewed: () => void
 }
 
@@ -27,12 +28,14 @@ export function ConsentRenewalModal({
   userId,
   currentConsent,
   consentGrantedAt,
+  userRole,
   onRenewed
 }: ConsentRenewalModalProps) {
+  const isBrand = userRole === 'brand'
   const [isOpen, setIsOpen] = useState(false)
   const [consents, setConsents] = useState({
-    tracking: currentConsent?.tracking || false,
-    personalization: currentConsent?.personalization || false,
+    tracking: isBrand ? false : (currentConsent?.tracking || false),
+    personalization: isBrand ? false : (currentConsent?.personalization || false),
     analytics: currentConsent?.analytics || false,
     marketing: currentConsent?.marketing || false
   })
@@ -125,8 +128,9 @@ export function ConsentRenewalModal({
               Time to Review Your Privacy Settings
             </DialogTitle>
             <DialogDescription className="text-base text-muted-foreground">
-              It's been over a year since you last updated your privacy preferences. 
-              Please review and confirm your choices below.
+              {isBrand
+                ? 'Please review the data preferences for your brand account below.'
+                : "It's been over a year since you last updated your privacy preferences. Please review and confirm your choices below."}
             </DialogDescription>
           </DialogHeader>
 
@@ -142,46 +146,52 @@ export function ConsentRenewalModal({
 
         <div className="space-y-4 py-4">
           <div className="space-y-4">
-            <div className="flex items-start gap-3 p-4 rounded-lg border bg-card">
-              <Checkbox
-                id="tracking"
-                checked={consents.tracking}
-                onCheckedChange={(checked: boolean) =>
-                  setConsents({ ...consents, tracking: checked })
-                }
-              />
-              <div className="flex-1 space-y-1">
-                <Label htmlFor="tracking" className="text-base font-semibold cursor-pointer">
-                  Activity Tracking
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Track your interactions (page views, clicks, time spent) to show you surveys 
-                  and products that match your interests. This helps personalize your experience.
-                </p>
+            {/* Activity Tracking — consumer only */}
+            {!isBrand && (
+              <div className="flex items-start gap-3 p-4 rounded-lg border border-border bg-card">
+                <Checkbox
+                  id="tracking"
+                  checked={consents.tracking}
+                  onCheckedChange={(checked: boolean) =>
+                    setConsents({ ...consents, tracking: checked })
+                  }
+                />
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="tracking" className="text-base font-semibold cursor-pointer">
+                    Activity Tracking
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Track your interactions (page views, clicks, time spent) to show you surveys 
+                    and products that match your interests. This helps personalize your experience.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="flex items-start gap-3 p-4 rounded-lg border bg-card">
-              <Checkbox
-                id="personalization"
-                checked={consents.personalization}
-                onCheckedChange={(checked: boolean) =>
-                  setConsents({ ...consents, personalization: checked })
-                }
-              />
-              <div className="flex-1 space-y-1">
-                <Label htmlFor="personalization" className="text-base font-semibold cursor-pointer">
-                  Personalization
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Use your profile data (demographics, interests, preferences) to recommend 
-                  relevant content. This includes personalized product recommendations and 
-                  survey suggestions.
-                </p>
+            {/* Personalization — consumer only */}
+            {!isBrand && (
+              <div className="flex items-start gap-3 p-4 rounded-lg border border-border bg-card">
+                <Checkbox
+                  id="personalization"
+                  checked={consents.personalization}
+                  onCheckedChange={(checked: boolean) =>
+                    setConsents({ ...consents, personalization: checked })
+                  }
+                />
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="personalization" className="text-base font-semibold cursor-pointer">
+                    Personalization
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Use your profile data (demographics, interests, preferences) to recommend 
+                    relevant content. This includes personalized product recommendations and 
+                    survey suggestions.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="flex items-start gap-3 p-4 rounded-lg border bg-card">
+            <div className="flex items-start gap-3 p-4 rounded-lg border border-border bg-card">
               <Checkbox
                 id="analytics"
                 checked={consents.analytics}
@@ -194,13 +204,14 @@ export function ConsentRenewalModal({
                   Analytics & Insights
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Allow brands to see aggregated, anonymized trends (never your personal data). 
-                  This helps companies understand their target audience and improve their products.
+                  {isBrand
+                    ? 'Access aggregated, anonymized consumer trends and insights to understand your target audience and improve your products.'
+                    : 'Allow brands to see aggregated, anonymized trends (never your personal data). This helps companies understand their target audience and improve their products.'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-4 rounded-lg border bg-card">
+            <div className="flex items-start gap-3 p-4 rounded-lg border border-border bg-card">
               <Checkbox
                 id="marketing"
                 checked={consents.marketing}
@@ -213,8 +224,9 @@ export function ConsentRenewalModal({
                   Marketing Communications
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Receive occasional emails about new features, survey opportunities, promotions, 
-                  and product launches. You can unsubscribe anytime.
+                  {isBrand
+                    ? 'Receive platform updates, new feature announcements, and tips to get the most out of your brand dashboard.'
+                    : 'Receive occasional emails about new features, survey opportunities, promotions, and product launches. You can unsubscribe anytime.'}
                 </p>
               </div>
             </div>

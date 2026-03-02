@@ -23,7 +23,7 @@ export default async function DashboardLayout({
 
   return (
     <OnboardingGuard>
-      {profile && <ConsentRenewalWrapper profile={profile} />}
+      {profile && <ConsentRenewalWrapper profile={profile} userRole={session?.user?.role} />}
       <DashboardShell>{children}</DashboardShell>
     </OnboardingGuard>
   )
