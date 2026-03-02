@@ -9,6 +9,8 @@ import { eq, desc, sql, and, inArray, count } from 'drizzle-orm'
 import { ExternalLink, MessageSquare, Copy } from 'lucide-react'
 import { auth } from '@/lib/auth/auth.config'
 import { redirect } from 'next/navigation'
+import { getMediaForFeedbackIds } from '@/db/repositories/feedbackRepository'
+import type { MediaItem } from '@/db/repositories/feedbackRepository'
 
 // ── Data helpers (all filtered by brand's products) ──
 
@@ -203,6 +205,10 @@ export default async function FeedbackDashboardPage() {
   const latestFeedback = await getLatestFeedbackPerProduct(productIds)
   const latestMap = new Map(latestFeedback.map((f) => [f.productId, f]))
 
+  // Fetch media for the latest feedback items shown in previews
+  const latestFeedbackIds = latestFeedback.map((f) => f.id)
+  const mediaMap = await getMediaForFeedbackIds(latestFeedbackIds)
+
   // Sort: products with most feedback first
   const sorted = [...overview].sort(
     (a, b) => Number(b.totalCount) - Number(a.totalCount)
@@ -350,6 +356,10 @@ export default async function FeedbackDashboardPage() {
                       <p className="text-muted-foreground line-clamp-3">
                         &quot;{latest.feedbackText}&quot;
                       </p>
+
+                      {/* Media Attachments (audio, video, images) */}
+                      <FeedbackMediaSection media={mediaMap.get(latest.id) || []} />
+
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         {latest.sentiment && (
                           <Badge
@@ -398,6 +408,82 @@ export default async function FeedbackDashboardPage() {
               </Card>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Media attachment renderer (audio / video / image) ── */
+function FeedbackMediaSection({ media }: { media: MediaItem[] }) {
+  if (media.length === 0) return null
+
+  const audioItems = media.filter((m) => m.mediaType === 'audio')
+  const videoItems = media.filter((m) => m.mediaType === 'video')
+  const imageItems = media.filter((m) => m.mediaType === 'image')
+
+  return (
+    <div className="space-y-2 mt-2">
+      {/* Audio player(s) */}
+      {audioItems.map((a) => (
+        <div key={a.id} className="flex items-center gap-2 bg-muted/40 rounded-lg p-2">
+          <span className="text-sm">🎤</span>
+          <audio controls preload="metadata" className="h-8 flex-1 min-w-0">
+            <source src={a.storageKey} type={a.mimeType || 'audio/webm'} />
+            Your browser does not support audio playback.
+          </audio>
+          {a.durationMs && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {Math.round(a.durationMs / 1000)}s
+            </span>
+          )}
+        </div>
+      ))}
+
+      {/* Video player(s) */}
+      {videoItems.map((v) => (
+        <div key={v.id} className="rounded-lg overflow-hidden border bg-black">
+          <video
+            controls
+            preload="metadata"
+            className="w-full max-h-[200px]"
+            playsInline
+          >
+            <source src={v.storageKey} type={v.mimeType || 'video/webm'} />
+            Your browser does not support video playback.
+          </video>
+          {v.durationMs && (
+            <div className="text-xs text-muted-foreground px-2 py-1 bg-muted/40">
+              🎥 Video · {Math.round(v.durationMs / 1000)}s
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Image gallery */}
+      {imageItems.length > 0 && (
+        <div className={`grid gap-2 ${
+          imageItems.length === 1 ? 'grid-cols-1' :
+          imageItems.length === 2 ? 'grid-cols-2' :
+          'grid-cols-3'
+        }`}>
+          {imageItems.map((img) => (
+            <a
+              key={img.id}
+              href={img.storageKey}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-lg overflow-hidden border hover:ring-2 hover:ring-primary transition-all"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img.storageKey}
+                alt="Feedback attachment"
+                className="w-full h-auto max-h-[150px] object-cover"
+                loading="lazy"
+              />
+            </a>
+          ))}
         </div>
       )}
     </div>
