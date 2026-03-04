@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   MessageSquare, Star, Send, CheckCircle, ArrowLeft,
-  Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera, Check
+  Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera, Check, AlertTriangle
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -64,6 +64,7 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
+  const [mediaUploadWarning, setMediaUploadWarning] = useState<string | null>(null)
   const [submittedData, setSubmittedData] = useState<any>(null)
 
   useEffect(() => {
@@ -191,6 +192,9 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
       const data = await res.json()
       const feedbackId = data.feedbackId
 
+      // Upload media — track failures but don't block submission
+      const mediaFailures: string[] = []
+
       if (hasAudio && audioBlob) {
         setUploadProgress('Uploading voice recording...')
         const audioForm = new FormData()
@@ -198,7 +202,15 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
         audioForm.append('mediaType', 'audio')
         audioForm.append('file', audioBlob, 'voice.webm')
         audioForm.append('durationMs', String(recordingDuration * 1000))
-        await fetch('/api/feedback/upload-media', { method: 'POST', body: audioForm })
+        try {
+          const audioRes = await fetch('/api/feedback/upload-media', { method: 'POST', body: audioForm })
+          if (!audioRes.ok) {
+            const err = await audioRes.json().catch(() => ({}))
+            mediaFailures.push(`Voice recording: ${err.error || 'upload failed'}`)
+          }
+        } catch (e) {
+          mediaFailures.push('Voice recording: network error')
+        }
       }
 
       if (imageFiles.length > 0) {
@@ -209,8 +221,20 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
           imgForm.append('mediaType', 'image')
           imgForm.append('file', imageFiles[i])
           imgForm.append('imageIndex', String(i))
-          await fetch('/api/feedback/upload-media', { method: 'POST', body: imgForm })
+          try {
+            const imgRes = await fetch('/api/feedback/upload-media', { method: 'POST', body: imgForm })
+            if (!imgRes.ok) {
+              const err = await imgRes.json().catch(() => ({}))
+              mediaFailures.push(`Image ${i + 1}: ${err.error || 'upload failed'}`)
+            }
+          } catch (e) {
+            mediaFailures.push(`Image ${i + 1}: network error`)
+          }
         }
+      }
+
+      if (mediaFailures.length > 0) {
+        setMediaUploadWarning(`Your text feedback was saved, but some media failed to upload: ${mediaFailures.join('; ')}`)
       }
 
       setSubmittedData(data)
@@ -231,9 +255,17 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
             <CardContent className="py-12 text-center">
               <CheckCircle className="w-16 h-16 mx-auto text-green-600 mb-4" />
               <h2 className="text-2xl font-bold mb-2">Thank You!</h2>
-              <p className="text-muted-foreground mb-6">
+              <p className="text-muted-foreground mb-4">
                 Your feedback for <strong>{preselectedProduct.name}</strong> has been submitted.
               </p>
+
+              {mediaUploadWarning && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-left">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-sm text-amber-800">{mediaUploadWarning}</p>
+                </div>
+              )}
+
               <div className="flex items-center justify-center gap-3">
                 <Button variant="outline" onClick={() => window.location.reload()}>
                   Submit Another

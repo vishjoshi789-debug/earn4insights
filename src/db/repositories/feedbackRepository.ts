@@ -198,18 +198,23 @@ export async function getMediaForFeedbackIds(
   const result = new Map<string, MediaItem[]>()
   if (feedbackIds.length === 0) return result
 
-  try {
-    const rows = await db
-      .select({
-        id: feedbackMedia.id,
-        ownerId: feedbackMedia.ownerId,
-        mediaType: feedbackMedia.mediaType,
-        storageKey: feedbackMedia.storageKey,
-        mimeType: feedbackMedia.mimeType,
-        durationMs: feedbackMedia.durationMs,
-        status: feedbackMedia.status,
-        moderationStatus: feedbackMedia.moderationStatus,
-      })
+  // Strategy: try with full column set first, fall back to minimal columns
+  // if optional columns (added in later migrations) don't exist yet in the DB.
+  const runQuery = async (includeModeration: boolean) => {
+    const selectFields: Record<string, any> = {
+      id: feedbackMedia.id,
+      ownerId: feedbackMedia.ownerId,
+      mediaType: feedbackMedia.mediaType,
+      storageKey: feedbackMedia.storageKey,
+      mimeType: feedbackMedia.mimeType,
+      durationMs: feedbackMedia.durationMs,
+      status: feedbackMedia.status,
+    }
+    if (includeModeration) {
+      selectFields.moderationStatus = feedbackMedia.moderationStatus
+    }
+    return db
+      .select(selectFields)
       .from(feedbackMedia)
       .where(
         and(
@@ -217,12 +222,23 @@ export async function getMediaForFeedbackIds(
           inArray(feedbackMedia.ownerId, feedbackIds)
         )
       )
+  }
+
+  try {
+    let rows: any[]
+    try {
+      rows = await runQuery(true)
+    } catch {
+      // moderation_status column likely not yet applied — retry without it
+      console.warn('[getMediaForFeedbackIds] Falling back: moderation_status column missing, retrying without it')
+      rows = await runQuery(false)
+    }
 
     for (const row of rows) {
-      // Skip hidden/deleted media
+      // Skip hidden/deleted media (only if moderation column exists)
       if (row.moderationStatus === 'hidden' || row.status === 'deleted') continue
       const existing = result.get(row.ownerId) || []
-      existing.push(row)
+      existing.push({ ...row, moderationStatus: row.moderationStatus ?? null })
       result.set(row.ownerId, existing)
     }
   } catch (err) {

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   MessageSquare, Star, Send, CheckCircle, ArrowLeft,
-  Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera
+  Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera, AlertTriangle
 } from 'lucide-react'
 import ProductSearch from '@/components/product-search'
 import Link from 'next/link'
@@ -66,6 +66,7 @@ export default function SubmitFeedbackPage() {
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
+  const [mediaUploadWarning, setMediaUploadWarning] = useState<string | null>(null)
   const [submittedData, setSubmittedData] = useState<{
     feedbackId: string
     sentiment: string | null
@@ -250,23 +251,27 @@ export default function SubmitFeedbackPage() {
       const data = await res.json()
       const feedbackId = data.feedbackId
 
-      // Step 2: Upload audio if present
+      // Step 2: Upload media — track failures but don't block submission
+      const mediaFailures: string[] = []
+
       if (hasAudio && audioBlob) {
         setUploadProgress('Uploading voice recording...')
-
         const audioForm = new FormData()
         audioForm.append('feedbackId', feedbackId)
         audioForm.append('mediaType', 'audio')
         audioForm.append('file', audioBlob, 'voice.webm')
         audioForm.append('durationMs', String(recordingDuration * 1000))
-
-        const audioRes = await fetch('/api/feedback/upload-media', {
-          method: 'POST',
-          body: audioForm,
-        })
-
-        if (!audioRes.ok) {
-          console.error('Audio upload failed (non-blocking)')
+        try {
+          const audioRes = await fetch('/api/feedback/upload-media', {
+            method: 'POST',
+            body: audioForm,
+          })
+          if (!audioRes.ok) {
+            const err = await audioRes.json().catch(() => ({}))
+            mediaFailures.push(`Voice recording: ${err.error || 'upload failed'}`)
+          }
+        } catch (e) {
+          mediaFailures.push('Voice recording: network error')
         }
       }
 
@@ -274,22 +279,28 @@ export default function SubmitFeedbackPage() {
       if (hasImages) {
         for (let i = 0; i < imageFiles.length; i++) {
           setUploadProgress(`Uploading image ${i + 1} of ${imageFiles.length}...`)
-
           const imgForm = new FormData()
           imgForm.append('feedbackId', feedbackId)
           imgForm.append('mediaType', 'image')
           imgForm.append('file', imageFiles[i])
           imgForm.append('imageIndex', String(i))
-
-          const imgRes = await fetch('/api/feedback/upload-media', {
-            method: 'POST',
-            body: imgForm,
-          })
-
-          if (!imgRes.ok) {
-            console.error(`Image ${i + 1} upload failed (non-blocking)`)
+          try {
+            const imgRes = await fetch('/api/feedback/upload-media', {
+              method: 'POST',
+              body: imgForm,
+            })
+            if (!imgRes.ok) {
+              const err = await imgRes.json().catch(() => ({}))
+              mediaFailures.push(`Image ${i + 1}: ${err.error || 'upload failed'}`)
+            }
+          } catch (e) {
+            mediaFailures.push(`Image ${i + 1}: network error`)
           }
         }
+      }
+
+      if (mediaFailures.length > 0) {
+        setMediaUploadWarning(`Your text feedback was saved, but some media failed to upload: ${mediaFailures.join('; ')}`)
       }
 
       setSubmittedData(data)
@@ -315,6 +326,13 @@ export default function SubmitFeedbackPage() {
               <p className="text-muted-foreground mb-4">
                 Your feedback for <strong>{selectedProduct?.name}</strong> has been submitted.
               </p>
+
+              {mediaUploadWarning && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-left">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-sm text-amber-800">{mediaUploadWarning}</p>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
                 {submittedData.sentiment && (
