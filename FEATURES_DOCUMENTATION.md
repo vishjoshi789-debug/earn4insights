@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** February 24, 2026  
+> **Last updated:** March 4, 2026  
 > **Platform:** Next.js 14 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
@@ -22,6 +22,8 @@
 12. [Mobile UX Fixes](#12-mobile-ux-fixes)
 13. [Backend Bug Fixes](#13-backend-bug-fixes)
 14. [Deployment](#14-deployment)
+15. [Multimodal Feedback (Audio / Video / Images)](#15-multimodal-feedback-audio--video--images)
+16. [Subscription Tier System](#16-subscription-tier-system)
 
 ---
 
@@ -402,6 +404,101 @@ Multiple components were using `session.user.email` for database lookups instead
 
 ---
 
+## 15. Multimodal Feedback (Audio / Video / Images)
+
+### Overview
+Consumers can attach audio recordings, video clips, and images alongside text feedback. Brands see all media inline on their dashboard with playback controls.
+
+### Infrastructure
+| Component | Technology |
+|-----------|------------|
+| File storage | Vercel Blob (public access) |
+| File metadata | `feedback_media` table in PostgreSQL |
+| Upload API | `POST /api/feedback/upload-media` |
+| Submit API | `POST /api/feedback/submit` |
+
+### File Limits
+| Type | Max Size | Formats |
+|------|----------|---------|
+| Audio | 4MB | webm, ogg, mp4, mpeg, wav |
+| Video | 10MB, max 60s | webm, mp4, quicktime |
+| Images | 5MB each | jpeg, png, webp |
+
+### Consumer Submit Pages (3 locations)
+| Page | Path |
+|------|------|
+| Dashboard submit | `src/app/dashboard/submit-feedback/page.tsx` |
+| Public product page | `src/app/submit-feedback/[productId]/DirectFeedbackForm.tsx` |
+| General submit | `src/app/submit-feedback/page.tsx` |
+
+### Upload Flow
+1. Consumer submits text → `/api/feedback/submit` → returns `feedbackId`
+2. Media files uploaded one by one → `/api/feedback/upload-media` with `feedbackId`
+3. Each upload: validates auth + ownership → uploads to Vercel Blob → saves URL to `feedback_media` table
+4. On any upload failure: amber warning banner shown on success screen (text feedback always saved)
+
+### Brand Dashboard Media Display
+- **Overview page:** `src/app/dashboard/feedback/page.tsx` — shows media for latest feedback per product card
+- **Product detail page:** `src/app/dashboard/products/[productId]/feedback/page.tsx` — shows full media for every feedback item
+- Media rendered via `FeedbackMediaSection` component — audio player, video player, image gallery
+- Media fetched via `getMediaForFeedbackIds()` in `src/db/repositories/feedbackRepository.ts`
+- Filters out `moderationStatus = 'hidden'` and `status = 'deleted'` records
+
+### Access Control
+- Upload requires authenticated session (401 if not logged in)
+- Upload verifies `feedbackId` belongs to the current user's email (403 otherwise)
+- Brands only see media for their own products (filtered by `getBrandProductIds`)
+
+### Key Fixes Applied (March 4, 2026)
+- **Silent upload failures fixed:** All 3 consumer pages now check `response.ok` on every upload fetch, collect error messages, and display amber warning banner on success screen if any media failed
+- **Resilient media query:** `getMediaForFeedbackIds` now falls back gracefully if `moderation_status` DB column is missing (avoids silent empty results)
+- **Vercel Blob connected:** `BLOB_READ_WRITE_TOKEN` configured in Vercel project — was missing previously causing all uploads to fail silently
+- **Schema migration applied:** `moderation_status`, `moderation_note`, `moderated_at` columns now present in `feedback_media` table
+
+### Database Schema
+```
+feedback_media table:
+  id, owner_type, owner_id, media_type, storage_provider,
+  storage_key (Vercel Blob URL), mime_type, size_bytes, duration_ms,
+  status, transcript_text, retry_count, moderation_status,
+  created_at, updated_at
+```
+
+---
+
+## 16. Subscription Tier System
+
+### Overview
+Three-tier subscription model for brands. Feature gates defined but **currently all features are free** (early traction phase — gates not yet enforced on feedback pages).
+
+### Tiers
+| Feature | Free | Pro | Enterprise |
+|---------|------|-----|------------|
+| Aggregate analytics | ✅ | ✅ | ✅ |
+| Individual feedback text | ❌ | ✅ | ✅ |
+| Audio/video playback | ❌ | ✅ | ✅ |
+| Image viewing | ❌ | ✅ | ✅ |
+| CSV/JSON export | ❌ | ✅ | ✅ |
+| Advanced filters | ❌ | ✅ | ✅ |
+| API access | ❌ | ❌ | ✅ |
+| Max products | 1 | 10 | unlimited |
+
+### Key Files
+| Purpose | File |
+|---------|------|
+| Tier definitions + feature matrix | `src/server/subscriptions/subscriptionService.ts` |
+| Subscription DB table | `brand_subscriptions` (schema.ts) |
+| Analytics gate (enforced) | `src/app/dashboard/analytics/unified/page.tsx` |
+| Upgrade prompt component | `src/app/dashboard/analytics/unified/UpgradePrompt.tsx` |
+
+### Current Status
+- Subscription gates **enforced on analytics page only**
+- Feedback pages (direct feedback, product feedback) show full data to all tiers — intentional for early growth
+- Stripe integration not yet connected — no real payment flow
+- When ready to monetize: wire `getBrandSubscription()` checks into feedback pages
+
+---
+
 ## 14. Deployment
 
 ### Platform
@@ -417,10 +514,20 @@ git push origin main
 # Vercel auto-deploys from main branch
 ```
 
-### Environment
-- Database: PostgreSQL on Neon (connection string in Vercel env vars)
-- Auth: Google OAuth credentials in Vercel env vars
-- Drizzle migrations in `/drizzle` directory
+### Environment Variables (Vercel)
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `GOOGLE_CLIENT_ID/SECRET` | Google OAuth |
+| `NEXTAUTH_SECRET` | NextAuth session secret |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob file storage (media uploads) |
+| `ENCRYPTION_KEY` | Data encryption (256-bit base64) |
+| `RESEND_API_KEY` | Email sending |
+
+### Schema Migrations
+- Migrations in `/drizzle` directory (0000 → 0012)
+- Apply with: `.\push-schema.ps1` (uses `drizzle-kit push`)
+- Key migration for media: `0004_add_multimodal_multilingual_foundations.sql`
 
 ---
 
@@ -438,11 +545,18 @@ git push origin main
 | Admin analytics page | `src/app/admin/analytics/page.tsx` |
 | Admin analytics API | `src/app/api/admin/analytics/route.ts` |
 | Brand unified analytics | `src/app/dashboard/analytics/page.tsx` |
-| DB schema | `src/lib/db/schema.ts` |
-| Auth config | `src/lib/auth.ts` |
+| DB schema | `src/db/schema.ts` |
+| Auth config | `src/lib/auth/auth.config.ts` |
 | Route middleware | `middleware.ts` |
 | Drizzle config | `drizzle.config.ts` |
+| Feedback submit API | `src/app/api/feedback/submit/route.ts` |
+| Media upload API | `src/app/api/feedback/upload-media/route.ts` |
+| Media repo (upsert) | `src/server/uploads/feedbackMediaRepo.ts` |
+| Feedback repository | `src/db/repositories/feedbackRepository.ts` |
+| Brand feedback overview | `src/app/dashboard/feedback/page.tsx` |
+| Product feedback detail | `src/app/dashboard/products/[productId]/feedback/page.tsx` |
+| Subscription service | `src/server/subscriptions/subscriptionService.ts` |
 
 ---
 
-*This document covers all features implemented as of February 24, 2026. Update this file when adding new features.*
+*This document covers all features implemented as of March 4, 2026. Update this file when adding new features.*
