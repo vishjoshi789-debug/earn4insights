@@ -346,6 +346,17 @@ class SurveyResponseSource implements IFeedbackSource {
       const total = data.total || 0
       const processed = (data.processingReady || 0) + (data.processingFailed || 0)
       const successRate = processed > 0 ? ((data.processingReady || 0) / processed) * 100 : 0
+
+      // Count survey responses that CONTAIN each media type (via feedback_media)
+      const surveyMediaResult = await db
+        .select({
+          hasAudio: sql<number>`count(DISTINCT ${feedbackMedia.ownerId}) FILTER (WHERE ${feedbackMedia.mediaType} = 'audio')::int`,
+          hasVideo: sql<number>`count(DISTINCT ${feedbackMedia.ownerId}) FILTER (WHERE ${feedbackMedia.mediaType} = 'video')::int`,
+          hasImage: sql<number>`count(DISTINCT ${feedbackMedia.ownerId}) FILTER (WHERE ${feedbackMedia.mediaType} = 'image')::int`,
+        })
+        .from(feedbackMedia)
+        .where(eq(feedbackMedia.ownerType, 'survey_response'))
+      const survMediaCounts = surveyMediaResult[0] || {}
       
       return {
         totalFeedback: total,
@@ -357,9 +368,9 @@ class SurveyResponseSource implements IFeedbackSource {
         },
         byModality: {
           text: data.modalityText || 0,
-          audio: data.modalityAudio || 0,
-          video: data.modalityVideo || 0,
-          image: data.modalityImage || 0,
+          audio: Math.max(data.modalityAudio || 0, survMediaCounts.hasAudio || 0),
+          video: Math.max(data.modalityVideo || 0, survMediaCounts.hasVideo || 0),
+          image: Math.max(data.modalityImage || 0, survMediaCounts.hasImage || 0),
           mixed: data.modalityMixed || 0,
         },
         bySentiment: {
@@ -555,6 +566,34 @@ class DirectFeedbackSource implements IFeedbackSource {
       const total = data.total || 0
       const processed = (data.processingReady || 0) + (data.processingFailed || 0)
       const successRate = processed > 0 ? ((data.processingReady || 0) / processed) * 100 : 0
+
+      // Count feedback items that CONTAIN each media type (via feedback_media)
+      // This catches audio/video/image even when modality_primary is 'mixed'
+      const mediaConditions: any[] = [eq(feedbackMedia.ownerType, 'feedback')]
+      if (filters.productIds && filters.productIds.length > 0) {
+        // Scope media counts to same product set
+        mediaConditions.push(
+          sql`${feedbackMedia.ownerId} IN (SELECT id FROM feedback WHERE product_id = ANY(${filters.productIds}))`
+        )
+      }
+      const mediaCountResult = await db
+        .select({
+          hasAudio: sql<number>`count(DISTINCT ${feedbackMedia.ownerId}) FILTER (WHERE ${feedbackMedia.mediaType} = 'audio')::int`,
+          hasVideo: sql<number>`count(DISTINCT ${feedbackMedia.ownerId}) FILTER (WHERE ${feedbackMedia.mediaType} = 'video')::int`,
+          hasImage: sql<number>`count(DISTINCT ${feedbackMedia.ownerId}) FILTER (WHERE ${feedbackMedia.mediaType} = 'image')::int`,
+        })
+        .from(feedbackMedia)
+        .where(and(...mediaConditions))
+      const mediaCounts = mediaCountResult[0] || {}
+
+      // Use media-based counts: feedback items containing each media type
+      const audioCount = mediaCounts.hasAudio || 0
+      const videoCount = mediaCounts.hasVideo || 0
+      const imageCount = mediaCounts.hasImage || 0
+      // Mixed = modality_primary is 'mixed' (has multiple media types)
+      const mixedCount = data.modalityMixed || 0
+      // Text-only = those with modality_primary='text' (no media at all)
+      const textOnlyCount = data.modalityText || 0
       
       return {
         totalFeedback: total,
@@ -565,11 +604,11 @@ class DirectFeedbackSource implements IFeedbackSource {
           social: 0,
         },
         byModality: {
-          text: data.modalityText || 0,
-          audio: data.modalityAudio || 0,
-          video: data.modalityVideo || 0,
-          image: data.modalityImage || 0,
-          mixed: data.modalityMixed || 0,
+          text: textOnlyCount,
+          audio: audioCount,
+          video: videoCount,
+          image: imageCount,
+          mixed: mixedCount,
         },
         bySentiment: {
           positive: data.sentimentPositive || 0,
