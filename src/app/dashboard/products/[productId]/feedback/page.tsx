@@ -9,6 +9,10 @@ import Link from 'next/link'
 import { ExternalLink, Copy, MessageSquare } from 'lucide-react'
 import FeedbackStatusButton from './FeedbackStatusButton'
 import ShareFeedbackLink from './ShareFeedbackLink'
+import { auth } from '@/lib/auth/auth.config'
+import { redirect } from 'next/navigation'
+import { getBrandSubscription } from '@/server/subscriptions/subscriptionService'
+import UpgradePrompt from '@/app/dashboard/analytics/unified/UpgradePrompt'
 
 function SentimentBadge({ sentiment }: { sentiment: string | null }) {
   if (!sentiment) return <Badge variant="outline">Unknown</Badge>
@@ -53,12 +57,18 @@ export default async function ProductFeedbackPage({
 }: {
   params: Promise<{ productId: string }>
 }) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    redirect('/login')
+  }
+
   const { productId } = await params
 
-  const [product, feedbackItems, stats] = await Promise.all([
+  const [product, feedbackItems, stats, subscription, subscription] = await Promise.all([
     getProductById(productId),
     getFeedbackByProduct(productId, { limit: 100 }),
     getFeedbackStats(productId),
+    getBrandSubscription(session.user.id),
   ])
 
   // Fetch media for all feedback items
@@ -143,6 +153,22 @@ export default async function ProductFeedbackPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Pro Upgrade Prompt (free tier only) */}
+      {subscription.tier === 'free' && (
+        <UpgradePrompt
+          title="Unlock Full Feedback Detail & Media Playback"
+          description="You're on the Free plan. Upgrade to Pro to get the most out of your customer feedback."
+          currentTier={subscription.tier}
+          features={[
+            'Read complete feedback text and AI-generated transcripts',
+            'Play audio and video recordings submitted by customers',
+            'See attached images in full resolution',
+            'Export this product\'s feedback to CSV',
+            'Filter by sentiment, modality, rating, and date range',
+          ]}
+        />
+      )}
 
       {/* Feedback List */}
       {feedbackItems.length === 0 ? (

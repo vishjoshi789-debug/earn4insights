@@ -86,17 +86,32 @@ export default function ConsumerIntelligencePage() {
   const [error, setError] = useState<string | null>(null)
   const [activeDimension, setActiveDimension] = useState<string>('age')
 
-  // Fetch brand's products
+  // Fetch brand's products from the database
   useEffect(() => {
     async function fetchProducts() {
       try {
-        // Use the same endpoint as Feature Insights page
-        const res = await fetch('/api/admin/check-products')
+        // Primary: fetch brand-owned products from DB
+        const res = await fetch('/api/dashboard/products/claim?action=my-products')
         if (res.ok) {
           const data = await res.json()
-          const uniqueProducts = data.productStats
-            ?.filter((p: any, i: number, arr: any[]) => arr.findIndex((t: any) => t.id === p.id) === i)
-            ?.map((p: any) => ({ id: p.id, name: p.name })) || []
+          const productList: Product[] = (data.products || [])
+            .filter((p: any, i: number, arr: any[]) => arr.findIndex((t: any) => t.id === p.id) === i)
+            .map((p: any) => ({ id: p.id, name: p.name }))
+
+          if (productList.length > 0) {
+            setProducts(productList)
+            setSelectedProduct(productList[0].id)
+            return
+          }
+        }
+
+        // Fallback: try admin endpoint (JSON file store)
+        const fallback = await fetch('/api/admin/check-products')
+        if (fallback.ok) {
+          const data = await fallback.json()
+          const uniqueProducts: Product[] = (data.productStats || [])
+            .filter((p: any, i: number, arr: any[]) => arr.findIndex((t: any) => t.id === p.id) === i)
+            .map((p: any) => ({ id: p.id, name: p.name }))
           setProducts(uniqueProducts)
           if (uniqueProducts.length > 0) {
             setSelectedProduct(uniqueProducts[0].id)
@@ -150,10 +165,10 @@ export default function ConsumerIntelligencePage() {
       </div>
 
       {/* Privacy badge */}
-      <Alert className="bg-green-900/30 border-green-700">
+      <Alert className="border-green-700" style={{ backgroundColor: '#052e16' }}>
         <ShieldCheck className="h-4 w-4 text-green-400" />
-        <AlertTitle className="text-green-200">Privacy Protected</AlertTitle>
-        <AlertDescription className="text-green-300">
+        <AlertTitle className="text-green-300">Privacy Protected</AlertTitle>
+        <AlertDescription className="text-green-400">
           All data is aggregated and anonymized. Groups with fewer than 5 users are suppressed to prevent identification.
         </AlertDescription>
       </Alert>

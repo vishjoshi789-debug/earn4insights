@@ -1,21 +1,24 @@
 "use client";
 
 import * as React from "react";
+import { cn } from "@/lib/utils";
 
 export type AlertProps = React.HTMLAttributes<HTMLDivElement> & {
   variant?: "default" | "destructive";
 };
 
 export function Alert({ variant = "default", className, ...props }: AlertProps) {
-  const base =
-    "relative w-full rounded-lg border px-4 py-3 text-sm flex gap-2 items-start";
-  const variantClass =
-    variant === "destructive"
-      ? "border-red-400 bg-red-50 text-red-900"
-      : "border-gray-300 bg-white text-gray-900";
-
   return (
-    <div className={[base, variantClass, className].filter(Boolean).join(" ")} {...props} />
+    <div
+      className={cn(
+        "relative w-full rounded-lg border px-4 py-3 text-sm flex gap-2 items-start",
+        variant === "destructive"
+          ? "border-red-500/50 bg-red-900/30 text-red-200"
+          : "border-slate-700 bg-slate-900/80 text-slate-200",
+        className
+      )}
+      {...props}
+    />
   );
 }
 
@@ -25,9 +28,7 @@ export function AlertTitle({
 }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h5
-      className={["font-semibold leading-none tracking-tight", className]
-        .filter(Boolean)
-        .join(" ")}
+      className={cn("font-semibold leading-none tracking-tight", className)}
       {...props}
     />
   );
@@ -39,9 +40,7 @@ export function AlertDescription({
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
-      className={["text-sm text-gray-700 mt-1", className]
-        .filter(Boolean)
-        .join(" ")}
+      className={cn("text-sm text-slate-400 mt-1", className)}
       {...props}
     />
   );

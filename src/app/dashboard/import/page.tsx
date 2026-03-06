@@ -21,6 +21,7 @@ export default function ImportDataPage() {
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copiedV2, setCopiedV2] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = async () => {
@@ -65,10 +66,75 @@ export default function ImportDataPage() {
   ]
 }`
 
+  const webhookV2Example = `{
+  "source": "google_reviews",
+  "entries": [
+    {
+      "productId": "prod_mobile_app",
+      "text": "Checkout flow is confusing, took 3 tries to pay.",
+      "rating": 2,
+      "author": "Jane D.",
+      "externalId": "google_review_8821",
+      "sourceUrl": "https://g.co/review/8821",
+      "createdAt": "2026-03-05T14:30:00Z",
+      "category": "review",
+      "metadata": {
+        "platform": "google_business",
+        "listing": "Main St Store"
+      }
+    },
+    {
+      "productId": "prod_mobile_app",
+      "text": "Love the new dark mode update!",
+      "rating": 5,
+      "author": "Mike R.",
+      "externalId": "reddit_post_t3_abc",
+      "sourceUrl": "https://reddit.com/r/product/comments/abc",
+      "engagement": {
+        "upvotes": 142,
+        "downvotes": 3,
+        "comments": 28
+      }
+    }
+  ]
+}`
+
+  const webhookV2MediaExample = `{
+  "source": "youtube",
+  "entries": [
+    {
+      "productId": "prod_smart_speaker",
+      "text": "The mic quality is poor — see my test video",
+      "rating": 2,
+      "author": "TechReviewer",
+      "externalId": "yt_comment_xyz",
+      "sourceUrl": "https://youtube.com/watch?v=xyz",
+      "media": [
+        {
+          "type": "video",
+          "url": "https://cdn.example.com/review-clip.mp4",
+          "mimeType": "video/mp4",
+          "durationMs": 45000
+        }
+      ],
+      "engagement": {
+        "likes": 320,
+        "comments": 41
+      }
+    }
+  ]
+}`
+
   const copyWebhook = () => {
     navigator.clipboard.writeText(webhookExample)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const copyWebhookV2 = () => {
+    navigator.clipboard.writeText(webhookV2Example)
+    setCopiedV2(true)
+    setTimeout(() => setCopiedV2(false), 2000)
   }
 
   return (
@@ -217,6 +283,114 @@ export default function ImportDataPage() {
               <Badge variant="secondary">Play Store</Badge>
               <Badge variant="secondary">Custom</Badge>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Webhook API v2 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Webhook className="h-5 w-5" />
+            Webhook API v2
+            <Badge className="bg-purple-600 text-white text-[10px] px-1.5 py-0.5">NEW</Badge>
+          </CardTitle>
+          <CardDescription>
+            Unified import for reviews, social media, support tickets & multimodal feedback — with deduplication, engagement metrics, and media attachments.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Endpoint</Label>
+            <code className="block bg-muted p-3 rounded text-sm">
+              POST /api/import/webhook/v2
+            </code>
+          </div>
+
+          {/* Source taxonomy */}
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p className="font-medium">Source Taxonomy:</p>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Support & Helpdesk</p>
+              <div className="flex gap-2 flex-wrap">
+                <Badge variant="secondary">zendesk</Badge>
+                <Badge variant="secondary">intercom</Badge>
+                <Badge variant="secondary">freshdesk</Badge>
+                <Badge variant="secondary">hubspot</Badge>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Review Platforms</p>
+              <div className="flex gap-2 flex-wrap">
+                <Badge variant="secondary">google_reviews</Badge>
+                <Badge variant="secondary">trustpilot</Badge>
+                <Badge variant="secondary">g2</Badge>
+                <Badge variant="secondary">capterra</Badge>
+                <Badge variant="secondary">app_store</Badge>
+                <Badge variant="secondary">play_store</Badge>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Social Platforms</p>
+              <div className="flex gap-2 flex-wrap">
+                <Badge variant="secondary">reddit</Badge>
+                <Badge variant="secondary">youtube</Badge>
+                <Badge variant="secondary">twitter</Badge>
+                <Badge variant="secondary">linkedin</Badge>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Other</p>
+              <div className="flex gap-2 flex-wrap">
+                <Badge variant="secondary">custom</Badge>
+              </div>
+            </div>
+          </div>
+
+          {/* v2 example payload */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Example Payload (Review + Social)</Label>
+              <Button variant="ghost" size="sm" onClick={copyWebhookV2} className="gap-1 text-xs">
+                {copiedV2 ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                {copiedV2 ? 'Copied!' : 'Copy'}
+              </Button>
+            </div>
+            <pre className="bg-muted p-3 rounded text-xs overflow-x-auto whitespace-pre max-h-[300px] overflow-y-auto">
+              {webhookV2Example}
+            </pre>
+          </div>
+
+          {/* Media example */}
+          <div className="space-y-2">
+            <Label>Example Payload (with Media Attachment)</Label>
+            <pre className="bg-muted p-3 rounded text-xs overflow-x-auto whitespace-pre max-h-[240px] overflow-y-auto">
+              {webhookV2MediaExample}
+            </pre>
+          </div>
+
+          {/* v2 features */}
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p className="font-medium">New in v2:</p>
+            <ul className="list-disc list-inside space-y-0.5 text-xs">
+              <li><strong>externalId</strong> — deduplication within batch</li>
+              <li><strong>sourceUrl</strong> — link back to original review/ticket/post</li>
+              <li><strong>createdAt</strong> — preserve original timestamp from source</li>
+              <li><strong>engagement</strong> — upvotes, likes, shares, comments for social posts</li>
+              <li><strong>media[]</strong> — attach audio, video, or image URLs (auto-queued for transcription)</li>
+              <li><strong>metadata</strong> — arbitrary key/value for source-specific fields</li>
+              <li>Social sources (reddit, youtube, twitter, linkedin) also insert into <code className="bg-muted px-1 rounded">social_posts</code> table</li>
+              <li>Batch limit raised to <strong>200 entries</strong> per call</li>
+            </ul>
+          </div>
+
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p className="font-medium">Authentication:</p>
+            <p>Same as v1 — include API key via <code className="bg-muted px-1 rounded">X-API-Key</code> header.</p>
           </div>
         </CardContent>
       </Card>

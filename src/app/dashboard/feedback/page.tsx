@@ -11,6 +11,8 @@ import { auth } from '@/lib/auth/auth.config'
 import { redirect } from 'next/navigation'
 import { getMediaForFeedbackIds } from '@/db/repositories/feedbackRepository'
 import type { MediaItem } from '@/db/repositories/feedbackRepository'
+import { getBrandSubscription } from '@/server/subscriptions/subscriptionService'
+import UpgradePrompt from '@/app/dashboard/analytics/unified/UpgradePrompt'
 
 // ── Data helpers (all filtered by brand's products) ──
 
@@ -192,8 +194,11 @@ export default async function FeedbackDashboardPage() {
     redirect('/login')
   }
 
-  // Get this brand's product IDs
-  const brandProductIds = await getBrandProductIds(session.user.id)
+  // Get this brand's product IDs and subscription tier in parallel
+  const [brandProductIds, subscription] = await Promise.all([
+    getBrandProductIds(session.user.id),
+    getBrandSubscription(session.user.id),
+  ])
 
   const [overview, productNames, totals] = await Promise.all([
     getProductFeedbackOverview(brandProductIds),
@@ -275,6 +280,22 @@ export default async function FeedbackDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Pro Upgrade Prompt (free tier only) */}
+      {subscription.tier === 'free' && (
+        <UpgradePrompt
+          title="Unlock Individual Feedback & Media Playback"
+          description="You're viewing aggregate stats. Upgrade to Pro to dive into every response."
+          currentTier={subscription.tier}
+          features={[
+            'Read full feedback text for every submission',
+            'Play audio and video recordings from customers',
+            'View customer contact details and metadata',
+            'Export all feedback data to CSV',
+            'Advanced filtering by sentiment, modality, and date',
+          ]}
+        />
+      )}
 
       {/* Product Feedback Cards */}
       {sorted.length === 0 ? (
