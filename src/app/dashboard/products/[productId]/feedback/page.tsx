@@ -64,7 +64,7 @@ export default async function ProductFeedbackPage({
 
   const { productId } = await params
 
-  const [product, feedbackItems, stats, subscription, subscription] = await Promise.all([
+  const [product, feedbackItems, stats, subscription] = await Promise.all([
     getProductById(productId),
     getFeedbackByProduct(productId, { limit: 100 }),
     getFeedbackStats(productId),
