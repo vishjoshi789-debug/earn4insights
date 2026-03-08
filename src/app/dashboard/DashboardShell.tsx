@@ -35,6 +35,7 @@ import {
   Upload,
   Sparkles,
   Brain,
+  CreditCard,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -89,6 +90,13 @@ const menuItems: MenuItem[] = [
     label: 'Import Data',
     icon: Upload,
     tourId: 'nav-import',
+    role: 'brand',
+  },
+  {
+    href: '/dashboard/pricing',
+    label: 'Plans & Pricing',
+    icon: CreditCard,
+    tourId: 'nav-pricing',
     role: 'brand',
   },
 ]

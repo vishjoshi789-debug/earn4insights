@@ -53,6 +53,33 @@ function backoffSeconds(retryCount: number): number {
   return base * Math.pow(2, exp)
 }
 
+// ============================================================================
+// ERROR CLASSIFICATION — distinguish transient from permanent failures
+// ============================================================================
+
+/**
+ * Non-retryable errors: quota exceeded, billing failures, invalid input.
+ * Retrying these just wastes money and never succeeds.
+ */
+const NON_RETRYABLE_ERROR_CODES = new Set([
+  'insufficient_quota',     // OpenAI quota exhausted
+  'billing_hard_limit',     // OpenAI billing hard limit reached
+  'rate_limit_exceeded',    // sustained rate limit (temporary, but backoff handles it)
+  'invalid_api_key',        // config error — retrying won't help
+  'model_not_found',        // invalid model — retrying won't help
+  'content_policy_violation', // moderation rejection — permanent
+])
+
+/**
+ * Returns true if the error is transient and worth retrying.
+ * Quota / billing / policy failures are NOT retried — they are marked failed immediately
+ * to avoid wasting API spend and to surface the real issue to admins.
+ */
+function isTransientError(errorCode: string | null | undefined): boolean {
+  if (!errorCode) return true // unknown error → assume transient
+  return !NON_RETRYABLE_ERROR_CODES.has(errorCode)
+}
+
 async function setOwnerProcessingStatus(params: {
   ownerType: string
   ownerId: string
@@ -366,22 +393,30 @@ export async function processPendingAudioFeedbackMedia(params?: { limit?: number
     })
 
     if (!processed.ok) {
+      // Classify error: quota/billing failures are NOT retried (saves money, surfaces real issue)
+      const shouldRetry = isTransientError(processed.errorCode) && retryCount + 1 < maxRetries
+      const newStatus = shouldRetry ? 'uploaded' : 'failed' // 'uploaded' = re-queued for next cron
+
       await db
         .update(feedbackMedia)
         .set({
-          status: 'failed',
+          status: newStatus,
           errorCode: processed.errorCode,
-          errorDetail: processed.errorDetail,
+          errorDetail: shouldRetry
+            ? `${processed.errorDetail} [transient — will retry]`
+            : processed.errorDetail,
           lastErrorAt: new Date(),
           retryCount: retryCount + 1,
           updatedAt: new Date(),
         })
         .where(eq(feedbackMedia.id, media.id))
 
-      // Propagate failure state to owner record for UX visibility
-      await setOwnerProcessingStatus({ ownerType: media.ownerType, ownerId: media.ownerId, status: 'failed' })
+      // Only propagate hard failure to owner; transient errors stay 'processing'
+      if (!shouldRetry) {
+        await setOwnerProcessingStatus({ ownerType: media.ownerType, ownerId: media.ownerId, status: 'failed' })
+      }
 
-      results.push({ id: media.id, success: false, error: processed.errorCode })
+      results.push({ id: media.id, success: false, error: processed.errorCode, retryable: shouldRetry })
       continue
     }
 

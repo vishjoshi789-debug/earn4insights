@@ -314,6 +314,7 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       setIsRecording(true)
 
       // Hard limit for Phase 1 to keep it startup-friendly and safe.
+      // Hard cap at 60 seconds per Appendix A multimodal policy
       window.setTimeout(() => {
         if (mediaRecorderRef.current?.state === 'recording') stopRecording()
       }, 60_000)
@@ -380,9 +381,10 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       mr.start(1000)
       setIsRecordingVideo(true)
 
+      // Hard cap at 90 seconds per Appendix A multimodal policy
       window.setTimeout(() => {
         if (videoRecorderRef.current?.state === 'recording') stopVideoRecording()
-      }, 15_000)
+      }, 90_000)
     } catch (e) {
       setVideoError('Camera/microphone permission denied or unavailable.')
       stopVideoRecording()

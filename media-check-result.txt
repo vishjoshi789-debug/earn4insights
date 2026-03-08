@@ -1,0 +1,7 @@
+moderation_status column exists: YES - migration applied
+feedback_media columns: id, owner_type, owner_id, media_type, storage_provider, storage_key, mime_type, size_bytes, duration_ms, status, transcript_text, transcript_confidence, original_language, language_confidence, error_code, error_detail, created_at, updated_at, retry_count, last_attempt_at, last_error_at, deleted_at, retention_reason, moderation_status, moderation_note, moderated_at
+TOTAL MEDIA RECORDS IN DB: 0
+FEEDBACK FROM VISHWESHWAR JOSHI: 1 found
+  id=81cf822e-e117-4154-833c-beee3a819266 modality=text user=Vishweshwar Joshi
+MEDIA FOR THESE FEEDBACK IDS: 0 records
+ALL USER NAMES: Vishweshwar Joshi

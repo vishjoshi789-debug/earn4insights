@@ -2,8 +2,9 @@
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Lock, ArrowUpRight, Check } from 'lucide-react'
+import { Lock, ArrowUpRight, Check, Sparkles } from 'lucide-react'
 import type { SubscriptionTier } from '@/server/subscriptions/subscriptionService'
+import Link from 'next/link'
 
 interface Props {
   title: string
@@ -37,14 +38,18 @@ export default function UpgradePrompt({ title, description, currentTier, feature
           ))}
         </div>
 
-        {/* CTA */}
-        <div className="text-center pt-4 border-t">
-          <Button size="lg" className="gap-2">
-            Upgrade to Pro
-            <ArrowUpRight className="w-4 h-4" />
+        {/* CTA — links to full pricing page */}
+        <div className="text-center pt-4 border-t space-y-3">
+          <Button size="lg" className="gap-2" asChild>
+            <Link href="/dashboard/pricing">
+              <Sparkles className="w-4 h-4" />
+              {currentTier === 'free' ? 'View Plans & Pricing' : 'Upgrade Plan'}
+              <ArrowUpRight className="w-4 h-4" />
+            </Link>
           </Button>
-          <p className="text-xs text-muted-foreground mt-3">
-            You're currently on the <strong>{currentTier}</strong> plan
+          <p className="text-xs text-muted-foreground">
+            You’re currently on the <strong>{currentTier}</strong> plan.
+            {currentTier === 'free' && ' Pro starts at $79/mo — includes 1,000 min transcription.'}
           </p>
         </div>
       </CardContent>

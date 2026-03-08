@@ -31,7 +31,7 @@ const ALLOWED_IMAGE_CONTENT_TYPES = new Set([
   'image/webp',
 ])
 
-const MAX_VIDEO_DURATION_MS = 15_000
+const MAX_VIDEO_DURATION_MS = 90_000 // 90 seconds — aligned with client cap per Appendix A policy
 
 function asString(value: FormDataEntryValue | null): string | null {
   if (!value) return null

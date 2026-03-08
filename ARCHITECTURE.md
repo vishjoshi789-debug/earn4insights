@@ -27,6 +27,7 @@
 18. [API Surface Map](#18-api-surface-map)
 19. [File & Folder Structure](#19-file--folder-structure)
 20. [Data Flow: End-to-End Walkthrough](#20-data-flow-end-to-end-walkthrough)
+21. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -799,6 +800,107 @@ Manual retry available to brands via: POST /api/dashboard/feedback-media/:id/ret
             └────────────────────────────────────────────────┘
 ```
 
+### Multimodal Policy (enforced in code)
+
+These policies keep quality high while controlling cost. See Appendix A for full cost model.
+
+#### Duration Caps
+
+| Modality | Max duration | Enforcement point |
+|---|---|---|
+| **Audio** | **60 seconds** | Client-side `MAX_AUDIO_DURATION_S`, server upload route validation |
+| **Video** | **90 seconds** | Client-side `MAX_VIDEO_DURATION_S`, server `MAX_VIDEO_DURATION_MS` |
+| **Image** | N/A | Storage-only, max 5 MB each, max 3 per submission |
+
+Caps are hard ceilings baked into every recorder component:
+- `src/app/submit-feedback/page.tsx`
+- `src/app/submit-feedback/[productId]/DirectFeedbackForm.tsx`
+- `src/app/dashboard/submit-feedback/page.tsx`
+- `src/components/survey-response-form.tsx`
+- `src/app/api/uploads/feedback-media/server/route.ts` (server-side)
+
+#### Preferred Formats & Compression
+
+| Modality | Target format | Why |
+|---|---|---|
+| Audio | **WebM / Opus** (`audio/webm;codecs=opus`) | Smallest file at good speech quality; fallback to `audio/webm` → `audio/mp4` |
+| Video | **WebM / VP9** (`video/webm;codecs=vp9`) | Good compression; fallback to `video/webm` → `video/mp4` |
+| Image | JPEG / WebP / PNG | No re-encode; quality preserved as-is |
+
+> **Compression note:** Current implementation relies on browser MediaRecorder defaults.
+> Quality is **not** degraded — we accept the native codec output.
+> Future: client-side `ffmpeg.wasm` for pre-upload compression if storage costs warrant it.
+
+#### Transcription Policy
+
+| Content | Transcription | Notes |
+|---|---|---|
+| Audio feedback | **Yes** — Whisper STT + language detect + translation | Core pipeline in `feedbackMediaProcessingService.ts` |
+| Video feedback | **Audio track only** — extracted and transcribed identically | Same Whisper pipeline; no frame/vision analysis |
+| Image feedback | **No** — storage only | OCR/vision **not** enabled by default (see OCR Readiness below) |
+| Text feedback | Inline language detect + translate (no STT) | `textNormalizationService.ts`, synchronous at submission |
+
+#### OCR Readiness (images)
+
+Images are stored in Vercel Blob with full metadata in `feedback_media`.
+OCR / vision analysis is **architecturally ready** but **not enabled** by default to avoid AI cost:
+
+```
+When OCR is needed:
+  1. Add `processImages` flag to feedbackMedia cron
+  2. For each image with status='uploaded':
+     - Fetch from Vercel Blob
+     - Send to OpenAI Vision or Tesseract OCR
+     - Store extracted text in feedback_media.transcriptText
+     - Propagate to owner row (same as audio/video path)
+  3. Gate behind subscription tier (Pro+ only recommended)
+```
+
+No code change is required in the image upload path — only the cron processing loop needs extension.
+
+#### Retention Policy
+
+| Content | Retention | What survives |
+|---|---|---|
+| **Raw audio** | 30–90 days (env `AUDIO_MEDIA_RETENTION_DAYS`, default 30) | Blob deleted; transcript + sentiment remain forever |
+| **Raw video** | 30–90 days (env `VIDEO_MEDIA_RETENTION_DAYS`, default 90) | Blob deleted; transcript + sentiment remain forever |
+| **Images** | 30–90 days (same cleanup cron) | Blob deleted; metadata in `feedback_media` survives |
+| **Transcripts** | **Permanent** | `transcriptText`, `normalizedText`, `sentiment` in DB |
+
+Cleanup runs via `GET /api/cron/cleanup-feedback-media` (daily).
+Only blobs with `status='ready'` and confirmed transcript are eligible for deletion.
+
+#### Retry Policy — Transient vs Permanent Errors
+
+```
+isTransientError(errorCode)?
+  ├── YES (network, timeout, 5xx, unknown)
+  │     → re-queue as 'uploaded'
+  │     → exponential backoff: 60s × 2^retryCount
+  │     → max retries (env FEEDBACK_MEDIA_MAX_RETRIES, default 3)
+  │     → owner stays 'processing' (not surfaced as failure to user)
+  │
+  └── NO (quota_exceeded, billing_hard_limit, invalid_api_key,
+  │       content_policy_violation)
+        → mark 'failed' immediately
+        → owner marked 'failed' (surfaced on dashboard)
+        → no retry — prevents wasted API spend
+        → brand/admin must resolve root cause before manual retry
+```
+
+Non-retryable error codes:
+`insufficient_quota`, `billing_hard_limit`, `rate_limit_exceeded`, `invalid_api_key`, `model_not_found`, `content_policy_violation`
+
+#### Per-Brand Transcription Quotas
+
+Enforced via `TierFeatures.maxTranscriptionMinutesPerMonth` in `subscriptionService.ts`:
+- **Free:** 0 min (text + images only; no STT cost)
+- **Pro:** 1,000 min/month
+- **Enterprise:** 10,000 min/month (custom negotiable)
+
+Quota tracking: aggregate `feedback_media.durationMs` per brand per billing period.
+When quota is exceeded: new audio/video uploads are rejected with a clear upgrade CTA.
+
 ---
 
 ## 10. Personalization Engine
@@ -1210,6 +1312,64 @@ Sent to: `POST /api/track-event`
 | Webhooks | ❌ | ❌ | ✅ |
 | Max products | 1 | 10 | Unlimited |
 | Max exports/month | 0 | 100 | Unlimited |
+
+### Multimodal Quotas by Tier
+
+| Quota | Free | Pro | Enterprise |
+|---|---|---|---|
+| Consumer audio submission | ❌ | ✅ | ✅ |
+| Consumer video submission | ❌ | ✅ | ✅ |
+| Consumer image submission | ✅ (storage-only) | ✅ (storage-only) | ✅ (storage-only) |
+| Transcription minutes/month | 0 | 1,000 | 10,000 (or custom) |
+| Upload cap/month | 2 GB | 50 GB | 500 GB+ |
+| Raw media retention | 30 days | 60 days | 90 days (custom available) |
+| Transcript retention | Permanent | Permanent | Permanent |
+
+> **Free tier** consumers submit text + optional images only — no transcription cost.  
+> **Pro** includes fixed audio/video quota — overage blocked or charged at ~$0.015–$0.020/min.  
+> **Enterprise** gets pooled/custom quotas, longer retention, and can negotiate BYO-storage for video-heavy programs.
+
+### Pricing Bands (Recommended Retail)
+
+| Plan | Price | Included transcription | Included upload | Best fit |
+|---|---:|---:|---:|---|
+| **Free** | $0 | 0 min | 0–2 GB | Text-first brands, trials |
+| **Pro** | $49–$99/mo | 500–1,000 min | 25–50 GB | SMB brands using audio |
+| **Enterprise** | $299+/mo or custom | 5,000–10,000+ min | 250 GB+ | API/webhook, high-volume, video-heavy |
+
+### Where Pricing Is Shown
+
+| Location | What's displayed | Audience |
+|---|---|---|
+| **`/dashboard/pricing`** | Full 3-tier comparison: Free / Pro / Enterprise with features, quotas, value propositions, FAQ | All brand users |
+| **`/dashboard/feedback`** | UpgradePrompt banner (links to pricing) | Free-tier brands |
+| **`/dashboard/products/:id/feedback`** | UpgradePrompt above feedback list | Free-tier brands |
+| **`/dashboard/analytics/unified`** | UpgradePrompt gating individual feedback | Free-tier brands |
+| **Sidebar nav** | "Plans & Pricing" link (CreditCard icon) | All brand users |
+| **`tierMiddleware.ts`** | Server-side `TierError` with upgrade CTA metadata | API routes |
+
+The UpgradePrompt component now links directly to `/dashboard/pricing` and shows tier-specific messaging (e.g. "Pro starts at $79/mo").
+
+### Cost Model (drives retail pricing)
+
+```
+Infrastructure cost per brand (approximate):
+  Shared platform:  Vercel Pro ~$20/mo + Neon DB ~$19/mo (amortized)
+  Per-brand base:   ~$0.50/mo (DB rows, minimal blob)
+  Whisper STT:      $0.006/min
+  Vercel Blob:      $0.023/GB/mo stored
+  Email (Resend):   $0 (first 3k/mo) → $20/mo
+  SMS (Twilio):     ~$0.01/msg
+
+Variable cost at Pro scale (1,000 min + 50 GB):
+  Transcription:    1000 × $0.006 = $6/mo
+  Storage:          50 × $0.023  = $1.15/mo
+  Total variable:   ~$7–$15/mo
+
+Retail markup: 3–5× variable cost → $79/mo Pro
+Annual discount: ~17% (2 months free) → $66/mo billed annually
+Enterprise: custom based on volume, starts at $299/mo
+```
 
 ### Enforcement Pattern
 
@@ -1868,6 +2028,167 @@ src/
 │                                  │        + media + CSV   │         │
 │                                  └───────────────────────┘         │
 └──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Appendix A — Cost Calculator & Capacity Planning
+
+> **Planning note:** These are internal cost-planning estimates based on the current Earn4Insights architecture and the Whisper rate of `~$0.006 / minute`.  
+> Verify live OpenAI and Vercel pricing before final commercial launch.
+
+### A.1 Cost model assumptions
+
+| Item | Assumption | Why it matters |
+|---|---:|---|
+| Whisper transcription | **$0.006 / minute** | Primary variable AI cost for audio/video |
+| Average audio clip | **1 minute / 0.75 MB** | Good proxy for compressed mobile audio |
+| Average short video clip | **1 minute / 15 MB** | Good proxy for compressed mobile video |
+| Text + rating feedback | **$0 AI cost** | Current text normalization/sentiment path is not using paid STT |
+| Image feedback | **$0 AI cost** | Current system stores images; no OCR/vision pipeline yet |
+| Raw media retention | **90 days** | Storage footprint is roughly 3× monthly uploads |
+| Billing model recommendation | **Per brand subscription + usage overage** | More accurate than charging per consumer seat |
+
+### Figure A.1 — Cost Drivers by Modality
+
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│                    COST DRIVER COMPARISON                         │
+│                                                                    │
+│  Text + Rating   → DB write only                                  │
+│                    Lowest variable cost                            │
+│                                                                    │
+│  Image           → Blob storage + CDN delivery                    │
+│                    No AI cost today                                │
+│                                                                    │
+│  Audio           → Blob storage + Whisper minutes                 │
+│                    Predictable and relatively low-cost             │
+│                                                                    │
+│  Video           → Blob storage + Whisper minutes + playback      │
+│                    Highest scaling risk due to file size/egress    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### A.2 Core formulas
+
+```text
+TranscriptionCost
+= ActiveUsers × FeedbackPerUserPerMonth × MediaAttachRate × AvgMinutes × $0.006
+
+MonthlyUploadGB
+= ActiveUsers × FeedbackPerUserPerMonth × MediaAttachRate × AvgFileSizeMB / 1000
+
+SteadyStateStorageGB
+≈ MonthlyUploadGB × RetentionMonths
+```
+
+### A.3 Raw transcription cost — if every feedback contains 1 minute of speech
+
+This is the **upper-bound** estimate if **100%** of submitted feedback includes media with 1 minute of speech.
+
+| Active users / month | Feedback / user / month | Total transcribed minutes | Raw Whisper cost |
+|---|---:|---:|---:|
+| **1,000** | 1 | 1,000 | **$6** |
+| **1,000** | 3 | 3,000 | **$18** |
+| **50,000** | 1 | 50,000 | **$300** |
+| **50,000** | 3 | 150,000 | **$900** |
+| **1,000,000** | 1 | 1,000,000 | **$6,000** |
+| **1,000,000** | 3 | 3,000,000 | **$18,000** |
+
+### A.4 Realistic scenario — 25% of feedback includes 1 minute of media
+
+Only **1 in 4** feedback submissions contains audio/video — better planning model for launch.
+
+| Active users / month | Feedback / user / month | Media attach rate | Total transcribed minutes | Raw Whisper cost |
+|---|---:|---:|---:|---:|
+| **1,000** | 1 | 25% | 250 | **$1.50** |
+| **1,000** | 3 | 25% | 750 | **$4.50** |
+| **50,000** | 1 | 25% | 12,500 | **$75** |
+| **50,000** | 3 | 25% | 37,500 | **$225** |
+| **1,000,000** | 1 | 25% | 250,000 | **$1,500** |
+| **1,000,000** | 3 | 25% | 750,000 | **$4,500** |
+
+### A.5 Monthly upload footprint — audio-heavy vs video-heavy
+
+- **Audio-heavy** = every feedback includes 1 audio clip averaging **0.75 MB**
+- **Video-heavy** = every feedback includes 1 video clip averaging **15 MB**
+
+| Scenario | 1k @ 1/mo | 1k @ 3/mo | 50k @ 1/mo | 50k @ 3/mo | 1M @ 1/mo | 1M @ 3/mo |
+|---|---:|---:|---:|---:|---:|---:|
+| **Audio uploads / month** | 0.75 GB | 2.25 GB | 37.5 GB | 112.5 GB | 0.75 TB | 2.25 TB |
+| **Video uploads / month** | 15 GB | 45 GB | 0.75 TB | 2.25 TB | 15 TB | 45 TB |
+
+### A.6 Approximate 90-day steady-state storage
+
+| Scenario | 1k @ 1/mo | 1k @ 3/mo | 50k @ 1/mo | 50k @ 3/mo | 1M @ 1/mo | 1M @ 3/mo |
+|---|---:|---:|---:|---:|---:|---:|
+| **Audio 90-day storage** | 2.25 GB | 6.75 GB | 112.5 GB | 337.5 GB | 2.25 TB | 6.75 TB |
+| **Video 90-day storage** | 45 GB | 135 GB | 2.25 TB | 6.75 TB | 45 TB | 135 TB |
+
+### A.7 Practical interpretation
+
+| Pattern | Interpretation |
+|---|---|
+| **1 min audio** | Cheap to scale; AI cost stays predictable |
+| **1 min video** | Transcription cost manageable, but storage and playback grow fast |
+| **1M users × 3 video/month** | Raw STT ≈ **$18,000/month**, but **45 TB/month uploads** is the bigger problem |
+| **Audio vs video** | For equal speech duration, AI cost is similar; video is expensive because of **file size** |
+
+### A.8 Suggested brand pricing bands
+
+| Plan | Recommended retail | Included transcription | Included media upload | Overage guidance | Best fit |
+|---|---:|---:|---:|---:|---|
+| **Free** | **$0** | **0 min** | **0–2 GB** | None / blocked | Text-first brands, trials |
+| **Pro** | **$49–$99 / month** | **500–1,000 min** | **25–50 GB** | **$0.015–$0.020 / min** | SMB brands using audio occasionally |
+| **Enterprise** | **$299+ / month** or custom | **5,000–10,000+ min** | **250 GB+** or BYO storage | Custom | API/webhook, high-volume, video-heavy tenants |
+
+### A.9 Cost optimization checklist
+
+| Optimization | Expected impact |
+|---|---|
+| Cap audio/video to **60 seconds** | Hard ceiling on transcription cost per upload |
+| Prefer **audio** over video | Much lower storage and bandwidth |
+| Compress media on client before upload | Lower Blob cost |
+| Delete raw video after transcript is ready | Major reduction in long-term storage |
+| Keep transcript permanently, raw media temporarily | Best analytics-to-cost ratio |
+| Retry only transient failures | Prevent duplicate AI spend |
+| Add per-brand minute quotas | Protects margin |
+| Keep image uploads storage-only | Avoid unnecessary AI cost until OCR is needed |
+| Move large Enterprise video tenants to external object storage | Better long-term economics |
+
+### A.10 Default recommendation for Earn4Insights
+
+```text
+Free tier:
+  text + rating (+ optional images)
+  no routine audio/video transcription
+
+Pro tier:
+  audio enabled
+  short video allowed
+  fixed monthly transcription quota
+  limited monthly upload/storage allowance
+
+Enterprise tier:
+  webhook/API access
+  multimodal at scale
+  custom quotas
+  short-retention or BYO-storage for video-heavy programs
+```
+
+### A.11 Bottom line
+
+```text
+Transcription cost is predictable:
+  1 minute of speech ≈ $0.006
+
+Infrastructure cost is asymmetric:
+  1 minute audio ≈ 0.75 MB
+  1 minute video ≈ 15 MB
+
+Therefore:
+  Audio scales cleanly.
+  Video should be quota-based and Enterprise-oriented.
 ```
 
 ---

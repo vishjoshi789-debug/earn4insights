@@ -26,9 +26,9 @@ const CATEGORIES: { value: FeedbackCategory; label: string; emoji: string }[] = 
 
 const MAX_IMAGES = 3
 const MAX_IMAGE_SIZE_MB = 5
-const MAX_AUDIO_DURATION_S = 120
-const MAX_VIDEO_DURATION_S = 60
-const MAX_VIDEO_SIZE_MB = 10
+const MAX_AUDIO_DURATION_S = 60 // 1 minute — cost-capped per Appendix A policy
+const MAX_VIDEO_DURATION_S = 90 // 90 seconds — cost-capped per Appendix A policy
+const MAX_VIDEO_SIZE_MB = 25 // allow slightly larger for 90s video
 const MIN_TEXT_LENGTH = 20
 const MAX_TEXT_LENGTH = 5000
 

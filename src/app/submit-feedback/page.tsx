@@ -25,7 +25,7 @@ const CATEGORIES: { value: FeedbackCategory; label: string; emoji: string }[] = 
 
 const MAX_IMAGES = 3
 const MAX_IMAGE_SIZE_MB = 5
-const MAX_AUDIO_DURATION_S = 120 // 2 minutes
+const MAX_AUDIO_DURATION_S = 60 // 1 minute — cost-capped per Appendix A policy
 
 export default function SubmitFeedbackPage() {
   // Product selection

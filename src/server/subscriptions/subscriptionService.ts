@@ -73,6 +73,13 @@ export interface TierFeatures {
   maxProducts: number
   maxResponsesPerMonth: number | null // null = unlimited
   maxExportsPerMonth: number | null
+
+  // Multimodal quotas (per Appendix A cost policy)
+  maxTranscriptionMinutesPerMonth: number  // 0 = text-only, null would mean unlimited
+  maxUploadGB: number                       // monthly upload cap in GB
+  mediaRetentionDays: number                // raw media retention (transcript kept permanently)
+  canSubmitAudio: boolean                   // consumer-side: audio feedback allowed
+  canSubmitVideo: boolean                   // consumer-side: video feedback allowed
 }
 
 /**
@@ -128,6 +135,13 @@ const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
     maxProducts: 1,
     maxResponsesPerMonth: null, // unlimited responses
     maxExportsPerMonth: 0,
+
+    // Multimodal: text + images only on Free (no transcription cost)
+    maxTranscriptionMinutesPerMonth: 0,
+    maxUploadGB: 2,
+    mediaRetentionDays: 30,
+    canSubmitAudio: false,
+    canSubmitVideo: false,
   },
   
   pro: {
@@ -150,6 +164,13 @@ const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
     maxProducts: 10,
     maxResponsesPerMonth: null,
     maxExportsPerMonth: 100,
+
+    // Multimodal: audio enabled, short video, fixed transcription quota
+    maxTranscriptionMinutesPerMonth: 1000,
+    maxUploadGB: 50,
+    mediaRetentionDays: 60,
+    canSubmitAudio: true,
+    canSubmitVideo: true,
   },
   
   enterprise: {
@@ -172,6 +193,13 @@ const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
     maxProducts: 999999, // effectively unlimited
     maxResponsesPerMonth: null,
     maxExportsPerMonth: null,
+
+    // Multimodal: full multimodal at scale, pooled/custom quotas + retention
+    maxTranscriptionMinutesPerMonth: 10000,
+    maxUploadGB: 500,
+    mediaRetentionDays: 90,
+    canSubmitAudio: true,
+    canSubmitVideo: true,
   },
 }
 

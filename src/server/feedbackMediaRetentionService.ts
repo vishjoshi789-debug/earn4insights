@@ -14,9 +14,9 @@ function getAudioRetentionDays(): number {
 
 function getVideoRetentionDays(): number {
   const raw = process.env.VIDEO_MEDIA_RETENTION_DAYS
-  if (!raw) return 7
+  if (!raw) return 90 // default 90 days — keep raw media for quality assurance, delete after
   const n = Number(raw)
-  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 7
+  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 90
 }
 
 /**
