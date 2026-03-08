@@ -456,6 +456,72 @@ export const demographicPerformance = pgTable('demographic_performance', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
+// ── Granular Personalization: Consumer Watchlist ──────────────────
+export const productWatchlist = pgTable('product_watchlist', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  productId: text('product_id').notNull(),
+  watchType: text('watch_type').notNull().default('launch'),
+  // 'launch' | 'price_drop' | 'feature' | 'update' | 'any'
+  desiredFeature: text('desired_feature'),   // free-text: "dark mode", "iOS app", etc.
+  notifyChannels: jsonb('notify_channels').$type<string[]>().default(['email']),
+  // ['email'] | ['email','whatsapp'] | etc.
+  active: boolean('active').notNull().default(true),
+  notifiedAt: timestamp('notified_at'),      // last time we sent a match notification
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Granular Personalization: Consumer Intent Signals ─────────────
+export const consumerIntents = pgTable('consumer_intents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  productId: text('product_id'),             // nullable — intent may be category-level
+  categorySlug: text('category_slug'),       // e.g. 'TECH_SAAS', 'FOOD_BEVERAGE'
+  intentType: text('intent_type').notNull(),
+  // 'want_product' | 'want_feature' | 'frustrated' | 'price_sensitive' | 'purchase_ready' | 'churning'
+  extractedText: text('extracted_text'),      // the phrase that triggered extraction
+  confidence: real('confidence').notNull().default(0.5), // 0.0–1.0
+  sourceType: text('source_type').notNull(),  // 'feedback' | 'survey' | 'watchlist'
+  sourceId: text('source_id'),               // feedbackId or surveyResponseId
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Granular Personalization: Brand Alert Rules ───────────────────
+export const brandAlertRules = pgTable('brand_alert_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),       // userId of the brand
+  alertType: text('alert_type').notNull(),
+  // 'new_feedback' | 'negative_feedback' | 'survey_complete' | 'high_intent_consumer'
+  // | 'watchlist_milestone' | 'frustration_spike'
+  productId: text('product_id'),             // null = all products
+  channels: jsonb('channels').$type<string[]>().default(['in_app']),
+  // ['in_app'] | ['in_app','email'] | etc.
+  threshold: jsonb('threshold').$type<Record<string, any>>(),
+  // e.g. { minSeverity: 'negative' } or { watchlistCount: 10 }
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Granular Personalization: Brand Alerts ────────────────────────
+export const brandAlerts = pgTable('brand_alerts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  ruleId: text('rule_id'),                   // which alert rule triggered this (nullable for system alerts)
+  alertType: text('alert_type').notNull(),
+  productId: text('product_id'),
+  consumerId: text('consumer_id'),           // which consumer triggered it (nullable)
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  payload: jsonb('payload').$type<Record<string, any>>(), // extra context
+  channel: text('channel').notNull().default('in_app'),
+  status: text('status').notNull().default('pending'),
+  // 'pending' | 'sent' | 'read' | 'dismissed'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  sentAt: timestamp('sent_at'),
+  readAt: timestamp('read_at'),
+})
+
 // ── Phase 8: AI-Powered Theme Extraction ──────────────────────────
 export const extractedThemes = pgTable('extracted_themes', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -567,3 +633,11 @@ export type ExtractedTheme = typeof extractedThemes.$inferSelect
 export type NewExtractedTheme = typeof extractedThemes.$inferInsert
 export type AnalyticsEvent = typeof analyticsEvents.$inferSelect
 export type NewAnalyticsEvent = typeof analyticsEvents.$inferInsert
+export type ProductWatchlistEntry = typeof productWatchlist.$inferSelect
+export type NewProductWatchlistEntry = typeof productWatchlist.$inferInsert
+export type ConsumerIntent = typeof consumerIntents.$inferSelect
+export type NewConsumerIntent = typeof consumerIntents.$inferInsert
+export type BrandAlertRule = typeof brandAlertRules.$inferSelect
+export type NewBrandAlertRule = typeof brandAlertRules.$inferInsert
+export type BrandAlert = typeof brandAlerts.$inferSelect
+export type NewBrandAlert = typeof brandAlerts.$inferInsert

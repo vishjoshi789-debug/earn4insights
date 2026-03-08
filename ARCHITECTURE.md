@@ -990,6 +990,147 @@ Final output: sorted list of `{ productId, score, reasons[] }` displayed on `/to
                             └───────────────────────┘
 ```
 
+### 10.2 Granular Personalization — Phase 1
+
+> Added March 2026. Extends the base personalization engine with **consumer intent tracking**, **product watchlists**, and **brand real-time alert routing**.
+
+#### New Database Tables
+
+| Table | Purpose | Key Columns |
+|---|---|---|
+| `product_watchlist` | Consumer says "notify me about this product" | `userId`, `productId`, `watchType` (launch/price_drop/feature/update/any), `desiredFeature`, `notifyChannels`, `active`, `notifiedAt` |
+| `consumer_intents` | Extracted intent signals from feedback/survey text | `userId`, `productId`, `categorySlug`, `intentType` (want_product/want_feature/frustrated/price_sensitive/purchase_ready/churning), `extractedText`, `confidence`, `sourceType`, `sourceId` |
+| `brand_alert_rules` | Per-brand rules: which events trigger alerts, on which channels | `brandId`, `alertType`, `productId` (null = all), `channels` (in_app/email), `threshold` (JSONB), `enabled` |
+| `brand_alerts` | Materialized alert queue for brand dashboard | `brandId`, `ruleId`, `alertType`, `productId`, `consumerId`, `title`, `body`, `payload` (JSONB), `channel`, `status` (pending/sent/read/dismissed), `readAt` |
+
+#### Consumer Watchlist Flow
+
+```
+Consumer views product → clicks "Watch" (WatchButton.tsx)
+        │
+        ▼
+POST /api/watchlist { productId, watchType: 'any' }
+        │
+        ▼
+watchlistService.addToWatchlist() → inserts into product_watchlist
+        │
+        │── duplicate check (same user + product + type)
+        │── returns entry
+        │
+        ▼
+Later: brand launches product → launchProduct() server action
+        │
+        ├── triggerProductLaunchNotifications()  (existing smart distribution)
+        └── notifyWatchersOnLaunch()             (NEW — Phase 1C)
+                │
+                ▼
+        Find all active watchers where watchType = 'launch' | 'any'
+                │
+                ▼
+        queueNotification() per watcher per channel
+        Mark notifiedAt on watchlist entry
+```
+
+#### Intent Extraction Flow
+
+```
+Consumer submits feedback or survey response
+        │
+        ▼
+  extractAndPersistIntents()  (intentExtractionService.ts)
+        │
+        ├── Regex pattern matching against 12 intent patterns:
+        │     purchase_ready  — "will buy", "take my money", "ready to purchase"
+        │     want_feature    — "wish it had ...", "please add ...", "feature request: ..."
+        │     want_product    — "waiting for this to launch", "exactly what I need"
+        │     frustrated      — "terrible", "unusable", "broken", "waste of money"
+        │     price_sensitive — "too expensive", "can't afford", "cheaper alternative"
+        │     churning        — "switching to", "cancelling", "looking for alternative"
+        │
+        ├── Each match: intentType + extractedText + confidence (0.0–1.0)
+        ├── Deduplicate by type (highest confidence wins)
+        ├── Write rows to consumer_intents table
+        │
+        ▼
+  If high-value intent detected (purchase_ready | want_feature | churning):
+        │
+        ▼
+  alertOnHighIntent() → fires brand alert
+```
+
+#### Brand Alert Routing Flow
+
+```
+Consumer submits feedback
+        │
+        ├── alertOnNewFeedback()     → always fires 'new_feedback' alert
+        │     └── if sentiment = 'negative' → also fires 'negative_feedback' alert
+        │
+Consumer completes survey
+        │
+        └── alertOnSurveyComplete()  → fires 'survey_complete' alert
+                                           with NPS score + sentiment
+
+
+  fireAlert() logic:
+        │
+        ├── Query brand_alert_rules for matching brand + alertType + product
+        ├── Merge channels from all matching rules (default: in_app)
+        │
+        ├── 1. INSERT into brand_alerts (in-app queue)
+        └── 2. If 'email' channel matched → queueNotification() via notificationService
+```
+
+#### Alert Types
+
+| Alert Type | Trigger | Default Channel |
+|---|---|---|
+| `new_feedback` | Every feedback submission | in_app |
+| `negative_feedback` | Feedback with negativesentiment | in_app + email |
+| `survey_complete` | Every survey response | in_app |
+| `high_intent_consumer` | Intent extraction finds purchase_ready / want_feature / churning | in_app + email |
+| `watchlist_milestone` | Watchers for a product cross threshold (future) | in_app |
+| `frustration_spike` | Negative feedback volume spikes (future) | in_app + email |
+
+#### API Surface (Phase 1)
+
+| Method | Route | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/watchlist` | Consumer | Get watchlist (or check single product with `?productId=`) |
+| `POST` | `/api/watchlist` | Consumer | Add to watchlist |
+| `DELETE` | `/api/watchlist?id=` | Consumer | Remove from watchlist |
+| `GET` | `/api/brand/alerts` | Brand | Get alerts (paginated, filterable; `?countOnly=true` for badge) |
+| `PATCH` | `/api/brand/alerts?id=` | Brand | Mark alert as read |
+| `POST` | `/api/brand/alerts` | Brand | Bulk actions (`action=mark_all_read`) |
+| `GET` | `/api/brand/alert-rules` | Brand | Get all alert rules |
+| `PUT` | `/api/brand/alert-rules` | Brand | Create/update a rule |
+| `PATCH` | `/api/brand/alert-rules?id=` | Brand | Toggle rule on/off |
+
+#### UI Integration
+
+| Component | Role | What |
+|---|---|---|
+| `WatchButton.tsx` | Consumer | Bell icon on product cards; toggles watch state via `/api/watchlist` |
+| `DashboardShell.tsx` → "My Watchlist" | Consumer | Sidebar nav item linking to `/dashboard/watchlist` |
+| `DashboardShell.tsx` → "Alerts" (with badge) | Brand | Sidebar nav item with red unread-count badge; polls `/api/brand/alerts?countOnly=true` every 30s |
+
+#### Files Added/Modified
+
+| File | Type | Purpose |
+|---|---|---|
+| `src/db/schema.ts` | Modified | +4 tables: product_watchlist, consumer_intents, brand_alert_rules, brand_alerts |
+| `src/server/watchlistService.ts` | New | CRUD + notifyWatchersOnLaunch |
+| `src/server/intentExtractionService.ts` | New | 12-pattern regex intent extraction + persistence |
+| `src/server/brandAlertService.ts` | New | Alert rules CRUD, fireAlert(), convenience triggers, bootstrap defaults |
+| `src/app/api/watchlist/route.ts` | New | Consumer watchlist API (GET/POST/DELETE) |
+| `src/app/api/brand/alerts/route.ts` | New | Brand alerts API (GET/PATCH/POST) |
+| `src/app/api/brand/alert-rules/route.ts` | New | Brand alert rules API (GET/PUT/PATCH) |
+| `src/components/WatchButton.tsx` | New | Client component: watch/unwatch toggle |
+| `src/app/api/feedback/submit/route.ts` | Modified | +intent extraction, +brand alert triggers |
+| `src/server/surveys/responseService.ts` | Modified | +intent extraction, +brand survey-complete alert |
+| `src/app/dashboard/launch/launch.actions.ts` | Modified | +notifyWatchersOnLaunch on product launch |
+| `src/app/dashboard/DashboardShell.tsx` | Modified | +Watchlist nav (consumer), +Alerts nav with badge (brand) |
+
 ---
 
 ## 11. Rankings System

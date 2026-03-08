@@ -66,6 +66,47 @@ export async function submitSurveyResponse(
 
   await createSurveyResponse(response)
 
+  // ── Extract intent signals (non-blocking) ────────────────
+  try {
+    const { extractAndPersistIntents } = await import('@/server/intentExtractionService')
+    const textForIntent = combinedText || Object.values(answers).filter((a) => typeof a === 'string').join(' ')
+    if (textForIntent && textForIntent.length > 10) {
+      await extractAndPersistIntents({
+        userId: response.userEmail || '',
+        text: textForIntent,
+        productId: survey.productId,
+        sourceType: 'survey',
+        sourceId: response.id || surveyId,
+      })
+    }
+  } catch (err) {
+    console.error('[SurveyResponse] Intent extraction failed (non-blocking):', err)
+  }
+
+  // ── Alert brand about survey completion (non-blocking) ──────
+  try {
+    const { alertOnSurveyComplete } = await import('@/server/brandAlertService')
+    const { db: dbImport } = await import('@/db')
+    const { products: productsTable } = await import('@/db/schema')
+    const { eq: eqOp } = await import('drizzle-orm')
+    const [product] = await dbImport.select({ ownerId: productsTable.ownerId, name: productsTable.name }).from(productsTable).where(eqOp(productsTable.id, survey.productId)).limit(1)
+    if (product?.ownerId) {
+      alertOnSurveyComplete({
+        brandId: product.ownerId,
+        productId: survey.productId,
+        productName: product.name,
+        surveyTitle: survey.title,
+        consumerId: response.userEmail || undefined,
+        consumerName: userName || undefined,
+        responseId: response.id || surveyId,
+        npsScore: response.npsScore ?? undefined,
+        sentiment: response.sentiment || undefined,
+      }).catch((err: any) => console.error('[SurveyResponse] Brand alert failed:', err))
+    }
+  } catch (err) {
+    console.error('[SurveyResponse] Brand alert failed (non-blocking):', err)
+  }
+
   // Send email notification (async, don't block response)
   sendSurveyResponseNotification(
     survey.title,

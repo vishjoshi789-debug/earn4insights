@@ -5,6 +5,7 @@ import { Product } from '@/lib/types/product'
 import { initializeProductData } from '@/lib/product/initProduct'
 import { createProduct } from '@/db/repositories/productRepository'
 import { triggerProductLaunchNotifications } from '@/lib/personalization/smartDistributionService'
+import { notifyWatchersOnLaunch } from '@/server/watchlistService'
 
 export async function launchProduct(formData: FormData) {
   const productName = formData.get('name') as string
@@ -45,6 +46,11 @@ export async function launchProduct(formData: FormData) {
   // Notify ideal consumers about the new product (non-blocking)
   triggerProductLaunchNotifications(product.id).catch((err) => {
     console.error('[LaunchProduct] Smart notification failed (non-blocking):', err)
+  })
+
+  // Notify watchlist subscribers about the launch (non-blocking)
+  notifyWatchersOnLaunch(product.id).catch((err) => {
+    console.error('[LaunchProduct] Watchlist notification failed (non-blocking):', err)
   })
 
   redirect(`/dashboard/products/${product.id}`)

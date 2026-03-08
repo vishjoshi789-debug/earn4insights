@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { feedback } from '@/db/schema'
+import { feedback, products } from '@/db/schema'
 import { analyzeSentiment } from '@/server/sentimentService'
 import { normalizeTextForAnalytics } from '@/server/textNormalizationService'
 import { auth } from '@/lib/auth/auth.config'
 import { eq, and, gte, sql, desc } from 'drizzle-orm'
 import { computeRelevanceScore } from '@/lib/personalization/smartDistributionService'
+import { extractAndPersistIntents } from '@/server/intentExtractionService'
+import { alertOnNewFeedback, alertOnHighIntent } from '@/server/brandAlertService'
 
 // ── Anti-fraud constants ──────────────────────────────────────
 const MAX_TEXT_LENGTH = 5000
@@ -255,6 +257,59 @@ export async function POST(request: Request) {
       relevance = { score: relevanceResult.score, tier: relevanceResult.tier }
     } catch (err) {
       console.error('[Feedback] Relevance scoring failed (non-blocking):', err)
+    }
+
+    // ── 9. Extract intent signals (non-blocking) ──────────────
+    try {
+      const intents = await extractAndPersistIntents({
+        userId: session.user.id || '',
+        text: trimmedText,
+        productId,
+        sourceType: 'feedback',
+        sourceId: created.id,
+      })
+
+      // If high-value intents found, alert brand
+      const highIntents = intents.filter(
+        (i) => i.intentType === 'purchase_ready' || i.intentType === 'want_feature' || i.intentType === 'churning',
+      )
+      if (highIntents.length > 0) {
+        const [product] = await db.select({ ownerId: products.ownerId, name: products.name }).from(products).where(eq(products.id, productId)).limit(1)
+        if (product?.ownerId) {
+          for (const intent of highIntents) {
+            alertOnHighIntent({
+              brandId: product.ownerId,
+              productId,
+              productName: product.name,
+              consumerId: session.user.id || '',
+              consumerName: userName || undefined,
+              intentType: intent.intentType,
+              extractedText: intent.extractedText || '',
+            }).catch((err) => console.error('[Feedback] High-intent alert failed:', err))
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Feedback] Intent extraction failed (non-blocking):', err)
+    }
+
+    // ── 10. Alert brand about new feedback (non-blocking) ──────
+    try {
+      const [product] = await db.select({ ownerId: products.ownerId, name: products.name }).from(products).where(eq(products.id, productId)).limit(1)
+      if (product?.ownerId) {
+        alertOnNewFeedback({
+          brandId: product.ownerId,
+          productId,
+          productName: product.name,
+          consumerId: session.user.id || '',
+          consumerName: userName || undefined,
+          feedbackId: created.id,
+          sentiment: sentimentResult || undefined,
+          feedbackPreview: trimmedText,
+        }).catch((err) => console.error('[Feedback] Brand alert failed:', err))
+      }
+    } catch (err) {
+      console.error('[Feedback] Brand alert failed (non-blocking):', err)
     }
 
     return NextResponse.json({

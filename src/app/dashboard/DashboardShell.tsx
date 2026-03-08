@@ -36,11 +36,13 @@ import {
   Sparkles,
   Brain,
   CreditCard,
+  AlertCircle,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { DashboardHeader } from '@/components/dashboard-header'
 import { ProductTour } from '@/components/ProductTour'
+import { useEffect, useState } from 'react'
 
 type MenuItem = {
   href: string
@@ -61,6 +63,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/submit-feedback', label: 'Submit Feedback', icon: PenSquare, tourId: 'nav-submit-feedback', role: 'consumer' },
   { href: '/dashboard/my-feedback', label: 'My Feedback', icon: ClipboardList, tourId: 'nav-my-feedback', role: 'consumer' },
   { href: '/dashboard/recommendations', label: 'For You', icon: Sparkles, tourId: 'nav-recommendations', role: 'consumer' },
+  { href: '/dashboard/watchlist', label: 'My Watchlist', icon: Bell, tourId: 'nav-watchlist', role: 'consumer' },
   { href: '/dashboard/social', label: 'Social', icon: Users, tourId: 'nav-social' },
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys' },
@@ -69,6 +72,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/analytics/consumer-intelligence', label: 'Consumer Intelligence', icon: Brain, tourId: 'nav-consumer-intelligence', role: 'brand' },
   { href: '/dashboard/analytics/weekly-digest', label: 'Weekly Digest', icon: Bell, tourId: 'nav-weekly-digest', role: 'brand' },
   { href: '/dashboard/analytics/category-intelligence', label: 'Category Intelligence', icon: Globe, tourId: 'nav-category-intelligence' },
+  { href: '/dashboard/alerts', label: 'Alerts', icon: AlertCircle, tourId: 'nav-alerts', role: 'brand' },
   { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards', role: 'consumer' },
   { href: '/dashboard/payouts', label: 'Payouts', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer' },
   {
@@ -109,6 +113,24 @@ export default function DashboardShell({
   const pathname = usePathname()
   const { data: session } = useSession()
   const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | undefined
+  const [unreadAlerts, setUnreadAlerts] = useState(0)
+
+  // Poll unread alert count for brands
+  useEffect(() => {
+    if (userRole !== 'brand') return
+    const fetchCount = async () => {
+      try {
+        const res = await fetch('/api/brand/alerts?countOnly=true')
+        if (res.ok) {
+          const data = await res.json()
+          setUnreadAlerts(data.unread || 0)
+        }
+      } catch { /* silent */ }
+    }
+    fetchCount()
+    const interval = setInterval(fetchCount, 30_000) // poll every 30s
+    return () => clearInterval(interval)
+  }, [userRole])
 
   // Filter menu items by user role — show items with no role restriction + items matching user's role
   const visibleItems = menuItems.filter(
@@ -149,6 +171,11 @@ export default function DashboardShell({
                   <Link href={item.href}>
                     <item.icon />
                     <span>{item.label}</span>
+                    {item.href === '/dashboard/alerts' && unreadAlerts > 0 && (
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                        {unreadAlerts > 99 ? '99+' : unreadAlerts}
+                      </span>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
