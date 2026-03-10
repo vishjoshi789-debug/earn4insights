@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { generateWeeklyDigest } from '@/lib/analytics/weeklyDigest'
