@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Trophy, TrendingUp, Calendar, Sparkles, RefreshCw, ExternalLink, MessageSquare, Heart } from 'lucide-react'
+import { WatchButton } from '@/components/WatchButton'
 import { PRODUCT_CATEGORIES, CATEGORY_ICONS, getCategoryName } from '@/lib/categories'
 import type { ProductCategory } from '@/lib/categories'
 import type { WeeklyRanking, RankedProduct } from '@/lib/types/ranking'
@@ -454,13 +455,14 @@ function ProductRankCard({ product, rank }: { product: RankedProduct; rank: numb
             </div>
 
             {/* Give Feedback CTA */}
-            <div className="mt-3 pt-3 border-t">
+            <div className="mt-3 pt-3 border-t flex items-center gap-2">
               <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto" asChild>
                 <Link href={`/dashboard/submit-feedback?productId=${product.productId}&productName=${encodeURIComponent(product.productName)}`}>
                   <MessageSquare className="h-4 w-4" />
                   Give Feedback
                 </Link>
               </Button>
+              <WatchButton productId={product.productId} size="sm" />
             </div>
           </div>
         </div>

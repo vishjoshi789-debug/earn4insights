@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { mockProducts } from "@/lib/data";
+import { WatchButton } from "@/components/WatchButton";
 
 const productImages: Record<string, string> = {
   'product-smartwatch': 'https://picsum.photos/seed/smartwatch/400/250',
@@ -43,9 +44,14 @@ export default function ProductsPage() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </div>
                 <div className="p-5 space-y-2">
-                  <h2 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
-                    {product.name}
-                  </h2>
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
+                      {product.name}
+                    </h2>
+                    <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                      <WatchButton productId={product.id} size="sm" />
+                    </div>
+                  </div>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {product.description}
                   </p>

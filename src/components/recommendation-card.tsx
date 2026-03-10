@@ -9,6 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { WatchButton } from '@/components/WatchButton'
 import { useEffect } from 'react'
 
 interface RecommendationCardProps {
@@ -98,16 +99,18 @@ export function RecommendationCard({
             )}
           </div>
           
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex flex-col items-center flex-shrink-0">
-                  <div className="text-2xl font-bold text-purple-400">
-                    {matchPercentage}%
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <WatchButton productId={product.id} size="sm" />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex flex-col items-center">
+                    <div className="text-2xl font-bold text-purple-400">
+                      {matchPercentage}%
+                    </div>
+                    <div className="text-xs text-slate-400">match</div>
                   </div>
-                  <div className="text-xs text-slate-400">match</div>
-                </div>
-              </TooltipTrigger>
+                </TooltipTrigger>
               <TooltipContent>
                 <p className="font-semibold mb-1">Why recommended:</p>
                 <ul className="text-xs space-y-1">
@@ -116,8 +119,9 @@ export function RecommendationCard({
                   ))}
                 </ul>
               </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
       </CardHeader>
 

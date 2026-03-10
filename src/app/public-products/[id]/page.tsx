@@ -11,6 +11,7 @@ import { FeedbackForm } from '@/components/feedback-form'
 import { ExternalLink, Quote } from 'lucide-react'
 import { mockProducts, mockFeedback, mockSocialPosts } from '@/lib/data'
 import { ProductViewTracker } from './ProductViewTracker'
+import { WatchButton } from '@/components/WatchButton'
 
 // Image mapping for mock products (picsum deterministic seeds)
 const productImages: Record<string, string> = {
@@ -80,13 +81,16 @@ export default async function PublicProductPage({ params }: PageProps) {
                   {productDetails?.tagline && <p className="text-sm text-muted-foreground">{productDetails.tagline}</p>}
                 </div>
               </div>
-              {productDetails?.website && (
-                <Button asChild variant="outline">
-                  <Link href={productDetails.website} target="_blank" rel="noopener noreferrer">
-                    Visit Website <ExternalLink className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                <WatchButton productId={id} />
+                {productDetails?.website && (
+                  <Button asChild variant="outline">
+                    <Link href={productDetails.website} target="_blank" rel="noopener noreferrer">
+                      Visit Website <ExternalLink className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </header>
@@ -175,9 +179,12 @@ export default async function PublicProductPage({ params }: PageProps) {
               </Link>
               <h1 className="text-2xl font-bold text-foreground">{mockProduct.name}</h1>
             </div>
-            <Badge variant="secondary" className="text-lg px-4 py-1">
-              ${mockProduct.price.toFixed(2)}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <WatchButton productId={id} size="sm" />
+              <Badge variant="secondary" className="text-lg px-4 py-1">
+                ${mockProduct.price.toFixed(2)}
+              </Badge>
+            </div>
           </div>
         </div>
       </header>
