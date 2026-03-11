@@ -1,7 +1,7 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** March 4, 2026  
-> **Platform:** Next.js 14 + Drizzle ORM + PostgreSQL + Vercel  
+> **Last updated:** March 11, 2026  
+> **Platform:** Next.js 15 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
 ---
@@ -24,6 +24,7 @@
 14. [Deployment](#14-deployment)
 15. [Multimodal Feedback (Audio / Video / Images)](#15-multimodal-feedback-audio--video--images)
 16. [Subscription Tier System](#16-subscription-tier-system)
+17. [Production Hardening (March 11, 2026)](#17-production-hardening-march-11-2026)
 
 ---
 
@@ -32,7 +33,7 @@
 ### Tech Stack
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 14 (App Router) |
+| Framework | Next.js 15 (App Router) |
 | Auth | NextAuth.js (Google OAuth) |
 | Database | PostgreSQL (Neon) |
 | ORM | Drizzle ORM |
@@ -525,9 +526,17 @@ git push origin main
 | `RESEND_API_KEY` | Email sending |
 
 ### Schema Migrations
-- Migrations in `/drizzle` directory (0000 → 0012)
+- Migrations in `/drizzle` directory (0000 → 0013)
 - Apply with: `.\push-schema.ps1` (uses `drizzle-kit push`)
 - Key migration for media: `0004_add_multimodal_multilingual_foundations.sql`
+- Performance indexes: `0013_add_performance_indexes.sql` (added March 11, 2026)
+
+### Environment Variables Added (March 11, 2026)
+| Variable | Purpose | Required? |
+|----------|---------|----------|
+| `ADMIN_API_KEY` | Admin API header-based auth | Optional |
+| `CRON_SECRET` | Vercel Cron job authorization | Required for cron |
+| `GA_MEASUREMENT_ID` | Google Analytics 4 tracking | Optional |
 
 ---
 
@@ -556,7 +565,97 @@ git push origin main
 | Brand feedback overview | `src/app/dashboard/feedback/page.tsx` |
 | Product feedback detail | `src/app/dashboard/products/[productId]/feedback/page.tsx` |
 | Subscription service | `src/server/subscriptions/subscriptionService.ts` |
+| Environment validation | `src/lib/env.ts` |
+| Rate limiter | `src/lib/rate-limit.ts` |
+| Structured logger | `src/lib/logger.ts` |
+| Zod validators | `src/lib/validators.ts` |
+| Entity checks | `src/lib/entity-checks.ts` |
+| Instrumentation hook | `src/instrumentation.ts` |
 
 ---
 
-*This document covers all features implemented as of March 4, 2026. Update this file when adding new features.*
+## 17. Production Hardening (March 11, 2026)
+
+### Overview
+A comprehensive 9-phase production hardening pass was applied before public launch to eliminate deployment risks, security gaps, performance fragilities, and observability blind spots — without restructuring or refactoring existing code.
+
+### Phase 1: Deployment & Config Risks
+| Change | File | Detail |
+|--------|------|--------|
+| Debug mode gated | `auth.config.ts` | `debug: true` → `debug: process.env.NODE_ENV === 'development'` |
+| DB connection guard | `db/index.ts` | Throws immediately if `POSTGRES_URL`/`DATABASE_URL` missing |
+| Env validation at startup | `src/lib/env.ts` + `src/instrumentation.ts` | Validates CRITICAL vars (POSTGRES_URL, NEXTAUTH_SECRET) and warns for OPTIONAL vars at server boot via Next.js instrumentation hook |
+| Email service deprecation | `emailService.ts` | Marked `@deprecated` (stub: console.log only, used by responseService and digestService) |
+
+### Phase 2: Architectural Hardening
+| Change | File | Detail |
+|--------|------|--------|
+| Schema section headers | `schema.ts` | 7 labeled sections: Users, Surveys, Feedback, Personalization, Notifications, Analytics, Deep Analytics |
+| Sentiment interface | `sentimentService.ts` | Added `SentimentAnalyzer` interface for future AI upgrade path |
+| Ranking thresholds | `rankingEngine.ts` | `MINIMUM_THRESHOLDS` changed from 0 to production values: `TOTAL_RESPONSES: 5`, `RECENT_RESPONSES: 3` |
+
+### Phase 3: Security Hardening
+| Change | Files | Detail |
+|--------|-------|--------|
+| Admin API auth fix | `src/lib/auth.ts` | Removed query parameter auth (`?apiKey=`); now only accepts `Authorization: Bearer` or `x-admin-api-key` header |
+| Rate limiting | `src/lib/rate-limit.ts` + 4 API routes | In-memory rate limiter with auto-cleanup; applied to `/api/analytics/track`, `/api/track-event`, `/api/feedback/submit`, `/api/feedback/upload-media` |
+| Security headers | `next.config.ts` | X-Frame-Options: DENY, X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin, HSTS (1 year), Permissions-Policy (restricted camera/mic/geolocation) |
+
+### Phase 4: Fragility Reduction
+| Change | Files | Detail |
+|--------|-------|--------|
+| Zod validators | `src/lib/validators.ts` | Runtime schemas for JSONB fields: demographics, interests, consent, product profile, survey questions, feedback metadata, event data; includes `safeValidate()` helper |
+| Entity checks | `src/lib/entity-checks.ts` | `productExists()` and `surveyExists()` — application-level FK validation |
+| Feedback submit validation | `api/feedback/submit/route.ts` | Added `productExists` check before inserting feedback |
+
+### Phase 5: Performance Safeguards
+| Change | Files | Detail |
+|--------|-------|--------|
+| Analytics cleanup cron | `api/cron/cleanup-analytics-events/route.ts` | Deletes `analytics_events` older than 90 days (daily at 5 AM UTC) |
+| Performance indexes | `drizzle/0013_add_performance_indexes.sql` | 15+ indexes on feedback, survey_responses, user_events, analytics_events, notification_queue, weekly_rankings, ranking_history, feedback_media, products |
+
+### Phase 6: UI Responsiveness
+| Change | File | Detail |
+|--------|------|--------|
+| Responsive CSS utilities | `globals.css` | `.table-responsive`, `.dashboard-grid`, `.chart-container` classes; Recharts overflow fix |
+
+### Phase 7: API Abuse Protection
+| Change | File | Detail |
+|--------|------|--------|
+| Upload rate limiting | `api/feedback/upload-media/route.ts` | IP-based rate limit on media uploads |
+
+### Phase 8: Error Logging & Observability
+| Change | Files | Detail |
+|--------|-------|--------|
+| Structured logger | `src/lib/logger.ts` | JSON structured logging with sensitive data redaction (passwords, tokens, API keys, SSN etc.); methods: `serviceError()`, `apiError()`, `cronResult()`, `warn()`, `info()` |
+| Cron logging | All 7 cron routes | Replaced `console.error` with `logger.cronResult()` for structured JSON output |
+| Service logging | `notificationService.ts`, `whatsappNotifications.ts` | Replaced `console.error` with `logger.serviceError()` for Resend/Twilio failures |
+
+### Phase 9: Analytics Stability
+| Change | Files | Detail |
+|--------|-------|--------|
+| Silent analytics failures | `api/analytics/track/route.ts`, `api/track-event/route.ts` | Both routes now return 200 on DB errors (analytics never break user experience); structured logging via `logger.apiError()` |
+
+### Pre-configured Rate Limits
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| Feedback submit | 10 requests | 60 seconds |
+| Survey response | 20 requests | 60 seconds |
+| Analytics event | 100 requests | 60 seconds |
+| Auth attempt | 5 requests | 60 seconds |
+
+### Cron Jobs (Complete List)
+| Route | Schedule | Purpose |
+|-------|----------|--------|
+| `/api/cron/process-notifications` | Every 5 min | Send pending email/WhatsApp/SMS |
+| `/api/cron/process-feedback-media` | Every 5–15 min | Whisper STT for audio/video |
+| `/api/cron/cleanup-feedback-media` | Daily | Delete expired media blobs |
+| `/api/cron/extract-themes` | Daily | AI theme extraction per product |
+| `/api/cron/update-behavioral` | Daily | Recompute user behavioral profiles |
+| `/api/cron/cleanup-analytics-events` | Daily (5 AM) | **NEW** — Delete analytics events older than 90 days |
+| `/api/cron/send-time-analysis` | Weekly | Email send-time optimization |
+| `/api/generate-rankings` | Weekly | Compute weekly product rankings |
+
+---
+
+*This document covers all features implemented as of March 11, 2026. Update this file when adding new features.*

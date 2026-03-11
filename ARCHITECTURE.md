@@ -27,7 +27,8 @@
 18. [API Surface Map](#18-api-surface-map)
 19. [File & Folder Structure](#19-file--folder-structure)
 20. [Data Flow: End-to-End Walkthrough](#20-data-flow-end-to-end-walkthrough)
-21. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+21. [Production Hardening Infrastructure](#21-production-hardening-infrastructure)
+22. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -101,7 +102,9 @@ Consumers discover ranked products → more feedback
 | **Deployment** | Vercel | Hosting, cron triggers, edge middleware |
 | **Styling** | Tailwind CSS + Radix UI | UI components (shadcn/ui pattern) |
 | **Charts** | Recharts | All dashboard visualizations |
-| **Validation** | Zod | Runtime schema validation on API inputs |
+| **Validation** | Zod | Runtime schema validation on API inputs + JSONB fields |
+| **Rate Limiting** | Custom in-memory | IP-based rate limiting with auto-cleanup (serverless-safe) |
+| **Logging** | Structured JSON logger | Production-safe with sensitive data redaction |
 | **Forms** | React Hook Form | Consumer-facing forms (surveys, feedback, onboarding) |
 | **Analytics** | Google Analytics 4 (GA4) | Front-end page analytics (optional, env-gated) |
 
@@ -135,7 +138,7 @@ Consumers discover ranked products → more feedback
 │  ┌──────────────────┐  ┌───────────────────┐                            │
 │  │ Neon PostgreSQL  │  │ Vercel Blob Store │                            │
 │  │ (via Drizzle ORM)│  │ (audio/video/img) │                            │
-│  │ 18 tables        │  │ public CDN URLs   │                            │
+│  │ 24+ tables       │  │ public CDN URLs   │                            │
 │  └──────────────────┘  └───────────────────┘                            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1672,6 +1675,7 @@ All cron routes live under `/api/cron/`. They accept `Authorization: Bearer $CRO
 | `GET /api/cron/process-notifications` | Every 5 min | Send pending email / WhatsApp / SMS from notification_queue |
 | `GET /api/cron/update-behavioral` | Daily | Re-compute userProfiles.behavioral from user_events |
 | `GET /api/cron/send-time-analysis` | Weekly | Aggregate email click stats, update send-time cohorts |
+| `GET /api/cron/cleanup-analytics-events` | Daily (5 AM UTC) | Delete analytics_events older than 90 days (data retention) |
 | `GET /api/generate-rankings` | Weekly | Compute weekly rankings per category, update weekly_rankings |
 
 Manual triggers (brand only, gated by `ALLOW_MANUAL_MEDIA_PROCESSING=true`):
@@ -1695,6 +1699,7 @@ Manual triggers (brand only, gated by `ALLOW_MANUAL_MEDIA_PROCESSING=true`):
 │    ──────────▶ │  cleanup-feedback-media (retention)       │    │
 │                 │  extract-themes (AI per product)           │    │
 │                 │  update-behavioral (recompute profiles)    │    │
+│                 │  cleanup-analytics-events (90-day purge)   │    │
 │                 └──────────────────────────────────────────┘    │
 │                                                                     │
 │  Weekly          ┌──────────────────────────────────────────┐    │
@@ -1755,6 +1760,7 @@ GET  /api/cron/extract-themes
 GET  /api/cron/process-notifications
 GET  /api/cron/update-behavioral
 GET  /api/cron/send-time-analysis
+GET  /api/cron/cleanup-analytics-events
 ```
 
 ### Figure 18.1 — API Route Auth Boundary Map
@@ -1796,6 +1802,7 @@ GET  /api/cron/send-time-analysis
 │  │  /api/cron/process-notifications                           │  │
 │  │  /api/cron/update-behavioral                               │  │
 │  │  /api/cron/send-time-analysis                              │  │
+│  │  /api/cron/cleanup-analytics-events                        │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -2008,6 +2015,8 @@ src/
 │   └── utils.ts                  — General utilities
 │
 └── middleware.ts                 — Route protection, role-based redirects
+
+instrumentation.ts               — Next.js startup hook: validates env vars
 ```
 
 ### Figure 19.1 — Code Organization by Concern
@@ -2168,6 +2177,188 @@ src/
 │                                  │  PRO:  + individual    │         │
 │                                  │        + media + CSV   │         │
 │                                  └───────────────────────┘         │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 21. Production Hardening Infrastructure
+
+> Added March 11, 2026 — 9-phase production hardening before public launch.
+
+### 21.1 Environment Validation
+
+`src/lib/env.ts` + `src/instrumentation.ts`
+
+At server startup (via Next.js instrumentation hook), `validateEnvironment()` runs:
+
+- **CRITICAL** (throws if missing): `POSTGRES_URL` or `DATABASE_URL`, `NEXTAUTH_SECRET`
+- **OPTIONAL** (warns if missing): `OPENAI_API_KEY`, `RESEND_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ADMIN_API_KEY`, `GA_MEASUREMENT_ID`
+
+The DB connection module (`src/db/index.ts`) also guards independently — throws before Drizzle client creation if no connection string is present.
+
+### 21.2 Rate Limiting
+
+`src/lib/rate-limit.ts`
+
+In-memory sliding window rate limiter designed for Vercel serverless (no external store required). Includes automatic memory cleanup every 60 seconds.
+
+**Pre-configured limits:**
+
+| Key | Max Requests | Window |
+|---|---:|---:|
+| `feedbackSubmit` | 10 | 60s |
+| `surveyResponse` | 20 | 60s |
+| `analyticsEvent` | 100 | 60s |
+| `authAttempt` | 5 | 60s |
+
+**Applied to routes:**
+
+| Route | Limit Key |
+|---|---|
+| `POST /api/feedback/submit` | feedbackSubmit |
+| `POST /api/feedback/upload-media` | feedbackSubmit |
+| `POST /api/analytics/track` | analyticsEvent |
+| `POST /api/track-event` | analyticsEvent |
+
+### 21.3 Security Headers
+
+Added to `next.config.ts` via `headers()`:
+
+| Header | Value | Purpose |
+|---|---|---|
+| X-Frame-Options | `DENY` | Prevent clickjacking |
+| X-Content-Type-Options | `nosniff` | Prevent MIME-type sniffing |
+| Referrer-Policy | `strict-origin-when-cross-origin` | Limit referrer leakage |
+| Strict-Transport-Security | `max-age=31536000; includeSubDomains` | Enforce HTTPS (1 year) |
+| Permissions-Policy | `camera=(), microphone=(), geolocation=()` | Restrict browser APIs |
+
+### 21.4 Admin API Auth
+
+`src/lib/auth.ts` was updated to remove query parameter authentication (`?apiKey=`). Admin API routes now only accept:
+- `Authorization: Bearer <ADMIN_API_KEY>` header
+- `x-admin-api-key: <ADMIN_API_KEY>` header
+
+### 21.5 Structured Logging
+
+`src/lib/logger.ts`
+
+Production-safe structured JSON logger. All log output is JSON for log aggregation (Vercel Logs, Datadog, etc.).
+
+**Sensitive data redaction** — automatically redacts: `password`, `token`, `accessToken`, `refreshToken`, `apiKey`, `secret`, `authorization`, `creditCard`, `ssn`, `sensitiveData`
+
+**Methods:**
+
+| Method | Use case |
+|---|---|
+| `logger.serviceError(service, operation, error, meta?)` | External service failures (OpenAI, Resend, Twilio) |
+| `logger.apiError(route, method, error, meta?)` | API route errors |
+| `logger.cronResult(job, success, meta?)` | Cron job completion/failure |
+| `logger.warn(message, meta?)` | General warnings |
+| `logger.info(message, meta?)` | General info |
+
+**Wired into:**
+- All 7 cron routes (via `logger.cronResult()`)
+- `notificationService.ts` — Resend failures
+- `whatsappNotifications.ts` — Twilio failures
+- `api/analytics/track` — DB write failures
+- `api/track-event` — DB write failures
+
+### 21.6 Zod Validators for JSONB Fields
+
+`src/lib/validators.ts`
+
+Runtime schemas for all JSONB columns in the database. Prevents malformed data from entering DB and provides type-safe validation at API boundaries.
+
+| Schema | Validates |
+|---|---|
+| `demographicsSchema` | User demographic fields (age, gender, country, etc.) |
+| `interestsSchema` | Product category interests array |
+| `notificationPreferencesSchema` | Per-channel notification settings |
+| `consentSchema` | GDPR consent flags (tracking, personalization, analytics, marketing) |
+| `productProfileSchema` | Product metadata (category, targetAudience, website, etc.) |
+| `surveyQuestionsSchema` | Survey question array structure |
+| `feedbackMetadataSchema` | Feedback metadata fields |
+| `eventDataSchema` | Analytics event payload |
+
+Includes `safeValidate(schema, data)` helper that never throws — returns `{ success, data?, error? }`.
+
+### 21.7 Entity Checks
+
+`src/lib/entity-checks.ts`
+
+Application-level foreign key validation:
+- `productExists(productId)` — checks product table before inserting feedback
+- `surveyExists(surveyId)` — checks survey table before accepting responses
+
+### 21.8 Performance Indexes
+
+`drizzle/0013_add_performance_indexes.sql`
+
+15+ database indexes added to prevent slow queries at scale:
+
+| Table | Indexed Columns |
+|---|---|
+| `feedback` | product_id, user_email, created_at, sentiment |
+| `survey_responses` | survey_id, product_id, submitted_at |
+| `user_events` | user_id, event_type, created_at, product_id |
+| `analytics_events` | created_at, user_id, event_type, session_id, page_path |
+| `notification_queue` | user_id, status + scheduled_for (composite) |
+| `weekly_rankings` | category, week_start |
+| `ranking_history` | product_id, category |
+| `feedback_media` | owner_type + owner_id (composite), status |
+| `products` | owner_id, lifecycle_status |
+
+> **Note:** This migration must be applied manually: `psql $DATABASE_URL < drizzle/0013_add_performance_indexes.sql`
+
+### 21.9 Analytics Stability
+
+Both analytics tracking routes (`/api/analytics/track` and `/api/track-event`) are hardened to **never return 5xx** on DB errors. They:
+- Catch all exceptions silently
+- Log via `logger.apiError()` for observability
+- Return HTTP 200 with `{ success: false }` or `{ ok: false }`
+
+This ensures analytics instrumentation never degrades the user experience.
+
+### 21.10 Responsive CSS Utilities
+
+`src/app/globals.css` — added utility classes:
+
+| Class | Purpose |
+|---|---|
+| `.table-responsive` | Horizontal scroll wrapper for tables on mobile |
+| `.dashboard-grid` | Responsive grid (1 → 2 → 3 columns) |
+| `.chart-container` | Max-width container for Recharts charts |
+
+Plus a global fix for Recharts `ResponsiveContainer` overflow.
+
+### Figure 21.1 — Production Hardening Layer Map
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                  REQUEST LIFECYCLE (hardened)                         │
+│                                                                      │
+│  1. Security Headers (next.config.ts)                                │
+│     X-Frame-Options, HSTS, CSP, Permissions-Policy                   │
+│                                                                      │
+│  2. Rate Limiting (rate-limit.ts)                                    │
+│     IP-based, per-route, auto-cleanup                                │
+│                                                                      │
+│  3. Input Validation (validators.ts)                                 │
+│     Zod schemas for JSONB fields                                     │
+│                                                                      │
+│  4. Entity Checks (entity-checks.ts)                                 │
+│     productExists(), surveyExists()                                  │
+│                                                                      │
+│  5. Business Logic (existing services)                               │
+│     Unchanged — no refactoring                                       │
+│                                                                      │
+│  6. Structured Logging (logger.ts)                                   │
+│     JSON output, sensitive data redacted                             │
+│                                                                      │
+│  7. Error Resilience                                                 │
+│     Analytics routes silently degrade                                │
+│     Cron jobs log structured results                                 │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -2334,4 +2525,4 @@ Therefore:
 
 ---
 
-*This document reflects the architecture as of March 2026. It should be updated as new systems are added.*
+*This document reflects the architecture as of March 11, 2026. It should be updated as new systems are added.*
