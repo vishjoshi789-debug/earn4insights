@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { cleanupOldAudioMedia, cleanupOldVideoMedia } from '@/server/feedbackMediaRetentionService'
+import { logger } from '@/lib/logger'
 
 /**
  * Cron: Cleanup old raw feedback media (retention)
@@ -18,6 +19,8 @@ export async function GET(request: Request) {
   try {
     const audio = await cleanupOldAudioMedia({ limit: 50 })
     const video = await cleanupOldVideoMedia({ limit: 50 })
+    logger.cronResult('cleanup-feedback-media', true, { audio, video })
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -31,7 +34,7 @@ export async function GET(request: Request) {
       })(),
     })
   } catch (error) {
-    console.error('[CleanupFeedbackMediaCron] Error:', error)
+    logger.cronResult('cleanup-feedback-media', false, { error: error instanceof Error ? error.message : String(error) })
     return NextResponse.json(
       {
         success: false,

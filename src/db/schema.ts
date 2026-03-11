@@ -1,5 +1,9 @@
 import { pgTable, text, timestamp, jsonb, boolean, integer, real, uuid, serial, date, decimal } from 'drizzle-orm/pg-core'
 
+// ════════════════════════════════════════════════════════════════
+// SECTION 1: USERS & AUTHENTICATION
+// ════════════════════════════════════════════════════════════════
+
 // Users table (for authentication)
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
@@ -60,6 +64,10 @@ export const products = pgTable('products', {
     [key: string]: any
   }>().notNull(),
 })
+
+// ════════════════════════════════════════════════════════════════
+// SECTION 2: SURVEYS & RESPONSES
+// ════════════════════════════════════════════════════════════════
 
 // Surveys table
 export const surveys = pgTable('surveys', {
@@ -200,6 +208,10 @@ export const socialPosts = pgTable('social_posts', {
   scrapedAt: timestamp('scraped_at').defaultNow().notNull(),
 })
 
+// ════════════════════════════════════════════════════════════════
+// SECTION 3: FEEDBACK & MEDIA
+// ════════════════════════════════════════════════════════════════
+
 // User feedback table
 export const feedback = pgTable('feedback', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -270,6 +282,10 @@ export const brandSubscriptions = pgTable('brand_subscriptions', {
   }>(),
 })
 
+// ════════════════════════════════════════════════════════════════
+// SECTION 4: USER PROFILES & PERSONALIZATION
+// ════════════════════════════════════════════════════════════════
+
 // User profiles table (for personalization)
 export const userProfiles = pgTable('user_profiles', {
   id: text('id').primaryKey(), // Will match user ID from auth
@@ -317,6 +333,10 @@ export const userEvents = pgTable('user_events', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ════════════════════════════════════════════════════════════════
+// SECTION 5: NOTIFICATIONS & CAMPAIGNS
+// ════════════════════════════════════════════════════════════════
+
 // Notification queue table
 export const notificationQueue = pgTable('notification_queue', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -340,6 +360,10 @@ export const notificationQueue = pgTable('notification_queue', {
   
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
+
+// ══════════════════════════════════════════════════════════════════
+// SECTION 6: ANALYTICS, AUDIT & SEND-TIME OPTIMIZATION
+// ══════════════════════════════════════════════════════════════════
 
 // Audit Log table (for GDPR compliance and security)
 export const auditLog = pgTable('audit_log', {
@@ -535,6 +559,10 @@ export const extractedThemes = pgTable('extracted_themes', {
   extractionMethod: text('extraction_method').notNull().default('keyword'), // 'openai' | 'keyword'
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
+
+// ══════════════════════════════════════════════════════════════════
+// SECTION 7: DEEP ANALYTICS EVENTS
+// ══════════════════════════════════════════════════════════════════
 
 // ── Deep Analytics: Every user interaction ────────────────────────
 export const analyticsEvents = pgTable('analytics_events', {

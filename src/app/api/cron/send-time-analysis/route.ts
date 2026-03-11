@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { runSendTimeAnalysis } from '@/jobs/sendTimeAnalysisJob'
+import { logger } from '@/lib/logger'
 
 /**
  * API Route: Daily Send-Time Optimization Analysis
@@ -22,13 +23,15 @@ export async function GET(request: Request) {
     // Destructure to avoid duplicate 'success' key
     const { success, ...rest } = result
     
+    logger.cronResult('send-time-analysis', true, rest)
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       ...rest,
     })
   } catch (error) {
-    console.error('[SendTimeAnalysisCron] Error:', error)
+    logger.cronResult('send-time-analysis', false, { error: error instanceof Error ? error.message : String(error) })
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

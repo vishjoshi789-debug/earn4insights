@@ -114,3 +114,25 @@ html,
 body {
   overflow-x: hidden;
 }
+
+/* ── Responsive table wrapper ────────────────────────────────── */
+/* Wrap any <table> in a div.table-responsive for mobile scroll  */
+.table-responsive {
+  @apply w-full overflow-x-auto -mx-1 px-1;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Dashboard cards grid — stack on mobile, grid on tablet+ */
+.dashboard-grid {
+  @apply grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
+}
+
+/* Chart containers — enforce min-height so charts don't collapse */
+.chart-container {
+  @apply w-full min-h-[250px] sm:min-h-[300px];
+}
+
+/* Ensure Recharts ResponsiveContainers don't overflow */
+.recharts-responsive-container {
+  max-width: 100% !important;
+}

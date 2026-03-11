@@ -1,4 +1,5 @@
 import twilio from 'twilio'
+import { logger } from '@/lib/logger'
 
 const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
@@ -64,7 +65,7 @@ View full rankings: ${process.env.NEXT_PUBLIC_APP_URL}/top-products
     console.log(`✅ WhatsApp notification sent to ${data.phoneNumber}`)
     return { success: true, data: result }
   } catch (error) {
-    console.error('Failed to send WhatsApp notification:', error)
+    logger.serviceError('twilio', 'sendWhatsApp', error, { phoneNumber: data.phoneNumber })
     return { success: false, error }
   }
 }

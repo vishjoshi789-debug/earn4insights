@@ -20,7 +20,7 @@ declare module "next-auth" {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  debug: true, // Enable debug mode
+  debug: process.env.NODE_ENV === 'development',
   logger: {
     error(code, ...message) {
       console.error('[NextAuth Error]', code, message)

@@ -5,6 +5,7 @@ import { db } from '@/db'
 import { feedback } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/auth.config'
+import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
 
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024  // 4MB
 const MAX_VIDEO_BYTES = 10 * 1024 * 1024  // 10MB
@@ -58,6 +59,13 @@ function asInt(value: FormDataEntryValue | null): number | null {
  */
 export async function POST(request: Request) {
   try {
+    // Rate limit by IP
+    const rlKey = getRateLimitKey(request, 'upload-media')
+    const rl = checkRateLimit(rlKey, RATE_LIMITS.feedbackSubmit)
+    if (!rl.allowed) {
+      return NextResponse.json({ error: 'Too many uploads. Please wait.' }, { status: 429 })
+    }
+
     // Auth check — only logged-in users can upload media
     const session = await auth()
     if (!session?.user?.email) {

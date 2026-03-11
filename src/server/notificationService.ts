@@ -3,6 +3,7 @@ import { notificationQueue, type NewNotificationQueue } from '@/db/schema'
 import { getUserProfile, adaptNotificationPreferences, type NotificationPreferences } from '@/db/repositories/userProfileRepository'
 import { eq, and, lte, gte } from 'drizzle-orm'
 import { Resend } from 'resend'
+import { logger } from '@/lib/logger'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -103,7 +104,7 @@ export async function processPendingNotifications(): Promise<void> {
 
       console.log(`[Notifications] Sent ${notification.channel} notification ${notification.id}`)
     } catch (error) {
-      console.error(`[Notifications] Failed to send ${notification.id}:`, error)
+      logger.serviceError('notifications', 'send', error, { notificationId: notification.id, channel: notification.channel })
 
       // Retry logic (max 3 retries)
       const retryCount = notification.retryCount + 1

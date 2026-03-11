@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { batchUpdateBehavioralAttributes } from '@/server/analyticsService'
+import { logger } from '@/lib/logger'
 
 /**
  * API Route for Cron Job: Update Behavioral Attributes
@@ -18,11 +19,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    console.log('[Cron] Starting behavioral attributes update...')
-    
     await batchUpdateBehavioralAttributes()
     
-    console.log('[Cron] ✓ Behavioral attributes updated successfully')
+    logger.cronResult('update-behavioral', true)
 
     return NextResponse.json({
       success: true,
@@ -30,7 +29,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString()
     })
   } catch (error) {
-    console.error('[Cron] Error updating behavioral attributes:', error)
+    logger.cronResult('update-behavioral', false, { error: error instanceof Error ? error.message : String(error) })
     
     return NextResponse.json(
       {

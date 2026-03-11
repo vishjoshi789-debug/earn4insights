@@ -14,6 +14,23 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
+    instrumentationHook: true,
+  },
+  // Production security headers
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+          { key: 'X-DNS-Prefetch-Control', value: 'on' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
+        ],
+      },
+    ]
   },
   // Skip ESLint during builds — the "circular structure" error in
   // next/core-web-vitals + next/typescript is a known Next.js 15.x

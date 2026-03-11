@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { extractThemesForAllProducts } from '@/server/themeExtractionService'
+import { logger } from '@/lib/logger'
 
 /**
  * Cron: Extract AI themes for all products with feedback
@@ -18,6 +19,8 @@ export async function GET(request: Request) {
   try {
     const result = await extractThemesForAllProducts()
 
+    logger.cronResult('extract-themes', true, { processed: result.processed, errors: result.errors })
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -31,7 +34,7 @@ export async function GET(request: Request) {
       })),
     })
   } catch (error) {
-    console.error('[ExtractThemesCron] Error:', error)
+    logger.cronResult('extract-themes', false, { error: error instanceof Error ? error.message : String(error) })
     return NextResponse.json(
       {
         success: false,

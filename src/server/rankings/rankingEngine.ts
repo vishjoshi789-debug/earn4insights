@@ -23,8 +23,8 @@ const RANKING_WEIGHTS = {
  * Minimum data thresholds for ranking eligibility
  */
 const MINIMUM_THRESHOLDS = {
-  TOTAL_RESPONSES: 0,         // Minimum responses to be ranked (set to 0 for testing)
-  RECENT_RESPONSES: 0,        // Minimum responses in last 30 days (set to 0 for testing)
+  TOTAL_RESPONSES: 5,         // Minimum responses to be ranked
+  RECENT_RESPONSES: 3,        // Minimum responses in last 30 days
   DAYS_SINCE_LAST: 30,        // Maximum days since last response
 } as const
 

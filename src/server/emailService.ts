@@ -2,6 +2,13 @@
 
 import 'server-only'
 
+/**
+ * @deprecated This service only logs emails to console.
+ * For production email delivery, use notificationService.ts (which uses Resend).
+ * This file is kept for backward compatibility with responseService.ts and digestService.ts.
+ * TODO: Migrate callers to notificationService.ts before next major release.
+ */
+
 export type EmailNotification = {
   to: string
   subject: string

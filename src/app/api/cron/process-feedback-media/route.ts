@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { processPendingAudioFeedbackMedia, processPendingVideoFeedbackMedia } from '@/server/feedbackMediaProcessingService'
+import { logger } from '@/lib/logger'
 
 /**
  * Cron: Process pending feedback media (audio + video) (STT → translate → sentiment)
@@ -22,6 +23,8 @@ export async function GET(request: Request) {
     const { success: _audioSuccess, ...audio } = audioResult as any
     const { success: _videoSuccess, ...video } = videoResult as any
 
+    logger.cronResult('process-feedback-media', true, { audio, video })
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -29,7 +32,7 @@ export async function GET(request: Request) {
       video,
     })
   } catch (error) {
-    console.error('[ProcessFeedbackMediaCron] Error:', error)
+    logger.cronResult('process-feedback-media', false, { error: error instanceof Error ? error.message : String(error) })
     return NextResponse.json(
       {
         success: false,

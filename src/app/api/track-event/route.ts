@@ -2,6 +2,8 @@ import { auth } from '@/lib/auth/auth.config'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { userEvents } from '@/db/schema'
+import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { logger } from '@/lib/logger'
 
 /**
  * Client-side event tracking endpoint
@@ -9,6 +11,13 @@ import { userEvents } from '@/db/schema'
  */
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit by IP
+    const rlKey = getRateLimitKey(request, 'track-event')
+    const rl = checkRateLimit(rlKey, RATE_LIMITS.analyticsEvent)
+    if (!rl.allowed) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+    }
+
     const session = await auth()
     
     if (!session?.user?.id) {
@@ -39,10 +48,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[Track Event] Error:', error)
-    return NextResponse.json(
-      { error: 'Failed to track event' },
-      { status: 500 }
-    )
+    logger.apiError('/api/track-event', 'POST', error)
+    // Analytics should never break the user experience
+    return NextResponse.json({ success: false }, { status: 200 })
   }
 }

@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 
 /**
  * Simple authentication middleware for admin endpoints
- * Checks for API key in Authorization header or query param
+ * Accepts API key via:
+ *  - Authorization: Bearer <key>  (recommended)
+ *  - x-admin-api-key: <key>       (alternative header)
+ *
+ * Query parameter auth (?apiKey=) has been REMOVED for security
+ * (keys leak in logs, browser history, and referrer headers).
  */
 export function authenticateAdmin(request: NextRequest): boolean {
   const apiKey = process.env.ADMIN_API_KEY
@@ -17,16 +22,15 @@ export function authenticateAdmin(request: NextRequest): boolean {
     return true // Allow access if no key is configured (development mode)
   }
 
-  // Check Authorization header
+  // Check Authorization header (primary method)
   const authHeader = request.headers.get('Authorization')
   if (authHeader === `Bearer ${apiKey}`) {
     return true
   }
 
-  // Check query parameter (for convenience in development)
-  const { searchParams } = new URL(request.url)
-  const queryKey = searchParams.get('apiKey')
-  if (queryKey === apiKey) {
+  // Check x-admin-api-key header (alternative)
+  const headerKey = request.headers.get('x-admin-api-key')
+  if (headerKey === apiKey) {
     return true
   }
 
@@ -40,7 +44,7 @@ export function unauthorizedResponse() {
   return NextResponse.json(
     { 
       error: 'Unauthorized', 
-      message: 'Valid API key required. Provide in Authorization header as "Bearer <key>" or ?apiKey=<key>' 
+      message: 'Valid API key required. Provide via Authorization header as "Bearer <key>" or x-admin-api-key header.' 
     },
     { status: 401 }
   )

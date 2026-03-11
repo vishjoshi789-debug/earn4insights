@@ -8,6 +8,8 @@ import { eq, and, gte, sql, desc } from 'drizzle-orm'
 import { computeRelevanceScore } from '@/lib/personalization/smartDistributionService'
 import { extractAndPersistIntents } from '@/server/intentExtractionService'
 import { alertOnNewFeedback, alertOnHighIntent } from '@/server/brandAlertService'
+import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { productExists } from '@/lib/entity-checks'
 
 // ── Anti-fraud constants ──────────────────────────────────────
 const MAX_TEXT_LENGTH = 5000
@@ -85,6 +87,16 @@ function detectLowQuality(text: string): string | null {
  */
 export async function POST(request: Request) {
   try {
+    // ── 0. IP-level rate limit ─────────────────────────────────
+    const rlKey = getRateLimitKey(request, 'feedback')
+    const rl = checkRateLimit(rlKey, RATE_LIMITS.feedbackSubmit)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many submissions. Please wait before trying again.' },
+        { status: 429 }
+      )
+    }
+
     // ── 1. Auth check ──────────────────────────────────────────
     const session = await auth()
     if (!session?.user?.email) {
@@ -109,6 +121,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'productId is required' },
         { status: 400 }
+      )
+    }
+
+    // Verify product actually exists
+    if (!(await productExists(productId))) {
+      return NextResponse.json(
+        { error: 'Product not found' },
+        { status: 404 }
       )
     }
 

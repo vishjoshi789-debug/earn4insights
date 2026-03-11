@@ -10,8 +10,18 @@ export type SentimentAnalysis = {
   confidence: number // 0 to 1
 }
 
-// Simple keyword-based sentiment analysis
-// Can be upgraded to OpenAI API or other AI services
+/**
+ * Sentiment Analyzer interface.
+ * Current implementation: keyword-based (fast, no external dependencies).
+ * Future upgrade path: swap in an AI-powered implementation (e.g. OpenAI)
+ * by implementing this same interface.
+ */
+export interface SentimentAnalyzer {
+  analyze(text: string): Promise<SentimentAnalysis>
+}
+
+// ── Current implementation: keyword-based sentiment analysis ──
+// Can be upgraded to OpenAI API or other AI services by implementing SentimentAnalyzer
 const positiveKeywords = [
   'love', 'great', 'excellent', 'amazing', 'awesome', 'fantastic', 'wonderful',
   'good', 'best', 'perfect', 'happy', 'satisfied', 'pleased', 'impressed',

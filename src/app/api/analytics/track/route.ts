@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { analyticsEvents } from '@/db/schema'
+import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { logger } from '@/lib/logger'
 
 /**
  * POST /api/analytics/track
@@ -10,6 +12,13 @@ import { analyticsEvents } from '@/db/schema'
  */
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit by IP
+    const rlKey = getRateLimitKey(request, 'analytics')
+    const rl = checkRateLimit(rlKey, RATE_LIMITS.analyticsEvent)
+    if (!rl.allowed) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+    }
+
     const body = await request.json()
     const events: any[] = Array.isArray(body.events) ? body.events : [body]
 
@@ -85,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, tracked: rows.length })
   } catch (error) {
-    console.error('[Analytics Track] Error:', error)
+    logger.apiError('/api/analytics/track', 'POST', error)
     // Never fail the response — analytics should be silent
     return NextResponse.json({ ok: false, error: 'tracking_error' }, { status: 200 })
   }
