@@ -210,24 +210,8 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Links — 3 columns, responsive */}
-          <div className="grid grid-cols-3 gap-6 text-center sm:text-left">
-            <div>
-              <h4 className="text-sm font-semibold text-foreground">Product</h4>
-              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <li>
-                  <Link href="/top-products" className="hover:text-foreground transition-colors">
-                    Rankings
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/dashboard" className="hover:text-foreground transition-colors">
-                    Dashboard
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            
+          {/* Links — 2 columns, responsive */}
+          <div className="grid grid-cols-2 gap-6 max-w-md mx-auto text-center sm:text-left">
             <div>
               <h4 className="text-sm font-semibold text-foreground">Company</h4>
               <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
