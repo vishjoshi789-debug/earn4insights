@@ -5,6 +5,7 @@ import { createUser } from "@/lib/user/userStore"
 import type { CreateUserInput } from "@/lib/user/types"
 import { redirect } from "next/navigation"
 import { z } from "zod"
+import { AuthError } from "next-auth"
 
 // Validation schemas
 const signupSchema = z.object({
@@ -45,18 +46,13 @@ export async function signUpAction(formData: FormData) {
     // Create user
     const user = await createUser(validatedData)
 
-    // Sign in the user
+    // Sign in the user — NextAuth v5 redirectTo for server actions
+    const redirectUrl = user.role === 'brand' ? '/dashboard' : '/top-products'
     await signIn("credentials", {
       email: validatedData.email,
       password: validatedData.password,
-      redirect: false,
+      redirectTo: redirectUrl,
     })
-
-    // Return success - let the client handle redirect
-    return {
-      success: true,
-      redirectUrl: user.role === 'brand' ? '/dashboard' : '/top-products'
-    }
     
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -65,15 +61,20 @@ export async function signUpAction(formData: FormData) {
       }
     }
     
-    if (error instanceof Error) {
+    if (error instanceof AuthError) {
+      return {
+        error: 'Failed to create account. Please try again.'
+      }
+    }
+    
+    if (error instanceof Error && !error.message.includes('NEXT_REDIRECT')) {
       return {
         error: error.message
       }
     }
     
-    return {
-      error: 'Failed to create account. Please try again.'
-    }
+    // Re-throw NEXT_REDIRECT and other non-auth errors
+    throw error
   }
 }
 
@@ -90,19 +91,12 @@ export async function signInAction(formData: FormData) {
     // Validate input
     const validatedData = loginSchema.parse(rawData)
 
-    // Attempt sign in
-    const result = await signIn("credentials", {
+    // NextAuth v5: use redirectTo so NEXT_REDIRECT propagates correctly
+    await signIn("credentials", {
       email: validatedData.email,
       password: validatedData.password,
-      redirect: false,
+      redirectTo: "/dashboard",
     })
-
-    if (!result) {
-      return { error: 'Invalid email or password' }
-    }
-
-    // Success - will redirect in component
-    return { success: true }
     
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -111,9 +105,14 @@ export async function signInAction(formData: FormData) {
       }
     }
     
-    return {
-      error: 'Invalid email or password'
+    if (error instanceof AuthError) {
+      return {
+        error: 'Invalid email or password'
+      }
     }
+    
+    // Re-throw non-auth errors (NEXT_REDIRECT must propagate)
+    throw error
   }
 }
 

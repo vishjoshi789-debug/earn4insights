@@ -25,13 +25,11 @@ export default function LoginPage() {
     const formData = new FormData(event.currentTarget)
     const result = await signInAction(formData)
     
+    // On success, signInAction triggers a server-side redirect (no return value)
+    // If we get a result back, it means there was an error
     if (result?.error) {
       setError(result.error)
       setLoading(false)
-    } else if (result?.success) {
-      // Redirect handled by middleware based on role
-      router.push('/dashboard')
-      router.refresh()
     }
   }
 

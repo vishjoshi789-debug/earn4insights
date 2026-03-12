@@ -34,13 +34,11 @@ export default function SignupPage() {
 
     const result = await signUpAction(formData)
     
+    // On success, signUpAction triggers a server-side redirect (no return value)
+    // If we get a result back, it means there was an error
     if (result?.error) {
       setError(result.error)
       setLoading(false)
-    } else if (result?.success && result?.redirectUrl) {
-      // Success - redirect to appropriate page
-      router.push(result.redirectUrl)
-      router.refresh()
     }
   }
 
