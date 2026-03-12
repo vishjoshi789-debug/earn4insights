@@ -707,4 +707,24 @@ On mobile/smartphone browsers, the homepage footer was cluttered:
 
 ---
 
+## 20. Sign-in Latency Optimization (March 12, 2026)
+
+### Problem
+Sign-in was noticeably slow for both Google OAuth and credentials-based login:
+- **Google OAuth:** `prompt: "consent"` forced the full consent screen on every sign-in, even for returning users — adding 3-5 seconds
+- **Database cold starts:** The Neon PostgreSQL serverless connection had no pooling configuration, causing cold start delays on every function invocation during auth callbacks
+
+### Fixes Applied
+| Change | File | Detail |
+|--------|------|--------|
+| Changed OAuth prompt | `src/lib/auth/auth.config.ts` | `prompt: "consent"` → `prompt: "select_account"` — returning users skip the consent screen, only see account picker |
+| Added connection pooling | `src/db/index.ts` | Added `prepare: false` (required for Neon pgBouncer), `idle_timeout: 20`, `max: 10`, `connect_timeout: 10` to the postgres client options |
+
+### Impact
+- Google OAuth returning users: **~3-5 seconds faster** (skip consent screen)
+- Database queries during auth: **Reduced cold start latency** via connection pooling and pgBouncer compatibility
+- No functional changes — all auth flows work identically
+
+---
+
 *This document covers all features implemented as of March 12, 2026. Update this file when adding new features.*

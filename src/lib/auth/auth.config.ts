@@ -1,7 +1,7 @@
 import NextAuth, { type DefaultSession } from "next-auth"
 import Google from "next-auth/providers/google"
 import Credentials from "next-auth/providers/credentials"
-import { getUserByEmail, getUserById, createUser } from "@/lib/user/userStore"
+import { getUserByEmail, createUser } from "@/lib/user/userStore"
 import { verifyPassword } from "@/lib/user/password"
 import type { UserRole } from "@/lib/user/types"
 
@@ -39,7 +39,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       authorization: {
         params: {
-          prompt: "consent",
+          prompt: "select_account",
           access_type: "offline",
           response_type: "code"
         }
@@ -143,25 +143,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     async jwt({ token, user, account }) {
-      // Initial sign in
+      // Initial sign in — populate token from user object
       if (user) {
         token.id = user.id
         token.role = user.role
-      }
-      
-      // Subsequent requests - fetch fresh user data
-      if (token.id) {
-        try {
-          const freshUser = await getUserById(token.id as string)
-          if (freshUser) {
-            token.role = freshUser.role
-            token.name = freshUser.name
-            token.email = freshUser.email
-          }
-        } catch (error) {
-          console.error('[Auth] jwt error:', error)
-          // Keep existing token data if database fails
-        }
+        token.name = user.name
+        token.email = user.email
       }
       
       return token

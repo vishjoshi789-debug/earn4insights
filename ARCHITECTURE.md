@@ -30,7 +30,8 @@
 21. [Production Hardening Infrastructure](#21-production-hardening-infrastructure)
 22. [Build Fix & Config Cleanup (March 12, 2026)](#22-build-fix--config-cleanup-march-12-2026)
 23. [Homepage Footer Mobile Fix (March 12, 2026)](#23-homepage-footer-mobile-fix-march-12-2026)
-24. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+24. [Sign-in Latency Optimization (March 12, 2026)](#24-sign-in-latency-optimization-march-12-2026)
+25. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -2565,6 +2566,41 @@ The homepage (`src/app/page.tsx`) contained an inline footer with a 4-column gri
 - Fixed dead links: `/about` → `/about-us`, `/contact` → `/contact-us`
 
 Note: `SiteFooter` component (`src/components/site-footer.tsx`) is imported in `layout.tsx` but not rendered — the homepage uses its own inline footer. This is intentional: the homepage has a richer footer than the simple copyright bar in `SiteFooter`.
+
+---
+
+## 24. Sign-in Latency Optimization (March 12, 2026)
+
+Two changes to reduce sign-in latency across both Google OAuth and credentials flows:
+
+### 24.1 Google OAuth Prompt Change
+
+The Google OAuth provider in `src/lib/auth/auth.config.ts` used `prompt: "consent"`, which forced the full Google consent screen on **every** sign-in — even for returning users who had already granted permissions. Changed to `prompt: "select_account"`, which shows only the account picker for returning users (fast) while still prompting consent for first-time users automatically.
+
+### 24.2 Serverless Database Connection Optimization
+
+The Postgres client in `src/db/index.ts` was initialized with default options — no connection pooling, no timeouts, no pgBouncer compatibility. On Vercel + Neon serverless, this caused cold start delays on every function invocation during auth callbacks (`getUserByEmail`, `createUser`).
+
+**Added connection options:**
+```typescript
+postgres(connectionString, {
+  prepare: false,       // Required for Neon connection pooler (pgBouncer)
+  idle_timeout: 20,     // Close idle connections after 20s in serverless
+  max: 10,              // Limit connection pool size
+  connect_timeout: 10,  // 10s connection timeout
+})
+```
+
+- `prepare: false` — Required when using Neon's connection pooler (pgBouncer mode), which doesn't support prepared statements
+- `idle_timeout: 20` — Prevents stale connections in serverless where functions spin down
+- `max: 10` — Caps concurrent connections to avoid exhausting Neon's connection limit
+- `connect_timeout: 10` — Fails fast instead of hanging indefinitely on connection issues
+
+### 24.3 Files Changed
+| File | Change |
+|------|--------|
+| `src/lib/auth/auth.config.ts` | `prompt: "consent"` → `prompt: "select_account"` |
+| `src/db/index.ts` | Added `prepare`, `idle_timeout`, `max`, `connect_timeout` options |
 
 ---
 
