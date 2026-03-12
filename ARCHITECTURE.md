@@ -29,7 +29,8 @@
 20. [Data Flow: End-to-End Walkthrough](#20-data-flow-end-to-end-walkthrough)
 21. [Production Hardening Infrastructure](#21-production-hardening-infrastructure)
 22. [Build Fix & Config Cleanup (March 12, 2026)](#22-build-fix--config-cleanup-march-12-2026)
-23. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+23. [Homepage Footer Mobile Fix (March 12, 2026)](#23-homepage-footer-mobile-fix-march-12-2026)
+24. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -2548,6 +2549,21 @@ Removed `experimental.instrumentationHook: true` from `next.config.ts`. In Next.
 | Failing page | `/public-products` prerender error | All 126 pages generated |
 | Affected commits | 5 commits over 2 days blocked | Unblocked |
 | Warnings removed | `instrumentationHook` deprecation | Clean config |
+
+---
+
+---
+
+## 23. Homepage Footer Mobile Fix (March 12, 2026)
+
+The homepage (`src/app/page.tsx`) contained an inline footer with a 4-column grid (`lg:grid-cols-4`, `sm:grid-cols-2`). On small screens this collapsed to a single column, stacking all sections vertically — Product links, Company links, Legal links, and the Earn4Insights brand description — creating a long, cluttered footer.
+
+**Restructured to:**
+- Brand tagline/description moved to a centered full-width block above the link columns
+- Link columns changed to a fixed 3-column grid (`grid-cols-3`) that holds structure on all screen sizes
+- Fixed dead links: `/about` → `/about-us`, `/contact` → `/contact-us`
+
+Note: `SiteFooter` component (`src/components/site-footer.tsx`) is imported in `layout.tsx` but not rendered — the homepage uses its own inline footer. This is intentional: the homepage has a richer footer than the simple copyright bar in `SiteFooter`.
 
 ---
 

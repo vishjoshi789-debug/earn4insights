@@ -26,6 +26,7 @@
 16. [Subscription Tier System](#16-subscription-tier-system)
 17. [Production Hardening (March 11, 2026)](#17-production-hardening-march-11-2026)
 18. [Build Fix & Config Cleanup (March 12, 2026)](#18-build-fix--config-cleanup-march-12-2026)
+19. [Homepage Footer Mobile Fix (March 12, 2026)](#19-homepage-footer-mobile-fix-march-12-2026)
 
 ---
 
@@ -679,6 +680,29 @@ The `/public-products` listing page was a **Server Component** that contained an
 ### Build Result
 - **Before:** `EXIT CODE 1` — `Error: Event handlers cannot be passed to Client Component props` on `/public-products`
 - **After:** `EXIT CODE 0` — All 126 pages compiled and generated successfully
+
+---
+
+---
+
+## 19. Homepage Footer Mobile Fix (March 12, 2026)
+
+### Problem
+On mobile/smartphone browsers, the homepage footer was cluttered:
+- The 4-column grid (Product, Company, Legal, Earn4Insights tagline) collapsed to a single column on small screens, creating a long vertical list
+- The brand tagline and description text appeared inline with navigation links, making it hard to distinguish sections
+- Company links pointed to wrong URLs (`/about` and `/contact` instead of `/about-us` and `/contact-us`)
+
+### Fix
+| Change | Detail |
+|--------|--------|
+| Restructured footer layout | Moved brand tagline + description to a centered full-width section above the link columns |
+| Changed grid from 4-col to 3-col | Product, Company, Legal — stays 3 columns even on small screens (`grid-cols-3`) |
+| Fixed broken links | `/about` → `/about-us`, `/contact` → `/contact-us` |
+| Centered text on mobile | Footer link columns use `text-center sm:text-left` for better mobile readability |
+
+### File Changed
+- `src/app/page.tsx` — homepage footer section
 
 ---
 
