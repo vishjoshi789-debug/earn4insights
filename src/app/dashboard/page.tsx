@@ -34,6 +34,13 @@ export default async function DashboardPage() {
   const session = await auth();
   
   // Fetch recommendations and feedback stats in parallel
+  const userId = session?.user?.id;
+
+  const [feedbackStats, recommendations] = await Promise.all([
+    getDashboardFeedbackStats(),
+    userId ? getPersonalizedRecommendations(userId, 3).catch(() => []) : Promise.resolve([]),
+  ]);
+
   let topRecommendations: Array<{
     productId: string;
     score: number;
@@ -41,28 +48,19 @@ export default async function DashboardPage() {
     product?: any;
   }> = [];
 
-  const [feedbackStats] = await Promise.all([
-    getDashboardFeedbackStats(),
-    // Recommendations fetched below conditionally
-  ]);
-
-  if (session?.user?.id) {
+  if (recommendations.length > 0) {
     try {
-      const recommendations = await getPersonalizedRecommendations(session.user.id, 3);
+      const allProducts = await db.select().from(products);
+      const productMap = new Map(allProducts.map(p => [p.id, p]));
       
-      if (recommendations.length > 0) {
-        const allProducts = await db.select().from(products);
-        const productMap = new Map(allProducts.map(p => [p.id, p]));
-        
-        topRecommendations = recommendations
-          .map(rec => ({
-            ...rec,
-            product: productMap.get(rec.productId)
-          }))
-          .filter(rec => rec.product);
-      }
+      topRecommendations = recommendations
+        .map(rec => ({
+          ...rec,
+          product: productMap.get(rec.productId)
+        }))
+        .filter(rec => rec.product);
     } catch (error) {
-      console.error('[Dashboard] Error fetching recommendations:', error);
+      console.error('[Dashboard] Error fetching products for recommendations:', error);
     }
   }
 
