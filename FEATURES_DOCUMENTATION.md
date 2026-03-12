@@ -697,7 +697,8 @@ On mobile/smartphone browsers, the homepage footer was cluttered:
 | Change | Detail |
 |--------|--------|
 | Restructured footer layout | Moved brand tagline + description to a centered full-width section above the link columns |
-| Changed grid from 4-col to 3-col | Product, Company, Legal — stays 3 columns even on small screens (`grid-cols-3`) |
+| Removed Product column | Removed "Product" section (Rankings + Dashboard links) — Dashboard requires auth (404 for visitors), Rankings already in header nav |
+| Changed grid to 2-col | Company + Legal — clean 2-column layout centered on all screens |
 | Fixed broken links | `/about` → `/about-us`, `/contact` → `/contact-us` |
 | Centered text on mobile | Footer link columns use `text-center sm:text-left` for better mobile readability |
 

@@ -2560,7 +2560,8 @@ The homepage (`src/app/page.tsx`) contained an inline footer with a 4-column gri
 
 **Restructured to:**
 - Brand tagline/description moved to a centered full-width block above the link columns
-- Link columns changed to a fixed 3-column grid (`grid-cols-3`) that holds structure on all screen sizes
+- Removed "Product" column (Rankings + Dashboard) — Dashboard requires auth (404 for unauthenticated visitors), Rankings is already in the site header nav
+- Link columns changed to a 2-column grid (`grid-cols-2`): Company + Legal
 - Fixed dead links: `/about` → `/about-us`, `/contact` → `/contact-us`
 
 Note: `SiteFooter` component (`src/components/site-footer.tsx`) is imported in `layout.tsx` but not rendered — the homepage uses its own inline footer. This is intentional: the homepage has a richer footer than the simple copyright bar in `SiteFooter`.
