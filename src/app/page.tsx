@@ -199,10 +199,22 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t px-6 py-12">
         <div className="mx-auto max-w-6xl">
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Brand tagline — full width on top */}
+          <div className="text-center mb-10">
+            <h4 className="text-sm font-semibold text-foreground">Earn4Insights</h4>
+            <p className="mt-1 text-xs italic text-muted-foreground">
+              Real Voices. Measurable Intelligence.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
+              Multimodal feedback. Multilingual intelligence. Real-time analytics and personalized recommendations — structured for brands, rewarding consumers.
+            </p>
+          </div>
+
+          {/* Links — 3 columns, responsive */}
+          <div className="grid grid-cols-3 gap-6 text-center sm:text-left">
             <div>
               <h4 className="text-sm font-semibold text-foreground">Product</h4>
-              <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                 <li>
                   <Link href="/top-products" className="hover:text-foreground transition-colors">
                     Rankings
@@ -218,14 +230,14 @@ export default function HomePage() {
             
             <div>
               <h4 className="text-sm font-semibold text-foreground">Company</h4>
-              <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <Link href="/about" className="hover:text-foreground transition-colors">
+                  <Link href="/about-us" className="hover:text-foreground transition-colors">
                     About Us
                   </Link>
                 </li>
                 <li>
-                  <Link href="/contact" className="hover:text-foreground transition-colors">
+                  <Link href="/contact-us" className="hover:text-foreground transition-colors">
                     Contact
                   </Link>
                 </li>
@@ -234,7 +246,7 @@ export default function HomePage() {
             
             <div>
               <h4 className="text-sm font-semibold text-foreground">Legal</h4>
-              <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                 <li>
                   <Link href="/privacy-policy" className="hover:text-foreground transition-colors">
                     Privacy Policy
@@ -247,19 +259,9 @@ export default function HomePage() {
                 </li>
               </ul>
             </div>
-            
-            <div>
-              <h4 className="text-sm font-semibold text-foreground">Earn4Insights</h4>
-              <p className="mt-2 text-xs italic text-muted-foreground">
-                Real Voices. Measurable Intelligence.
-              </p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Multimodal feedback. Multilingual intelligence. Real-time analytics and personalized recommendations — structured for brands, rewarding consumers.
-              </p>
-            </div>
           </div>
           
-          <div className="mt-12 border-t pt-8 text-center text-sm text-muted-foreground">
+          <div className="mt-10 border-t pt-6 text-center text-sm text-muted-foreground">
             © 2026 Earn4Insights. All rights reserved.
           </div>
         </div>
