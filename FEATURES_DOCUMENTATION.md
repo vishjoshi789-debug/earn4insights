@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** March 11, 2026  
+> **Last updated:** March 12, 2026  
 > **Platform:** Next.js 15 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
@@ -25,6 +25,7 @@
 15. [Multimodal Feedback (Audio / Video / Images)](#15-multimodal-feedback-audio--video--images)
 16. [Subscription Tier System](#16-subscription-tier-system)
 17. [Production Hardening (March 11, 2026)](#17-production-hardening-march-11-2026)
+18. [Build Fix & Config Cleanup (March 12, 2026)](#18-build-fix--config-cleanup-march-12-2026)
 
 ---
 
@@ -658,4 +659,27 @@ A comprehensive 9-phase production hardening pass was applied before public laun
 
 ---
 
-*This document covers all features implemented as of March 11, 2026. Update this file when adding new features.*
+---
+
+## 18. Build Fix & Config Cleanup (March 12, 2026)
+
+### Overview
+The production build (`npm run build`) had been failing since commit `7fa4e13` (WatchButton feature), blocking all Vercel deployments for ~2 days across 5 consecutive commits.
+
+### Root Cause
+The `/public-products` listing page was a **Server Component** that contained an `onClick` event handler (used to wrap `<WatchButton>` and prevent link navigation). Next.js Server Components cannot pass event handlers — this causes a build-time prerender error.
+
+### Changes Made
+
+| Change | File | Detail |
+|--------|------|--------|
+| Added `"use client"` directive | `src/app/public-products/page.tsx` | Page uses `onClick` handler and renders `<WatchButton>` (a Client Component) — must be a Client Component itself |
+| Removed deprecated `instrumentationHook` | `next.config.ts` | `experimental.instrumentationHook` is no longer needed in Next.js 15 — `instrumentation.ts` is loaded by default |
+
+### Build Result
+- **Before:** `EXIT CODE 1` — `Error: Event handlers cannot be passed to Client Component props` on `/public-products`
+- **After:** `EXIT CODE 0` — All 126 pages compiled and generated successfully
+
+---
+
+*This document covers all features implemented as of March 12, 2026. Update this file when adding new features.*

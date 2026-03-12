@@ -28,7 +28,8 @@
 19. [File & Folder Structure](#19-file--folder-structure)
 20. [Data Flow: End-to-End Walkthrough](#20-data-flow-end-to-end-walkthrough)
 21. [Production Hardening Infrastructure](#21-production-hardening-infrastructure)
-22. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+22. [Build Fix & Config Cleanup (March 12, 2026)](#22-build-fix--config-cleanup-march-12-2026)
+23. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -2525,4 +2526,29 @@ Therefore:
 
 ---
 
-*This document reflects the architecture as of March 11, 2026. It should be updated as new systems are added.*
+---
+
+## 22. Build Fix & Config Cleanup (March 12, 2026)
+
+### 22.1 Server/Client Component Boundary Fix
+
+The `/public-products` listing page (`src/app/public-products/page.tsx`) was a Server Component that contained an `onClick` event handler to wrap `<WatchButton>` on product cards. This violates the Next.js App Router contract: Server Components cannot pass event handlers to the DOM or to Client Component wrapper elements.
+
+**Fix:** Added `"use client"` directive to the page. The page has no server-side data fetching (uses static `mockProducts` from `@/lib/data`), so converting to a Client Component has zero impact on functionality or SSR.
+
+### 22.2 Deprecated Config Removal
+
+Removed `experimental.instrumentationHook: true` from `next.config.ts`. In Next.js 15, `instrumentation.ts` is automatically recognized without explicit opt-in. The old flag was generating a build warning and is listed as an unrecognized key.
+
+### 22.3 Build Impact
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Build status | **FAIL** (exit 1) | **PASS** (exit 0) |
+| Failing page | `/public-products` prerender error | All 126 pages generated |
+| Affected commits | 5 commits over 2 days blocked | Unblocked |
+| Warnings removed | `instrumentationHook` deprecation | Clean config |
+
+---
+
+*This document reflects the architecture as of March 12, 2026. It should be updated as new systems are added.*

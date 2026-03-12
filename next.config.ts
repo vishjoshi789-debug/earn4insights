@@ -14,7 +14,6 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
-    instrumentationHook: true,
   },
   // Production security headers
   async headers() {
