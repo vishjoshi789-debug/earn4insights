@@ -525,7 +525,7 @@ git push origin main
 |----------|---------|
 | `DATABASE_URL` | Neon PostgreSQL connection string |
 | `GOOGLE_CLIENT_ID/SECRET` | Google OAuth |
-| `NEXTAUTH_SECRET` | NextAuth session secret |
+| `AUTH_SECRET` | NextAuth v5 session secret |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob file storage (media uploads) |
 | `ENCRYPTION_KEY` | Data encryption (256-bit base64) |
 | `RESEND_API_KEY` | Email sending |
@@ -589,7 +589,7 @@ A comprehensive 9-phase production hardening pass was applied before public laun
 |--------|------|--------|
 | Debug mode gated | `auth.config.ts` | `debug: true` → `debug: process.env.NODE_ENV === 'development'` |
 | DB connection guard | `db/index.ts` | Throws immediately if `POSTGRES_URL`/`DATABASE_URL` missing |
-| Env validation at startup | `src/lib/env.ts` + `src/instrumentation.ts` | Validates CRITICAL vars (POSTGRES_URL, NEXTAUTH_SECRET) and warns for OPTIONAL vars at server boot via Next.js instrumentation hook |
+| Env validation at startup | `src/lib/env.ts` + `src/instrumentation.ts` | Validates CRITICAL vars (POSTGRES_URL, AUTH_SECRET) and warns for OPTIONAL vars at server boot via Next.js instrumentation hook |
 | Email service deprecation | `emailService.ts` | Marked `@deprecated` (stub: console.log only, used by responseService and digestService) |
 
 ### Phase 2: Architectural Hardening

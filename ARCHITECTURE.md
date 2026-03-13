@@ -2197,7 +2197,7 @@ instrumentation.ts               — Next.js startup hook: validates env vars
 
 At server startup (via Next.js instrumentation hook), `validateEnvironment()` runs:
 
-- **CRITICAL** (throws if missing): `POSTGRES_URL` or `DATABASE_URL`, `NEXTAUTH_SECRET`
+- **CRITICAL** (throws if missing): `POSTGRES_URL` or `DATABASE_URL`, `AUTH_SECRET`
 - **OPTIONAL** (warns if missing): `OPENAI_API_KEY`, `RESEND_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ADMIN_API_KEY`, `GA_MEASUREMENT_ID`
 
 The DB connection module (`src/db/index.ts`) also guards independently — throws before Drizzle client creation if no connection string is present.

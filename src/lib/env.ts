@@ -32,7 +32,7 @@ export function validateEnvironment(): { valid: boolean; warnings: string[] } {
   // We check them here softly so we can report ALL missing at once.
   const critical = [
     'POSTGRES_URL',
-    'NEXTAUTH_SECRET',
+    'AUTH_SECRET',
   ] as const
 
   const missing: string[] = []
