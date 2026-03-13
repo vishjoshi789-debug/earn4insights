@@ -187,9 +187,9 @@ export default async function ProductFeedbackPage({
             <Card key={item.id}>
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-2">
+                  <div className="flex-1 min-w-0 space-y-2">
                     {/* Header row */}
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                       <span className="font-medium text-sm">
                         {item.userName || 'Anonymous'}
                       </span>
