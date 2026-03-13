@@ -138,7 +138,7 @@ export default async function SurveyDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Button variant="outline" asChild>
               <Link href={`/dashboard/surveys/${survey.id}/responses`}>
                 <BarChart3 className="w-4 h-4 mr-2" />
