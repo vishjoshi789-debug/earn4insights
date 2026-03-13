@@ -81,17 +81,16 @@ export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandA
           <CardTitle>Gender Distribution</CardTitle>
           <CardDescription>Breakdown of your audience by gender</CardDescription>
         </CardHeader>
-        <CardContent className="h-80">
+        <CardContent className="h-80 overflow-hidden">
           {genderData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={genderData}
                   cx="50%"
-                  cy="50%"
+                  cy="45%"
                   labelLine={false}
-                  label={(entry) => `${entry.name}: ${entry.percentage}%`}
-                  outerRadius={80}
+                  outerRadius={70}
                   fill="#8884d8"
                   dataKey="value"
                 >
@@ -103,7 +102,7 @@ export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandA
                   `${value} users (${props.payload.percentage}%)`,
                   props.payload.name
                 ]} />
-                <Legend />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -120,18 +119,18 @@ export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandA
           <CardTitle>Age Distribution</CardTitle>
           <CardDescription>Age ranges of your user base</CardDescription>
         </CardHeader>
-        <CardContent className="h-80">
+        <CardContent className="h-80 overflow-hidden">
           {ageData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={ageData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} width={40} />
                 <Tooltip formatter={(value: any, name: any, props: any) => [
                   `${value} users (${props.payload.percentage}%)`,
                   'Users'
                 ]} />
-                <Legend />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
                 <Bar dataKey="users" fill="#8b5cf6" />
               </BarChart>
             </ResponsiveContainer>
@@ -149,18 +148,18 @@ export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandA
           <CardTitle>Top Locations</CardTitle>
           <CardDescription>Where your users are located (top 10)</CardDescription>
         </CardHeader>
-        <CardContent className="h-80">
+        <CardContent className="h-80 overflow-hidden">
           {locationData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={locationData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis dataKey="name" type="category" width={100} />
+                <XAxis type="number" tick={{ fontSize: 12 }} />
+                <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(value: any, name: any, props: any) => [
                   `${value} users (${props.payload.percentage}%)`,
                   'Users'
                 ]} />
-                <Legend />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
                 <Bar dataKey="users" fill="#3b82f6" />
               </BarChart>
             </ResponsiveContainer>
@@ -178,17 +177,16 @@ export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandA
           <CardTitle>Education Level</CardTitle>
           <CardDescription>Educational background of your audience</CardDescription>
         </CardHeader>
-        <CardContent className="h-80">
+        <CardContent className="h-80 overflow-hidden">
           {educationData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={educationData}
                   cx="50%"
-                  cy="50%"
+                  cy="45%"
                   labelLine={false}
-                  label={(entry) => `${entry.name}: ${entry.percentage}%`}
-                  outerRadius={80}
+                  outerRadius={70}
                   fill="#8884d8"
                   dataKey="value"
                 >
@@ -200,7 +198,7 @@ export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandA
                   `${value} users (${props.payload.percentage}%)`,
                   props.payload.name
                 ]} />
-                <Legend />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -217,18 +215,25 @@ export function BrandAnalyticsDashboard({ demographicsData, totalUsers }: BrandA
           <CardTitle>Cultural Background</CardTitle>
           <CardDescription>Top 8 cultural identities in your audience</CardDescription>
         </CardHeader>
-        <CardContent className="h-80">
+        <CardContent className="h-80 overflow-hidden">
           {cultureData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={cultureData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis 
+                  dataKey="name" 
+                  tick={{ fontSize: 11 }}
+                  angle={-30}
+                  textAnchor="end"
+                  height={60}
+                  interval={0}
+                />
+                <YAxis tick={{ fontSize: 12 }} width={40} />
                 <Tooltip formatter={(value: any, name: any, props: any) => [
                   `${value} users (${props.payload.percentage}%)`,
                   'Users'
                 ]} />
-                <Legend />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
                 <Bar dataKey="users" fill="#10b981" />
               </BarChart>
             </ResponsiveContainer>

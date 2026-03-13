@@ -393,18 +393,18 @@ export default async function BrandAnalyticsPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0">
       <div>
         <h1 className="text-2xl sm:text-3xl font-headline font-bold mb-2">
           Brand Analytics Dashboard
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm sm:text-base text-muted-foreground">
           Comprehensive insights across all products and user segments
         </p>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -460,14 +460,14 @@ export default async function BrandAnalyticsPage() {
 
       {/* Tabbed Analytics Views */}
       <Tabs defaultValue="demographics" className="space-y-4">
-        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-          <TabsList className="inline-flex w-max sm:w-auto">
-            <TabsTrigger value="demographics">Demographics</TabsTrigger>
-            <TabsTrigger value="interests">Interests</TabsTrigger>
-            <TabsTrigger value="nps">NPS</TabsTrigger>
-            <TabsTrigger value="products">Products</TabsTrigger>
-            <TabsTrigger value="funnel">Funnel</TabsTrigger>
-            <TabsTrigger value="post-survey">Post-Survey</TabsTrigger>
+        <div className="w-full overflow-x-auto pb-1">
+          <TabsList className="inline-flex w-max min-w-full">
+            <TabsTrigger value="demographics" className="text-xs sm:text-sm">Demographics</TabsTrigger>
+            <TabsTrigger value="interests" className="text-xs sm:text-sm">Interests</TabsTrigger>
+            <TabsTrigger value="nps" className="text-xs sm:text-sm">NPS</TabsTrigger>
+            <TabsTrigger value="products" className="text-xs sm:text-sm">Products</TabsTrigger>
+            <TabsTrigger value="funnel" className="text-xs sm:text-sm">Funnel</TabsTrigger>
+            <TabsTrigger value="post-survey" className="text-xs sm:text-sm">Post-Survey</TabsTrigger>
           </TabsList>
         </div>
 
@@ -510,18 +510,18 @@ export default async function BrandAnalyticsPage() {
                     .sort(([, a]: any, [, b]: any) => b - a)
                     .slice(0, 10)
                     .map(([category, count]: any) => (
-                      <div key={category} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                        <span className="text-sm">{category}</span>
-                        <div className="flex items-center gap-2">
-                          <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-purple-600 h-2 rounded-full"
-                              style={{ width: `${(count / totalUsers) * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-xs sm:text-sm font-medium w-auto text-right whitespace-nowrap">
+                      <div key={category} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm truncate mr-2">{category}</span>
+                          <span className="text-xs font-medium whitespace-nowrap">
                             {count} ({((count / totalUsers) * 100).toFixed(0)}%)
                           </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-purple-600 h-2 rounded-full"
+                            style={{ width: `${(count / totalUsers) * 100}%` }}
+                          />
                         </div>
                       </div>
                     ))}
@@ -551,18 +551,18 @@ export default async function BrandAnalyticsPage() {
                         'travel-experiences': '✈️ Travel & Experiences'
                       };
                       return (
-                        <div key={aspiration} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                          <span className="text-sm">{labels[aspiration] || aspiration}</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-blue-600 h-2 rounded-full"
-                                style={{ width: `${(count / totalUsers) * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-xs sm:text-sm font-medium w-auto text-right whitespace-nowrap">
+                        <div key={aspiration} className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm truncate mr-2">{labels[aspiration] || aspiration}</span>
+                            <span className="text-xs font-medium whitespace-nowrap">
                               {count} ({((count / totalUsers) * 100).toFixed(0)}%)
                             </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full"
+                              style={{ width: `${(count / totalUsers) * 100}%` }}
+                            />
                           </div>
                         </div>
                       );
@@ -586,18 +586,18 @@ export default async function BrandAnalyticsPage() {
                   {Object.entries(incomeData)
                     .sort(([, a]: any, [, b]: any) => b.count - a.count)
                     .map(([range, data]: any) => (
-                      <div key={range} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                        <span className="text-sm">{range}</span>
-                        <div className="flex items-center gap-2">
-                          <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-green-600 h-2 rounded-full"
-                              style={{ width: `${(data.count / totalUsers) * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-xs sm:text-sm font-medium w-auto text-right whitespace-nowrap">
-                            {data.count}
+                      <div key={range} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm truncate mr-2">{range}</span>
+                          <span className="text-xs font-medium whitespace-nowrap">
+                            {data.count} ({((data.count / totalUsers) * 100).toFixed(0)}%)
                           </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-green-600 h-2 rounded-full"
+                            style={{ width: `${(data.count / totalUsers) * 100}%` }}
+                          />
                         </div>
                       </div>
                     ))}
@@ -623,18 +623,18 @@ export default async function BrandAnalyticsPage() {
                   {Object.entries(purchaseData)
                     .sort(([, a]: any, [, b]: any) => b.count - a.count)
                     .map(([frequency, data]: any) => (
-                      <div key={frequency} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                        <span className="text-sm capitalize">{frequency}</span>
-                        <div className="flex items-center gap-2">
-                          <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-orange-600 h-2 rounded-full"
-                              style={{ width: `${(data.count / totalUsers) * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-xs sm:text-sm font-medium w-auto text-right whitespace-nowrap">
-                            {data.count}
+                      <div key={frequency} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm capitalize truncate mr-2">{frequency}</span>
+                          <span className="text-xs font-medium whitespace-nowrap">
+                            {data.count} ({((data.count / totalUsers) * 100).toFixed(0)}%)
                           </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-orange-600 h-2 rounded-full"
+                            style={{ width: `${(data.count / totalUsers) * 100}%` }}
+                          />
                         </div>
                       </div>
                     ))}
@@ -730,25 +730,25 @@ export default async function BrandAnalyticsPage() {
               <CardDescription>How each product is performing across metrics</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto -mx-2 px-2">
+                <table className="w-full text-xs sm:text-sm min-w-[600px]">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-2 px-2">Product</th>
-                      <th className="text-left py-2 px-2">Category</th>
-                      <th className="text-right py-2 px-2">Views</th>
-                      <th className="text-right py-2 px-2">Responses</th>
-                      <th className="text-right py-2 px-2">Feedback</th>
-                      <th className="text-right py-2 px-2">Avg NPS</th>
-                      <th className="text-right py-2 px-2">Rank</th>
-                      <th className="text-left py-2 px-2">Sentiment</th>
+                      <th className="text-left py-2 px-2 whitespace-nowrap">Product</th>
+                      <th className="text-left py-2 px-2 whitespace-nowrap">Category</th>
+                      <th className="text-right py-2 px-2 whitespace-nowrap">Views</th>
+                      <th className="text-right py-2 px-2 whitespace-nowrap">Responses</th>
+                      <th className="text-right py-2 px-2 whitespace-nowrap">Feedback</th>
+                      <th className="text-right py-2 px-2 whitespace-nowrap">NPS</th>
+                      <th className="text-right py-2 px-2 whitespace-nowrap">Rank</th>
+                      <th className="text-left py-2 px-2 whitespace-nowrap">Sentiment</th>
                     </tr>
                   </thead>
                   <tbody>
                     {productPerformance.map(product => (
                       <tr key={product.id} className="border-b hover:bg-muted/50 cursor-pointer transition-colors">
-                        <td className="py-2 px-2 font-medium">{product.name}</td>
-                        <td className="py-2 px-2 text-muted-foreground">{product.category}</td>
+                        <td className="py-2 px-2 font-medium whitespace-nowrap">{product.name}</td>
+                        <td className="py-2 px-2 text-muted-foreground whitespace-nowrap">{product.category}</td>
                         <td className="py-2 px-2 text-right">{product.totalViews}</td>
                         <td className="py-2 px-2 text-right">{product.totalResponses}</td>
                         <td className="py-2 px-2 text-right">{product.totalFeedback}</td>
@@ -878,7 +878,7 @@ export default async function BrandAnalyticsPage() {
         </TabsContent>
 
         <TabsContent value="post-survey" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">24h Action Rate</CardTitle>
@@ -956,7 +956,7 @@ export default async function BrandAnalyticsPage() {
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium">Took Action Within 24 Hours</span>
+                      <span className="text-sm font-medium">Action Within 24h</span>
                       <span className="text-sm font-bold">{conversionMetrics.usersWithActionWithin24h}</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-8">
@@ -973,7 +973,7 @@ export default async function BrandAnalyticsPage() {
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium">Took Action Within 7 Days</span>
+                      <span className="text-sm font-medium">Action Within 7 Days</span>
                       <span className="text-sm font-bold">{conversionMetrics.usersWithActionWithin7d}</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-8">
@@ -990,7 +990,7 @@ export default async function BrandAnalyticsPage() {
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium">Clicked Recommended Products</span>
+                      <span className="text-sm font-medium">Recommendation Clicks</span>
                       <span className="text-sm font-bold">
                         {postSurveyConversions.filter(c => c.recommendationClicks > 0).length}
                       </span>
