@@ -393,7 +393,7 @@ export default async function BrandAnalyticsPage() {
   });
 
   return (
-    <div className="space-y-6 min-w-0">
+    <div className="space-y-6 min-w-0 overflow-x-hidden">
       <div>
         <h1 className="text-2xl sm:text-3xl font-headline font-bold mb-2">
           Brand Analytics Dashboard
@@ -406,52 +406,52 @@ export default async function BrandAnalyticsPage() {
       {/* Summary Cards */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Total Users</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground hidden sm:block" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalUsers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
+          <CardContent className="p-3 sm:p-6 pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{totalUsers.toLocaleString()}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
               {profiles.filter(p => p.onboardingComplete).length} completed onboarding
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Survey Responses</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Survey Responses</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground hidden sm:block" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalResponses.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
+          <CardContent className="p-3 sm:p-6 pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{totalResponses.toLocaleString()}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
               {engagementData.conversionRate}% conversion rate
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Engagement</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Total Engagement</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground hidden sm:block" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalEvents.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
+          <CardContent className="p-3 sm:p-6 pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{totalEvents.toLocaleString()}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
               {engagementData.totalPageViews} product views
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Feedback Items</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Feedback Items</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground hidden sm:block" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalFeedback.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
+          <CardContent className="p-3 sm:p-6 pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{totalFeedback.toLocaleString()}</div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
               Across {brandProducts.length} products
             </p>
           </CardContent>
