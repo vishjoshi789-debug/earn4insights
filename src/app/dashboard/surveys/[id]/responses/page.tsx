@@ -252,8 +252,8 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <Button variant="ghost" size="sm" asChild>
             <Link href={`/dashboard/surveys/${id}`}>
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -261,7 +261,7 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
             </Link>
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">{survey.title} - Responses</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">{survey.title} - Responses</h1>
             <p className="text-muted-foreground mt-1">
               Analyze feedback and track trends
             </p>
@@ -335,67 +335,63 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
         )}
       </div>
 
-      {/* Voice Processing Card - keeping original */}
+      {/* Media Processing Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Voice processing</CardTitle>
+          <CardTitle>Media Processing</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200">
-              queued: {audioCounts.uploaded || 0}
-            </Badge>
-            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
-              processing: {audioCounts.processing || 0}
-            </Badge>
-            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
-              ready: {audioCounts.ready || 0}
-            </Badge>
-            <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
-              failed: {audioCounts.failed || 0}
-            </Badge>
-            <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
-              deleted: {audioCounts.deleted || 0}
-            </Badge>
+        <CardContent className="space-y-4">
+          <div>
+            <p className="text-sm font-medium mb-2">🎤 Audio</p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200">
+                queued: {audioCounts.uploaded || 0}
+              </Badge>
+              <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                processing: {audioCounts.processing || 0}
+              </Badge>
+              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                ready: {audioCounts.ready || 0}
+              </Badge>
+              <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
+                failed: {audioCounts.failed || 0}
+              </Badge>
+              <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
+                deleted: {audioCounts.deleted || 0}
+              </Badge>
+            </div>
+            {staleProcessingCount > 0 && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {staleProcessingCount} item(s) look stuck (processing &gt; {Math.round(processingTimeoutSeconds / 60)}m). They will be auto re-queued by the processor.
+              </p>
+            )}
           </div>
 
-          {staleProcessingCount > 0 && (
-            <p className="text-sm text-muted-foreground">
-              {staleProcessingCount} item(s) look stuck (processing &gt; {Math.round(processingTimeoutSeconds / 60)}m). They will be auto re-queued by the processor.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Video Processing Card - keeping original */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Video processing</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200">
-              queued: {videoCounts.uploaded || 0}
-            </Badge>
-            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
-              processing: {videoCounts.processing || 0}
-            </Badge>
-            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
-              ready: {videoCounts.ready || 0}
-            </Badge>
-            <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
-              failed: {videoCounts.failed || 0}
-            </Badge>
-            <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
-              deleted: {videoCounts.deleted || 0}
-            </Badge>
+          <div>
+            <p className="text-sm font-medium mb-2">🎥 Video</p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200">
+                queued: {videoCounts.uploaded || 0}
+              </Badge>
+              <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                processing: {videoCounts.processing || 0}
+              </Badge>
+              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                ready: {videoCounts.ready || 0}
+              </Badge>
+              <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
+                failed: {videoCounts.failed || 0}
+              </Badge>
+              <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
+                deleted: {videoCounts.deleted || 0}
+              </Badge>
+            </div>
+            {staleVideoProcessingCount > 0 && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {staleVideoProcessingCount} item(s) look stuck (processing &gt; {Math.round(processingTimeoutSeconds / 60)}m). They will be auto re-queued by the processor.
+              </p>
+            )}
           </div>
-
-          {staleVideoProcessingCount > 0 && (
-            <p className="text-sm text-muted-foreground">
-              {staleVideoProcessingCount} item(s) look stuck (processing &gt; {Math.round(processingTimeoutSeconds / 60)}m). They will be auto re-queued by the processor.
-            </p>
-          )}
         </CardContent>
       </Card>
 
