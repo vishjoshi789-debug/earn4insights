@@ -100,7 +100,7 @@ type SidebarInsetProps = {
 
 export function SidebarInset({ children }: SidebarInsetProps) {
   return (
-    <div className="flex min-h-screen flex-1 flex-col bg-background">
+    <div className="flex min-h-screen flex-1 flex-col bg-background min-w-0">
       {children}
     </div>
   );
