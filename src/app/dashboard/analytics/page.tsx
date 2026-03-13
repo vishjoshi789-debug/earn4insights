@@ -393,7 +393,7 @@ export default async function BrandAnalyticsPage() {
   });
 
   return (
-    <div className="space-y-6 min-w-0 overflow-x-hidden">
+    <div className="space-y-6 w-full max-w-full overflow-hidden">
       <div>
         <h1 className="text-2xl sm:text-3xl font-headline font-bold mb-2">
           Brand Analytics Dashboard
