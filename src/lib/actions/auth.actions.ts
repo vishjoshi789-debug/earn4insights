@@ -5,7 +5,7 @@ import { createUser } from "@/lib/user/userStore"
 import type { CreateUserInput } from "@/lib/user/types"
 import { redirect } from "next/navigation"
 import { z } from "zod"
-import { AuthError } from "next-auth"
+import { AuthError, CredentialsSignin } from "next-auth"
 
 // Validation schemas
 const signupSchema = z.object({
@@ -30,6 +30,8 @@ const loginSchema = z.object({
  * Sign up with email and password
  */
 export async function signUpAction(formData: FormData) {
+  // Validate input
+  let validatedData
   try {
     const rawData = {
       name: formData.get('name'),
@@ -39,81 +41,83 @@ export async function signUpAction(formData: FormData) {
       acceptedTerms: formData.get('acceptedTerms') === 'true',
       acceptedPrivacy: formData.get('acceptedPrivacy') === 'true',
     }
+    validatedData = signupSchema.parse(rawData)
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { error: error.errors[0].message }
+    }
+    return { error: 'Invalid input' }
+  }
 
-    // Validate input
-    const validatedData = signupSchema.parse(rawData)
+  // Create user
+  let user
+  try {
+    user = await createUser(validatedData)
+  } catch (error) {
+    if (error instanceof Error) {
+      return { error: error.message }
+    }
+    return { error: 'Failed to create account. Please try again.' }
+  }
 
-    // Create user
-    const user = await createUser(validatedData)
-
-    // Sign in the user — NextAuth v5 redirectTo for server actions
-    const redirectUrl = user.role === 'brand' ? '/dashboard' : '/top-products'
+  // Sign in the newly created user
+  try {
     await signIn("credentials", {
       email: validatedData.email,
       password: validatedData.password,
-      redirectTo: redirectUrl,
+      redirect: false,
     })
-    
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return {
-        error: error.errors[0].message
-      }
-    }
-    
     if (error instanceof AuthError) {
-      return {
-        error: 'Failed to create account. Please try again.'
-      }
+      return { error: 'Account created but sign-in failed. Please sign in manually.' }
     }
-    
-    if (error instanceof Error && !error.message.includes('NEXT_REDIRECT')) {
-      return {
-        error: error.message
-      }
-    }
-    
-    // Re-throw NEXT_REDIRECT and other non-auth errors
     throw error
   }
+  
+  // Redirect after successful sign-in (outside try-catch so NEXT_REDIRECT propagates)
+  const redirectUrl = user.role === 'brand' ? '/dashboard' : '/top-products'
+  redirect(redirectUrl)
 }
 
 /**
  * Sign in with email and password
  */
 export async function signInAction(formData: FormData) {
+  const rawData = {
+    email: formData.get('email'),
+    password: formData.get('password'),
+  }
+
+  // Validate input
+  let validatedData
   try {
-    const rawData = {
-      email: formData.get('email'),
-      password: formData.get('password'),
+    validatedData = loginSchema.parse(rawData)
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { error: error.errors[0].message }
     }
+    return { error: 'Invalid input' }
+  }
 
-    // Validate input
-    const validatedData = loginSchema.parse(rawData)
-
-    // NextAuth v5: use redirectTo so NEXT_REDIRECT propagates correctly
+  try {
     await signIn("credentials", {
       email: validatedData.email,
       password: validatedData.password,
-      redirectTo: "/dashboard",
+      redirect: false,
     })
-    
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return {
-        error: error.errors[0].message
-      }
+    if (error instanceof CredentialsSignin) {
+      return { error: 'Invalid email or password' }
     }
-    
     if (error instanceof AuthError) {
-      return {
-        error: 'Invalid email or password'
-      }
+      return { error: 'Invalid email or password' }
     }
-    
-    // Re-throw non-auth errors (NEXT_REDIRECT must propagate)
+    // Re-throw unexpected errors
     throw error
   }
+  
+  // Redirect after successful sign-in (outside try-catch so NEXT_REDIRECT propagates)
+  redirect("/dashboard")
 }
 
 /**
