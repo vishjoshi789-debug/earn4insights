@@ -10,7 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { signUpAction, signInWithGoogleAction } from '@/lib/actions/auth.actions'
+import { signUpAction } from '@/lib/actions/auth.actions'
+import { signIn } from 'next-auth/react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { Logo } from '@/components/logo'
 
@@ -34,17 +35,39 @@ export default function SignupPage() {
 
     const result = await signUpAction(formData)
     
-    // On success, signUpAction triggers a server-side redirect (no return value)
-    // If we get a result back, it means there was an error
     if (result?.error) {
       setError(result.error)
       setLoading(false)
+      return
+    }
+
+    // Account created — now sign in using client-side signIn
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+    
+    try {
+      const signInResult = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      })
+
+      if (signInResult?.ok) {
+        const redirectUrl = role === 'brand' ? '/dashboard' : '/top-products'
+        router.push(redirectUrl)
+        router.refresh()
+      } else {
+        // Account created but sign-in failed — send to login page
+        router.push('/login')
+      }
+    } catch {
+      router.push('/login')
     }
   }
 
   async function handleGoogleSignup() {
     setLoading(true)
-    await signInWithGoogleAction()
+    signIn('google', { callbackUrl: '/dashboard' })
   }
 
   return (

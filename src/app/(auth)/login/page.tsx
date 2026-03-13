@@ -3,12 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { signIn } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { signInAction, signInWithGoogleAction } from '@/lib/actions/auth.actions'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { Logo } from '@/components/logo'
 
@@ -23,19 +23,35 @@ export default function LoginPage() {
     setLoading(true)
 
     const formData = new FormData(event.currentTarget)
-    const result = await signInAction(formData)
-    
-    // On success, signInAction triggers a server-side redirect (no return value)
-    // If we get a result back, it means there was an error
-    if (result?.error) {
-      setError(result.error)
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+
+    try {
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        setError('Invalid email or password')
+        setLoading(false)
+      } else if (result?.ok) {
+        router.push('/dashboard')
+        router.refresh()
+      } else {
+        setError('Something went wrong. Please try again.')
+        setLoading(false)
+      }
+    } catch {
+      setError('Something went wrong. Please try again.')
       setLoading(false)
     }
   }
 
   async function handleGoogleLogin() {
     setLoading(true)
-    await signInWithGoogleAction()
+    signIn('google', { callbackUrl: '/dashboard' })
   }
 
   return (
