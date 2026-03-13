@@ -126,8 +126,8 @@ export default async function ProductsPage() {
             return (
               <Card key={product.id} className="hover:shadow-md transition-shadow">
                 <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle>{product.name}</CardTitle>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="text-base sm:text-lg">{product.name}</CardTitle>
                     {stats && stats.totalCount > 0 && (
                       <div className="flex items-center gap-2">
                         {/* Rating stars */}
