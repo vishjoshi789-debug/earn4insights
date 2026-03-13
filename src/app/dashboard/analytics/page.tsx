@@ -395,7 +395,7 @@ export default async function BrandAnalyticsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-headline font-bold mb-2">
+        <h1 className="text-2xl sm:text-3xl font-headline font-bold mb-2">
           Brand Analytics Dashboard
         </h1>
         <p className="text-muted-foreground">
@@ -460,14 +460,16 @@ export default async function BrandAnalyticsPage() {
 
       {/* Tabbed Analytics Views */}
       <Tabs defaultValue="demographics" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="demographics">Demographics</TabsTrigger>
-          <TabsTrigger value="interests">Interests & Behavior</TabsTrigger>
-          <TabsTrigger value="nps">NPS Segmentation</TabsTrigger>
-          <TabsTrigger value="products">Product Performance</TabsTrigger>
-          <TabsTrigger value="funnel">Conversion Funnel</TabsTrigger>
-          <TabsTrigger value="post-survey">Post-Survey Impact</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <TabsList className="inline-flex w-max sm:w-auto">
+            <TabsTrigger value="demographics">Demographics</TabsTrigger>
+            <TabsTrigger value="interests">Interests</TabsTrigger>
+            <TabsTrigger value="nps">NPS</TabsTrigger>
+            <TabsTrigger value="products">Products</TabsTrigger>
+            <TabsTrigger value="funnel">Funnel</TabsTrigger>
+            <TabsTrigger value="post-survey">Post-Survey</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="demographics" className="space-y-4">
           {/* Privacy Protection Notice */}
@@ -508,16 +510,16 @@ export default async function BrandAnalyticsPage() {
                     .sort(([, a]: any, [, b]: any) => b - a)
                     .slice(0, 10)
                     .map(([category, count]: any) => (
-                      <div key={category} className="flex items-center justify-between">
+                      <div key={category} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                         <span className="text-sm">{category}</span>
                         <div className="flex items-center gap-2">
-                          <div className="w-32 bg-gray-200 rounded-full h-2">
+                          <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2">
                             <div
                               className="bg-purple-600 h-2 rounded-full"
                               style={{ width: `${(count / totalUsers) * 100}%` }}
                             />
                           </div>
-                          <span className="text-sm font-medium w-12 text-right">
+                          <span className="text-xs sm:text-sm font-medium w-auto text-right whitespace-nowrap">
                             {count} ({((count / totalUsers) * 100).toFixed(0)}%)
                           </span>
                         </div>
@@ -549,16 +551,16 @@ export default async function BrandAnalyticsPage() {
                         'travel-experiences': '✈️ Travel & Experiences'
                       };
                       return (
-                        <div key={aspiration} className="flex items-center justify-between">
+                        <div key={aspiration} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                           <span className="text-sm">{labels[aspiration] || aspiration}</span>
                           <div className="flex items-center gap-2">
-                            <div className="w-32 bg-gray-200 rounded-full h-2">
+                            <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2">
                               <div
                                 className="bg-blue-600 h-2 rounded-full"
                                 style={{ width: `${(count / totalUsers) * 100}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium w-12 text-right">
+                            <span className="text-xs sm:text-sm font-medium w-auto text-right whitespace-nowrap">
                               {count} ({((count / totalUsers) * 100).toFixed(0)}%)
                             </span>
                           </div>
@@ -584,16 +586,16 @@ export default async function BrandAnalyticsPage() {
                   {Object.entries(incomeData)
                     .sort(([, a]: any, [, b]: any) => b.count - a.count)
                     .map(([range, data]: any) => (
-                      <div key={range} className="flex items-center justify-between">
+                      <div key={range} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                         <span className="text-sm">{range}</span>
                         <div className="flex items-center gap-2">
-                          <div className="w-32 bg-gray-200 rounded-full h-2">
+                          <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2">
                             <div
                               className="bg-green-600 h-2 rounded-full"
                               style={{ width: `${(data.count / totalUsers) * 100}%` }}
                             />
                           </div>
-                          <span className="text-sm font-medium w-12 text-right">
+                          <span className="text-xs sm:text-sm font-medium w-auto text-right whitespace-nowrap">
                             {data.count}
                           </span>
                         </div>
@@ -621,16 +623,16 @@ export default async function BrandAnalyticsPage() {
                   {Object.entries(purchaseData)
                     .sort(([, a]: any, [, b]: any) => b.count - a.count)
                     .map(([frequency, data]: any) => (
-                      <div key={frequency} className="flex items-center justify-between">
+                      <div key={frequency} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                         <span className="text-sm capitalize">{frequency}</span>
                         <div className="flex items-center gap-2">
-                          <div className="w-32 bg-gray-200 rounded-full h-2">
+                          <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2">
                             <div
                               className="bg-orange-600 h-2 rounded-full"
                               style={{ width: `${(data.count / totalUsers) * 100}%` }}
                             />
                           </div>
-                          <span className="text-sm font-medium w-12 text-right">
+                          <span className="text-xs sm:text-sm font-medium w-auto text-right whitespace-nowrap">
                             {data.count}
                           </span>
                         </div>
@@ -646,7 +648,7 @@ export default async function BrandAnalyticsPage() {
         </TabsContent>
 
         <TabsContent value="nps" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle>NPS by Age Range</CardTitle>
@@ -862,9 +864,9 @@ export default async function BrandAnalyticsPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 p-4 bg-slate-800 rounded-lg">
-                  <h4 className="font-semibold mb-2 text-white">Key Insights</h4>
-                  <ul className="space-y-1 text-sm text-slate-300">
+                <div className="mt-6 p-4 bg-muted rounded-lg">
+                  <h4 className="font-semibold mb-2">Key Insights</h4>
+                  <ul className="space-y-1 text-sm text-muted-foreground">
                     <li>• Survey completion rate: {engagementData.conversionRate}%</li>
                     <li>• Average events per user: {(totalEvents / totalUsers).toFixed(1)}</li>
                     <li>• Onboarding completion rate: {((profiles.filter(p => p.onboardingComplete).length / totalUsers) * 100).toFixed(0)}%</li>
@@ -1004,9 +1006,9 @@ export default async function BrandAnalyticsPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 p-4 bg-green-50 rounded-lg">
-                  <h4 className="font-semibold mb-2 text-green-900">Survey Impact Insights</h4>
-                  <ul className="space-y-1 text-sm text-green-700">
+                <div className="mt-6 p-4 bg-muted rounded-lg">
+                  <h4 className="font-semibold mb-2">Survey Impact Insights</h4>
+                  <ul className="space-y-1 text-sm text-muted-foreground">
                     <li>• {conversionMetrics.conversionRate7d}% of survey completers took action within a week</li>
                     <li>• Average {conversionMetrics.avgProductViewsPerUser} product views per user after survey</li>
                     <li>• {conversionMetrics.totalRecommendationClicks} clicks on recommended products (from survey results)</li>
@@ -1014,9 +1016,9 @@ export default async function BrandAnalyticsPage() {
                   </ul>
                 </div>
 
-                <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                  <h4 className="font-semibold mb-2 text-white">How to Interpret This Data</h4>
-                  <div className="space-y-2 text-sm text-slate-300">
+                <div className="p-4 bg-muted rounded-lg">
+                  <h4 className="font-semibold mb-2">How to Interpret This Data</h4>
+                  <div className="space-y-2 text-sm text-muted-foreground">
                     <p>
                       <strong>24h Action Rate:</strong> Percentage of users who viewed products within 24 hours after completing a survey. 
                       High rates indicate strong immediate engagement.
