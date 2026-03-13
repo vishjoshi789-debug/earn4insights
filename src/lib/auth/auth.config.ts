@@ -55,13 +55,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email and password required")
+          return null
         }
 
         const user = await getUserByEmail(credentials.email as string)
         
         if (!user || !user.passwordHash) {
-          throw new Error("Invalid email or password")
+          return null
         }
 
         const isValid = await verifyPassword(
@@ -70,7 +70,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         )
 
         if (!isValid) {
-          throw new Error("Invalid email or password")
+          return null
         }
 
         return {
@@ -169,4 +169,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   secret: process.env.AUTH_SECRET,
+  trustHost: true,
 })
