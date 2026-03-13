@@ -786,11 +786,11 @@ export default async function BrandAnalyticsPage() {
                       <span className="text-sm font-medium">Total Users</span>
                       <span className="text-sm font-bold">{totalUsers}</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
-                      <div className="bg-purple-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" style={{ width: '100%' }}>
-                        100%
+                    <div className="w-full bg-gray-200 rounded-full h-6">
+                      <div className="bg-purple-600 h-6 rounded-full" style={{ width: '100%' }}>
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">100%</span>
                   </div>
                 </div>
 
@@ -802,14 +802,16 @@ export default async function BrandAnalyticsPage() {
                         {profiles.filter(p => p.onboardingComplete).length}
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
+                    <div className="w-full bg-gray-200 rounded-full h-6">
                       <div 
-                        className="bg-purple-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
+                        className="bg-purple-600 h-6 rounded-full" 
                         style={{ width: `${(profiles.filter(p => p.onboardingComplete).length / totalUsers) * 100}%` }}
                       >
-                        {((profiles.filter(p => p.onboardingComplete).length / totalUsers) * 100).toFixed(0)}%
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">
+                      {((profiles.filter(p => p.onboardingComplete).length / totalUsers) * 100).toFixed(0)}%
+                    </span>
                   </div>
                 </div>
 
@@ -819,14 +821,16 @@ export default async function BrandAnalyticsPage() {
                       <span className="text-sm font-medium">Viewed Products</span>
                       <span className="text-sm font-bold">{engagementData.totalPageViews}</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
+                    <div className="w-full bg-gray-200 rounded-full h-6">
                       <div 
-                        className="bg-blue-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
-                        style={{ width: `${(engagementData.totalPageViews / totalUsers) * 10}%` }}
+                        className="bg-blue-600 h-6 rounded-full" 
+                        style={{ width: `${Math.min((engagementData.totalPageViews / totalUsers) * 10, 100)}%` }}
                       >
-                        {((engagementData.totalPageViews / totalUsers) * 100).toFixed(0)}% rate
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">
+                      {((engagementData.totalPageViews / totalUsers) * 100).toFixed(0)}% rate
+                    </span>
                   </div>
                 </div>
 
@@ -836,14 +840,16 @@ export default async function BrandAnalyticsPage() {
                       <span className="text-sm font-medium">Started Survey</span>
                       <span className="text-sm font-bold">{engagementData.totalSurveyStarts}</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
+                    <div className="w-full bg-gray-200 rounded-full h-6">
                       <div 
-                        className="bg-green-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
-                        style={{ width: `${(engagementData.totalSurveyStarts / totalUsers) * 50}%` }}
+                        className="bg-green-600 h-6 rounded-full" 
+                        style={{ width: `${Math.min((engagementData.totalSurveyStarts / totalUsers) * 50, 100)}%` }}
                       >
-                        {((engagementData.totalSurveyStarts / totalUsers) * 100).toFixed(0)}% rate
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">
+                      {((engagementData.totalSurveyStarts / totalUsers) * 100).toFixed(0)}% rate
+                    </span>
                   </div>
                 </div>
 
@@ -853,14 +859,16 @@ export default async function BrandAnalyticsPage() {
                       <span className="text-sm font-medium">Completed Survey</span>
                       <span className="text-sm font-bold">{engagementData.totalSurveyCompletes}</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
+                    <div className="w-full bg-gray-200 rounded-full h-6">
                       <div 
-                        className="bg-green-700 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
-                        style={{ width: `${(engagementData.totalSurveyCompletes / totalUsers) * 50}%` }}
+                        className="bg-green-700 h-6 rounded-full" 
+                        style={{ width: `${Math.min((engagementData.totalSurveyCompletes / totalUsers) * 50, 100)}%` }}
                       >
-                        {((engagementData.totalSurveyCompletes / totalUsers) * 100).toFixed(0)}% rate
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">
+                      {((engagementData.totalSurveyCompletes / totalUsers) * 100).toFixed(0)}% rate
+                    </span>
                   </div>
                 </div>
 
@@ -945,11 +953,11 @@ export default async function BrandAnalyticsPage() {
                       <span className="text-sm font-medium">Survey Completed</span>
                       <span className="text-sm font-bold">{conversionMetrics.totalSurveyCompletes}</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
-                      <div className="bg-purple-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" style={{ width: '100%' }}>
-                        100%
+                    <div className="w-full bg-gray-200 rounded-full h-6">
+                      <div className="bg-purple-600 h-6 rounded-full" style={{ width: '100%' }}>
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">100%</span>
                   </div>
                 </div>
 
@@ -959,14 +967,16 @@ export default async function BrandAnalyticsPage() {
                       <span className="text-sm font-medium">Action Within 24h</span>
                       <span className="text-sm font-bold">{conversionMetrics.usersWithActionWithin24h}</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
+                    <div className="w-full bg-gray-200 rounded-full h-6">
                       <div 
-                        className="bg-blue-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
+                        className="bg-blue-600 h-6 rounded-full" 
                         style={{ width: `${conversionMetrics.conversionRate24h}%` }}
                       >
-                        {conversionMetrics.conversionRate24h}%
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">
+                      {conversionMetrics.conversionRate24h}%
+                    </span>
                   </div>
                 </div>
 
@@ -976,14 +986,16 @@ export default async function BrandAnalyticsPage() {
                       <span className="text-sm font-medium">Action Within 7 Days</span>
                       <span className="text-sm font-bold">{conversionMetrics.usersWithActionWithin7d}</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
+                    <div className="w-full bg-gray-200 rounded-full h-6">
                       <div 
-                        className="bg-green-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
+                        className="bg-green-600 h-6 rounded-full" 
                         style={{ width: `${conversionMetrics.conversionRate7d}%` }}
                       >
-                        {conversionMetrics.conversionRate7d}%
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">
+                      {conversionMetrics.conversionRate7d}%
+                    </span>
                   </div>
                 </div>
 
@@ -995,14 +1007,16 @@ export default async function BrandAnalyticsPage() {
                         {postSurveyConversions.filter(c => c.recommendationClicks > 0).length}
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-8">
+                    <div className="w-full bg-gray-200 rounded-full h-6">
                       <div 
-                        className="bg-orange-600 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium" 
+                        className="bg-orange-600 h-6 rounded-full" 
                         style={{ width: conversionMetrics.usersWithActionWithin7d > 0 ? `${(postSurveyConversions.filter(c => c.recommendationClicks > 0).length / conversionMetrics.usersWithActionWithin7d) * 100}%` : '0%' }}
                       >
-                        {conversionMetrics.recommendationClickRate}% of active users
                       </div>
                     </div>
+                    <span className="text-xs font-medium text-muted-foreground mt-1">
+                      {conversionMetrics.recommendationClickRate}% of active users
+                    </span>
                   </div>
                 </div>
 
