@@ -475,14 +475,14 @@ export default async function BrandAnalyticsPage() {
           {/* Privacy Protection Notice */}
           {(suppressedDemographics.gender + suppressedDemographics.ageRange + suppressedDemographics.location + suppressedDemographics.education + suppressedDemographics.culture) > 0 && (
             <Card className="border-blue-700 bg-blue-900/50">
-              <CardContent className="p-3 sm:p-6">
-                <div className="flex items-start gap-2 sm:gap-3">
-                  <div className="p-1.5 sm:p-2 bg-blue-800 rounded-lg shrink-0">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-800 rounded-lg shrink-0 hidden sm:block">
                     <Users className="h-4 w-4 text-blue-300" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-blue-200 mb-1 text-sm sm:text-base">Privacy Protection Active</h4>
-                    <p className="text-xs sm:text-sm text-blue-300">
+                    <h4 className="font-semibold text-blue-200 mb-1 text-sm sm:text-base">🔒 Privacy Protection Active</h4>
+                    <p className="text-sm text-blue-300">
                       {suppressedDemographics.gender + suppressedDemographics.ageRange + suppressedDemographics.location + suppressedDemographics.education + suppressedDemographics.culture} demographic segment(s) 
                       with fewer than {MINIMUM_SEGMENT_SIZE} users are hidden to prevent re-identification (k-anonymity).
                     </p>
