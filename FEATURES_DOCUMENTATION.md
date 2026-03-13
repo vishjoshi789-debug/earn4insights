@@ -27,6 +27,9 @@
 17. [Production Hardening (March 11, 2026)](#17-production-hardening-march-11-2026)
 18. [Build Fix & Config Cleanup (March 12, 2026)](#18-build-fix--config-cleanup-march-12-2026)
 19. [Homepage Footer Mobile Fix (March 12, 2026)](#19-homepage-footer-mobile-fix-march-12-2026)
+20. [Sign-in Latency Optimization (March 12, 2026)](#20-sign-in-latency-optimization-march-12-2026)
+21. [Dashboard Query Parallelization (March 12, 2026)](#21-dashboard-query-parallelization-march-12-2026)
+22. [Auth Flow Rewrite & 500 Error Fix (March 13, 2026)](#22-auth-flow-rewrite--500-error-fix-march-13-2026)
 
 ---
 
@@ -727,4 +730,58 @@ Sign-in was noticeably slow for both Google OAuth and credentials-based login:
 
 ---
 
-*This document covers all features implemented as of March 12, 2026. Update this file when adding new features.*
+## 21. Dashboard Query Parallelization (March 12, 2026)
+
+### Problem
+The dashboard page and layout fetched multiple pieces of data sequentially — each query waited for the previous one to finish, slowing page loads.
+
+### Fix
+| Change | File | Detail |
+|--------|------|--------|
+| Parallel queries on dashboard page | `src/app/dashboard/page.tsx` | `feedbackStats` and `recommendations` now fetched via `Promise.all` instead of sequentially |
+| Parallel queries on dashboard layout | `src/app/dashboard/layout.tsx` | `getUserProfile` and `getUserProfileByEmail` now fetched via `Promise.all` |
+
+### Impact
+- Faster dashboard load times — queries overlap instead of stacking
+- No user-facing changes — same data, same UI
+
+---
+
+## 22. Auth Flow Rewrite & 500 Error Fix (March 13, 2026)
+
+### Problem
+Sign-in was completely broken in production:
+1. **Spinner hung forever:** The sign-in button's loading spinner never stopped. Caused by using NextAuth v5's `signIn()` inside a server action — the `NEXT_REDIRECT` exception propagated as an uncaught error.
+2. **500 Internal Server Error:** After fixing the spinner, clicking "Sign In" returned a 500 error. Caused by `authorize()` throwing `new Error()` instead of returning `null`, plus missing `trustHost: true` for Vercel.
+
+### What Changed
+
+**Login page** (`src/app/(auth)/login/page.tsx`):
+- Completely rewritten as a `'use client'` component
+- Uses `signIn` from `next-auth/react` (client-side) instead of server actions
+- Credentials: calls `signIn('credentials', { redirect: false })`, checks `result?.ok`, then `router.push('/dashboard')`
+- Google: calls `signIn('google', { callbackUrl: '/dashboard' })`
+- Shows user-friendly error messages for invalid credentials
+
+**Signup page** (`src/app/(auth)/signup/page.tsx`):
+- Hybrid approach: server action `signUpAction` for account creation (with Zod validation), then client-side `signIn` for authentication
+- Role selection (brand/consumer) with consent checkboxes
+- After creation: auto-signs-in and redirects to role-appropriate page
+
+**Server actions** (`src/lib/actions/auth.actions.ts`):
+- Stripped to only `signUpAction` — creates user and returns `{ success: true }` or `{ error: string }`
+- Removed `signInAction` and `signInWithGoogleAction` (no longer needed)
+
+**Auth config** (`src/lib/auth/auth.config.ts`):
+- `authorize()` returns `null` instead of throwing errors — NextAuth treats null as "credentials rejected"
+- Added `trustHost: true` — required for Vercel deployments
+- JWT callback only populates token on initial sign-in (removed per-request DB lookup)
+
+### User Experience
+- Sign-in works reliably for both credentials and Google OAuth
+- Invalid credentials show a clear error message instead of a spinner or 500
+- Faster subsequent requests (no DB lookup on every JWT refresh)
+
+---
+
+*This document covers all features implemented as of March 13, 2026. Update this file when adding new features.*

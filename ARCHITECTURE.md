@@ -31,7 +31,9 @@
 22. [Build Fix & Config Cleanup (March 12, 2026)](#22-build-fix--config-cleanup-march-12-2026)
 23. [Homepage Footer Mobile Fix (March 12, 2026)](#23-homepage-footer-mobile-fix-march-12-2026)
 24. [Sign-in Latency Optimization (March 12, 2026)](#24-sign-in-latency-optimization-march-12-2026)
-25. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+25. [Dashboard Query Parallelization (March 12, 2026)](#25-dashboard-query-parallelization-march-12-2026)
+26. [Auth Flow Rewrite & 500 Error Fix (March 13, 2026)](#26-auth-flow-rewrite--500-error-fix-march-13-2026)
+27. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -2604,4 +2606,131 @@ postgres(connectionString, {
 
 ---
 
-*This document reflects the architecture as of March 12, 2026. It should be updated as new systems are added.*
+## 25. Dashboard Query Parallelization (March 12, 2026)
+
+The dashboard page and layout performed sequential database queries, adding unnecessary latency on every page load.
+
+### 25.1 Dashboard Page (`src/app/dashboard/page.tsx`)
+
+**Before:** `feedbackStats` and `recommendations` were fetched sequentially — each waited for the previous to complete.
+
+**After:** Both queries run in parallel via `Promise.all`:
+```typescript
+const [feedbackStats, recommendations] = await Promise.all([
+  getFeedbackStats(userId),
+  getRecommendations(userId),
+])
+```
+
+### 25.2 Dashboard Layout (`src/app/dashboard/layout.tsx`)
+
+**Before:** `getUserProfile` and `getUserProfileByEmail` were fetched sequentially.
+
+**After:** Both run in parallel via `Promise.all`.
+
+### 25.3 Impact
+- Dashboard load time reduced by the duration of the slower query (queries overlap instead of stacking)
+- No functional changes — same data, same rendering
+
+### 25.4 Files Changed
+| File | Change |
+|------|--------|
+| `src/app/dashboard/page.tsx` | Parallelized `feedbackStats` + `recommendations` with `Promise.all` |
+| `src/app/dashboard/layout.tsx` | Parallelized `getUserProfile` + `getUserProfileByEmail` with `Promise.all` |
+
+---
+
+## 26. Auth Flow Rewrite & 500 Error Fix (March 13, 2026)
+
+A complete rewrite of the authentication flow to fix a persistent sign-in spinner and 500 Internal Server Error.
+
+### 26.1 Problem
+
+Three cascading issues prevented sign-in from working:
+
+1. **Server action + NextAuth v5 incompatibility:** Using `signIn()` from `next-auth` inside a server action caused `NEXT_REDIRECT` exceptions to propagate as uncaught errors — the sign-in button spinner would spin forever.
+2. **`authorize()` throwing errors:** The credentials provider's `authorize()` function threw `new Error()` on invalid credentials. In NextAuth v5's API route handler, thrown errors become 500 Internal Server Errors instead of graceful auth failures.
+3. **Missing `trustHost: true`:** Without this flag, NextAuth v5 on Vercel rejects requests because it can't verify the host header — causing silent auth failures.
+
+### 26.2 Solution: Client-Side SignIn
+
+Replaced the server action approach with client-side `signIn` from `next-auth/react`:
+
+**Login page (`src/app/(auth)/login/page.tsx`):**
+- Converted to `'use client'` component
+- Credentials: `signIn('credentials', { email, password, redirect: false })` → check `result?.ok` → `router.push('/dashboard')`
+- Google: `signIn('google', { callbackUrl: '/dashboard' })`
+- Error handling via `result?.error` — displays user-friendly message
+
+**Signup page (`src/app/(auth)/signup/page.tsx`):**
+- Uses `signUpAction` server action for account creation only (Zod validation + `createUser()`)
+- After successful creation: client-side `signIn('credentials', ...)` for authentication
+- Google: `signIn('google', { callbackUrl: '/dashboard' })`
+
+**Server actions (`src/lib/actions/auth.actions.ts`):**
+- Stripped down to only `signUpAction` — returns `{ success: true }` or `{ error: string }`
+- Removed `signInAction` and `signInWithGoogleAction` (no longer needed)
+
+### 26.3 Solution: authorize() Returns Null
+
+In `src/lib/auth/auth.config.ts`, all `throw new Error(...)` calls in `authorize()` were replaced with `return null`:
+
+```typescript
+// Before (caused 500 errors):
+if (!credentials?.email || !credentials?.password) {
+  throw new Error('Missing credentials')
+}
+
+// After (NextAuth treats null as "invalid credentials"):
+if (!credentials?.email || !credentials?.password) {
+  return null
+}
+```
+
+NextAuth v5 treats `null` from `authorize()` as "credentials rejected" and returns a proper error response instead of a 500.
+
+### 26.4 Solution: trustHost Configuration
+
+Added `trustHost: true` to the NextAuth configuration. Required for Vercel deployments where the host header comes from the CDN/proxy layer.
+
+### 26.5 JWT Callback Optimization
+
+The JWT callback previously called `getUserById()` on **every token refresh** (every authenticated request). Now it only populates the token on initial sign-in (when `user` object exists), avoiding unnecessary DB queries:
+
+```typescript
+async jwt({ token, user }) {
+  if (user) {
+    token.id = user.id
+    token.role = user.role
+    token.name = user.name
+    token.email = user.email
+  }
+  return token
+}
+```
+
+### 26.6 Architecture Change
+
+**Before:**
+```
+Login Page → Server Action (signInAction) → NextAuth signIn() → NEXT_REDIRECT → 500 error
+```
+
+**After:**
+```
+Login Page → Client-side signIn('credentials', {redirect: false}) → NextAuth API route → JSON response → router.push()
+```
+
+The key insight: NextAuth v5's `signIn()` is designed for API route usage (returns JSON). Calling it from server actions causes `redirect()` exceptions that can't be properly caught.
+
+### 26.7 Files Changed
+| File | Change |
+|------|--------|
+| `src/app/(auth)/login/page.tsx` | Full rewrite: server action → client-side `signIn` from `next-auth/react` |
+| `src/app/(auth)/signup/page.tsx` | Hybrid: server action for creation + client-side `signIn` for auth |
+| `src/lib/actions/auth.actions.ts` | Stripped to `signUpAction` only; removed `signInAction`, `signInWithGoogleAction` |
+| `src/lib/auth/auth.config.ts` | `authorize()` returns `null` instead of throwing; added `trustHost: true`; JWT callback only populates on initial sign-in |
+
+---
+
+*This document reflects the architecture as of March 13, 2026. It should be updated as new systems are added.*
