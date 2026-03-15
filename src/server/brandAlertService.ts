@@ -17,6 +17,8 @@ import { db } from '@/db'
 import { brandAlerts, brandAlertRules, products } from '@/db/schema'
 import { eq, and, desc, count, isNull, or } from 'drizzle-orm'
 import { queueNotification } from '@/server/notificationService'
+import { sendSlackNotification } from '@/server/slackNotifications'
+import { getUserProfile } from '@/db/repositories/userProfileRepository'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -190,6 +192,28 @@ export async function fireAlert(input: FireAlertInput) {
       })
     } catch (err) {
       console.error(`[BrandAlert] Failed to queue email for ${brandId}:`, err)
+    }
+  }
+
+  // 3. If slack channel is enabled, send to the brand's configured Slack webhook
+  if (channels.has('slack')) {
+    try {
+      const brandProfile = await getUserProfile(brandId)
+      const slackPrefs = (brandProfile?.notificationPreferences as any)?.slack
+      const webhookUrl = slackPrefs?.webhookUrl as string | undefined
+      if (webhookUrl) {
+        sendSlackNotification({
+          webhookUrl,
+          title,
+          body,
+          alertType,
+          metadata: { alertId: alert.id, productId, consumerId, ...payload },
+        }).catch((err) => console.error('[BrandAlert] Slack send error:', err))
+      } else {
+        console.warn(`[BrandAlert] Slack channel enabled for ${brandId} but no webhookUrl configured`)
+      }
+    } catch (err) {
+      console.error(`[BrandAlert] Failed to send Slack notification for ${brandId}:`, err)
     }
   }
 

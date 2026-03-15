@@ -13,6 +13,7 @@ import {
 } from '@/db/repositories/surveyRepository'
 import type { Survey, SurveyQuestion, SurveyType, SurveySettings } from '@/lib/survey-types'
 import { createNPSSurvey, createCSATSurvey } from '@/lib/survey-types'
+import { notifyNewSurvey } from '@/server/campaigns/surveyNotificationCampaign'
 
 export async function fetchAllSurveys() {
   return await getAllSurveys()
@@ -75,6 +76,11 @@ export async function createSurvey(
   }
 
   await createSurveyInDB(survey)
+
+  // Non-blocking: notify targeted consumers about the new survey
+  notifyNewSurvey(survey.id).catch((err) =>
+    console.error('[createSurvey] notifyNewSurvey error:', err)
+  )
 
   // Revalidate the surveys page
   revalidatePath('/dashboard/surveys')
