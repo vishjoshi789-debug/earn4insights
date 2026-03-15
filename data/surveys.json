@@ -48,46 +48,29 @@
   },
   {
     "productId": "demo",
-    "title": "Customer NPS score ",
-    "description": "want to understand product led growth of our newly launched product ",
-    "type": "nps",
-    "isActive": true,
-    "questions": [
-      {
-        "id": "q_nps_score",
-        "type": "rating",
-        "question": "On a scale of 0-10, how likely are you to recommend our product to a friend or colleague?",
-        "scale": 10,
-        "required": true
-      },
-      {
-        "id": "q_nps_reason",
-        "type": "text",
-        "question": "What is the main reason for your score?",
-        "required": false
-      }
-    ],
-    "id": "4498cab4-ab99-4327-9bb4-97b73027df42",
-    "createdAt": "2026-01-22T08:24:58.902Z"
-  },
-  {
-    "productId": "demo",
     "title": "user satisfaction survey ",
-    "description": "want to understand how much you are satidfied with our product and how likely you will recommend to others ",
-    "type": "nps",
+    "description": "Measure how satisfied users are with your product experience — covers overall satisfaction, ease of use, and open feedback.",
+    "type": "csat",
     "isActive": true,
     "questions": [
       {
-        "id": "q_nps_score",
+        "id": "q_csat_score",
         "type": "rating",
-        "question": "On a scale of 0-10, how likely are you to recommend our product to a friend or colleague?",
-        "scale": 10,
+        "question": "How satisfied are you with our product overall?",
+        "scale": 5,
         "required": true
       },
       {
-        "id": "q_nps_reason",
+        "id": "q_csat_ease",
+        "type": "rating",
+        "question": "How easy is it to use our product?",
+        "scale": 5,
+        "required": true
+      },
+      {
+        "id": "q_csat_feedback",
         "type": "text",
-        "question": "What is the main reason for your score?",
+        "question": "What could we do to improve your experience?",
         "required": false
       }
     ],
@@ -121,21 +104,28 @@
   {
     "productId": "demo",
     "title": "Gauge customer intrests ",
-    "description": "it's about to know your interests in our upcoming launch of product. ",
-    "type": "nps",
+    "description": "Discover what your customers care about — their interests, priorities, and what they want to see next from your brand.",
+    "type": "custom",
     "isActive": true,
     "questions": [
       {
-        "id": "q_nps_score",
-        "type": "rating",
-        "question": "On a scale of 0-10, how likely are you to recommend our product to a friend or colleague?",
-        "scale": 10,
+        "id": "q_interest_area",
+        "type": "multiple_choice",
+        "question": "Which product categories interest you the most?",
+        "options": ["Technology", "Health & Wellness", "Finance", "Education", "Entertainment", "Other"],
         "required": true
       },
       {
-        "id": "q_nps_reason",
+        "id": "q_feature_priority",
+        "type": "rating",
+        "question": "How important is pricing when choosing a product?",
+        "scale": 5,
+        "required": true
+      },
+      {
+        "id": "q_upcoming_interest",
         "type": "text",
-        "question": "What is the main reason for your score?",
+        "question": "What features or products would you like to see us launch next?",
         "required": false
       }
     ],
