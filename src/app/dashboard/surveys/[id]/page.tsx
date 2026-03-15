@@ -9,6 +9,7 @@ import { ArrowLeft, BarChart3, Code } from 'lucide-react'
 import { fetchSurvey } from '@/server/surveys/surveyService'
 import { formatDistanceToNow } from 'date-fns'
 import CopyLinkButton from './CopyLinkButton'
+import QuestionEditor from './QuestionEditor'
 
 type PageProps = {
   params: Promise<{ id: string }>
@@ -70,50 +71,57 @@ export default async function SurveyDetailPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* Questions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Survey Questions</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {survey.questions.map((question, index) => (
-            <div key={question.id} className="border rounded-lg p-4 space-y-2">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">Question {index + 1}</span>
-                    {question.required && (
-                      <Badge variant="outline" className="text-xs">
-                        Required
-                      </Badge>
-                    )}
+      {/* Questions — editable for custom surveys, read-only for NPS/CSAT */}
+      {survey.type === 'custom' ? (
+        <QuestionEditor surveyId={survey.id} initialQuestions={survey.questions} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Survey Questions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground -mt-2">
+              {survey.type === 'nps' ? 'NPS' : 'CSAT'} questions are standardized and cannot be edited.
+            </p>
+            {survey.questions.map((question, index) => (
+              <div key={question.id} className="border rounded-lg p-4 space-y-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">Question {index + 1}</span>
+                      {question.required && (
+                        <Badge variant="outline" className="text-xs">
+                          Required
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-2">{question.question}</p>
                   </div>
-                  <p className="mt-2">{question.question}</p>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="capitalize">{question.type.replace('-', ' ')}</span>
-                {question.scale && <span>Scale: 1-{question.scale}</span>}
-                {question.options && (
-                  <span>{question.options.length} options</span>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span className="capitalize">{question.type.replace('-', ' ')}</span>
+                  {question.scale && <span>Scale: 1-{question.scale}</span>}
+                  {question.options && (
+                    <span>{question.options.length} options</span>
+                  )}
+                </div>
+
+                {question.options && question.options.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    <p className="text-sm font-medium">Options:</p>
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      {question.options.map((option, oIndex) => (
+                        <li key={oIndex}>• {option}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
-
-              {question.options && question.options.length > 0 && (
-                <div className="mt-3 space-y-1">
-                  <p className="text-sm font-medium">Options:</p>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    {question.options.map((option, oIndex) => (
-                      <li key={oIndex}>• {option}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Actions */}
       <Card>

@@ -94,6 +94,37 @@ export async function toggleSurveyActive(surveyId: string, isActive: boolean) {
   return survey
 }
 
+export async function updateSurveyQuestions(
+  surveyId: string,
+  questions: SurveyQuestion[]
+) {
+  if (!surveyId) throw new Error('Survey ID is required')
+  if (questions.length === 0) throw new Error('At least one question is required')
+
+  // Validate each question
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i]
+    if (!q.question.trim()) throw new Error(`Question ${i + 1} text is required`)
+    if (q.type === 'multiple-choice') {
+      if (!q.options || q.options.length < 2) {
+        throw new Error(`Question ${i + 1} must have at least 2 options`)
+      }
+      if (q.options.some(opt => !opt.trim())) {
+        throw new Error(`All options in question ${i + 1} must have text`)
+      }
+    }
+  }
+
+  const survey = await updateSurveyInDB(surveyId, { questions })
+  if (!survey) throw new Error('Survey not found')
+
+  revalidatePath('/dashboard/surveys')
+  revalidatePath(`/dashboard/surveys/${surveyId}`)
+  revalidatePath(`/survey/${surveyId}`)
+
+  return survey
+}
+
 export async function deleteSurvey(surveyId: string) {
   const survey = await getSurveyById(surveyId)
   if (!survey) {
