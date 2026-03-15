@@ -36,6 +36,9 @@ export default async function SurveysPage() {
       {/* NPS Surveys */}
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">NPS Surveys</h2>
+        <p className="text-sm text-muted-foreground -mt-2">
+          Measure customer loyalty with the "How likely are you to recommend us?" question (0–10 scale). Track Promoters, Passives, and Detractors over time to gauge brand advocacy.
+        </p>
         {npsSurveys.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
@@ -54,6 +57,9 @@ export default async function SurveysPage() {
       {/* CSAT Surveys */}
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">CSAT Surveys</h2>
+        <p className="text-sm text-muted-foreground -mt-2">
+          Measure how satisfied customers are with a specific interaction, feature, or experience. Best used right after a purchase, support ticket, or onboarding to capture immediate satisfaction.
+        </p>
         {csatSurveys.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
@@ -72,6 +78,9 @@ export default async function SurveysPage() {
       {/* Custom Surveys */}
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">Custom Surveys</h2>
+        <p className="text-sm text-muted-foreground -mt-2">
+          Build your own surveys with custom questions — ratings, multiple choice, or open text. Use these for product research, interest gauging, feature prioritization, or any feedback need not covered by NPS or CSAT.
+        </p>
         {customSurveys.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
