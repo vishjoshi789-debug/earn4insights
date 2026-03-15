@@ -40,16 +40,31 @@ const QUESTION_TYPE_META: Record<QuestionType, { label: string; icon: typeof Sta
   'multiple-choice': { label: 'Multiple Choice', icon: ListChecks, description: 'Pick from predefined options' },
 }
 
+function normalizeQuestionType(type: string): QuestionType {
+  const map: Record<string, QuestionType> = {
+    'multiple_choice': 'multiple-choice',
+    'multiple-choice': 'multiple-choice',
+    'rating': 'rating',
+    'text': 'text',
+  }
+  return map[type] || 'text'
+}
+
+function normalizeQuestions(questions: SurveyQuestion[]): SurveyQuestion[] {
+  return questions.map(q => ({ ...q, type: normalizeQuestionType(q.type) }))
+}
+
 export default function QuestionEditor({ surveyId, initialQuestions }: QuestionEditorProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [questions, setQuestions] = useState<SurveyQuestion[]>(initialQuestions)
+  const [questions, setQuestions] = useState<SurveyQuestion[]>(() => normalizeQuestions(initialQuestions))
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
 
-  const hasChanges = JSON.stringify(questions) !== JSON.stringify(initialQuestions)
+  const normalizedInitial = normalizeQuestions(initialQuestions)
+  const hasChanges = JSON.stringify(questions) !== JSON.stringify(normalizedInitial)
 
   // --- Question CRUD ---
   const addQuestion = (type: QuestionType = 'text') => {

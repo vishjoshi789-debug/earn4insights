@@ -110,7 +110,7 @@
     "questions": [
       {
         "id": "q_interest_area",
-        "type": "multiple_choice",
+        "type": "multiple-choice",
         "question": "Which product categories interest you the most?",
         "options": ["Technology", "Health & Wellness", "Finance", "Education", "Entertainment", "Other"],
         "required": true
