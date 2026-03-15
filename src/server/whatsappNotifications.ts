@@ -5,6 +5,62 @@ const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_T
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
   : null
 
+const WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM
+
+const alertTypeEmoji: Record<string, string> = {
+  new_feedback: '💬',
+  negative_feedback: '⚠️',
+  survey_complete: '📊',
+  high_intent_consumer: '🚀',
+  watchlist_milestone: '👀',
+  frustration_spike: '🚨',
+}
+
+/**
+ * Send a real-time WhatsApp alert to any phone number via Twilio.
+ * Used for both brand alerts (new feedback, survey complete, etc.)
+ * and consumer notifications (new survey available).
+ */
+export async function sendWhatsAppAlertMessage(params: {
+  phoneNumber: string  // E.164 format: +1234567890
+  title: string
+  body: string
+  alertType?: string
+  ctaUrl?: string
+}): Promise<{ success: boolean; error?: any }> {
+  if (!twilioClient || !WHATSAPP_FROM) {
+    console.warn('[WhatsApp] Twilio not configured — skipping alert')
+    return { success: false, error: 'Twilio not configured' }
+  }
+
+  const { phoneNumber, title, body, alertType, ctaUrl } = params
+  const emoji = alertType ? (alertTypeEmoji[alertType] || '🔔') : '🔔'
+
+  const message = [
+    `${emoji} *${title}*`,
+    '',
+    body,
+    ctaUrl ? `\n🔗 ${ctaUrl}` : '',
+    '\n_Earn4Insights — Real Voices. Measurable Intelligence._',
+  ]
+    .filter((l) => l !== undefined)
+    .join('\n')
+    .trim()
+
+  try {
+    const result = await twilioClient.messages.create({
+      body: message,
+      from: `whatsapp:${WHATSAPP_FROM}`,
+      to: `whatsapp:${phoneNumber}`,
+    })
+    console.log(`[WhatsApp] Alert sent to ${phoneNumber} (SID: ${result.sid})`)
+    return { success: true }
+  } catch (error) {
+    logger.serviceError('twilio', 'sendWhatsAppAlert', error, { phoneNumber })
+    return { success: false, error }
+  }
+}
+
 export interface WhatsAppRankingData {
   productName: string
   rank: number

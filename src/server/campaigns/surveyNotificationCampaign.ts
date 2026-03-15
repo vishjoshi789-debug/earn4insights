@@ -9,6 +9,7 @@ import {
   assignUserToCohort,
   trackEmailSend 
 } from '@/lib/send-time-optimizer'
+import { sendWhatsAppAlertMessage } from '@/server/whatsappNotifications'
 
 /**
  * Calculate optimal send time using intelligent send-time optimization
@@ -361,6 +362,18 @@ export async function notifyNewSurvey(surveyId: string, options?: {
           }
         } else {
           errors.push(`User ${userId}: Failed to queue notification`)
+        }
+
+        // Also send WhatsApp immediately (real-time) if user has it enabled
+        const waPrefs = prefs?.whatsapp as any
+        const waPhone = waPrefs?.phoneNumber as string | undefined
+        if (waPrefs?.enabled && waPhone) {
+          sendWhatsAppAlertMessage({
+            phoneNumber: waPhone,
+            title: `New Survey: ${survey.title}`,
+            body: `${product.name} wants your feedback! ${survey.description || 'Take a quick survey and earn rewards.'} \n\n🔗 ${process.env.NEXT_PUBLIC_APP_URL || 'https://earn4insights.com'}/survey/${surveyId}`,
+            alertType: 'new_survey',
+          }).catch((err) => console.error(`[NotifyCampaign] WhatsApp error for ${userId}:`, err))
         }
 
       } catch (error) {

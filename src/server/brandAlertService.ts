@@ -18,6 +18,7 @@ import { brandAlerts, brandAlertRules, products } from '@/db/schema'
 import { eq, and, desc, count, isNull, or } from 'drizzle-orm'
 import { queueNotification } from '@/server/notificationService'
 import { sendSlackNotification } from '@/server/slackNotifications'
+import { sendWhatsAppAlertMessage } from '@/server/whatsappNotifications'
 import { getUserProfile } from '@/db/repositories/userProfileRepository'
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -195,11 +196,20 @@ export async function fireAlert(input: FireAlertInput) {
     }
   }
 
-  // 3. If slack channel is enabled, send to the brand's configured Slack webhook
-  if (channels.has('slack')) {
+  // 3. If slack or whatsapp channel is enabled, fetch brand profile once for both
+  let brandProfile: Awaited<ReturnType<typeof getUserProfile>> | null = null
+  if (channels.has('slack') || channels.has('whatsapp')) {
     try {
-      const brandProfile = await getUserProfile(brandId)
-      const slackPrefs = (brandProfile?.notificationPreferences as any)?.slack
+      brandProfile = await getUserProfile(brandId)
+    } catch (err) {
+      console.error(`[BrandAlert] Failed to fetch brand profile for ${brandId}:`, err)
+    }
+  }
+
+  // 3a. Slack — send to brand's configured webhook
+  if (channels.has('slack') && brandProfile) {
+    try {
+      const slackPrefs = (brandProfile.notificationPreferences as any)?.slack
       const webhookUrl = slackPrefs?.webhookUrl as string | undefined
       if (webhookUrl) {
         sendSlackNotification({
@@ -214,6 +224,27 @@ export async function fireAlert(input: FireAlertInput) {
       }
     } catch (err) {
       console.error(`[BrandAlert] Failed to send Slack notification for ${brandId}:`, err)
+    }
+  }
+
+  // 3b. WhatsApp — send immediately via Twilio (real-time)
+  if (channels.has('whatsapp') && brandProfile) {
+    try {
+      const waPrefs = (brandProfile.notificationPreferences as any)?.whatsapp
+      const phoneNumber = waPrefs?.phoneNumber as string | undefined
+      if (phoneNumber) {
+        sendWhatsAppAlertMessage({
+          phoneNumber,
+          title,
+          body,
+          alertType,
+          ctaUrl: 'https://earn4insights.com/dashboard/alerts',
+        }).catch((err) => console.error('[BrandAlert] WhatsApp send error:', err))
+      } else {
+        console.warn(`[BrandAlert] WhatsApp channel enabled for ${brandId} but no phone number configured`)
+      }
+    } catch (err) {
+      console.error(`[BrandAlert] Failed to send WhatsApp notification for ${brandId}:`, err)
     }
   }
 

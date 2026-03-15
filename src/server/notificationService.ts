@@ -4,6 +4,7 @@ import { getUserProfile, adaptNotificationPreferences, type NotificationPreferen
 import { eq, and, lte, gte } from 'drizzle-orm'
 import { Resend } from 'resend'
 import { logger } from '@/lib/logger'
+import { sendWhatsAppAlertMessage } from '@/server/whatsappNotifications'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -155,14 +156,26 @@ async function sendEmail(notification: typeof notificationQueue.$inferSelect): P
 }
 
 /**
- * Send WhatsApp message (STUB - to be implemented with WhatsApp Business API)
+ * Send WhatsApp message via Twilio
  */
 async function sendWhatsApp(notification: typeof notificationQueue.$inferSelect): Promise<void> {
-  console.log('[Notifications] WhatsApp sending not yet implemented')
-  // TODO: Implement with WhatsApp Business API
-  // - Get user's WhatsApp number from profile
-  // - Send via WhatsApp Business API
-  throw new Error('WhatsApp not yet implemented')
+  const profile = await getUserProfile(notification.userId)
+  if (!profile) throw new Error('User profile not found')
+
+  const prefs = (profile.notificationPreferences as any)?.whatsapp
+  const phoneNumber = prefs?.phoneNumber as string | undefined
+  if (!phoneNumber) throw new Error('No WhatsApp phone number configured for user')
+
+  const result = await sendWhatsAppAlertMessage({
+    phoneNumber,
+    title: notification.subject || 'Earn4Insights Notification',
+    body: notification.body,
+    ctaUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://earn4insights.com'}/dashboard`,
+  })
+
+  if (!result.success) {
+    throw new Error(`WhatsApp send failed: ${String(result.error)}`)
+  }
 }
 
 /**
