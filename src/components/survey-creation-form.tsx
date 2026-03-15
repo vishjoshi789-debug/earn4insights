@@ -179,45 +179,45 @@ export default function SurveyCreationForm({ productId }: SurveyCreationFormProp
 
           <div className="space-y-2">
             <Label>Survey Type *</Label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
                 onClick={() => setSurveyType('nps')}
-                className={`p-4 border-2 rounded-lg text-left transition-all hover:border-primary ${
+                className={`p-3 border-2 rounded-lg text-left transition-all hover:border-primary ${
                   surveyType === 'nps' ? 'border-primary bg-primary/5' : 'border-border'
                 }`}
               >
-                <Star className="w-6 h-6 mb-2 text-primary" />
-                <h4 className="font-semibold">NPS</h4>
-                <p className="text-xs text-muted-foreground mt-1">
-                  0-10 recommendation score
+                <Star className="w-5 h-5 mb-1.5 text-primary" />
+                <h4 className="font-semibold text-sm">NPS</h4>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                  0–10 recommendation score
                 </p>
               </button>
 
               <button
                 type="button"
                 onClick={() => setSurveyType('csat')}
-                className={`p-4 border-2 rounded-lg text-left transition-all hover:border-primary ${
+                className={`p-3 border-2 rounded-lg text-left transition-all hover:border-primary ${
                   surveyType === 'csat' ? 'border-primary bg-primary/5' : 'border-border'
                 }`}
               >
-                <Star className="w-6 h-6 mb-2 text-primary" />
-                <h4 className="font-semibold">CSAT</h4>
-                <p className="text-xs text-muted-foreground mt-1">
-                  1-5 satisfaction rating
+                <Star className="w-5 h-5 mb-1.5 text-primary" />
+                <h4 className="font-semibold text-sm">CSAT</h4>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                  1–5 satisfaction rating
                 </p>
               </button>
 
               <button
                 type="button"
                 onClick={() => setSurveyType('custom')}
-                className={`p-4 border-2 rounded-lg text-left transition-all hover:border-primary ${
+                className={`p-3 border-2 rounded-lg text-left transition-all hover:border-primary ${
                   surveyType === 'custom' ? 'border-primary bg-primary/5' : 'border-border'
                 }`}
               >
-                <CheckSquare className="w-6 h-6 mb-2 text-primary" />
-                <h4 className="font-semibold">Custom</h4>
-                <p className="text-xs text-muted-foreground mt-1">
+                <CheckSquare className="w-5 h-5 mb-1.5 text-primary" />
+                <h4 className="font-semibold text-sm">Custom</h4>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
                   Build your own questions
                 </p>
               </button>
