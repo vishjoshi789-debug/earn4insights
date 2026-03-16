@@ -109,7 +109,7 @@ export default function AnalyticsPage() {
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#a78bfa', '#f472b6', '#fb923c']
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -205,14 +205,14 @@ export default function AnalyticsPage() {
               <CardContent>
                 <div className="space-y-3">
                   {topPerformers.map((product) => (
-                    <div key={product.productId} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl font-bold text-muted-foreground">
+                    <div key={product.productId} className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xl font-bold text-muted-foreground shrink-0">
                           #{product.latestRank}
                         </span>
-                        <span className="font-medium">{product.productName}</span>
+                        <span className="font-medium truncate">{product.productName}</span>
                       </div>
-                      <Badge variant="outline">
+                      <Badge variant="outline" className="shrink-0">
                         Score: {product.avgScore.toFixed(2)}
                       </Badge>
                     </div>
@@ -231,14 +231,14 @@ export default function AnalyticsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[400px]">
+              <div className="h-[400px] w-full overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
+                  <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="week" />
-                    <YAxis reversed domain={[1, 10]} />
+                    <XAxis dataKey="week" tick={{ fontSize: 11 }} />
+                    <YAxis reversed domain={[1, 10]} width={30} />
                     <Tooltip />
-                    <Legend />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
                     {trends.slice(0, 7).map((trend, index) => (
                       <Line
                         key={trend.productId}
@@ -265,14 +265,14 @@ export default function AnalyticsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[400px]">
+              <div className="h-[400px] w-full overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={scoreChartData}>
+                  <BarChart data={scoreChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="week" />
-                    <YAxis />
+                    <XAxis dataKey="week" tick={{ fontSize: 11 }} />
+                    <YAxis width={40} />
                     <Tooltip />
-                    <Legend />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
                     {trends.slice(0, 7).map((trend, index) => (
                       <Bar
                         key={trend.productId}
