@@ -207,8 +207,8 @@ export default function AssignCategoriesPage() {
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>ID: {product.id}</span>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                      <span className="truncate max-w-[160px]" title={product.id}>ID: {product.id}</span>
                       <span>{product.responseCount} responses</span>
                       {product.hasCategory && (
                         <span className="text-green-600 dark:text-green-400">
