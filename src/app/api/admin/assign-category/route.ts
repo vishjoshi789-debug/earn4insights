@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getProducts } from '@/lib/product/store'
-import { updateProductProfile } from '@/lib/product/store'
+import { getProductById, updateProductProfile } from '@/db/repositories/productRepository'
 import type { ProductCategory } from '@/lib/categories'
 import { PRODUCT_CATEGORIES } from '@/lib/categories'
 
@@ -24,9 +23,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if product exists
-    const products = await getProducts()
-    const product = products.find(p => p.id === productId)
-    
+    const product = await getProductById(productId)
+
     if (!product) {
       return NextResponse.json(
         { error: 'Product not found' },
@@ -34,7 +32,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update product category
+    // Update product category via DB repository
     await updateProductProfile(productId, (profile) => ({
       ...profile,
       data: {
