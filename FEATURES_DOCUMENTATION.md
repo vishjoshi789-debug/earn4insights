@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** March 12, 2026  
+> **Last updated:** March 16, 2026  
 > **Platform:** Next.js 15 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
@@ -30,6 +30,11 @@
 20. [Sign-in Latency Optimization (March 12, 2026)](#20-sign-in-latency-optimization-march-12-2026)
 21. [Dashboard Query Parallelization (March 12, 2026)](#21-dashboard-query-parallelization-march-12-2026)
 22. [Auth Flow Rewrite & 500 Error Fix (March 13, 2026)](#22-auth-flow-rewrite--500-error-fix-march-13-2026)
+23. [Survey System Enhancements (March 14–15, 2026)](#23-survey-system-enhancements-march-1415-2026)
+24. [Multi-Channel Notification System — Slack (March 15, 2026)](#24-multi-channel-notification-system--slack-march-15-2026)
+25. [WhatsApp Real-Time Notifications (March 15, 2026)](#25-whatsapp-real-time-notifications-march-15-2026)
+26. [Brand Alerts Dashboard (March 15, 2026)](#26-brand-alerts-dashboard-march-15-2026)
+27. [Bell Icon Real-Time Notifications (March 16, 2026)](#27-bell-icon-real-time-notifications-march-16-2026)
 
 ---
 
@@ -172,10 +177,13 @@ Client component (`'use client'`) providing the main layout:
 | `/dashboard/settings` | Settings | `nav-settings` | Settings |
 
 ### Dashboard Header
-**File:** `src/components/dashboard-header.tsx` (164 lines)
+**File:** `src/components/dashboard-header.tsx`
 
 - Sticky header with mobile sidebar trigger
-- Notifications dropdown (`data-tour="notifications"`)
+- **Notifications bell dropdown** (`data-tour="notifications"`) — real-time, role-based:
+  - **Brand users:** fetches last 10 `brand_alerts` from `GET /api/brand/alerts`; numeric unread badge; "Mark all read" button; links to `/dashboard/alerts`
+  - **Consumer users:** fetches last 20 `notification_queue` items from `GET /api/consumer/notifications`; unread derived from `localStorage.notif_last_read`; links to `/dashboard/my-feedback`
+  - Loading spinner on first fetch; empty inbox state; `formatDistanceToNow` timestamps
 - User avatar dropdown (`data-tour="user-menu"`) with:
   - User name & email from session
   - Settings link
@@ -784,4 +792,197 @@ Sign-in was completely broken in production:
 
 ---
 
-*This document covers all features implemented as of March 13, 2026. Update this file when adding new features.*
+---
+
+## 23. Survey System Enhancements (March 14–15, 2026)
+
+### 23.1 Google Forms-Style Question Editor
+
+**File:** `src/app/dashboard/surveys/[id]/QuestionEditor.tsx` (**new**)
+
+A new inline question editor is now embedded in the survey detail page (`/dashboard/surveys/[id]`):
+- Shows each question with its type badge, required flag, options (for multiple-choice), and scale (for rating)
+- Per-question delete controls
+- "Add question" button appended at the bottom
+
+### 23.2 `multiple_choice` → `multiple-choice` Bug Fix
+
+**Problem:** The survey creation form saved question type as `multiple_choice` (underscore). The
+consumer-facing `SurveyResponseForm` expected `multiple-choice` (hyphen). Surveys with multiple-choice
+questions crashed for consumers because the type comparison never matched.
+
+**Fixes applied:**
+
+| Fix | File |
+|---|---|
+| Normalized type string | `src/app/dashboard/surveys/[id]/QuestionEditor.tsx` — all switch/type comparisons use `'multiple-choice'` |
+| Seed data normalized | `data/surveys.json` — `multiple_choice` → `multiple-choice` in all records |
+| Production backfill | `POST /api/admin/fix-surveys` — scans `surveys` table, normalizes JSONB `questions` array in-place (idempotent) |
+
+### 23.3 Survey Type Selector Mobile Fix
+
+**File:** `src/components/survey-creation-form.tsx`
+
+The NPS / Product Feedback / Custom Survey type-selector button grid overflowed on small screens.
+Changed from a fixed 3-column grid to `grid-cols-1 sm:grid-cols-3` — stacks vertically on mobile,
+reverts to 3 columns on `sm` breakpoint.
+
+### 23.4 Files Changed
+
+| File | Change |
+|---|---|
+| `src/app/dashboard/surveys/[id]/QuestionEditor.tsx` | **New** — Google Forms-style question editor |
+| `src/app/api/admin/fix-surveys/route.ts` | **New** — Admin backfill endpoint for type normalization |
+| `data/surveys.json` | Normalized `multiple_choice` → `multiple-choice` |
+| `src/components/survey-creation-form.tsx` | Survey type selector: responsive grid |
+
+---
+
+## 24. Multi-Channel Notification System — Slack (March 15, 2026)
+
+### 24.1 Slack Integration
+
+**File:** `src/server/slackNotifications.ts` (**new**)
+
+Brand alerts can now be delivered to a Slack channel via Incoming Webhook (no SDK — plain HTTP POST).
+
+Each brand configures their own Slack webhook URL in the Settings page. The webhook URL is stored per
+brand in `brand_alert_rules.slackWebhookUrl`. `fireAlert()` looks up this URL and posts a Block Kit
+message non-blocking — Slack failures never break in-app alert delivery.
+
+**Emoji per alert type:** new_feedback `:speech_balloon:`, negative_feedback `:warning:`,
+survey_complete `:bar_chart:`, high_intent `:rocket:`, watchlist `:eyes:`, frustration `:rotating_light:`
+
+### 24.2 Survey Publish → Consumer Notification
+
+The survey creation action now calls `notifyNewSurvey(surveyId)` when a survey goes `active`.
+This schedules emails (and WhatsApp, see §25) for all matching consumers at their optimal send hour.
+
+### 24.3 Notification Settings API (Brand)
+
+`GET/PATCH /api/brand/notification-settings` — get/save the Slack webhook URL stored across the
+brand's alert rules. Created in `src/app/api/brand/notification-settings/route.ts`.
+
+### 24.4 Notification Settings Page
+
+**Route:** `/dashboard/settings`
+**File:** `src/app/dashboard/settings/page.tsx` (**new**)
+
+| Section | Detail |
+|---|---|
+| Slack webhook URL input | Input + save button; setup instructions link to Slack docs |
+| Alert rules table | Toggle email / Slack per alert type (in-app always on) |
+| Channel toggles disabled | Until webhook URL is saved — tooltip explains requirement |
+
+---
+
+## 25. WhatsApp Real-Time Notifications (March 15, 2026)
+
+### 25.1 Real Twilio Implementation
+
+**File:** `src/server/whatsappNotifications.ts`
+
+Replaced the `"WhatsApp not yet implemented"` stub with a real Twilio API call:
+- Reads `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` env vars
+- E.164 phone validation before sending
+- Non-throwing — returns `false` rather than crashing the caller on failure
+
+### 25.2 Coverage
+
+| Trigger | Who receives WhatsApp |
+|---|---|
+| Brand alert fires (`fireAlert()`) | Brand user (if phone + enabled in their notification preferences) |
+| New survey published | Matching consumers (instantly, alongside queued email) |
+
+### 25.3 User Notification Settings API
+
+`GET/PATCH /api/user/notification-settings` — available to **all** authenticated users:
+- `GET` → returns `{ phoneNumber, enabled }` for the user's WhatsApp preferences
+- `PATCH` → saves phone number + enabled toggle to `userProfiles.notificationPreferences.whatsapp`
+
+### 25.4 Settings Page (All Users)
+
+`/dashboard/settings` now renders for brands AND consumers:
+
+| Section | Brands | Consumers |
+|---|---|---|
+| WhatsApp card | ✅ (phone + enable toggle) | ✅ (phone + enable toggle) |
+| Alert rules table | ✅ | ❌ |
+| Survey info card | ❌ | ✅ |
+
+Brand-only role gate removed from the settings page route.
+
+### 25.5 Files Changed
+
+| File | Change |
+|---|---|
+| `src/server/whatsappNotifications.ts` | Real Twilio implementation |
+| `src/server/notificationService.ts` | `sendWhatsApp()` calls real Twilio function |
+| `src/server/brandAlertService.ts` | Sends WhatsApp in `fireAlert()` (non-blocking) |
+| `src/server/campaigns/surveyNotificationCampaign.ts` | Consumers get instant WhatsApp on survey publish |
+| `src/app/api/user/notification-settings/route.ts` | **New** — WhatsApp settings GET/PATCH |
+| `src/app/dashboard/settings/page.tsx` | WhatsApp card for all users; consumer card added |
+
+---
+
+## 26. Brand Alerts Dashboard (March 15, 2026)
+
+**Route:** `/dashboard/alerts`
+**File:** `src/app/dashboard/alerts/page.tsx` (**new**)
+
+A full-page inbox showing the current brand's real alerts.
+
+| Feature | Detail |
+|---|---|
+| Alert list | Up to 50 alerts, newest first |
+| Alert type icons | MessageSquare (new_feedback), AlertCircle (negative/frustration), BarChart3 (survey_complete), TrendingUp (high_intent), Eye (watchlist) |
+| Mark all read | `POST /api/brand/alerts {action:'mark_all_read'}` |
+| Unread count | Displayed in page heading |
+| Empty / loading states | Inbox icon + message; spinner on load |
+| Sidebar integration | "Alerts" nav link shows live unread badge (polls every 30 s) |
+
+---
+
+## 27. Bell Icon Real-Time Notifications (March 16, 2026)
+
+### Problem
+The dashboard header bell always showed 3 hardcoded consumer mocks to every user regardless of role:
+- "New Survey Response"
+- "New Reward Earned"
+- "Payout Processed"
+
+### Solution
+
+**File:** `src/components/dashboard-header.tsx` — complete rewrite of the bell section.
+
+The bell now fetches real data and renders role-appropriate content:
+
+| | Brands | Consumers |
+|---|---|---|
+| Data API | `GET /api/brand/alerts?limit=10` | `GET /api/consumer/notifications` |
+| Unread count | `unread` from API | Items newer than `localStorage.notif_last_read` |
+| Mark read on open | "Mark all read" button | `localStorage.notif_last_read = now()` |
+| View all link | `/dashboard/alerts` | `/dashboard/my-feedback` |
+
+**Consumer Notifications API (new):** `GET /api/consumer/notifications`
+(`src/app/api/consumer/notifications/route.ts`)
+— queries `notification_queue` for the current user, last 30 days, limit 20.
+
+**Notification type icons:**
+
+Brands: MessageSquare (new_feedback) · AlertCircle (negative) · BarChart3 (survey_complete) · TrendingUp (high_intent) · Eye (watchlist) · Zap (frustration)
+
+Consumers: ClipboardList (new_survey) · BarChart3 (weekly_digest) · CheckCheck (survey_submitted) · Star (reward_earned)
+
+**UX:** Numeric badge (capped `9+`), hidden when zero. Loading spinner. Empty state. `formatDistanceToNow` timestamps. HTML stripped from consumer body text.
+
+### Files Changed
+
+| File | Change |
+|---|---|
+| `src/components/dashboard-header.tsx` | Rewritten: hardcoded mocks → real role-based `NotificationDropdown` |
+| `src/app/api/consumer/notifications/route.ts` | **New** — consumer notification feed API |
+
+---
+
+*This document covers all features implemented as of March 16, 2026. Update this file when adding new features.*

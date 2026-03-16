@@ -33,7 +33,12 @@
 24. [Sign-in Latency Optimization (March 12, 2026)](#24-sign-in-latency-optimization-march-12-2026)
 25. [Dashboard Query Parallelization (March 12, 2026)](#25-dashboard-query-parallelization-march-12-2026)
 26. [Auth Flow Rewrite & 500 Error Fix (March 13, 2026)](#26-auth-flow-rewrite--500-error-fix-march-13-2026)
-27. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+27. [Survey System Enhancements (March 14–15, 2026)](#27-survey-system-enhancements-march-1415-2026)
+28. [Multi-Channel Notification System — Slack (March 15, 2026)](#28-multi-channel-notification-system--slack-march-15-2026)
+29. [WhatsApp Real-Time Notifications (March 15, 2026)](#29-whatsapp-real-time-notifications-march-15-2026)
+30. [Brand Alerts Dashboard (March 15, 2026)](#30-brand-alerts-dashboard-march-15-2026)
+31. [Bell Icon Real-Time Notifications (March 16, 2026)](#31-bell-icon-real-time-notifications-march-16-2026)
+32. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -1735,6 +1740,8 @@ POST /api/track-event                           — analytics event tracking
 POST /api/user/onboarding                       — save onboarding profile
 PATCH /api/user/consent                         — update consent settings
 GET  /api/recommendations                       — personalized product recommendations
+GET  /api/consumer/notifications                — bell icon notification feed (notification_queue)
+GET/PATCH /api/user/notification-settings       — get/save WhatsApp phone + enabled flag
 ```
 
 ### Brand (auth required, role=brand)
@@ -1749,6 +1756,10 @@ GET  /api/rankings                              — ranking data for own product
 POST /api/import/csv                            — bulk CSV feedback upload
 POST /api/import/webhook                        — v1 webhook import (text + rating)
 POST /api/import/webhook/v2                     — v2 webhook import (social + reviews + multimodal)
+GET  /api/brand/alerts                          — brand alert feed (paginated; ?countOnly=true for badge)
+PATCH /api/brand/alerts?id=                     — mark single alert read
+POST /api/brand/alerts                          — bulk action (action=mark_all_read)
+GET/PATCH /api/brand/notification-settings      — get/save Slack webhook URL per brand
 ```
 
 ### Admin
@@ -2369,6 +2380,316 @@ Plus a global fix for Recharts `ResponsiveContainer` overflow.
 
 ---
 
+## 27. Survey System Enhancements (March 14–15, 2026)
+
+### 27.1 Google Forms-Style Question Editor
+
+A new `QuestionEditor` component was added to the survey detail page:
+
+**File:** `src/app/dashboard/surveys/[id]/QuestionEditor.tsx`
+
+Allows brands to view and edit each question in a Google Forms-style UI:
+- Displays each question with its type, required flag, options (for multiple-choice), and scale (for rating)
+- Per-question delete + add-new controls
+- Integrated inline in the survey detail page (`/dashboard/surveys/[id]`)
+
+### 27.2 `multiple_choice` → `multiple-choice` Normalization Fix
+
+**Problem:** The survey creation form stored question type as `multiple_choice` (underscore). The
+`SurveyResponseForm` expected `multiple-choice` (hyphen). On surveys with multiple-choice questions,
+the consumer-facing form crashed because `question.type === 'multiple-choice'` never matched.
+
+**Fix applied in two places:**
+
+| File | Change |
+|---|---|
+| `src/app/dashboard/surveys/[id]/QuestionEditor.tsx` | TypeScript type + switch cases use `'multiple-choice'` |
+| `data/surveys.json` | Existing seed surveys normalized: `multiple_choice` → `multiple-choice` |
+
+**Admin backfill endpoint:** `POST /api/admin/fix-surveys` (`src/app/api/admin/fix-surveys/route.ts`)
+
+Scans all surveys in the DB and normalizes any `multiple_choice` → `multiple-choice` in the
+`questions` JSONB array. Used once to heal production data; safe to re-run (idempotent).
+
+### 27.3 Survey Type Selector Mobile Fix
+
+`src/components/survey-creation-form.tsx`
+
+The survey type selector (`NPS | Product Feedback | Custom Survey`) used a 3-column button grid that
+overflowed on mobile. Changed to `grid-cols-1 sm:grid-cols-3` — stacks single-column on mobile,
+reverts to 3-column on `sm` breakpoint and above.
+
+### 27.4 Files Changed
+
+| File | Change |
+|---|---|
+| `src/app/dashboard/surveys/[id]/QuestionEditor.tsx` | **New** — Google Forms-style question editor |
+| `src/app/api/admin/fix-surveys/route.ts` | **New** — Admin backfill route for question type normalization |
+| `data/surveys.json` | Updated seed data: `multiple_choice` → `multiple-choice` |
+| `src/components/survey-creation-form.tsx` | Survey type selector: responsive `grid-cols-1 sm:grid-cols-3` |
+
+---
+
+## 28. Multi-Channel Notification System — Slack (March 15, 2026)
+
+### 28.1 Overview
+
+Extends the existing notification system with a **Slack channel** for brand alert routing, and
+connects the survey publish event to consumer notification dispatch.
+
+### 28.2 Slack Incoming Webhook Integration
+
+**File:** `src/server/slackNotifications.ts`
+
+Sends brand alerts to a Slack channel via Incoming Webhook (no SDK required — plain HTTP POST).
+
+**Message format:** Slack Block Kit with:
+- Header block: emoji + alert type label + product name
+- Section with alert body text
+- Context block: consumer name (if available), platform attribution
+
+**Per-alert emojis:**
+| Alert type | Emoji |
+|---|---|
+| `new_feedback` | `:speech_balloon:` |
+| `negative_feedback` | `:warning:` |
+| `survey_complete` | `:bar_chart:` |
+| `high_intent_consumer` | `:rocket:` |
+| `watchlist_milestone` | `:eyes:` |
+| `frustration_spike` | `:rotating_light:` |
+
+Returns `true` on success, `false` (non-throwing) on failure — Slack errors never break the main alert pipeline.
+
+### 28.3 `fireAlert()` Wired to Slack
+
+`src/server/brandAlertService.ts` — `fireAlert()` now:
+1. Inserts `brand_alerts` row (in-app queue) as before
+2. Reads brand's Slack webhook URL from `brand_alert_rules` (via `slackWebhookUrl` field on the rule)
+3. If webhook URL present + `'slack'` in rule channels: calls `sendSlackNotification()` — non-blocking (`void` call)
+4. Falls back gracefully if Slack fails — brand alert still saved in-app
+
+### 28.4 Survey Publish → Consumer Notifications
+
+The survey creation action was updated to call `notifyNewSurvey(surveyId)` immediately after a survey
+is set to `status='active'`. This triggers the smart distribution pipeline:
+```
+notifyNewSurvey(surveyId)
+  → finds consumers matching survey's product category
+  → filters by notification preferences + marketing consent
+  → schedules notifications at optimal send time
+  → INSERT into notification_queue
+```
+
+### 28.5 Notification Settings API (Brand)
+
+**Route:** `GET/PATCH /api/brand/notification-settings`
+**File:** `src/app/api/brand/notification-settings/route.ts`
+
+| Method | Purpose |
+|---|---|
+| `GET` | Returns current Slack webhook URL from `brand_alert_rules` |
+| `PATCH` | Saves `slackWebhookUrl` to all of the brand's alert rules (or creates defaults) |
+
+### 28.6 Notification Settings UI
+
+**Route:** `/dashboard/settings`
+**File:** `src/app/dashboard/settings/page.tsx`
+
+Full-page notification management UI for brands:
+
+| Section | What it does |
+|---|---|
+| **Slack Webhook config** | Input field for Incoming Webhook URL; save button; setup instructions link |
+| **Alert Rules table** | One row per alert type; toggle email / Slack channel per type (in-app always on) |
+| **Channel toggles** | Disabled with tooltip until Slack webhook URL is saved |
+
+### 28.7 Files Added / Modified
+
+| File | Type | Change |
+|---|---|---|
+| `src/server/slackNotifications.ts` | **New** | Slack Incoming Webhook service |
+| `src/app/api/brand/notification-settings/route.ts` | **New** | GET/PATCH Slack webhook URL API |
+| `src/app/dashboard/settings/page.tsx` | **New** | Notification settings UI |
+| `src/server/brandAlertService.ts` | Modified | `fireAlert()` wired to Slack (non-blocking) |
+| Survey creation action | Modified | `notifyNewSurvey()` called on survey activation |
+
+---
+
+## 29. WhatsApp Real-Time Notifications (March 15, 2026)
+
+### 29.1 Overview
+
+The WhatsApp channel was previously a stub (`"WhatsApp not yet implemented"`). It is now a fully
+functional Twilio-backed real-time notification channel for both brands and consumers.
+
+### 29.2 `sendWhatsAppAlertMessage()`
+
+**File:** `src/server/whatsappNotifications.ts`
+
+Real Twilio WhatsApp implementation:
+- Reads `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` from env
+- Validates destination phone to E.164 format before sending
+- Sends branded emoji messages matching alert type (same emoji set as Slack)
+- Returns `true` on success, `false` (throws-never) on failure
+
+### 29.3 `notificationService.ts` WhatsApp Channel
+
+`src/server/notificationService.ts` — replaced the `sendWhatsApp()` stub with a real call:
+- Reads `userId` → looks up `userProfiles.notificationPreferences.whatsapp.phoneNumber`
+- Calls `sendWhatsAppAlertMessage()` with the formatted message body
+
+### 29.4 Brand Alert Flow (Real-Time)
+
+`src/server/brandAlertService.ts` — `fireAlert()` now:
+1. Fetches brand profile once (single DB read shared between Slack + WhatsApp)
+2. Reads `notificationPreferences.whatsapp` from brand's user profile
+3. If WhatsApp enabled + phone number present: calls `sendWhatsAppAlertMessage()` immediately (non-blocking)
+
+### 29.5 Consumer Campaign Flow (Real-Time)
+
+`src/server/campaigns/surveyNotificationCampaign.ts`:
+- When a new survey is published and consumer matches, WhatsApp is sent immediately alongside queued email
+- Reads consumer's WhatsApp phone from `userProfiles.notificationPreferences.whatsapp`
+
+### 29.6 User Notification Settings API
+
+**Route:** `GET/PATCH /api/user/notification-settings`
+**File:** `src/app/api/user/notification-settings/route.ts`
+
+Available to **all authenticated users** (brands + consumers):
+
+| Method | Purpose |
+|---|---|
+| `GET` | Returns current WhatsApp phone number + enabled flag from user profile |
+| `PATCH` | Saves `phoneNumber` and `enabled` to `userProfiles.notificationPreferences.whatsapp` |
+
+### 29.7 Settings Page Expanded for All Users
+
+`src/app/dashboard/settings/page.tsx` — expanded to serve brands AND consumers:
+
+| Section | Brands | Consumers |
+|---|---|---|
+| **WhatsApp card** (top of page) | Phone + enable toggle | Phone + enable toggle |
+| **Alert rules table** | ✅ Present (email / Slack / WhatsApp columns) | ❌ Not shown |
+| **Consumer survey info card** | ❌ Not shown | ✅ Short-form survey notification info |
+
+Role gating is removed — any authenticated user can reach `/dashboard/settings`.
+
+### 29.8 Files Added / Modified
+
+| File | Type | Change |
+|---|---|---|
+| `src/server/whatsappNotifications.ts` | Modified | Real Twilio impl replacing stub |
+| `src/server/notificationService.ts` | Modified | `sendWhatsApp()` calls real Twilio function |
+| `src/server/brandAlertService.ts` | Modified | Fetches brand profile once, sends WhatsApp (non-blocking) |
+| `src/server/campaigns/surveyNotificationCampaign.ts` | Modified | Consumers get instant WhatsApp on survey publish |
+| `src/app/api/user/notification-settings/route.ts` | **New** | GET/PATCH WhatsApp settings for any user |
+| `src/app/dashboard/settings/page.tsx` | Modified | WhatsApp card + consumer info card; brand-only gate removed |
+
+---
+
+## 30. Brand Alerts Dashboard (March 15, 2026)
+
+**Route:** `/dashboard/alerts`
+**File:** `src/app/dashboard/alerts/page.tsx`
+
+A dedicated full-page alerts inbox for brands.
+
+### Features
+
+| Feature | Detail |
+|---|---|
+| **Alert list** | Up to 50 alerts, newest first, scoped to current brand |
+| **Per-alert icons** | Colour-coded by alert type: MessageSquare blue, AlertCircle red, BarChart3 green, TrendingUp purple, Eye amber |
+| **Unread count** | Shown in page heading |
+| **Mark all read** | Single button calls `POST /api/brand/alerts {action:'mark_all_read'}` |
+| **Empty state** | Inbox icon + "No alerts yet" message |
+| **Loading state** | Spinner on initial fetch |
+| **Sidebar badge** | `DashboardShell` "Alerts" nav link polls `/api/brand/alerts?countOnly=true` every 30 s for live unread count |
+
+### Component Data Flow
+
+```
+Page mounts → GET /api/brand/alerts?limit=50 → setAlerts + setUnread
+Mark all read → POST /api/brand/alerts {action:'mark_all_read'} → optimistic local update
+Sidebar badge  → polls /api/brand/alerts?countOnly=true every 30 s
+Bell dropdown  → also reads /api/brand/alerts (first 10 items)
+```
+
+---
+
+## 31. Bell Icon Real-Time Notifications (March 16, 2026)
+
+### 31.1 Problem
+
+The `DashboardHeader` bell dropdown (`src/components/dashboard-header.tsx`) showed three hardcoded
+consumer-appropriate mock items to **all users regardless of role**:
+- "New Survey Response" (consumer mock)
+- "New Reward Earned" (consumer mock)
+- "Payout Processed" (consumer mock)
+
+The static badge dot was always visible regardless of whether any real notifications existed.
+
+### 31.2 Solution Architecture
+
+Completely rewritten as a `NotificationDropdown` sub-component with real data fetching:
+
+| Role | Data source | Unread count derivation |
+|---|---|---|
+| `brand` | `GET /api/brand/alerts?limit=10` | `unread` field from API |
+| `consumer` | `GET /api/consumer/notifications` | Items newer than `localStorage.notif_last_read` timestamp |
+
+### 31.3 Consumer Notifications API
+
+**Route:** `GET /api/consumer/notifications`
+**File:** `src/app/api/consumer/notifications/route.ts`
+
+- Authenticated (any user)
+- Queries `notification_queue` WHERE `userId = currentUser` AND `createdAt >= 30 days ago`
+- Returns `{ notifications[] }` — limit 20, descending by `createdAt`
+
+### 31.4 `NotificationDropdown` Component Behaviour
+
+```
+Fetch on: mount (when role is known) + dropdown open event
+Brand:    re-fetch → show items → "Mark all read" button calls POST /api/brand/alerts
+Consumer: re-fetch → localStorage.notif_last_read = now (marks all read visually)
+```
+
+**Brand notification icons (by `alertType`):**
+| Type | Icon | Color |
+|---|---|---|
+| `new_feedback` | MessageSquare | blue |
+| `negative_feedback` | AlertCircle | red |
+| `survey_complete` | BarChart3 | green |
+| `high_intent_consumer` | TrendingUp | purple |
+| `watchlist_milestone` | Eye | amber |
+| `frustration_spike` | Zap | orange |
+
+**Consumer notification icons (by `type`):**
+| Type | Icon | Color |
+|---|---|---|
+| `new_survey` | ClipboardList | blue |
+| `weekly_digest` | BarChart3 | purple |
+| `survey_submitted` | CheckCheck | green |
+| `reward_earned` | Star | yellow |
+
+**UX details:**
+- Numeric unread badge (capped at `9+`); hidden when count = 0 — replaces the always-visible static dot
+- Loading spinner on initial fetch; empty inbox state with Inbox icon
+- `formatDistanceToNow` timestamps (e.g. "3 hours ago")
+- HTML stripped from consumer notification body before display
+- "View all →" footer: brands → `/dashboard/alerts`, consumers → `/dashboard/my-feedback`
+
+### 31.5 Files Added / Modified
+
+| File | Type | Change |
+|---|---|---|
+| `src/components/dashboard-header.tsx` | Modified | Full rewrite: hardcoded mocks → real role-based `NotificationDropdown` |
+| `src/app/api/consumer/notifications/route.ts` | **New** | Consumer notification feed API |
+
+---
+
 ## Appendix A — Cost Calculator & Capacity Planning
 
 > **Planning note:** These are internal cost-planning estimates based on the current Earn4Insights architecture and the Whisper rate of `~$0.006 / minute`.  
@@ -2733,4 +3054,4 @@ The key insight: NextAuth v5's `signIn()` is designed for API route usage (retur
 
 ---
 
-*This document reflects the architecture as of March 13, 2026. It should be updated as new systems are added.*
+*This document reflects the architecture as of March 16, 2026. It should be updated as new systems are added.*
