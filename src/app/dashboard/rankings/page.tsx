@@ -208,7 +208,7 @@ export default function RankingsPage() {
         </CardHeader>
         <CardContent>
           <Tabs value={selectedCategory} onValueChange={(value) => setSelectedCategory(value as ProductCategory)}>
-            <TabsList className="flex h-auto overflow-x-auto overflow-y-hidden whitespace-nowrap pb-2 md:flex-wrap md:whitespace-normal">
+            <TabsList className="flex h-auto flex-wrap gap-1 pb-2">
               {Object.keys(PRODUCT_CATEGORIES).map((category) => (
                 <TabsTrigger key={category} value={category} className="flex items-center gap-2">
                   <span className="text-xl">{CATEGORY_ICONS[category as ProductCategory]}</span>
