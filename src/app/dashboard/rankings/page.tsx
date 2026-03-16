@@ -255,18 +255,6 @@ export default function RankingsPage() {
             </Link>
           </Button>
           <Button variant="outline" className="w-full justify-start gap-2" asChild>
-            <Link href="/dashboard/analytics/category-intelligence">
-              <Heart className="h-4 w-4" />
-              Category Intelligence
-            </Link>
-          </Button>
-          <Button variant="outline" className="w-full justify-start gap-2" asChild>
-            <Link href="/dashboard/analytics/feature-insights">
-              <Sparkles className="h-4 w-4" />
-              Feature Insights
-            </Link>
-          </Button>
-          <Button variant="outline" className="w-full justify-start gap-2" asChild>
             <Link href="/dashboard/rankings/categories">
               <Sparkles className="h-4 w-4" />
               Manage Product Categories

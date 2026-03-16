@@ -107,6 +107,9 @@ const menuItems: MenuItem[] = [
   },
 ]
 
+// Items whose sub-paths have their own sidebar entry — use exact match only
+const exactMatchRoutes = new Set(['/dashboard/analytics'])
+
 // Inner component — must live inside <SidebarProvider> so useSidebar() works
 function SidebarNav({
   visibleItems,
@@ -122,6 +125,12 @@ function SidebarNav({
     if (isMobile) close()
   }
 
+  const isActive = (href: string) => {
+    if (href === '/dashboard') return pathname === href
+    if (exactMatchRoutes.has(href)) return pathname === href
+    return pathname.startsWith(href)
+  }
+
   return (
     <>
       <SidebarContent>
@@ -130,11 +139,7 @@ function SidebarNav({
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
-                isActive={
-                  item.href === '/dashboard'
-                    ? pathname === item.href
-                    : pathname.startsWith(item.href)
-                }
+                isActive={isActive(item.href)}
                 tooltip={item.label}
                 data-tour={item.tourId}
               >
