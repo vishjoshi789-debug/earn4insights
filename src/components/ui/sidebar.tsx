@@ -12,6 +12,7 @@ type SidebarContextValue = {
   isMobile: boolean;
   isOpen: boolean;
   toggle: () => void;
+  close: () => void;
 };
 
 const SidebarContext = React.createContext<SidebarContextValue | null>(null);
@@ -47,10 +48,15 @@ export function SidebarProvider({ children }: SidebarProviderProps) {
     setIsOpen((prev) => !prev);
   }, []);
 
+  const close = React.useCallback(() => {
+    setIsOpen(false);
+  }, []);
+
   const value: SidebarContextValue = {
     isMobile,
     isOpen,
     toggle,
+    close,
   };
 
   return (

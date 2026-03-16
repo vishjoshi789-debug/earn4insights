@@ -12,6 +12,7 @@ import {
   SidebarMenuButton,
   SidebarFooter,
   SidebarInset,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import { Logo } from '@/components/logo'
 import {
@@ -106,12 +107,73 @@ const menuItems: MenuItem[] = [
   },
 ]
 
+// Inner component — must live inside <SidebarProvider> so useSidebar() works
+function SidebarNav({
+  visibleItems,
+  unreadAlerts,
+}: {
+  visibleItems: MenuItem[]
+  unreadAlerts: number
+}) {
+  const pathname = usePathname()
+  const { isMobile, close } = useSidebar()
+
+  const handleNavClick = () => {
+    if (isMobile) close()
+  }
+
+  return (
+    <>
+      <SidebarContent>
+        <SidebarMenu>
+          {visibleItems.map((item) => (
+            <SidebarMenuItem key={item.href}>
+              <SidebarMenuButton
+                asChild
+                isActive={
+                  item.href === '/dashboard'
+                    ? pathname === item.href
+                    : pathname.startsWith(item.href)
+                }
+                tooltip={item.label}
+                data-tour={item.tourId}
+              >
+                <Link href={item.href} onClick={handleNavClick}>
+                  <item.icon />
+                  <span>{item.label}</span>
+                  {item.href === '/dashboard/alerts' && unreadAlerts > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                      {unreadAlerts > 99 ? '99+' : unreadAlerts}
+                    </span>
+                  )}
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Settings" data-tour="nav-settings">
+              <Link href="/dashboard/settings" onClick={handleNavClick}>
+                <Settings />
+                <span>Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </>
+  )
+}
+
 export default function DashboardShell({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const pathname = usePathname()
   const { data: session } = useSession()
   const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | undefined
   const [unreadAlerts, setUnreadAlerts] = useState(0)
@@ -155,47 +217,7 @@ export default function DashboardShell({
           </div>
         </SidebarHeader>
 
-        <SidebarContent>
-          <SidebarMenu>
-            {visibleItems.map((item) => (
-              <SidebarMenuItem key={item.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={
-                    item.href === '/dashboard'
-                      ? pathname === item.href
-                      : pathname.startsWith(item.href)
-                  }
-                  tooltip={item.label}
-                  data-tour={item.tourId}
-                >
-                  <Link href={item.href}>
-                    <item.icon />
-                    <span>{item.label}</span>
-                    {item.href === '/dashboard/alerts' && unreadAlerts > 0 && (
-                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-                        {unreadAlerts > 99 ? '99+' : unreadAlerts}
-                      </span>
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarContent>
-
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Settings" data-tour="nav-settings">
-                <Link href="/dashboard/settings">
-                  <Settings />
-                  <span>Settings</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
+        <SidebarNav visibleItems={visibleItems} unreadAlerts={unreadAlerts} />
       </Sidebar>
 
       <SidebarInset>
