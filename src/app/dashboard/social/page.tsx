@@ -1,109 +1,108 @@
-'use client';
+import { auth } from '@/lib/auth/auth.config'
+import { redirect } from 'next/navigation'
+import { db } from '@/db'
+import { products, socialPosts } from '@/db/schema'
+import { eq, inArray, desc, and, gte, sql } from 'drizzle-orm'
+import { getSocialAggregateMetrics, getSocialTrends } from '@/db/repositories/socialRepository'
+import { getSocialOverview } from '@/server/social/socialAnalyticsService'
+import SocialPageClient, { type SocialPageData } from './SocialPageClient'
 
-import { useMemo, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { mockProducts, mockSocialPosts, type SocialPost } from '@/lib/data';
-import { SocialPostCard } from '@/components/social-post-card';
+export default async function SocialPage() {
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
 
-type PlatformFilter = 'all' | SocialPost['platform'];
+  const userId = session.user.id
+  const userRole = (session.user as any).role || 'consumer'
+  const isBrand = userRole === 'brand'
 
-const PLATFORM_OPTIONS: { value: PlatformFilter; label: string }[] = [
-  { value: 'all', label: 'All platforms' },
-  { value: 'twitter', label: 'Twitter' },
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'tiktok', label: 'TikTok' },
-  { value: 'meta', label: 'Meta' },
-  { value: 'google', label: 'Google Reviews' },
-  { value: 'amazon', label: 'Amazon Reviews' },
-  { value: 'flipkart', label: 'Flipkart Reviews' },
-  { value: 'reddit', label: 'Reddit' },
-];
+  // Get products (brand = owned products; consumer = all products with social enabled)
+  let productIds: string[] = []
+  let productNameMap: Record<string, string> = {}
 
-function getProductName(productId: string): string {
-  return mockProducts.find((p) => p.id === productId)?.name ?? 'Unknown product';
-}
+  if (isBrand) {
+    const brandProducts = await db
+      .select({ id: products.id, name: products.name })
+      .from(products)
+      .where(eq(products.ownerId, userId))
 
-export default function SocialPage() {
-  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
-
-  const filteredPosts = useMemo(() => {
-    if (platformFilter === 'all') {
-      return mockSocialPosts;
+    productIds = brandProducts.map((p) => p.id)
+    for (const p of brandProducts) {
+      productNameMap[p.id] = p.name
     }
-    return mockSocialPosts.filter((post) => post.platform === platformFilter);
-  }, [platformFilter]);
+  } else {
+    // Consumer sees all products with social listening enabled
+    const socialProducts = await db
+      .select({ id: products.id, name: products.name })
+      .from(products)
+      .where(eq(products.socialListeningEnabled, true))
+      .limit(50)
 
-  const sortedPosts = useMemo(
-    () =>
-      [...filteredPosts].sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-      ),
-    [filteredPosts],
-  );
+    productIds = socialProducts.map((p) => p.id)
+    for (const p of socialProducts) {
+      productNameMap[p.id] = p.name
+    }
+  }
 
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-col gap-4 pb-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <CardTitle className="text-2xl font-headline">
-              Social listening
-            </CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Monitor what customers are saying across platforms in one view.
-            </p>
-          </div>
+  // Fetch initial posts and overview
+  let posts: any[] = []
+  let total = 0
+  let overview: SocialPageData['overview'] = null
 
-          <div className="w-full md:w-64">
-            <Select
-              value={platformFilter}
-              onValueChange={(value) =>
-                setPlatformFilter(value as PlatformFilter)
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by platform" />
-              </SelectTrigger>
-              <SelectContent>
-                {PLATFORM_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
+  if (productIds.length > 0) {
+    const dateFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-        {sortedPosts.length === 0 && (
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              No posts for this platform yet. Try selecting &quot;All
-              platforms&quot; or another source.
-            </p>
-          </CardContent>
-        )}
-      </Card>
+    const [postsResult, countResult, overviewResult] = await Promise.all([
+      db
+        .select()
+        .from(socialPosts)
+        .where(inArray(socialPosts.productId, productIds))
+        .orderBy(desc(socialPosts.postedAt))
+        .limit(50),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(socialPosts)
+        .where(inArray(socialPosts.productId, productIds)),
+      getSocialOverview(productIds, 30).catch(() => null),
+    ])
 
-      {sortedPosts.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {sortedPosts.map((post) => (
-            <SocialPostCard
-              key={post.id}
-              post={post}
-              productName={getProductName(post.productId)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+    posts = postsResult.map((p) => ({
+      id: p.id,
+      productId: p.productId,
+      platform: p.platform,
+      postType: p.postType,
+      content: p.content,
+      title: p.title,
+      url: p.url,
+      author: p.author,
+      authorHandle: p.authorHandle,
+      authorAvatar: p.authorAvatar,
+      likes: p.likes,
+      shares: p.shares,
+      comments: p.comments,
+      views: p.views,
+      rating: p.rating,
+      sentiment: p.sentiment,
+      sentimentScore: p.sentimentScore,
+      engagementScore: p.engagementScore,
+      influenceScore: p.influenceScore,
+      isKeyOpinionLeader: p.isKeyOpinionLeader,
+      category: p.category,
+      postedAt: p.postedAt?.toISOString() ?? null,
+      createdAt: p.createdAt.toISOString(),
+    }))
+
+    total = countResult[0]?.count ?? 0
+    overview = overviewResult
+  }
+
+  const data: SocialPageData = {
+    posts,
+    total,
+    overview,
+    productNames: productNameMap,
+    hasProducts: productIds.length > 0,
+    isBrand,
+  }
+
+  return <SocialPageClient data={data} />
 }

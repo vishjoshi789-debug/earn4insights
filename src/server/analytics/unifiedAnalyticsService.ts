@@ -19,8 +19,8 @@
 
 import 'server-only'
 import { db } from '@/db'
-import { surveyResponses, feedback, feedbackMedia } from '@/db/schema'
-import { eq, and, gte, lte, inArray, sql, or } from 'drizzle-orm'
+import { surveyResponses, feedback, feedbackMedia, socialPosts } from '@/db/schema'
+import { eq, and, gte, lte, inArray, sql, or, desc } from 'drizzle-orm'
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -658,6 +658,132 @@ class DirectFeedbackSource implements IFeedbackSource {
 }
 
 // ============================================================================
+// SOCIAL LISTENING SOURCE
+// Aggregates data from social_posts table
+// ============================================================================
+
+class SocialListeningSource implements IFeedbackSource {
+  async fetchItems(filters: UnifiedAnalyticsFilters): Promise<UnifiedFeedbackItem[]> {
+    const conditions: any[] = []
+
+    if (filters.productId) {
+      conditions.push(eq(socialPosts.productId, filters.productId))
+    }
+    if (filters.productIds && filters.productIds.length > 0) {
+      conditions.push(inArray(socialPosts.productId, filters.productIds))
+    }
+    if (filters.dateFrom) {
+      conditions.push(gte(socialPosts.postedAt, filters.dateFrom))
+    }
+    if (filters.dateTo) {
+      conditions.push(lte(socialPosts.postedAt, filters.dateTo))
+    }
+    if (filters.sentiments && filters.sentiments.length > 0) {
+      conditions.push(inArray(socialPosts.sentiment, filters.sentiments))
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+    const posts = await db
+      .select()
+      .from(socialPosts)
+      .where(whereClause)
+      .limit(filters.limit || 100)
+      .offset(filters.offset || 0)
+      .orderBy(
+        filters.sortOrder === 'asc'
+          ? socialPosts.postedAt
+          : desc(socialPosts.postedAt)
+      )
+
+    return posts.map(post => ({
+      id: post.id,
+      source: 'social' as const,
+      sourceId: post.id,
+      productId: post.productId,
+      createdAt: post.postedAt ?? post.createdAt,
+      userName: post.author || undefined,
+      text: post.content,
+      modality: 'text' as const,
+      hasAudio: false,
+      hasVideo: false,
+      hasImages: false,
+      mediaCount: 0,
+      originalLanguage: post.language || undefined,
+      sentiment: post.sentiment as any,
+      rating: post.rating || undefined,
+      processingStatus: 'ready' as const,
+      metadata: {
+        platform: post.platform,
+        postType: post.postType,
+        category: post.category,
+        url: post.url,
+        likes: post.likes,
+        shares: post.shares,
+        comments: post.comments,
+      },
+    }))
+  }
+
+  async calculateMetrics(filters: UnifiedAnalyticsFilters): Promise<Partial<UnifiedMetrics>> {
+    const conditions: any[] = []
+
+    if (filters.productId) {
+      conditions.push(eq(socialPosts.productId, filters.productId))
+    }
+    if (filters.productIds && filters.productIds.length > 0) {
+      conditions.push(inArray(socialPosts.productId, filters.productIds))
+    }
+    if (filters.dateFrom) {
+      conditions.push(gte(socialPosts.postedAt, filters.dateFrom))
+    }
+    if (filters.dateTo) {
+      conditions.push(lte(socialPosts.postedAt, filters.dateTo))
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+    try {
+      const [result] = await db
+        .select({
+          total: sql<number>`count(*)::int`,
+          sentimentPositive: sql<number>`count(*) FILTER (WHERE sentiment = 'positive')::int`,
+          sentimentNeutral: sql<number>`count(*) FILTER (WHERE sentiment = 'neutral')::int`,
+          sentimentNegative: sql<number>`count(*) FILTER (WHERE sentiment = 'negative')::int`,
+          sentimentUnknown: sql<number>`count(*) FILTER (WHERE sentiment IS NULL)::int`,
+          avgRating: sql<number | null>`avg(rating)::float`,
+        })
+        .from(socialPosts)
+        .where(whereClause)
+
+      const total = result?.total || 0
+
+      return {
+        totalFeedback: total,
+        bySource: { survey: 0, feedback: 0, review: 0, social: total },
+        byModality: { text: total, audio: 0, video: 0, image: 0, mixed: 0 },
+        bySentiment: {
+          positive: result?.sentimentPositive || 0,
+          neutral: result?.sentimentNeutral || 0,
+          negative: result?.sentimentNegative || 0,
+          unknown: result?.sentimentUnknown || 0,
+        },
+        averageRating: result?.avgRating || undefined,
+        processingMetrics: { ready: total, processing: 0, failed: 0, successRate: 100 },
+      }
+    } catch {
+      return {
+        totalFeedback: 0,
+        bySource: { survey: 0, feedback: 0, review: 0, social: 0 },
+        byModality: { text: 0, audio: 0, video: 0, image: 0, mixed: 0 },
+        bySentiment: { positive: 0, neutral: 0, negative: 0, unknown: 0 },
+        processingMetrics: { ready: 0, processing: 0, failed: 0, successRate: 0 },
+      }
+    }
+  }
+}
+
+// ============================================================================
 // UNIFIED ANALYTICS SERVICE
 // ============================================================================
 
@@ -669,9 +795,7 @@ export class UnifiedAnalyticsService {
   private sources: IFeedbackSource[] = [
     new SurveyResponseSource(),
     new DirectFeedbackSource(),
-    // Easy to add new sources:
-    // new ReviewSource(),
-    // new SocialListeningSource(),
+    new SocialListeningSource(),
   ]
   
   /**
@@ -683,6 +807,7 @@ export class UnifiedAnalyticsService {
       ? this.sources.filter(s => {
           if (s instanceof SurveyResponseSource) return filters.sources?.includes('survey')
           if (s instanceof DirectFeedbackSource) return filters.sources?.includes('feedback')
+          if (s instanceof SocialListeningSource) return filters.sources?.includes('social')
           return false
         })
       : this.sources
@@ -722,6 +847,7 @@ export class UnifiedAnalyticsService {
       ? this.sources.filter(s => {
           if (s instanceof SurveyResponseSource) return filters.sources?.includes('survey')
           if (s instanceof DirectFeedbackSource) return filters.sources?.includes('feedback')
+          if (s instanceof SocialListeningSource) return filters.sources?.includes('social')
           return false
         })
       : this.sources

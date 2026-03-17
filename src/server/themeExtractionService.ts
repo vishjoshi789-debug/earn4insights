@@ -2,7 +2,7 @@ import 'server-only'
 
 import OpenAI from 'openai'
 import { db } from '@/db'
-import { feedback, surveyResponses } from '@/db/schema'
+import { feedback, surveyResponses, socialPosts } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { saveExtractedThemes } from '@/db/repositories/themeRepository'
 
@@ -184,6 +184,26 @@ async function gatherFeedbackTexts(productId: string): Promise<string[]> {
     }
   } catch (err) {
     console.warn('[ThemeExtraction] Could not read survey_responses table:', (err as Error).message)
+  }
+
+  // Gather from social posts
+  try {
+    const socialRows = await db
+      .select({
+        content: socialPosts.content,
+        title: socialPosts.title,
+      })
+      .from(socialPosts)
+      .where(eq(socialPosts.productId, productId))
+
+    for (const row of socialRows) {
+      const text = row.content || row.title
+      if (text && text.trim().length > 5) {
+        texts.push(text.trim())
+      }
+    }
+  } catch (err) {
+    console.warn('[ThemeExtraction] Could not read social_posts table:', (err as Error).message)
   }
 
   return texts

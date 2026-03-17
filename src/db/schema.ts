@@ -194,16 +194,49 @@ export const rankingHistory = pgTable('ranking_history', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
-// Social media posts table
+// Social media posts table — enhanced for full social listening
 export const socialPosts = pgTable('social_posts', {
   id: text('id').primaryKey(),
   productId: text('product_id').notNull(),
-  platform: text('platform').notNull(), // 'twitter' | 'linkedin' | 'reddit'
+  platform: text('platform').notNull(), // 'twitter' | 'instagram' | 'tiktok' | 'meta' | 'google' | 'amazon' | 'flipkart' | 'reddit' | 'youtube' | 'linkedin'
+  postType: text('post_type').default('mention').notNull(), // 'mention' | 'review' | 'comment' | 'discussion' | 'complaint' | 'praise'
   content: text('content').notNull(),
+  title: text('title'), // For reviews/threads that have a title
   url: text('url'),
+
+  // Author info
   author: text('author'),
+  authorHandle: text('author_handle'),
+  authorAvatar: text('author_avatar'),
+  authorFollowers: integer('author_followers'),
+  isVerifiedAuthor: boolean('is_verified_author').default(false).notNull(),
+
+  // Engagement metrics
+  likes: integer('likes').default(0).notNull(),
+  shares: integer('shares').default(0).notNull(),
+  comments: integer('comments').default(0).notNull(),
+  views: integer('views').default(0),
+  rating: real('rating'), // 1–5 star rating for review platforms
+
+  // Analysis
   sentiment: text('sentiment'), // 'positive' | 'neutral' | 'negative'
-  engagementScore: real('engagement_score'),
+  sentimentScore: real('sentiment_score'), // -1 to 1
+  engagementScore: real('engagement_score'), // 0–1 normalized
+  influenceScore: real('influence_score'), // 0–1 based on author reach
+  isKeyOpinionLeader: boolean('is_key_opinion_leader').default(false).notNull(),
+
+  // Categorisation
+  category: text('category'), // 'product_feedback' | 'brand_mention' | 'customer_support' | 'feature_request' | 'comparison' | 'other'
+  keywords: jsonb('keywords').$type<string[]>().default([]),
+  language: text('language'),
+
+  // Ingestion metadata
+  source: text('source').default('scraper').notNull(), // 'scraper' | 'api' | 'brand_submitted' | 'webhook'
+  externalId: text('external_id'), // Platform-native ID for dedup
+  parentPostId: text('parent_post_id'), // For replies/threads
+
+  // Timestamps
+  postedAt: timestamp('posted_at'), // When the post was originally made on the platform
   createdAt: timestamp('created_at').defaultNow().notNull(),
   scrapedAt: timestamp('scraped_at').defaultNow().notNull(),
 })

@@ -4,6 +4,7 @@ import type { SurveyResponse } from '@/lib/survey-types'
 import type { ProductRankingMetrics, RankingScore } from '@/lib/types/ranking'
 import type { ProductCategory } from '@/lib/categories'
 import { analyzeSentiment } from '@/server/sentimentService'
+import { getSocialProductScore } from '@/server/social/socialAnalyticsService'
 
 /**
  * RANKING ALGORITHM CONFIGURATION
@@ -11,12 +12,13 @@ import { analyzeSentiment } from '@/server/sentimentService'
  * Weights must sum to 1.0
  */
 const RANKING_WEIGHTS = {
-  NPS: 0.25,           // Core satisfaction metric
-  SENTIMENT: 0.20,     // Feedback quality
-  ENGAGEMENT: 0.20,    // User participation
-  VOLUME: 0.15,        // Data quantity
+  NPS: 0.22,           // Core satisfaction metric
+  SENTIMENT: 0.18,     // Feedback quality
+  ENGAGEMENT: 0.18,    // User participation
+  VOLUME: 0.12,        // Data quantity
   RECENCY: 0.10,       // Fresh data
   TREND: 0.10,         // Week-over-week improvement
+  SOCIAL: 0.10,        // Social listening signals
 } as const
 
 /**
@@ -112,7 +114,7 @@ export async function calculateProductMetrics(
     daysSinceLastResponse
   )
 
-  return {
+  const result: ProductRankingMetrics = {
     productId: product.id,
     productName: product.name,
     category: product.profile.data.category as ProductCategory,
@@ -134,7 +136,25 @@ export async function calculateProductMetrics(
     
     confidenceScore,
     hasMinimumData,
+    // Social signals — fetched from social analytics
+    socialMentions: 0,
+    socialSentimentScore: 0,
+    socialEngagementScore: 0,
   }
+
+  // Enrich with social data (non-blocking — defaults to 0 if unavailable)
+  try {
+    const socialScore = await getSocialProductScore(product.id, 30)
+    if (socialScore) {
+      result.socialMentions = socialScore.totalMentions
+      result.socialSentimentScore = socialScore.socialSentimentScore
+      result.socialEngagementScore = socialScore.socialEngagementScore
+    }
+  } catch {
+    // Social data unavailable — keep defaults
+  }
+
+  return result
 }
 
 /**
@@ -174,6 +194,14 @@ export function calculateRankingScore(metrics: ProductRankingMetrics): RankingSc
     1
   ))
 
+  // 7. Social Score: combination of social sentiment, engagement, and volume
+  const socialVolumeComponent = Math.min(Math.log10((metrics.socialMentions || 0) + 1) / Math.log10(500), 1)
+  const socialNormalized = (
+    (metrics.socialSentimentScore || 0) * 0.4 +
+    (metrics.socialEngagementScore || 0) * 0.3 +
+    socialVolumeComponent * 0.3
+  )
+
   // Calculate weighted components
   const breakdown = {
     nps: npsNormalized * RANKING_WEIGHTS.NPS,
@@ -182,6 +210,7 @@ export function calculateRankingScore(metrics: ProductRankingMetrics): RankingSc
     volume: volumeNormalized * RANKING_WEIGHTS.VOLUME,
     recency: recencyNormalized * RANKING_WEIGHTS.RECENCY,
     trend: trendNormalized * RANKING_WEIGHTS.TREND,
+    social: socialNormalized * RANKING_WEIGHTS.SOCIAL,
   }
 
   // Sum all components

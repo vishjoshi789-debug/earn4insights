@@ -32,6 +32,11 @@ export type ProductRankingMetrics = {
   weekOverWeekChange: number // Percentage change from last week
   trendDirection: 'up' | 'down' | 'stable'
   
+  // Social signals
+  socialMentions: number
+  socialSentimentScore: number // 0 to 1
+  socialEngagementScore: number // 0 to 1
+  
   // Confidence
   confidenceScore: number // 0 to 1
   hasMinimumData: boolean
@@ -50,6 +55,7 @@ export type RankingScore = {
     volume: number
     recency: number
     trend: number
+    social: number
   }
   confidenceMultiplier: number
 }

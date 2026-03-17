@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { db } from '@/db'
-import { products, feedback, surveyResponses, extractedThemes } from '@/db/schema'
+import { products, feedback, surveyResponses, extractedThemes, socialPosts } from '@/db/schema'
 import { eq, desc, sql, and, gte } from 'drizzle-orm'
 import { calculateProductHealthScore, type ProductHealthResult } from './productHealthScore'
 import type { ProductCategory } from '@/lib/categories'
@@ -82,10 +82,22 @@ export async function getCategoryIntelligence(
         .from(feedback)
         .where(eq(feedback.productId, product.id))
 
-      const positive = fb.filter(f => f.sentiment === 'positive').length
-      const negative = fb.filter(f => f.sentiment === 'negative').length
-      const neutral = fb.filter(f => f.sentiment === 'neutral' || !f.sentiment).length
-      const fbTotal = fb.length
+      // Also count social post sentiments
+      let socialFb: Array<{ sentiment: string | null }> = []
+      try {
+        socialFb = await db
+          .select({ sentiment: socialPosts.sentiment })
+          .from(socialPosts)
+          .where(eq(socialPosts.productId, product.id))
+      } catch {
+        // Social table may not exist yet
+      }
+
+      const allFb = [...fb, ...socialFb]
+      const positive = allFb.filter(f => f.sentiment === 'positive').length
+      const negative = allFb.filter(f => f.sentiment === 'negative').length
+      const neutral = allFb.filter(f => f.sentiment === 'neutral' || !f.sentiment).length
+      const fbTotal = allFb.length
 
       positiveAll += positive
       negativeAll += negative

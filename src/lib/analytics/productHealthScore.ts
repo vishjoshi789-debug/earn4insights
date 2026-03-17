@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { db } from '@/db'
-import { feedback, surveyResponses, extractedThemes } from '@/db/schema'
+import { feedback, surveyResponses, extractedThemes, socialPosts } from '@/db/schema'
 import { eq, gte, and, sql, desc } from 'drizzle-orm'
 import { analyzeSentiment } from '@/server/sentimentService'
 
@@ -80,7 +80,24 @@ export async function calculateProductHealthScore(
     .orderBy(desc(surveyResponses.submittedAt))
     .limit(500)
 
-  const totalDataPoints = feedbackRows.length + surveyRows.length
+  // ── 3. Gather social posts ──────────────────────────────────
+  let socialRows: Array<{ sentiment: string | null; content: string; createdAt: Date }> = []
+  try {
+    socialRows = await db
+      .select({
+        sentiment: socialPosts.sentiment,
+        content: socialPosts.content,
+        createdAt: socialPosts.createdAt,
+      })
+      .from(socialPosts)
+      .where(eq(socialPosts.productId, productId))
+      .orderBy(desc(socialPosts.createdAt))
+      .limit(500)
+  } catch {
+    // Social posts table may not exist yet
+  }
+
+  const totalDataPoints = feedbackRows.length + surveyRows.length + socialRows.length
 
   // If no data at all, return a minimal result
   if (totalDataPoints === 0) {
@@ -90,14 +107,14 @@ export async function calculateProductHealthScore(
   // ── 3. Compute NPS (0-1 normalized) ─────────────────────────
   const npsResult = computeNPS(surveyRows)
 
-  // ── 4. Compute Sentiment (0-1 normalized) ───────────────────
-  const sentimentResult = await computeSentimentScore(feedbackRows, surveyRows)
+  // ── 4. Compute Sentiment (0-1 normalized) ────────────────
+  const sentimentResult = await computeSentimentScore(feedbackRows, surveyRows, socialRows)
 
-  // ── 5. Compute Engagement (0-1 normalized) ──────────────────
-  const engagementResult = computeEngagement(feedbackRows, surveyRows, thirtyDaysAgo)
+  // ── 5. Compute Engagement (0-1 normalized) ───────────────
+  const engagementResult = computeEngagement(feedbackRows, surveyRows, thirtyDaysAgo, socialRows)
 
   // ── 6. Compute Recency (0-1 normalized, time-decay) ─────────
-  const recencyResult = computeRecency(feedbackRows, surveyRows, now)
+  const recencyResult = computeRecency(feedbackRows, surveyRows, now, socialRows)
 
   // ── 7. Compute Volume (0-1 normalized, log scale) ───────────
   const volumeResult = computeVolume(totalDataPoints)
@@ -154,6 +171,7 @@ export async function calculateProductHealthScore(
   const allDates = [
     ...feedbackRows.map(r => r.createdAt),
     ...surveyRows.map(r => r.submittedAt),
+    ...socialRows.map(r => r.createdAt),
   ].filter(Boolean).sort((a, b) => new Date(b!).getTime() - new Date(a!).getTime())
 
   return {
@@ -239,7 +257,8 @@ function computeNPS(surveyRows: Array<{ answers: any }>) {
 
 async function computeSentimentScore(
   feedbackRows: Array<{ sentiment: string | null; feedbackText: string; normalizedText: string | null }>,
-  surveyRows: Array<{ answers: any; normalizedText: string | null }>
+  surveyRows: Array<{ answers: any; normalizedText: string | null }>,
+  socialRows: Array<{ sentiment: string | null; content: string }> = []
 ) {
   let positive = 0
   let negative = 0
@@ -247,6 +266,13 @@ async function computeSentimentScore(
 
   // Count from pre-computed feedback sentiment
   for (const row of feedbackRows) {
+    if (row.sentiment === 'positive') positive++
+    else if (row.sentiment === 'negative') negative++
+    else neutral++
+  }
+
+  // Count from social post sentiment (already pre-computed during ingestion)
+  for (const row of socialRows) {
     if (row.sentiment === 'positive') positive++
     else if (row.sentiment === 'negative') negative++
     else neutral++
@@ -281,11 +307,13 @@ async function computeSentimentScore(
 function computeEngagement(
   feedbackRows: Array<{ createdAt: Date }>,
   surveyRows: Array<{ submittedAt: Date | null }>,
-  thirtyDaysAgo: Date
+  thirtyDaysAgo: Date,
+  socialRows: Array<{ createdAt: Date }> = []
 ) {
   const recentFeedback = feedbackRows.filter(r => r.createdAt >= thirtyDaysAgo).length
   const recentSurveys = surveyRows.filter(r => r.submittedAt && new Date(r.submittedAt) >= thirtyDaysAgo).length
-  const recentCount = recentFeedback + recentSurveys
+  const recentSocial = socialRows.filter(r => r.createdAt >= thirtyDaysAgo).length
+  const recentCount = recentFeedback + recentSurveys + recentSocial
 
   // Engagement normalized: logarithmic scale, 50+ recent = max
   const normalized = Math.min(Math.log10(recentCount + 1) / Math.log10(51), 1)
@@ -296,11 +324,13 @@ function computeEngagement(
 function computeRecency(
   feedbackRows: Array<{ createdAt: Date }>,
   surveyRows: Array<{ submittedAt: Date | null }>,
-  now: Date
+  now: Date,
+  socialRows: Array<{ createdAt: Date }> = []
 ) {
   const allDates = [
     ...feedbackRows.map(r => r.createdAt.getTime()),
     ...surveyRows.map(r => r.submittedAt ? new Date(r.submittedAt).getTime() : 0),
+    ...socialRows.map(r => r.createdAt.getTime()),
   ].filter(d => d > 0)
 
   if (allDates.length === 0) {

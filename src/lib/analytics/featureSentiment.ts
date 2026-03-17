@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { db } from '@/db'
-import { feedback, surveyResponses } from '@/db/schema'
+import { feedback, surveyResponses, socialPosts } from '@/db/schema'
 import { eq, gte, desc } from 'drizzle-orm'
 import { analyzeSentiment } from '@/server/sentimentService'
 
@@ -238,6 +238,31 @@ async function gatherTextsWithTimestamps(
     }
   } catch (err) {
     console.warn('[FeatureSentiment] Could not read survey responses:', err)
+  }
+
+  // From social posts
+  try {
+    const rows = await db
+      .select({
+        content: socialPosts.content,
+        title: socialPosts.title,
+        postedAt: socialPosts.postedAt,
+        createdAt: socialPosts.createdAt,
+      })
+      .from(socialPosts)
+      .where(eq(socialPosts.productId, productId))
+      .orderBy(desc(socialPosts.postedAt))
+      .limit(500)
+
+    for (const row of rows) {
+      const text = row.content || row.title
+      if (text && text.trim().length > 5) {
+        const date = row.postedAt ?? row.createdAt
+        results.push({ text: text.trim(), date })
+      }
+    }
+  } catch (err) {
+    console.warn('[FeatureSentiment] Could not read social posts:', err)
   }
 
   return results
