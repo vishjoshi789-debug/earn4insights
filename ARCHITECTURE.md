@@ -38,7 +38,9 @@
 29. [WhatsApp Real-Time Notifications (March 15, 2026)](#29-whatsapp-real-time-notifications-march-15-2026)
 30. [Brand Alerts Dashboard (March 15, 2026)](#30-brand-alerts-dashboard-march-15-2026)
 31. [Bell Icon Real-Time Notifications (March 16, 2026)](#31-bell-icon-real-time-notifications-march-16-2026)
-32. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+32. [Social Listening System (March 17–18, 2026)](#32-social-listening-system-march-1718-2026)
+33. [Social Data Relevance Filter (March 18, 2026)](#33-social-data-relevance-filter-march-18-2026)
+34. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -2687,6 +2689,179 @@ Consumer: re-fetch → localStorage.notif_last_read = now (marks all read visual
 |---|---|---|
 | `src/components/dashboard-header.tsx` | Modified | Full rewrite: hardcoded mocks → real role-based `NotificationDropdown` |
 | `src/app/api/consumer/notifications/route.ts` | **New** | Consumer notification feed API |
+
+---
+
+## 32. Social Listening System (March 17–18, 2026)
+
+### 32.1 Overview
+
+A complete social listening pipeline that aggregates public sentiment data from 10 external platforms and integrates it into the existing analytics stack. Brands can monitor what consumers say about their products across the internet.
+
+### 32.2 Architecture
+
+```
+                   ┌─────────────────────────┐
+                   │   Social Ingestion API   │
+                   │  POST /api/social/ingest │
+                   └────────────┬────────────┘
+                                │
+              ┌─────────────────┼─────────────────┐
+              │                 │                 │
+        ┌─────▼─────┐   ┌──────▼──────┐   ┌──────▼──────┐
+        │  Reddit    │   │  YouTube    │   │  Twitter    │
+        │  Adapter   │   │  Adapter    │   │  Adapter    │
+        └─────┬─────┘   └──────┬──────┘   └──────┬──────┘
+              │                │                 │
+              └────────────────┼─────────────────┘
+                               │
+                    ┌──────────▼───────────┐
+                    │  Relevance Scoring   │
+                    │  (threshold ≥ 0.4)   │
+                    └──────────┬───────────┘
+                               │
+                    ┌──────────▼───────────┐
+                    │  Sentiment Analysis  │
+                    │  + DB Persistence    │
+                    └──────────┬───────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+        ┌─────▼─────┐  ┌──────▼──────┐  ┌──────▼──────┐
+        │ Rankings   │  │ Health      │  │ Category    │
+        │ (10% wt)   │  │ Score       │  │ Intel       │
+        └───────────┘  └─────────────┘  └─────────────┘
+```
+
+### 32.3 Platform Adapters
+
+| Platform | Adapter | Auth Required | Status |
+|----------|---------|---------------|--------|
+| Reddit | `redditAdapter` | No (public JSON API) | ✅ Working |
+| YouTube | `youtubeAdapter` | `YOUTUBE_API_KEY` | Ready (free tier, 10K units/day) |
+| Twitter/X | `twitterAdapter` | `TWITTER_BEARER_TOKEN` | Ready (Basic $100/mo) |
+| Google Reviews | `googleReviewsAdapter` | `GOOGLE_PLACES_API_KEY` | Ready (free $200/mo credit) |
+| Amazon | `amazonAdapter` | Scraper proxy needed | Shell |
+| Flipkart | `flipkartAdapter` | Scraper proxy needed | Shell |
+| Instagram | `instagramAdapter` | Meta Graph API | Shell |
+| TikTok | `tiktokAdapter` | TikTok Research API | Shell |
+| LinkedIn | `linkedinAdapter` | LinkedIn Marketing API | Shell |
+| Brand-submitted | `processBrandSubmittedLink` | None | ✅ Working |
+
+### 32.4 Database Schema
+
+**Table:** `social_posts`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | serial PK | Auto-increment |
+| `productId` | integer FK | Links to products table |
+| `platform` | text | Source platform |
+| `externalId` | text | Platform-specific post ID |
+| `author` | text | Post author |
+| `content` | text | Post body |
+| `title` | text | Post title (nullable) |
+| `url` | text | Link to original post |
+| `sentimentScore` | real | AI sentiment (-1.0 to 1.0) |
+| `sentimentLabel` | text | positive / neutral / negative |
+| `relevanceScore` | real | Product relevance (0.0 to 1.0) |
+| `engagement` | jsonb | {likes, comments, shares, views} |
+| `mentionType` | text | review / mention / discussion / complaint / praise |
+| `influenceScore` | real | Author influence estimate |
+| `isKeyOpinionLeader` | boolean | High-influence flag |
+| `createdAt` | timestamp | Record creation |
+| `fetchedAt` | timestamp | When fetched from platform |
+| `postedAt` | timestamp | Original post date |
+
+**Unique constraint:** `(productId, platform, externalId)` — prevents duplicate ingestion.
+
+### 32.5 Cross-App Integration
+
+Social data feeds into 6 existing analytics services:
+
+| Service | Integration | Weight |
+|---------|------------|--------|
+| Rankings Engine | `socialSentimentScore` field | 10% of total score |
+| Product Health Score | Social sentiment component | Weighted input |
+| Feature Sentiment | Social mentions of features | Cross-referenced |
+| Category Intelligence | Industry-level social trends | Aggregated |
+| Theme Extraction | Social themes merged | Unified themes |
+| Consumer Intelligence | Segment social behavior | Behavioral data |
+
+### 32.6 API Routes
+
+| Route | Method | Purpose |
+|-------|--------|----------|
+| `/api/social` | GET | Fetch social posts for a product (paginated, filterable) |
+| `/api/social/ingest` | POST | Trigger ingestion for a product from specified platforms |
+| `/api/social/submit-link` | POST | Brand submits a specific URL for ingestion |
+
+### 32.7 Files
+
+| File | Purpose |
+|------|----------|
+| `src/server/social/platformAdapters.ts` | 10 platform adapters + relevance scoring |
+| `src/server/social/socialIngestionService.ts` | Orchestration: fetch → score → filter → persist |
+| `src/server/social/socialAnalyticsService.ts` | Aggregation, trends, keyword extraction |
+| `src/db/repositories/socialRepository.ts` | CRUD, filters, aggregation queries |
+| `src/app/dashboard/social/page.tsx` | Server component (data fetch) |
+| `src/app/dashboard/social/SocialPageClient.tsx` | Client component (UI) |
+| `src/db/schema.ts` | `socialPosts` table definition |
+
+---
+
+## 33. Social Data Relevance Filter (March 18, 2026)
+
+### 33.1 Problem
+
+Keyword-based searches on external platforms (Reddit, YouTube, Twitter) return many posts that mention the search term but are NOT actually about the target product. For example, searching "Galaxy" on Reddit returns posts about astronomy, Samsung Galaxy phones, and the Marvel movie — not necessarily the registered product.
+
+### 33.2 Solution: Multi-Signal Relevance Scoring
+
+**Function:** `calculateRelevanceScore()` in `platformAdapters.ts`
+
+Every fetched post is scored 0.0–1.0 before being saved to the database:
+
+| Signal | Weight | Description |
+|--------|--------|-------------|
+| Product name match | +0.40 | Product name found in content or title |
+| Brand name match | +0.30 | Brand/company name found |
+| Category keywords | +0.15 | Category-relevant terms found |
+| Co-occurrence bonus | +0.15 | Product + brand appear in same post |
+
+**Special cases:**
+- ID-based platforms (Google Reviews, Amazon, Flipkart, brand-submitted) auto-score `1.0` — the data is definitively about the product.
+- Brand-submitted links auto-score `1.0`.
+
+**Threshold:** `RELEVANCE_THRESHOLD = 0.4` — posts below this score are discarded and counted as `irrelevantFiltered` in the ingestion result.
+
+### 33.3 Precision Search Queries
+
+Adapters were updated to use exact-phrase matching:
+
+- **Reddit:** `"product name"` (quoted) instead of `product name`
+- **YouTube:** `"product name"` + `order=relevance` instead of `order=date`
+
+### 33.4 Ingestion Pipeline Flow
+
+```
+1. Fetch posts from platform adapter
+2. Dedup against existing DB records (by externalId)
+3. Look up brand name (from users table via product.ownerId)
+4. Look up category (from product profile JSONB)
+5. Score each post with calculateRelevanceScore()
+6. Discard posts with score < 0.4
+7. Run sentiment analysis on remaining posts
+8. Persist to socialPosts table (with relevanceScore column)
+```
+
+### 33.5 Files Modified
+
+| File | Change |
+|------|--------|
+| `src/server/social/platformAdapters.ts` | Added `calculateRelevanceScore()`, `RELEVANCE_THRESHOLD`, exact-phrase queries |
+| `src/server/social/socialIngestionService.ts` | Wired relevance filter into pipeline, brand/category lookup |
+| `src/db/schema.ts` | Added `relevanceScore` column to `socialPosts` |
 
 ---
 

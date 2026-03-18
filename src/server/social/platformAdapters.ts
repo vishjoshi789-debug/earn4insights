@@ -303,10 +303,27 @@ export class GoogleReviewsAdapter implements PlatformAdapter {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY
     if (!apiKey) return []
 
-    const placeId = options?.placeId
-    if (!placeId) return []
-
     const posts: SocialPostInput[] = []
+
+    // Resolve placeId: use provided one, or search by product/brand name
+    let placeId = options?.placeId
+    if (!placeId && keywords.length > 0) {
+      try {
+        const textSearchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(keywords.join(' '))}&key=${apiKey}`
+        const searchRes = await fetch(textSearchUrl, { next: { revalidate: 86400 } })
+        if (searchRes.ok) {
+          const searchData = await searchRes.json()
+          const topResult = searchData?.results?.[0]
+          if (topResult?.place_id) {
+            placeId = topResult.place_id
+          }
+        }
+      } catch {
+        // Could not find place — return empty
+      }
+    }
+
+    if (!placeId) return posts
 
     try {
       const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=reviews&key=${apiKey}`
@@ -604,16 +621,44 @@ export class YouTubeAdapter implements PlatformAdapter {
     const query = keywords.map(k => k.includes(' ') ? `"${k}"` : k).join(' ')
 
     try {
+      // Step 1: Search for videos
       const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&order=relevance&maxResults=15&key=${apiKey}`
       const res = await fetch(searchUrl, { next: { revalidate: 3600 } })
       if (!res.ok) return posts
 
       const data = await res.json()
       const items = data?.items ?? []
+      if (items.length === 0) return posts
+
+      // Step 2: Fetch video statistics (likes, comments, views) in one batch call
+      const videoIds = items.map((i: any) => i.id?.videoId).filter(Boolean)
+      let statsMap: Record<string, { views: number; likes: number; comments: number }> = {}
+
+      if (videoIds.length > 0) {
+        try {
+          const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoIds.join(',')}&key=${apiKey}`
+          const statsRes = await fetch(statsUrl, { next: { revalidate: 3600 } })
+          if (statsRes.ok) {
+            const statsData = await statsRes.json()
+            for (const v of statsData?.items ?? []) {
+              const s = v.statistics ?? {}
+              statsMap[v.id] = {
+                views: parseInt(s.viewCount || '0', 10),
+                likes: parseInt(s.likeCount || '0', 10),
+                comments: parseInt(s.commentCount || '0', 10),
+              }
+            }
+          }
+        } catch {
+          // Non-critical — proceed without stats
+        }
+      }
 
       for (const item of items) {
         const snippet = item.snippet
+        const videoId = item.id?.videoId
         const content = snippet?.description || snippet?.title || ''
+        const stats = videoId ? statsMap[videoId] : undefined
 
         posts.push({
           id: genId('youtube'),
@@ -622,20 +667,21 @@ export class YouTubeAdapter implements PlatformAdapter {
           postType: 'mention',
           content: content.slice(0, 2000),
           title: snippet?.title,
-          url: `https://www.youtube.com/watch?v=${item.id?.videoId}`,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
           author: snippet?.channelTitle,
           authorHandle: snippet?.channelId,
           authorAvatar: snippet?.thumbnails?.default?.url,
-          likes: 0,
+          likes: stats?.likes ?? 0,
           shares: 0,
-          comments: 0,
-          engagementScore: 0,
+          comments: stats?.comments ?? 0,
+          views: stats?.views ?? 0,
+          engagementScore: calculateEngagement(stats?.likes ?? 0, 0, stats?.comments ?? 0, stats?.views ?? 0),
           influenceScore: 0,
           category: classifyPost(content),
           keywords: extractKeywords(content),
           language: 'en',
           source: 'api',
-          externalId: item.id?.videoId,
+          externalId: videoId,
           postedAt: snippet?.publishedAt ? new Date(snippet.publishedAt) : undefined,
         })
       }

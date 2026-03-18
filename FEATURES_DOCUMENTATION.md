@@ -35,6 +35,8 @@
 25. [WhatsApp Real-Time Notifications (March 15, 2026)](#25-whatsapp-real-time-notifications-march-15-2026)
 26. [Brand Alerts Dashboard (March 15, 2026)](#26-brand-alerts-dashboard-march-15-2026)
 27. [Bell Icon Real-Time Notifications (March 16, 2026)](#27-bell-icon-real-time-notifications-march-16-2026)
+28. [Social Listening System (March 17–18, 2026)](#28-social-listening-system-march-1718-2026)
+29. [Social Data Relevance Filter (March 18, 2026)](#29-social-data-relevance-filter-march-18-2026)
 
 ---
 
@@ -985,4 +987,87 @@ Consumers: ClipboardList (new_survey) · BarChart3 (weekly_digest) · CheckCheck
 
 ---
 
-*This document covers all features implemented as of March 16, 2026. Update this file when adding new features.*
+*This document covers all features implemented as of March 18, 2026. Update this file when adding new features.*
+
+---
+
+## 28. Social Listening System (March 17–18, 2026)
+
+### Overview
+Complete social listening pipeline that aggregates public sentiment from 10 external platforms into the existing analytics stack. Brands monitor what consumers say across the internet about their products.
+
+### Platform Adapters (10 total)
+
+| Platform | Status | Auth |
+|----------|--------|------|
+| Reddit | ✅ Working | None (public JSON API) |
+| Brand-submitted links | ✅ Working | None |
+| YouTube | Ready | `YOUTUBE_API_KEY` (free, 10K units/day) |
+| Google Reviews | Ready | `GOOGLE_PLACES_API_KEY` (free $200/mo credit) |
+| Twitter/X | Ready | `TWITTER_BEARER_TOKEN` ($100/mo) |
+| Amazon | Shell | Scraper proxy needed |
+| Flipkart | Shell | Scraper proxy needed |
+| Instagram | Shell | Meta Graph API |
+| TikTok | Shell | TikTok Research API |
+| LinkedIn | Shell | LinkedIn Marketing API |
+
+### Data Pipeline
+```
+Platform Adapter → Dedup → Relevance Score → Sentiment Analysis → DB → Analytics
+```
+
+### Cross-App Integration
+Social data feeds into: Rankings (10% weight), Product Health Score, Feature Sentiment, Category Intelligence, Theme Extraction, Consumer Intelligence.
+
+### UI
+- Dashboard page: `/dashboard/social`
+- Overview cards: total posts, avg sentiment, platform breakdown, trend
+- Keyword cloud from social mentions
+- Submit-link form for brands to add specific URLs
+
+### API Routes
+- `GET /api/social` — fetch social posts (paginated, filterable)
+- `POST /api/social/ingest` — trigger ingestion from platforms
+- `POST /api/social/submit-link` — brand submits a URL
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src/server/social/platformAdapters.ts` | 10 adapters + relevance scoring |
+| `src/server/social/socialIngestionService.ts` | Fetch → score → filter → persist |
+| `src/server/social/socialAnalyticsService.ts` | Aggregation & trends |
+| `src/db/repositories/socialRepository.ts` | CRUD & aggregation queries |
+| `src/app/dashboard/social/page.tsx` | Server component |
+| `src/app/dashboard/social/SocialPageClient.tsx` | Client UI |
+
+---
+
+## 29. Social Data Relevance Filter (March 18, 2026)
+
+### Problem
+Keyword searches on platforms return irrelevant results (e.g., searching "Galaxy" returns astronomy posts, not the registered product). No post-fetch validation existed — everything went straight to DB.
+
+### Solution: Multi-Signal Relevance Scoring
+
+**Function:** `calculateRelevanceScore()` — scores every fetched post 0.0–1.0:
+
+| Signal | Weight |
+|--------|--------|
+| Product name in content/title | +0.40 |
+| Brand name in content/title | +0.30 |
+| Category keywords | +0.15 |
+| Co-occurrence (product + brand together) | +0.15 |
+
+- **Threshold:** `0.4` — posts below this are discarded
+- ID-based platforms (Google Reviews, Amazon, Flipkart) and brand-submitted links auto-score `1.0`
+- Reddit & YouTube adapters now use exact-phrase queries (`"product name"`) for precision
+
+### Pipeline Integration
+Posts are scored after dedup but before sentiment analysis. Brand name is looked up from users table, category from product profile JSONB. The `irrelevantFiltered` counter tracks discarded posts.
+
+### DB Change
+Added `relevanceScore: real` column to `socialPosts` table.
+
+---
+
+*This document covers all features implemented as of March 18, 2026. Update this file when adding new features.*
