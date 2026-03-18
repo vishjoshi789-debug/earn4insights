@@ -45,6 +45,7 @@ export type SocialPostInput = {
   sentimentScore?: number
   engagementScore?: number
   influenceScore?: number
+  relevanceScore?: number  // 0–1 how relevant this post is to the target product
   isKeyOpinionLeader?: boolean
   category?: string
   keywords?: string[]
@@ -116,6 +117,83 @@ function classifyPost(content: string): string {
   return 'brand_mention'
 }
 
+// ============================================================================
+// RELEVANCE SCORING — ensures fetched posts actually relate to the product
+// ============================================================================
+
+/**
+ * Calculate how relevant a fetched post is to a specific product/brand.
+ * Returns 0–1. Posts below the threshold (0.4) should be discarded.
+ *
+ * Scoring:
+ * - Exact product name found in content   → +0.40
+ * - Brand name found in content           → +0.30
+ * - Product category keywords in content  → +0.15
+ * - Multiple keyword matches              → +0.15
+ *
+ * ID-based platforms (Google placeId, Amazon ASIN, Flipkart productId)
+ * automatically get 1.0 since the data is inherently tied to the product.
+ * Brand-submitted links also get 1.0 (human-curated).
+ */
+export function calculateRelevanceScore(
+  content: string,
+  title: string | undefined,
+  productName: string,
+  brandName?: string,
+  category?: string,
+  platform?: string,
+): number {
+  // ID-based platforms and brand-submitted links are inherently relevant
+  if (platform === 'google' || platform === 'amazon' || platform === 'flipkart' || platform === 'brand_submitted') {
+    return 1.0
+  }
+
+  const text = `${title || ''} ${content}`.toLowerCase()
+  let score = 0
+
+  // Check for exact product name (most important signal)
+  const productLower = productName.toLowerCase().trim()
+  if (productLower && text.includes(productLower)) {
+    score += 0.40
+  } else {
+    // Check individual significant words from product name (partial match)
+    const productWords = productLower.split(/\s+/).filter(w => w.length > 2)
+    const matchedWords = productWords.filter(w => text.includes(w))
+    if (productWords.length > 0) {
+      score += 0.40 * (matchedWords.length / productWords.length) * 0.7 // partial credit, capped lower
+    }
+  }
+
+  // Check for brand name
+  if (brandName) {
+    const brandLower = brandName.toLowerCase().trim()
+    if (brandLower && text.includes(brandLower)) {
+      score += 0.30
+    }
+  }
+
+  // Check for category keywords
+  if (category) {
+    const categoryWords = category.toLowerCase().replace(/[_-]/g, ' ').split(/\s+/).filter(w => w.length > 2)
+    const catMatches = categoryWords.filter(w => text.includes(w))
+    if (categoryWords.length > 0 && catMatches.length > 0) {
+      score += 0.15 * (catMatches.length / categoryWords.length)
+    }
+  }
+
+  // Bonus for multiple keyword co-occurrences (brand + product both present = strong signal)
+  const hasProduct = productLower && text.includes(productLower)
+  const hasBrand = brandName && text.includes(brandName.toLowerCase().trim())
+  if (hasProduct && hasBrand) {
+    score += 0.15
+  }
+
+  return Math.min(score, 1.0)
+}
+
+/** Minimum relevance score to keep a post (0.4 = must mention product OR brand strongly) */
+export const RELEVANCE_THRESHOLD = 0.4
+
 function extractKeywords(content: string): string[] {
   const stopWords = new Set([
     'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
@@ -153,7 +231,8 @@ export class RedditAdapter implements PlatformAdapter {
     productId: string,
   ): Promise<SocialPostInput[]> {
     const posts: SocialPostInput[] = []
-    const query = keywords.join(' OR ')
+    // Use exact phrase matching for multi-word terms, OR between keywords
+    const query = keywords.map(k => k.includes(' ') ? `"${k}"` : k).join(' OR ')
 
     try {
       const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=25&t=week`
@@ -521,10 +600,11 @@ export class YouTubeAdapter implements PlatformAdapter {
     if (!apiKey) return []
 
     const posts: SocialPostInput[] = []
-    const query = keywords.join(' ')
+    // Use exact phrase for multi-word terms + relevance ordering
+    const query = keywords.map(k => k.includes(' ') ? `"${k}"` : k).join(' ')
 
     try {
-      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&order=date&maxResults=15&key=${apiKey}`
+      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&order=relevance&maxResults=15&key=${apiKey}`
       const res = await fetch(searchUrl, { next: { revalidate: 3600 } })
       if (!res.ok) return posts
 

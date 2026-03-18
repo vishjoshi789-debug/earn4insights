@@ -223,6 +223,7 @@ export const socialPosts = pgTable('social_posts', {
   sentimentScore: real('sentiment_score'), // -1 to 1
   engagementScore: real('engagement_score'), // 0–1 normalized
   influenceScore: real('influence_score'), // 0–1 based on author reach
+  relevanceScore: real('relevance_score'), // 0–1 how relevant this post is to the product
   isKeyOpinionLeader: boolean('is_key_opinion_leader').default(false).notNull(),
 
   // Categorisation

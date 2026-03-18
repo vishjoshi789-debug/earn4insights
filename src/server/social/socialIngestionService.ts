@@ -18,6 +18,8 @@ import { eq, inArray, sql } from 'drizzle-orm'
 import {
   ALL_ADAPTERS,
   processBrandSubmittedLink,
+  calculateRelevanceScore,
+  RELEVANCE_THRESHOLD,
   type SocialPostInput,
 } from './platformAdapters'
 import { insertSocialPosts, getSocialPostByExternalId } from '@/db/repositories/socialRepository'
@@ -31,6 +33,7 @@ export interface IngestionResult {
   fetched: number
   newPosts: number
   duplicatesSkipped: number
+  irrelevantFiltered: number
   errors: string[]
 }
 
@@ -41,14 +44,38 @@ export interface IngestionResult {
 export async function ingestSocialForProduct(
   productId: string,
   productName: string,
-  options?: { platforms?: string[]; keywords?: string[] }
+  options?: { platforms?: string[]; keywords?: string[]; brandName?: string; category?: string }
 ): Promise<IngestionResult> {
   const result: IngestionResult = {
     productId,
     fetched: 0,
     newPosts: 0,
     duplicatesSkipped: 0,
+    irrelevantFiltered: 0,
     errors: [],
+  }
+
+  // Look up brand name & category for relevance scoring if not provided
+  let brandName = options?.brandName
+  let category = options?.category
+  if (!brandName || !category) {
+    try {
+      const [product] = await db
+        .select({ ownerId: products.ownerId, profile: products.profile })
+        .from(products)
+        .where(eq(products.id, productId))
+      if (product) {
+        const profile = product.profile as { category?: string; categoryName?: string } | null
+        if (!category) category = profile?.categoryName || profile?.category
+        if (!brandName && product.ownerId) {
+          const { users } = await import('@/db/schema')
+          const [owner] = await db.select({ name: users.name }).from(users).where(eq(users.id, product.ownerId))
+          if (owner?.name) brandName = owner.name
+        }
+      }
+    } catch {
+      // Non-critical — continue without brand/category context
+    }
   }
 
   // Build search keywords from product name + any custom keywords
@@ -97,8 +124,29 @@ export async function ingestSocialForProduct(
     newPosts.push(post)
   }
 
+  // Relevance filtering — discard posts that aren't about this product
+  const relevantPosts: SocialPostInput[] = []
+  for (const post of newPosts) {
+    const score = calculateRelevanceScore(
+      post.content,
+      post.title,
+      productName,
+      brandName,
+      category,
+      post.platform,
+    )
+    post.relevanceScore = score
+    if (score >= RELEVANCE_THRESHOLD) {
+      relevantPosts.push(post)
+    } else {
+      result.irrelevantFiltered++
+    }
+  }
+
+  if (relevantPosts.length === 0) return result
+
   // Insert (ON CONFLICT DO NOTHING handles any DB-level dedup)
-  const dbRows = newPosts.map((p) => ({
+  const dbRows = relevantPosts.map((p) => ({
     id: p.id,
     productId: p.productId,
     platform: p.platform,
@@ -120,6 +168,7 @@ export async function ingestSocialForProduct(
     sentimentScore: p.sentimentScore,
     engagementScore: p.engagementScore,
     influenceScore: p.influenceScore,
+    relevanceScore: p.relevanceScore,
     isKeyOpinionLeader: p.isKeyOpinionLeader ?? false,
     category: p.category,
     keywords: p.keywords ?? [],
@@ -133,7 +182,7 @@ export async function ingestSocialForProduct(
   try {
     const inserted = await insertSocialPosts(dbRows)
     result.newPosts = inserted
-    result.duplicatesSkipped += newPosts.length - inserted
+    result.duplicatesSkipped += relevantPosts.length - inserted
   } catch (err) {
     result.errors.push(`DB insert: ${String(err)}`)
   }
@@ -241,6 +290,7 @@ export async function processSubmittedLink(
       sentimentScore: post.sentimentScore,
       engagementScore: post.engagementScore,
       influenceScore: post.influenceScore,
+      relevanceScore: 1.0, // Brand-submitted links are inherently relevant
       isKeyOpinionLeader: post.isKeyOpinionLeader ?? false,
       category: post.category,
       keywords: post.keywords ?? [],
