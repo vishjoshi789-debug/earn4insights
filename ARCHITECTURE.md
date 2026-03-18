@@ -40,7 +40,8 @@
 31. [Bell Icon Real-Time Notifications (March 16, 2026)](#31-bell-icon-real-time-notifications-march-16-2026)
 32. [Social Listening System (March 17–18, 2026)](#32-social-listening-system-march-1718-2026)
 33. [Social Data Relevance Filter (March 18, 2026)](#33-social-data-relevance-filter-march-18-2026)
-34. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+34. [YouTube & Google Reviews API Activation (March 18, 2026)](#34-youtube--google-reviews-api-activation-march-18-2026)
+35. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -2862,6 +2863,76 @@ Adapters were updated to use exact-phrase matching:
 | `src/server/social/platformAdapters.ts` | Added `calculateRelevanceScore()`, `RELEVANCE_THRESHOLD`, exact-phrase queries |
 | `src/server/social/socialIngestionService.ts` | Wired relevance filter into pipeline, brand/category lookup |
 | `src/db/schema.ts` | Added `relevanceScore` column to `socialPosts` |
+
+---
+
+## 34. YouTube & Google Reviews API Activation (March 18, 2026)
+
+### 34.1 YouTube Data API v3
+
+**What changed:** The `YouTubeAdapter` was upgraded from returning zero-value engagement stats to fetching real video statistics via a second batched API call.
+
+**Before:** All videos had `likes: 0, comments: 0, views: 0` — engagement score was always `0`.
+
+**After:** A batch call to `GET /youtube/v3/videos?part=statistics&id=id1,id2,...` fetches real stats for all search results in a single extra request. Engagement score is now calculated from actual data.
+
+```
+Search API call (maxResults=15)
+       ↓
+Extract all videoIds
+       ↓
+Batch statistics call (one request for all 15 videos)
+       ↓
+Map stats back to posts by videoId
+       ↓
+Calculate engagement score from real views/likes/comments
+```
+
+**API used:** `https://www.googleapis.com/youtube/v3/videos?part=statistics`
+**Quota cost:** +1 unit per batch (negligible, free tier is 10,000 units/day)
+**Env var:** `YOUTUBE_API_KEY`
+
+### 34.2 Google Places API (Reviews)
+
+**What changed:** The `GoogleReviewsAdapter` previously required a `placeId` option to be passed explicitly — making it unusable from the generic ingestion pipeline which doesn't know place IDs.
+
+**Before:** `if (!placeId) return []` — adapter was effectively non-functional without manual placeId.
+
+**After:** When no `placeId` is provided, the adapter auto-discovers it via Google Text Search API:
+
+```
+keywords (product name + brand name)
+       ↓
+GET /maps/api/place/textsearch/json?query=...
+       ↓
+Top result → extract place_id
+       ↓
+GET /maps/api/place/details/json?place_id=...&fields=reviews
+       ↓
+Return up to 5 Google Reviews with rating + content
+```
+
+**Env var:** `GOOGLE_PLACES_API_KEY`
+**Cost:** Free within Google's $200/month Maps Platform credit (~13,000 Text Search requests free/month)
+
+### 34.3 Environment Variables Added
+
+Added to `.env.local` and documented in `.env.example`:
+
+| Variable | Value source | Purpose |
+|----------|-------------|----------|
+| `YOUTUBE_API_KEY` | Google Cloud Console → YouTube Data API v3 | YouTube search + video stats |
+| `GOOGLE_PLACES_API_KEY` | Google Cloud Console → Places API | Google Reviews text search + details |
+
+Both use the same Google Cloud project. Same API key is used for both (key restricted to both APIs).
+
+### 34.4 Files Modified
+
+| File | Change |
+|------|--------|
+| `src/server/social/platformAdapters.ts` | YouTube: added batch stats fetch; Google: added Text Search auto-discovery |
+| `.env.example` | Added YOUTUBE_API_KEY, GOOGLE_PLACES_API_KEY, TWITTER_BEARER_TOKEN docs |
+| `.env.local` | Added both keys (local dev only, not committed to git) |
 
 ---
 

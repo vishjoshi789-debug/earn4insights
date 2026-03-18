@@ -37,6 +37,7 @@
 27. [Bell Icon Real-Time Notifications (March 16, 2026)](#27-bell-icon-real-time-notifications-march-16-2026)
 28. [Social Listening System (March 17–18, 2026)](#28-social-listening-system-march-1718-2026)
 29. [Social Data Relevance Filter (March 18, 2026)](#29-social-data-relevance-filter-march-18-2026)
+30. [YouTube & Google Reviews API Activation (March 18, 2026)](#30-youtube--google-reviews-api-activation-march-18-2026)
 
 ---
 
