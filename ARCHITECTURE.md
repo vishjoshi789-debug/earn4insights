@@ -41,7 +41,8 @@
 32. [Social Listening System (March 17–18, 2026)](#32-social-listening-system-march-1718-2026)
 33. [Social Data Relevance Filter (March 18, 2026)](#33-social-data-relevance-filter-march-18-2026)
 34. [YouTube & Google Reviews API Activation (March 18, 2026)](#34-youtube--google-reviews-api-activation-march-18-2026)
-35. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+35. [Production DB Schema Push & API Keys Deployed (March 19, 2026)](#35-production-db-schema-push--api-keys-deployed-march-19-2026)
+36. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -2933,6 +2934,38 @@ Both use the same Google Cloud project. Same API key is used for both (key restr
 | `src/server/social/platformAdapters.ts` | YouTube: added batch stats fetch; Google: added Text Search auto-discovery |
 | `.env.example` | Added YOUTUBE_API_KEY, GOOGLE_PLACES_API_KEY, TWITTER_BEARER_TOKEN docs |
 | `.env.local` | Added both keys (local dev only, not committed to git) |
+
+---
+
+## 35. Production DB Schema Push & API Keys Deployed (March 19, 2026)
+
+### 35.1 Schema Migration
+The `relevance_score` column (defined in `src/db/schema.ts` in commit `56e81de`) was applied to the production Neon PostgreSQL database.
+
+**Column added:**
+```sql
+ALTER TABLE social_posts ADD COLUMN relevance_score real;
+```
+
+Drizzle-kit push was used to apply the change. Migration confirmed via `information_schema.columns` query before and after.
+
+### 35.2 API Keys Added to Vercel
+Both Google Cloud API keys were added to Vercel environment variables for production:
+
+| Variable | Platform |
+|----------|----------|
+| `YOUTUBE_API_KEY` | YouTube Data API v3 |
+| `GOOGLE_PLACES_API_KEY` | Google Places API (Reviews) |
+
+Same key value used for both (one Google Cloud API key with both APIs enabled).
+
+### 35.3 Production Status
+As of March 19, 2026, the full social listening pipeline is live in production:
+- Reddit ingestion (no API key required)
+- YouTube ingestion with real video stats (views/likes/comments)
+- Google Reviews ingestion with auto-discovery of place IDs
+- Relevance scoring (0–1) stored per post in `relevance_score` column
+- Posts below threshold 0.4 filtered before DB insert
 
 ---
 

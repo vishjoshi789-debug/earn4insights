@@ -38,6 +38,7 @@
 28. [Social Listening System (March 17–18, 2026)](#28-social-listening-system-march-1718-2026)
 29. [Social Data Relevance Filter (March 18, 2026)](#29-social-data-relevance-filter-march-18-2026)
 30. [YouTube & Google Reviews API Activation (March 18, 2026)](#30-youtube--google-reviews-api-activation-march-18-2026)
+31. [Production DB Schema Push & Full Deployment (March 19, 2026)](#31-production-db-schema-push--full-deployment-march-19-2026)
 
 ---
 
@@ -1071,4 +1072,32 @@ Added `relevanceScore: real` column to `socialPosts` table.
 
 ---
 
-*This document covers all features implemented as of March 18, 2026. Update this file when adding new features.*
+## 31. Production DB Schema Push & Full Deployment (March 19, 2026)
+
+### What changed
+The social listening system is now fully live in production:
+
+1. **`relevance_score` column** applied to the production Neon DB — stores 0–1 relevance score per social post
+2. **YouTube Data API v3** and **Google Places API** keys added to Vercel environment variables
+3. **End-to-end pipeline active:** Reddit → YouTube → Google Reviews → relevance filter → sentiment → DB
+
+### DB column
+```sql
+-- social_posts table
+relevance_score REAL  -- 0.0 to 1.0, posts below 0.4 filtered before insert
+```
+
+### Platform status as of March 19, 2026
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Reddit | ✅ Live | No API key needed |
+| YouTube | ✅ Live | Real stats: views/likes/comments |
+| Google Reviews | ✅ Live | Auto-discovers placeId via Text Search |
+| Twitter/X | ⏳ Pending | Requires $100/mo API plan |
+| Amazon / Flipkart | ⏳ Pending | Requires scraper proxy setup |
+| Instagram / TikTok / LinkedIn | ⏳ Pending | Requires partner API approval |
+
+---
+
+*This document covers all features implemented as of March 19, 2026. Update this file when adding new features.*
