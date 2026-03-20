@@ -40,11 +40,11 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center px-4 md:px-6">
-        {/* Mobile hamburger menu */}
+      <div className="mx-auto flex h-16 w-full max-w-screen-2xl items-center gap-3 px-4 md:px-8">
+        {/* Mobile hamburger — leftmost, proper edge gap via px-4 on parent */}
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="mr-4 shrink-0 md:hidden">
+            <Button variant="ghost" size="icon" className="shrink-0 md:hidden">
               <Menu className="h-5 w-5" />
               <span className="sr-only">Toggle menu</span>
             </Button>
@@ -95,10 +95,11 @@ export function SiteHeader() {
           </SheetContent>
         </Sheet>
 
-        <Link href="/" className="flex items-center gap-2 group mr-4 md:mr-6 min-w-0">
-          <Logo size={36} className="shrink-0" />
-          <div className="flex flex-col min-w-0">
-            <span className="font-bold font-headline text-sm md:text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all leading-tight truncate">
+        {/* Logo + brand — takes center space, shrinks if needed */}
+        <Link href="/" className="flex min-w-0 items-center gap-2 group">
+          <Logo size={32} className="shrink-0" />
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-bold font-headline text-sm md:text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all leading-tight">
               Earn4Insights
             </span>
             <span className="hidden sm:block text-[9px] text-muted-foreground leading-tight">
@@ -106,6 +107,8 @@ export function SiteHeader() {
             </span>
           </div>
         </Link>
+
+        {/* Desktop nav — fills middle space */}
         <nav className="hidden flex-1 items-center gap-6 text-sm md:flex">
           <Link
             href="/top-products"
@@ -126,14 +129,21 @@ export function SiteHeader() {
             Community
           </Link>
         </nav>
-        <div className="ml-auto flex shrink-0 items-center gap-3">
+        {/* Spacer pushes buttons to the right on mobile */}
+        <div className="flex-1 md:hidden" />
+
+        {/* Auth buttons */}
+        <div className="ml-auto flex shrink-0 items-center gap-2 md:gap-3">
           {status === 'loading' ? null : !user ? (
             <>
-              <Button asChild variant="ghost" size="sm" className="font-semibold text-xs sm:text-sm px-3">
+              <Button asChild variant="ghost" size="sm" className="font-semibold px-3 text-xs sm:text-sm">
                 <Link href="/login">Sign In</Link>
               </Button>
-              <Button asChild size="sm" className="font-semibold shadow-sm hover:shadow-md text-xs sm:text-sm px-3">
-                <Link href="/signup">Get Started</Link>
+              <Button asChild size="sm" className="font-semibold shadow-sm hover:shadow-md px-3 text-xs sm:text-sm">
+                <Link href="/signup">
+                  <span className="hidden sm:inline">Get Started</span>
+                  <span className="sm:hidden">Start</span>
+                </Link>
               </Button>
             </>
           ) : (
