@@ -657,6 +657,149 @@ export const analyticsEvents = pgTable('analytics_events', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ══════════════════════════════════════════════════════════════════
+// SECTION 8: IN-APP COMMUNITY
+// ══════════════════════════════════════════════════════════════════
+
+// ── Community Posts (threads / discussions) ────────────────────────
+export const communityPosts = pgTable('community_posts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  authorId: text('author_id').notNull(),
+  productId: text('product_id'),             // nullable — general discussion or product-linked
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  postType: text('post_type').notNull().default('discussion'),
+  // 'discussion' | 'ama' | 'announcement' | 'feature_request' | 'tips' | 'poll'
+  isPinned: boolean('is_pinned').notNull().default(false),
+  isLocked: boolean('is_locked').notNull().default(false),
+  upvotes: integer('upvotes').notNull().default(0),
+  downvotes: integer('downvotes').notNull().default(0),
+  replyCount: integer('reply_count').notNull().default(0),
+  viewCount: integer('view_count').notNull().default(0),
+  tags: jsonb('tags').$type<string[]>().default([]),
+  pollOptions: jsonb('poll_options').$type<{ id: string; text: string; votes: number }[]>(),
+  // only populated when postType = 'poll'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Community Replies ─────────────────────────────────────────────
+export const communityReplies = pgTable('community_replies', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  postId: uuid('post_id').notNull(),
+  authorId: text('author_id').notNull(),
+  parentReplyId: uuid('parent_reply_id'),    // nullable — for nested replies
+  body: text('body').notNull(),
+  upvotes: integer('upvotes').notNull().default(0),
+  downvotes: integer('downvotes').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Community Reactions (upvote/downvote on posts & replies) ──────
+export const communityReactions = pgTable('community_reactions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  postId: uuid('post_id'),                   // one of postId or replyId must be set
+  replyId: uuid('reply_id'),
+  reactionType: text('reaction_type').notNull(), // 'upvote' | 'downvote'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Community Poll Votes ──────────────────────────────────────────
+export const communityPollVotes = pgTable('community_poll_votes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  postId: uuid('post_id').notNull(),
+  userId: text('user_id').notNull(),
+  optionId: text('option_id').notNull(),     // matches pollOptions[].id
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ══════════════════════════════════════════════════════════════════
+// SECTION 9: REWARDS & PAYMENTS
+// ══════════════════════════════════════════════════════════════════
+
+// ── User Points Balance ──────────────────────────────────────────
+export const userPoints = pgTable('user_points', {
+  userId: text('user_id').primaryKey(),
+  totalPoints: integer('total_points').notNull().default(0),
+  lifetimePoints: integer('lifetime_points').notNull().default(0), // never decreases
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Point Transactions ───────────────────────────────────────────
+export const pointTransactions = pgTable('point_transactions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  amount: integer('amount').notNull(),        // positive = earn, negative = spend
+  type: text('type').notNull(),               // 'earn' | 'spend' | 'refund'
+  source: text('source').notNull(),
+  // sources: 'feedback_submit' | 'survey_complete' | 'community_post' | 'community_reply'
+  //          | 'community_upvote_received' | 'challenge_complete' | 'reward_redeem' | 'payout' | 'admin_adjustment'
+  sourceId: text('source_id'),                // FK to the thing that triggered it
+  description: text('description'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Rewards Catalog ──────────────────────────────────────────────
+export const rewards = pgTable('rewards', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  pointsCost: integer('points_cost').notNull(),
+  stock: integer('stock'),                    // null = unlimited
+  imageUrl: text('image_url'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Reward Redemptions ───────────────────────────────────────────
+export const rewardRedemptions = pgTable('reward_redemptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  rewardId: uuid('reward_id').notNull(),
+  pointsSpent: integer('points_spent').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending' | 'fulfilled' | 'cancelled'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  fulfilledAt: timestamp('fulfilled_at'),
+})
+
+// ── Payout Requests ──────────────────────────────────────────────
+export const payoutRequests = pgTable('payout_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  points: integer('points').notNull(),
+  amount: decimal('amount', { precision: 10, scale: 2 }).notNull(), // USD
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'denied'
+  requestedAt: timestamp('requested_at').defaultNow().notNull(),
+  processedAt: timestamp('processed_at'),
+  processedBy: text('processed_by'),          // admin user id
+  note: text('note'),
+})
+
+// ── Challenges ───────────────────────────────────────────────────
+export const challenges = pgTable('challenges', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  title: text('title').notNull(),
+  description: text('description'),
+  pointsReward: integer('points_reward').notNull(),
+  targetCount: integer('target_count').notNull().default(1), // e.g. submit 5 feedbacks
+  sourceType: text('source_type').notNull(),  // 'feedback' | 'survey' | 'community_post' | 'community_reply'
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── User Challenge Progress ──────────────────────────────────────
+export const userChallengeProgress = pgTable('user_challenge_progress', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  challengeId: uuid('challenge_id').notNull(),
+  currentCount: integer('current_count').notNull().default(0),
+  completed: boolean('completed').notNull().default(false),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -703,3 +846,24 @@ export type BrandAlertRule = typeof brandAlertRules.$inferSelect
 export type NewBrandAlertRule = typeof brandAlertRules.$inferInsert
 export type BrandAlert = typeof brandAlerts.$inferSelect
 export type NewBrandAlert = typeof brandAlerts.$inferInsert
+export type CommunityPost = typeof communityPosts.$inferSelect
+export type NewCommunityPost = typeof communityPosts.$inferInsert
+export type CommunityReply = typeof communityReplies.$inferSelect
+export type NewCommunityReply = typeof communityReplies.$inferInsert
+export type CommunityReaction = typeof communityReactions.$inferSelect
+export type NewCommunityReaction = typeof communityReactions.$inferInsert
+export type CommunityPollVote = typeof communityPollVotes.$inferSelect
+export type NewCommunityPollVote = typeof communityPollVotes.$inferInsert
+export type UserPoints = typeof userPoints.$inferSelect
+export type PointTransaction = typeof pointTransactions.$inferSelect
+export type NewPointTransaction = typeof pointTransactions.$inferInsert
+export type RewardItem = typeof rewards.$inferSelect
+export type NewRewardItem = typeof rewards.$inferInsert
+export type RewardRedemption = typeof rewardRedemptions.$inferSelect
+export type NewRewardRedemption = typeof rewardRedemptions.$inferInsert
+export type PayoutRequest = typeof payoutRequests.$inferSelect
+export type NewPayoutRequest = typeof payoutRequests.$inferInsert
+export type ChallengeRow = typeof challenges.$inferSelect
+export type NewChallengeRow = typeof challenges.$inferInsert
+export type UserChallengeProgressRow = typeof userChallengeProgress.$inferSelect
+export type NewUserChallengeProgressRow = typeof userChallengeProgress.$inferInsert

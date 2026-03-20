@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** March 16, 2026  
+> **Last updated:** March 20, 2026  
 > **Platform:** Next.js 15 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
@@ -39,6 +39,7 @@
 29. [Social Data Relevance Filter (March 18, 2026)](#29-social-data-relevance-filter-march-18-2026)
 30. [YouTube & Google Reviews API Activation (March 18, 2026)](#30-youtube--google-reviews-api-activation-march-18-2026)
 31. [Production DB Schema Push & Full Deployment (March 19, 2026)](#31-production-db-schema-push--full-deployment-march-19-2026)
+32. [In-App Community + Real Rewards Engine (March 20, 2026)](#32-in-app-community--real-rewards-engine-march-20-2026)
 
 ---
 
@@ -363,15 +364,59 @@ Displays weekly product rankings voted/rated by consumers.
 ### Rewards
 **Route:** `/dashboard/rewards`
 
-Track earned points from:
-- Survey completions
-- Product reviews/feedback
-- Community engagement
+The rewards system is now **database-backed** and no longer a mock-only UI.
+
+Consumers can now:
+- View their live point balance and lifetime points total
+- See recent point transactions from `GET /api/user/points`
+- Browse a seeded reward catalog from `GET /api/rewards`
+- Redeem rewards through `POST /api/rewards`
+- Track challenge progress from `GET /api/challenges`
+
+### Point sources currently wired
+- Feedback submissions: 25 points (existing product copy and feedback stats flow)
+- Community post creation: 10 points
+- Community replies: 5 points
+- Receiving an upvote on a community post or reply: 2 points
+
+### Built-in challenges
+- First Feedback
+- Photo Reviewer
+- Video Reviewer
+- Community Starter
+- Active Participant
+- Survey Champion
+
+### Reward catalog behavior
+- Supports limited-stock and unlimited-stock rewards
+- Deducts points immediately on redemption
+- Stores redemption history in `reward_redemptions`
+- Includes seeded rewards such as coupons, gift cards, merchandise, and cash-out options
 
 ### Payouts
 **Route:** `/dashboard/payouts`
 
-Cash out accumulated rewards through supported payout methods.
+Payouts are also now backed by real database records and APIs.
+
+Consumer behavior:
+- Request a payout directly from `/dashboard/payouts`
+- Minimum payout is 500 points
+- Conversion rate is 100 points = $1 USD
+- Balance is reduced immediately when the request is created
+
+Brand behavior:
+- Review all payout requests from the same page
+- Approve or deny pending requests
+- Denied requests automatically refund points to the consumer
+
+### Core APIs
+- `GET /api/user/points`
+- `GET /api/rewards`
+- `POST /api/rewards`
+- `GET /api/challenges`
+- `GET /api/payouts`
+- `POST /api/payouts`
+- `PATCH /api/payouts`
 
 ---
 
@@ -1100,4 +1145,71 @@ relevance_score REAL  -- 0.0 to 1.0, posts below 0.4 filtered before insert
 
 ---
 
-*This document covers all features implemented as of March 19, 2026. Update this file when adding new features.*
+## 32. In-App Community + Real Rewards Engine (March 20, 2026)
+
+### 32.1 Community Rebuilt as a Real Product Feature
+
+The old `/dashboard/community` mock social feed was replaced with a true in-app discussion system.
+
+Users can now:
+- Create discussion threads
+- Post AMAs and announcements (brand-only)
+- Submit feature requests
+- Share tips and tricks
+- Create and vote in polls
+- Reply to threads with nested replies
+- Upvote and downvote posts and replies
+- Delete their own posts
+
+### 32.2 Community UX
+
+**Routes:**
+- `/dashboard/community` — thread listing page
+- `/dashboard/community/[postId]` — thread detail page
+
+**Listing page features:**
+- Search by title
+- Filter by post type
+- Create-post dialog with poll option builder
+- Pinned and locked thread indicators
+- Reply count and view count
+
+**Thread detail features:**
+- Full post detail view
+- Vote bar for upvotes/downvotes
+- Poll rendering with vote percentages
+- Nested replies up to two levels in the current UI
+- Locked-thread state preventing new replies
+
+### 32.3 Community APIs
+
+- `GET /api/community/posts`
+- `POST /api/community/posts`
+- `GET /api/community/posts/[postId]`
+- `DELETE /api/community/posts/[postId]`
+- `POST /api/community/posts/[postId]/replies`
+- `POST /api/community/react`
+- `POST /api/community/poll/vote`
+
+### 32.4 Real Rewards Backend Added
+
+The previous rewards and payouts pages used hardcoded mock data. They now use:
+- `user_points`
+- `point_transactions`
+- `rewards`
+- `reward_redemptions`
+- `payout_requests`
+- `challenges`
+- `user_challenge_progress`
+
+The shared points logic lives in `src/server/pointsService.ts` and handles point awarding, deductions, balance reads, and challenge progression.
+
+### 32.5 Validation Status
+
+- Production build completed successfully locally after the changes
+- Community routes compile cleanly
+- Rewards, payouts, challenges, and user points routes compile cleanly
+
+---
+
+*This document covers all features implemented as of March 20, 2026. Update this file when adding new features.*

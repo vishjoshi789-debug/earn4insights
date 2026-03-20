@@ -42,7 +42,8 @@
 33. [Social Data Relevance Filter (March 18, 2026)](#33-social-data-relevance-filter-march-18-2026)
 34. [YouTube & Google Reviews API Activation (March 18, 2026)](#34-youtube--google-reviews-api-activation-march-18-2026)
 35. [Production DB Schema Push & API Keys Deployed (March 19, 2026)](#35-production-db-schema-push--api-keys-deployed-march-19-2026)
-36. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+36. [In-App Community & Rewards Engine (March 20, 2026)](#36-in-app-community--rewards-engine-march-20-2026)
+37. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 
 ---
 
@@ -152,7 +153,7 @@ Consumers discover ranked products → more feedback
 │  ┌──────────────────┐  ┌───────────────────┐                            │
 │  │ Neon PostgreSQL  │  │ Vercel Blob Store │                            │
 │  │ (via Drizzle ORM)│  │ (audio/video/img) │                            │
-│  │ 24+ tables       │  │ public CDN URLs   │                            │
+│  │ 35+ tables       │  │ public CDN URLs   │                            │
 │  └──────────────────┘  └───────────────────┘                            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -231,6 +232,17 @@ demographic_performance  → Per-segment send performance (age, income, industry
 
 audit_log                → GDPR audit trail (who accessed what data, when, why)
 social_posts             → Scraped social media posts per product (sentiment + score)
+community_posts          → In-app discussion threads, polls, AMAs, announcements
+community_replies        → Replies to community threads (nested)
+community_reactions      → Upvotes/downvotes on posts and replies
+community_poll_votes     → One vote per user per poll post
+user_points              → Current point balance + lifetime earned total per user
+point_transactions       → Immutable reward ledger for all earn/spend/refund actions
+rewards                  → Reward catalog with stock and activation state
+reward_redemptions       → User reward redemption history
+payout_requests          → Consumer cash-out requests and approval status
+challenges               → Challenge definitions for gamified earning
+user_challenge_progress  → Per-user challenge counters and completion state
 ```
 
 ### Key Relationships
@@ -239,6 +251,12 @@ social_posts             → Scraped social media posts per product (sentiment +
 users
   └── user_profiles        (1:1  — consumer profile + consent)
   └── user_events          (1:N  — behavioral events)
+  └── user_points          (1:1  — current and lifetime rewards balance)
+  └── point_transactions   (1:N  — points ledger)
+  └── payout_requests      (1:N  — payout history)
+  └── reward_redemptions   (1:N  — redemption history)
+  └── community_posts      (1:N  — authored discussion threads)
+  └── community_replies    (1:N  — authored replies)
   └── brand_subscriptions  (1:1  — brand tier)
   └── products             (1:N  — brand owns products via ownerId)
 
@@ -248,6 +266,7 @@ products
   └── weekly_rankings      (1:N  — appears in category rankings)
   └── extracted_themes     (1:N  — AI themes per product)
   └── social_posts         (1:N  — scraped social content)
+  └── community_posts      (1:N  — optional product-linked threads)
 
 surveys
   └── survey_responses     (1:N)
@@ -257,6 +276,14 @@ survey_responses
 
 feedback
   └── feedback_media       (1:N  — via ownerType='feedback')
+
+community_posts
+  └── community_replies    (1:N)
+  └── community_reactions  (1:N)
+  └── community_poll_votes (1:N)
+
+challenges
+  └── user_challenge_progress (1:N)
 ```
 
 ### Figure 4.1 — Entity Relationship Diagram
@@ -1746,6 +1773,18 @@ PATCH /api/user/consent                         — update consent settings
 GET  /api/recommendations                       — personalized product recommendations
 GET  /api/consumer/notifications                — bell icon notification feed (notification_queue)
 GET/PATCH /api/user/notification-settings       — get/save WhatsApp phone + enabled flag
+GET  /api/user/points                           — live point balance + recent transaction history
+GET  /api/rewards                               — reward catalog + redemption history
+POST /api/rewards                               — redeem a reward using points
+GET  /api/challenges                            — challenge list with user progress
+GET  /api/payouts                               — own payout requests + current balance
+POST /api/payouts                               — request a cash-out from points
+GET  /api/community/posts                       — list/filter community threads
+POST /api/community/posts                       — create a thread or poll
+GET  /api/community/posts/:postId               — fetch thread detail + replies
+POST /api/community/posts/:postId/replies       — reply to a thread
+POST /api/community/react                       — upvote/downvote post or reply
+POST /api/community/poll/vote                   — cast poll vote
 ```
 
 ### Brand (auth required, role=brand)
@@ -1764,6 +1803,9 @@ GET  /api/brand/alerts                          — brand alert feed (paginated;
 PATCH /api/brand/alerts?id=                     — mark single alert read
 POST /api/brand/alerts                          — bulk action (action=mark_all_read)
 GET/PATCH /api/brand/notification-settings      — get/save Slack webhook URL per brand
+GET  /api/payouts                               — review all payout requests with user info
+PATCH /api/payouts                              — approve or deny pending payout requests
+POST /api/community/posts                       — brand-only AMAs and announcements allowed
 ```
 
 ### Admin
@@ -2966,6 +3008,96 @@ As of March 19, 2026, the full social listening pipeline is live in production:
 - Google Reviews ingestion with auto-discovery of place IDs
 - Relevance scoring (0–1) stored per post in `relevance_score` column
 - Posts below threshold 0.4 filtered before DB insert
+
+---
+
+## 36. In-App Community & Rewards Engine (March 20, 2026)
+
+### 36.1 Community System
+
+The `/dashboard/community` surface was converted from a mock social wall into a real in-app discussion subsystem.
+
+Supported thread types:
+- `discussion`
+- `ama`
+- `announcement`
+- `feature_request`
+- `tips`
+- `poll`
+
+Technical behavior:
+- Brand users are allowed to create AMAs and announcements
+- Consumers and brands can create standard discussion threads
+- Polls store denormalized option state in `community_posts.poll_options`
+- Thread detail requests increment `view_count`
+- Replies support parent-child nesting through `community_replies.parent_reply_id`
+- Reactions are normalized in `community_reactions` and counters are denormalized onto posts/replies for fast reads
+
+### 36.2 Rewards & Payments Engine
+
+The previous reward experience was mock-only. It is now implemented as a shared service plus database-backed APIs.
+
+Core service:
+- `src/server/pointsService.ts`
+
+Point values currently wired:
+- `feedback_submit` = 25
+- `survey_complete` = 50
+- `community_post` = 10
+- `community_reply` = 5
+- `community_upvote_received` = 2
+
+Conversion rate:
+- `100 points = $1 USD`
+
+Challenges are modeled as source-based counters:
+- feedback
+- survey
+- community_post
+- community_reply
+
+When a qualifying action occurs, the system:
+1. Upserts the balance in `user_points`
+2. Writes an immutable ledger row to `point_transactions`
+3. Advances matching rows in `user_challenge_progress`
+4. Awards the challenge bonus when a threshold is crossed
+
+### 36.3 APIs Added
+
+New route handlers:
+- `GET /api/user/points`
+- `GET/POST /api/rewards`
+- `GET /api/challenges`
+- `GET/POST/PATCH /api/payouts`
+- `GET/POST /api/community/posts`
+- `GET/DELETE /api/community/posts/[postId]`
+- `POST /api/community/posts/[postId]/replies`
+- `POST /api/community/react`
+- `POST /api/community/poll/vote`
+
+### 36.4 Database Application Strategy
+
+The new community and rewards tables were pushed directly to the configured Neon PostgreSQL database using helper scripts:
+- `push-community-schema.mjs`
+- `push-rewards-schema.mjs`
+
+This was used as a pragmatic fallback because interactive schema push behavior in the terminal session was unreliable.
+
+### 36.5 Verification
+
+Local production builds completed successfully after both changesets:
+- Community build: 138 generated pages
+- Community + rewards build: 142 generated pages
+
+The successful build included these new dynamic routes:
+- `/dashboard/community`
+- `/dashboard/community/[postId]`
+- `/dashboard/rewards`
+- `/dashboard/payouts`
+- `/api/user/points`
+- `/api/rewards`
+- `/api/challenges`
+- `/api/payouts`
 
 ---
 
