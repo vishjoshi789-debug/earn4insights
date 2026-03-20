@@ -10,6 +10,8 @@ import { extractAndPersistIntents } from '@/server/intentExtractionService'
 import { alertOnNewFeedback, alertOnHighIntent } from '@/server/brandAlertService'
 import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
 import { productExists } from '@/lib/entity-checks'
+import { awardPoints, POINT_VALUES } from '@/server/pointsService'
+import { recordContribution } from '@/server/contributionPipeline'
 
 // ── Anti-fraud constants ──────────────────────────────────────
 const MAX_TEXT_LENGTH = 5000
@@ -330,6 +332,31 @@ export async function POST(request: Request) {
       }
     } catch (err) {
       console.error('[Feedback] Brand alert failed (non-blocking):', err)
+    }
+
+    // ── 11. Award points for feedback submission ───────────────
+    try {
+      if (session.user.id) {
+        await awardPoints(session.user.id, 'feedback_submit', POINT_VALUES.feedback_submit)
+      }
+    } catch (err) {
+      console.error('[Feedback] Points award failed (non-blocking):', err)
+    }
+
+    // ── 12. Record contribution for AI scoring ─────────────────
+    try {
+      if (session.user.id) {
+        recordContribution({
+          userId: session.user.id,
+          contributionType: 'feedback_submit',
+          rawContent: trimmedText,
+          productId,
+          sourceId: created.id,
+          metadata: { rating, category, sentiment: sentimentResult, wordCount: trimmedText.split(/\s+/).length },
+        }).catch(err => console.error('[Feedback] Contribution record failed:', err))
+      }
+    } catch (err) {
+      console.error('[Feedback] Contribution pipeline failed (non-blocking):', err)
     }
 
     return NextResponse.json({

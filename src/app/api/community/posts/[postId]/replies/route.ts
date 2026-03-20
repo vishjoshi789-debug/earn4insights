@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { communityReplies, communityPosts } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
+import { recordContribution } from '@/server/contributionPipeline'
 
 // POST /api/community/posts/[postId]/replies — add a reply
 export async function POST(
@@ -80,6 +81,15 @@ export async function POST(
       newReply.id,
       'Replied to a community post',
     )
+
+    // AI contribution scoring (non-blocking)
+    recordContribution({
+      userId: session.user.id,
+      contributionType: 'community_reply',
+      rawContent: content.trim(),
+      sourceId: newReply.id,
+      metadata: { postId, parentReplyId: parentReplyId || null, bodyLength: content.trim().length },
+    }).catch(err => console.error('[ContributionPipeline] community_reply error:', err))
 
     return NextResponse.json({ reply: newReply }, { status: 201 })
   } catch (error) {

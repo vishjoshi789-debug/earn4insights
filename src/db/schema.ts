@@ -800,6 +800,99 @@ export const userChallengeProgress = pgTable('user_challenge_progress', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ════════════════════════════════════════════════════════════════
+// SECTION: AI-DRIVEN CONTRIBUTION INTELLIGENCE & REWARD SYSTEM
+// ════════════════════════════════════════════════════════════════
+
+// ── Contribution Events (unified event pipeline) ─────────────────
+export const contributionEvents = pgTable('contribution_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  contributionType: text('contribution_type').notNull(),
+  // types: 'feedback_submit' | 'survey_complete' | 'community_post' | 'community_reply' | 'community_upvote_received' | 'poll_vote'
+  rawContent: text('raw_content'),             // the actual text/content
+  metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+  // metadata: { length, wordCount, productId, postType, rating, sentiment, ... }
+  brandId: text('brand_id'),                   // product owner (if applicable)
+  productId: text('product_id'),
+  sourceId: text('source_id'),                 // FK to the original record
+  // AI scoring results
+  qualityScore: real('quality_score'),         // 0-100 AI-computed score
+  qualityReasoning: text('quality_reasoning'), // AI explanation
+  relevanceScore: real('relevance_score'),     // 0-100 brand relevance
+  depthScore: real('depth_score'),             // 0-100 insightfulness
+  clarityScore: real('clarity_score'),         // 0-100 structured/clear
+  noveltyScore: real('novelty_score'),         // 0-100 non-duplicate
+  actionabilityScore: real('actionability_score'), // 0-100 usable by product team
+  authenticityScore: real('authenticity_score'),   // 0-100 not spam
+  // Reward computation
+  basePoints: integer('base_points'),          // static points before multiplier
+  brandWeight: real('brand_weight').default(1.0), // brand priority multiplier
+  qualityMultiplier: real('quality_multiplier').default(1.0),
+  reputationMultiplier: real('reputation_multiplier').default(1.0),
+  finalTokens: integer('final_tokens'),        // actual tokens awarded
+  // Processing state
+  scoredAt: timestamp('scored_at'),
+  status: text('status').notNull().default('pending'),
+  // statuses: 'pending' | 'scored' | 'rewarded' | 'flagged' | 'rejected'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Brand Reward Config (brand-weighted priorities) ──────────────
+export const brandRewardConfigs = pgTable('brand_reward_configs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  productId: text('product_id'),               // null = brand-wide config
+  contributionType: text('contribution_type').notNull(),
+  weight: real('weight').notNull().default(1.0),
+  // priority areas brands care about (affect scoring weight)
+  priorityKeywords: jsonb('priority_keywords').$type<string[]>(),
+  bonusMultiplier: real('bonus_multiplier').default(1.0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── User Reputation (trust + earning multiplier) ─────────────────
+export const userReputation = pgTable('user_reputation', {
+  userId: text('user_id').primaryKey(),
+  reputationScore: real('reputation_score').notNull().default(50), // 0-100
+  tier: text('tier').notNull().default('bronze'),
+  // tiers: 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond'
+  earningMultiplier: real('earning_multiplier').notNull().default(1.0),
+  totalContributions: integer('total_contributions').notNull().default(0),
+  qualityAvg: real('quality_avg').notNull().default(0),       // rolling average quality score
+  flagCount: integer('flag_count').notNull().default(0),       // spam/fraud flags
+  streakDays: integer('streak_days').notNull().default(0),     // consecutive days with contribution
+  lastContributionAt: timestamp('last_contribution_at'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Brand Quality Feedback (continuous learning loop) ────────────
+export const brandQualityFeedback = pgTable('brand_quality_feedback', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  contributionEventId: uuid('contribution_event_id').notNull(),
+  brandUserId: text('brand_user_id').notNull(),
+  rating: text('rating').notNull(),            // 'useful' | 'not_useful' | 'insightful'
+  comment: text('comment'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Trust Flags (anti-gaming) ────────────────────────────────────
+export const trustFlags = pgTable('trust_flags', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  flagType: text('flag_type').notNull(),
+  // types: 'spam' | 'bot_behavior' | 'low_effort_pattern' | 'duplicate_farming' | 'velocity_abuse'
+  severity: text('severity').notNull().default('warning'),
+  // severities: 'warning' | 'moderate' | 'severe'
+  details: text('details'),
+  contributionEventId: uuid('contribution_event_id'),
+  resolved: boolean('resolved').notNull().default(false),
+  resolvedBy: text('resolved_by'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -867,3 +960,10 @@ export type ChallengeRow = typeof challenges.$inferSelect
 export type NewChallengeRow = typeof challenges.$inferInsert
 export type UserChallengeProgressRow = typeof userChallengeProgress.$inferSelect
 export type NewUserChallengeProgressRow = typeof userChallengeProgress.$inferInsert
+export type ContributionEvent = typeof contributionEvents.$inferSelect
+export type NewContributionEvent = typeof contributionEvents.$inferInsert
+export type BrandRewardConfig = typeof brandRewardConfigs.$inferSelect
+export type NewBrandRewardConfig = typeof brandRewardConfigs.$inferInsert
+export type UserReputationRow = typeof userReputation.$inferSelect
+export type BrandQualityFeedbackRow = typeof brandQualityFeedback.$inferSelect
+export type TrustFlag = typeof trustFlags.$inferSelect

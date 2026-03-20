@@ -66,6 +66,35 @@ export async function submitSurveyResponse(
 
   await createSurveyResponse(response)
 
+  // ── Award points for survey completion ──────────────────────
+  try {
+    const { awardPoints, POINT_VALUES } = await import('@/server/pointsService')
+    // userEmail is used as the userId since surveys may not have session user id
+    const surveyUserId = response.userEmail || response.userName || ''
+    if (surveyUserId) {
+      await awardPoints(
+        surveyUserId,
+        POINT_VALUES.survey_complete,
+        'survey_complete',
+        response.id || surveyId,
+        `Completed survey: ${survey.title.slice(0, 50)}`,
+      )
+
+      // AI contribution scoring (non-blocking)
+      const { recordContribution } = await import('@/server/contributionPipeline')
+      recordContribution({
+        userId: surveyUserId,
+        contributionType: 'survey_complete',
+        rawContent: combinedText || Object.values(answers).filter((a) => typeof a === 'string').join(' '),
+        productId: survey.productId,
+        sourceId: response.id || surveyId,
+        metadata: { surveyTitle: survey.title, npsScore: response.npsScore, sentiment: response.sentiment },
+      }).catch(err => console.error('[ContributionPipeline] survey error:', err))
+    }
+  } catch (err) {
+    console.error('[SurveyResponse] Points/contribution failed (non-blocking):', err)
+  }
+
   // ── Extract intent signals (non-blocking) ────────────────
   try {
     const { extractAndPersistIntents } = await import('@/server/intentExtractionService')

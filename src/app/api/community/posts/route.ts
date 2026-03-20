@@ -5,6 +5,7 @@ import { communityPosts, users, products } from '@/db/schema'
 import { desc, eq, ilike, and, or, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
+import { recordContribution } from '@/server/contributionPipeline'
 
 // GET /api/community/posts — list posts with filters
 export async function GET(req: NextRequest) {
@@ -165,6 +166,16 @@ export async function POST(req: NextRequest) {
       newPost.id,
       `Created community post: ${title.trim().slice(0, 50)}`,
     )
+
+    // AI contribution scoring (non-blocking)
+    recordContribution({
+      userId: session.user.id,
+      contributionType: 'community_post',
+      rawContent: content.trim(),
+      productId: productId || undefined,
+      sourceId: newPost.id,
+      metadata: { postType: type, titleLength: title.trim().length, bodyLength: content.trim().length },
+    }).catch(err => console.error('[ContributionPipeline] community_post error:', err))
 
     return NextResponse.json({ post: newPost }, { status: 201 })
   } catch (error) {

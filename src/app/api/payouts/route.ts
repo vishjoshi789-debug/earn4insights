@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
-import { payoutRequests, users } from '@/db/schema'
-import { eq, desc } from 'drizzle-orm'
+import { payoutRequests, users, userReputation } from '@/db/schema'
+import { eq, desc, sql } from 'drizzle-orm'
 import { getUserBalance, deductPoints, POINTS_PER_DOLLAR } from '@/server/pointsService'
 
 // GET /api/payouts — list payout requests (consumers see own, brands see all)
@@ -46,7 +46,18 @@ export async function GET() {
 
       const balance = await getUserBalance(session.user.id)
 
-      return NextResponse.json({ payouts, balance })
+      // Include reputation info for display
+      const [rep] = await db
+        .select({
+          tier: userReputation.tier,
+          reputationScore: userReputation.reputationScore,
+          earningMultiplier: userReputation.earningMultiplier,
+        })
+        .from(userReputation)
+        .where(eq(userReputation.userId, session.user.id))
+        .limit(1)
+
+      return NextResponse.json({ payouts, balance, reputation: rep || null })
     }
   } catch (error) {
     console.error('[Payouts GET] Error:', error)

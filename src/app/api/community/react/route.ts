@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { communityReactions, communityPosts, communityReplies } from '@/db/schema'
 import { eq, and, sql } from 'drizzle-orm'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
+import { recordContribution } from '@/server/contributionPipeline'
 
 // POST /api/community/react — upvote/downvote a post or reply
 export async function POST(req: NextRequest) {
@@ -123,6 +124,14 @@ export async function POST(req: NextRequest) {
       }
       if (authorId && authorId !== userId) {
         await awardPoints(authorId, POINT_VALUES.community_upvote_received, 'community_upvote_received', postId || replyId || undefined, 'Received an upvote')
+
+        // AI contribution scoring for the upvoted author (non-blocking)
+        recordContribution({
+          userId: authorId,
+          contributionType: 'community_upvote_received',
+          sourceId: postId || replyId || undefined,
+          metadata: { upvoteFromUserId: userId, postId, replyId },
+        }).catch(err => console.error('[ContributionPipeline] upvote error:', err))
       }
     }
 
