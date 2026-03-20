@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
 import { communityPosts, users, products } from '@/db/schema'
-import { desc, eq, ilike, and, sql } from 'drizzle-orm'
+import { desc, eq, ilike, and, or, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
 
@@ -20,13 +20,20 @@ export async function GET(req: NextRequest) {
     const offset = (page - 1) * limit
     const postType = params.get('type') // 'discussion' | 'ama' | 'announcement' | etc.
     const productId = params.get('productId')
-    const search = params.get('search')
+    const search = params.get('search')?.trim()
 
     // Build where conditions
     const conditions = []
     if (postType) conditions.push(eq(communityPosts.postType, postType))
     if (productId) conditions.push(eq(communityPosts.productId, productId))
-    if (search) conditions.push(ilike(communityPosts.title, `%${search}%`))
+    if (search) {
+      conditions.push(
+        or(
+          ilike(communityPosts.title, `%${search}%`),
+          ilike(communityPosts.body, `%${search}%`),
+        ),
+      )
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
@@ -114,12 +121,17 @@ export async function POST(req: NextRequest) {
     // Validate poll options if type is poll
     let validatedPollOptions = null
     if (type === 'poll') {
-      if (!pollOptions || !Array.isArray(pollOptions) || pollOptions.length < 2 || pollOptions.length > 10) {
+      const normalizedPollOptions = Array.isArray(pollOptions)
+        ? pollOptions.map((opt: string) => String(opt).trim()).filter(Boolean)
+        : []
+
+      if (normalizedPollOptions.length < 2 || normalizedPollOptions.length > 10) {
         return NextResponse.json({ error: 'Polls need 2-10 options' }, { status: 400 })
       }
-      validatedPollOptions = pollOptions.map((opt: string) => ({
+
+      validatedPollOptions = normalizedPollOptions.map((opt: string) => ({
         id: randomUUID().slice(0, 8),
-        text: String(opt).slice(0, 200),
+        text: opt.slice(0, 200),
         votes: 0,
       }))
     }

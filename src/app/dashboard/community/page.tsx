@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ import {
   Filter, ChevronLeft, ChevronRight, Loader2, Send, X
 } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 type CommunityPost = {
   id: string
@@ -61,16 +63,28 @@ function formatTimeAgo(dateStr: string) {
   return date.toLocaleDateString()
 }
 
+function truncateCopy(value: string, maxLength: number) {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+
+  return `${normalized.slice(0, maxLength - 1)}…`
+}
+
 export default function CommunityPage() {
+  const router = useRouter()
   const { data: session } = useSession()
   const [posts, setPosts] = useState<CommunityPost[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [search, setSearch] = useState('')
+  const [queryInput, setQueryInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [createOpen, setCreateOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Create form state
   const [newTitle, setNewTitle] = useState('')
@@ -82,66 +96,103 @@ export default function CommunityPage() {
 
   const loadPosts = useCallback(async () => {
     setLoading(true)
+    setError(null)
+
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20' })
       if (typeFilter !== 'all') params.set('type', typeFilter)
-      if (search.trim()) params.set('search', search.trim())
+      if (searchQuery) params.set('search', searchQuery)
 
       const res = await fetch(`/api/community/posts?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        setPosts(data.posts)
-        setTotalPages(data.pagination.totalPages)
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load community posts')
       }
+
+      setPosts(data.posts || [])
+      setTotalPages(Math.max(1, data.pagination?.totalPages || 1))
     } catch (err) {
-      console.error('Failed to load posts:', err)
+      const message = err instanceof Error ? err.message : 'Failed to load community posts'
+      setPosts([])
+      setTotalPages(1)
+      setError(message)
     } finally {
       setLoading(false)
     }
-  }, [page, typeFilter, search])
+  }, [page, searchQuery, typeFilter])
 
   useEffect(() => {
-    loadPosts()
+    void loadPosts()
   }, [loadPosts])
 
   const handleSearch = () => {
     setPage(1)
-    loadPosts()
+    setSearchQuery(queryInput.trim())
+  }
+
+  const handleClearFilters = () => {
+    setPage(1)
+    setQueryInput('')
+    setSearchQuery('')
+    setTypeFilter('all')
   }
 
   const handleCreate = async () => {
-    if (!newTitle.trim() || !newContent.trim()) return
+    if (!newTitle.trim() || !newContent.trim()) {
+      toast.error('Title and content are required')
+      return
+    }
+
+    const normalizedPollOptions = pollOptions.map(option => option.trim()).filter(Boolean)
+    if (newType === 'poll' && normalizedPollOptions.length < 2) {
+      toast.error('Polls need at least two options')
+      return
+    }
+
     setSubmitting(true)
     try {
-      const body: any = {
+      const body: {
+        title: string
+        content: string
+        postType: string
+        pollOptions?: string[]
+      } = {
         title: newTitle.trim(),
         content: newContent.trim(),
         postType: newType,
       }
+
       if (newType === 'poll') {
-        const opts = pollOptions.filter(o => o.trim())
-        if (opts.length < 2) return
-        body.pollOptions = opts
+        body.pollOptions = normalizedPollOptions
       }
+
       const res = await fetch('/api/community/posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (res.ok) {
-        setCreateOpen(false)
-        setNewTitle('')
-        setNewContent('')
-        setNewType('discussion')
-        setPollOptions(['', ''])
-        loadPosts()
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create post')
       }
+
+      setCreateOpen(false)
+      setNewTitle('')
+      setNewContent('')
+      setNewType('discussion')
+      setPollOptions(['', ''])
+      toast.success('Post published to the community')
+      router.push(`/dashboard/community/${data.post.id}`)
     } catch (err) {
-      console.error('Failed to create post:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to create post')
     } finally {
       setSubmitting(false)
     }
   }
+
+  const hasActiveFilters = Boolean(searchQuery) || typeFilter !== 'all'
 
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-6 max-w-4xl">
@@ -152,7 +203,7 @@ export default function CommunityPage() {
           <p className="text-sm text-muted-foreground mt-1">Discuss, share tips, and connect with the community</p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger>
+          <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4 mr-2" />New Post</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg">
@@ -180,6 +231,7 @@ export default function CommunityPage() {
                 onChange={e => setNewTitle(e.target.value)}
                 maxLength={200}
               />
+              <p className="text-xs text-muted-foreground text-right">{newTitle.length}/200</p>
               <Textarea
                 placeholder="What's on your mind?"
                 value={newContent}
@@ -187,6 +239,7 @@ export default function CommunityPage() {
                 rows={4}
                 maxLength={10000}
               />
+              <p className="text-xs text-muted-foreground text-right">{newContent.length}/10000</p>
               {newType === 'poll' && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Poll Options</p>
@@ -236,12 +289,16 @@ export default function CommunityPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search posts..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={queryInput}
+            onChange={e => setQueryInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             className="pl-9"
           />
         </div>
+        <Button variant="outline" onClick={handleSearch}>
+          <Search className="h-4 w-4 mr-2" />
+          Search
+        </Button>
         <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(1) }}>
           <SelectTrigger className="w-[180px]">
             <Filter className="h-4 w-4 mr-2" />
@@ -257,17 +314,48 @@ export default function CommunityPage() {
             <SelectItem value="poll">Polls</SelectItem>
           </SelectContent>
         </Select>
+        {hasActiveFilters && (
+          <Button variant="ghost" onClick={handleClearFilters}>
+            <X className="h-4 w-4 mr-2" />
+            Clear
+          </Button>
+        )}
       </div>
 
       {/* Posts */}
       {loading ? (
         <div className="text-center py-12">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+          <p className="mt-3 text-sm text-muted-foreground">Loading community posts...</p>
         </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="p-8 text-center space-y-3">
+            <p className="text-sm text-muted-foreground">{error}</p>
+            <Button variant="outline" onClick={() => void loadPosts()}>
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
       ) : posts.length === 0 ? (
         <Card>
-          <CardContent className="p-12 text-center text-muted-foreground">
-            No posts yet. Be the first to start a discussion!
+          <CardContent className="p-12 text-center space-y-3">
+            <p className="text-muted-foreground">
+              {hasActiveFilters
+                ? 'No posts matched your current search or filters.'
+                : 'No posts yet. Be the first to start a discussion.'}
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              {hasActiveFilters && (
+                <Button variant="outline" onClick={handleClearFilters}>
+                  Reset Filters
+                </Button>
+              )}
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Post
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -300,6 +388,7 @@ export default function CommunityPage() {
                           )}
                         </div>
                         <h3 className="font-semibold text-sm truncate">{post.title}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{truncateCopy(post.body, 160)}</p>
                         <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                           <span>
                             {post.authorName || 'Anonymous'}

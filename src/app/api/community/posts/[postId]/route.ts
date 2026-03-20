@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
-import { communityPosts, communityReplies, communityReactions, users, products } from '@/db/schema'
-import { eq, sql } from 'drizzle-orm'
+import { communityPosts, communityReplies, communityReactions, communityPollVotes, users, products } from '@/db/schema'
+import { eq, sql, and, inArray } from 'drizzle-orm'
 
 // GET /api/community/posts/[postId] — get a single post with replies
 export async function GET(
@@ -85,10 +85,22 @@ export async function GET(
       .from(communityReactions)
       .where(eq(communityReactions.userId, session.user.id))
 
+    const userPollVote = await db
+      .select({ optionId: communityPollVotes.optionId })
+      .from(communityPollVotes)
+      .where(
+        and(
+          eq(communityPollVotes.postId, postId),
+          eq(communityPollVotes.userId, session.user.id),
+        ),
+      )
+      .limit(1)
+
     return NextResponse.json({
       post: postResult[0],
       replies: repliesResult,
       userReactions,
+      userPollVoteOptionId: userPollVote[0]?.optionId ?? null,
     })
   } catch (error) {
     console.error('[Community Post GET] Error:', error)
@@ -124,9 +136,21 @@ export async function DELETE(
       return NextResponse.json({ error: 'You can only delete your own posts' }, { status: 403 })
     }
 
+    const replyRows = await db
+      .select({ id: communityReplies.id })
+      .from(communityReplies)
+      .where(eq(communityReplies.postId, postId))
+
+    const replyIds = replyRows.map((reply) => reply.id)
+
+    if (replyIds.length > 0) {
+      await db.delete(communityReactions).where(inArray(communityReactions.replyId, replyIds))
+    }
+
     // Delete related data first
-    await db.delete(communityReplies).where(eq(communityReplies.postId, postId))
+    await db.delete(communityPollVotes).where(eq(communityPollVotes.postId, postId))
     await db.delete(communityReactions).where(eq(communityReactions.postId, postId))
+    await db.delete(communityReplies).where(eq(communityReplies.postId, postId))
     await db.delete(communityPosts).where(eq(communityPosts.id, postId))
 
     return NextResponse.json({ success: true })

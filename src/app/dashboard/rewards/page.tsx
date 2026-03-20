@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Gift, Trophy, Star, CheckCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 type RewardItem = {
   id: string;
@@ -43,8 +44,12 @@ export default function RewardsPage() {
   const [transactions, setTransactions] = useState<PointTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [redeeming, setRedeeming] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
     try {
       const [rewardsRes, challengesRes, pointsRes] = await Promise.all([
         fetch('/api/rewards'),
@@ -52,30 +57,39 @@ export default function RewardsPage() {
         fetch('/api/user/points'),
       ]);
 
-      if (rewardsRes.ok) {
-        const data = await rewardsRes.json();
-        setCatalog(data.catalog);
-        setBalance(data.balance);
+      const [rewardsData, challengesData, pointsData] = await Promise.all([
+        rewardsRes.json(),
+        challengesRes.json(),
+        pointsRes.json(),
+      ]);
+
+      if (!rewardsRes.ok) {
+        throw new Error(rewardsData.error || 'Failed to load rewards catalog');
       }
-      if (challengesRes.ok) {
-        const data = await challengesRes.json();
-        setChallenges(data.challenges);
+
+      if (!challengesRes.ok) {
+        throw new Error(challengesData.error || 'Failed to load challenges');
       }
-      if (pointsRes.ok) {
-        const data = await pointsRes.json();
-        setLifetimePoints(data.balance.lifetimePoints ?? 0);
-        setTransactions(data.transactions.slice(0, 10));
+
+      if (!pointsRes.ok) {
+        throw new Error(pointsData.error || 'Failed to load point balance');
       }
+
+      setCatalog(rewardsData.catalog || []);
+      setChallenges(challengesData.challenges || []);
+      setBalance(pointsData.balance?.totalPoints ?? rewardsData.balance ?? 0);
+      setLifetimePoints(pointsData.balance?.lifetimePoints ?? 0);
+      setTransactions((pointsData.transactions || []).slice(0, 10));
     } catch (err) {
-      console.error('Failed to load rewards data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load rewards data');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   const handleRedeem = async (rewardId: string) => {
     setRedeeming(rewardId);
@@ -85,26 +99,42 @@ export default function RewardsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rewardId }),
       });
+
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
         setBalance(data.newBalance);
-        loadData();
+        toast.success('Reward redeemed successfully');
+        await loadData();
       } else {
-        const err = await res.json();
-        alert(err.error || 'Failed to redeem');
+        throw new Error(data.error || 'Failed to redeem reward');
       }
     } catch (err) {
-      console.error('Redeem failed:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to redeem reward');
     } finally {
       setRedeeming(null);
     }
   };
+
+  const cashValue = (balance / 100).toFixed(2);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center space-y-3">
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button variant="outline" onClick={() => void loadData()}>
+            Try Again
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -122,6 +152,9 @@ export default function RewardsPage() {
           <p className="text-3xl font-bold">{balance.toLocaleString()} pts</p>
           <p className="text-sm text-muted-foreground mt-1">
             Lifetime earned: {lifetimePoints.toLocaleString()} pts &middot; Earn points by submitting feedback, surveys, and community engagement.
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Current cash-out value: ${cashValue} USD
           </p>
         </CardContent>
       </Card>
@@ -166,16 +199,33 @@ export default function RewardsPage() {
         </section>
       )}
 
+      {challenges.length === 0 && (
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            No active challenges are available right now. Earn points through feedback, surveys, and community activity.
+          </CardContent>
+        </Card>
+      )}
+
       {/* REWARD CATALOG */}
       <section className="space-y-4">
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <Gift className="h-5 w-5 text-indigo-500" />
           Reward Catalog
         </h2>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {catalog.length === 0 ? (
+          <Card>
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              No rewards are available yet. Seed the rewards catalog to enable redemption.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {catalog.map((reward) => {
             const inStock = reward.stock === null || reward.stock > 0;
             const canAfford = balance >= reward.pointsCost;
+            const ctaLabel = !inStock ? 'Out of stock' : canAfford ? 'Redeem' : 'Not enough points';
+
             return (
               <Card key={reward.id}>
                 <CardHeader>
@@ -197,19 +247,20 @@ export default function RewardsPage() {
                     {redeeming === reward.id ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : null}
-                    {canAfford ? 'Redeem' : 'Not enough points'}
+                    {ctaLabel}
                   </Button>
                 </CardContent>
               </Card>
             );
           })}
-        </div>
+          </div>
+        )}
       </section>
 
       {/* RECENT TRANSACTIONS */}
-      {transactions.length > 0 && (
-        <section className="space-y-4">
-          <h2 className="text-xl font-semibold">Recent Activity</h2>
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">Recent Activity</h2>
+        {transactions.length > 0 ? (
           <Card>
             <CardContent className="p-0">
               <div className="divide-y">
@@ -227,8 +278,14 @@ export default function RewardsPage() {
               </div>
             </CardContent>
           </Card>
-        </section>
-      )}
+        ) : (
+          <Card>
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              Your points history will appear here after you earn, spend, or redeem rewards.
+            </CardContent>
+          </Card>
+        )}
+      </section>
     </div>
   );
 }

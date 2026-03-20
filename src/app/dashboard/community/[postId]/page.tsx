@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +13,7 @@ import {
   Loader2, Send, Trash2, Reply
 } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 type PostDetail = {
   id: string
@@ -53,6 +54,13 @@ type UserReaction = {
   postId: string | null
   replyId: string | null
   reactionType: string
+}
+
+type PostResponse = {
+  post: PostDetail
+  replies: ReplyData[]
+  userReactions: UserReaction[]
+  userPollVoteOptionId: string | null
 }
 
 const POST_TYPE_META: Record<string, { label: string; icon: any; color: string }> = {
@@ -176,35 +184,46 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [votingPoll, setVotingPoll] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [userPollVoteOptionId, setUserPollVoteOptionId] = useState<string | null>(null)
 
   useEffect(() => {
     params.then(p => setPostId(p.postId))
   }, [params])
 
-  const loadPost = async () => {
+  const loadPost = useCallback(async () => {
     if (!postId) return
     setLoading(true)
+    setError(null)
+
     try {
       const res = await fetch(`/api/community/posts/${postId}`)
+      const data = await res.json()
+
       if (res.ok) {
-        const data = await res.json()
-        setPost(data.post)
-        setReplies(data.replies)
-        setUserReactions(data.userReactions || [])
+        const response = data as PostResponse
+        setPost(response.post)
+        setReplies(response.replies || [])
+        setUserReactions(response.userReactions || [])
+        setUserPollVoteOptionId(response.userPollVoteOptionId)
       } else if (res.status === 404) {
         router.push('/dashboard/community')
+      } else {
+        throw new Error(data.error || 'Failed to load post')
       }
     } catch (err) {
-      console.error('Failed to load post:', err)
+      const message = err instanceof Error ? err.message : 'Failed to load post'
+      setError(message)
     } finally {
       setLoading(false)
     }
-  }
+  }, [postId, router])
 
   useEffect(() => {
-    if (postId) loadPost()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId])
+    if (postId) {
+      void loadPost()
+    }
+  }, [loadPost, postId])
 
   const topLevelReplies = replies.filter(r => !r.parentReplyId)
   const getChildReplies = (parentId: string) => replies.filter(r => r.parentReplyId === parentId)
@@ -215,19 +234,29 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
 
   const handleVote = async (targetPostId: string | null, replyId: string | null, reactionType: 'upvote' | 'downvote') => {
     try {
-      await fetch('/api/community/react', {
+      const res = await fetch('/api/community/react', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ postId: targetPostId, replyId, reactionType }),
       })
-      loadPost()
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to record reaction')
+      }
+
+      void loadPost()
     } catch (err) {
-      console.error('Failed to react:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to record reaction')
     }
   }
 
   const handleReply = async () => {
-    if (!replyContent.trim() || !postId) return
+    if (!replyContent.trim() || !postId) {
+      toast.error('Reply content is required')
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await fetch(`/api/community/posts/${postId}/replies`, {
@@ -238,13 +267,18 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
           parentReplyId: replyingTo,
         }),
       })
-      if (res.ok) {
-        setReplyContent('')
-        setReplyingTo(null)
-        loadPost()
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to post reply')
       }
+
+      setReplyContent('')
+      setReplyingTo(null)
+      toast.success('Reply posted')
+      void loadPost()
     } catch (err) {
-      console.error('Failed to reply:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to post reply')
     } finally {
       setSubmitting(false)
     }
@@ -255,17 +289,27 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
     setDeleting(true)
     try {
       const res = await fetch(`/api/community/posts/${postId}`, { method: 'DELETE' })
-      if (res.ok) {
-        router.push('/dashboard/community')
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete post')
       }
+
+      toast.success('Post deleted')
+      router.push('/dashboard/community')
     } catch (err) {
-      console.error('Failed to delete:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to delete post')
     } finally {
       setDeleting(false)
     }
   }
 
   const handlePollVote = async (optionId: string) => {
+    if (userPollVoteOptionId) {
+      toast.message('You have already voted on this poll')
+      return
+    }
+
     setVotingPoll(true)
     try {
       const res = await fetch('/api/community/poll/vote', {
@@ -273,14 +317,19 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ postId, optionId }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        if (post) {
-          setPost({ ...post, pollOptions: data.pollOptions })
-        }
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to record vote')
       }
+
+      if (post) {
+        setPost({ ...post, pollOptions: data.pollOptions })
+      }
+      setUserPollVoteOptionId(optionId)
+      toast.success('Vote recorded')
     } catch (err) {
-      console.error('Failed to vote:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to record vote')
     } finally {
       setVotingPoll(false)
     }
@@ -303,8 +352,11 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
     return (
       <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
         <Card>
-          <CardContent className="p-12 text-center text-muted-foreground">
-            Post not found.
+          <CardContent className="p-12 text-center space-y-3 text-muted-foreground">
+            <p>{error || 'Post not found.'}</p>
+            <Button variant="outline" onClick={() => void loadPost()}>
+              Try Again
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -365,25 +417,38 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
           {/* Poll */}
           {post.postType === 'poll' && post.pollOptions && (
             <div className="space-y-2 my-4 p-4 border rounded-lg bg-muted/30">
-              <p className="text-sm font-semibold mb-3">Poll</p>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-sm font-semibold">Poll</p>
+                {userPollVoteOptionId && (
+                  <Badge variant="secondary" className="text-xs">Vote recorded</Badge>
+                )}
+              </div>
               {post.pollOptions.map(opt => {
                 const totalVotes = post.pollOptions!.reduce((s, o) => s + o.votes, 0)
                 const pct = totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0
+                const isSelected = userPollVoteOptionId === opt.id
+
                 return (
                   <button
                     key={opt.id}
-                    className="w-full text-left p-2 border rounded-md hover:bg-muted/50 transition-colors relative overflow-hidden"
+                    className={`w-full text-left p-2 border rounded-md hover:bg-muted/50 transition-colors relative overflow-hidden ${isSelected ? 'ring-1 ring-indigo-400 border-indigo-300' : ''}`}
                     onClick={() => handlePollVote(opt.id)}
-                    disabled={votingPoll}
+                    disabled={votingPoll || Boolean(userPollVoteOptionId)}
                   >
                     <div className="absolute inset-0 bg-indigo-100 dark:bg-indigo-900/30 transition-all" style={{ width: `${pct}%` }} />
-                    <div className="relative flex justify-between items-center">
+                    <div className="relative flex justify-between items-center gap-3">
                       <span className="text-sm">{opt.text}</span>
-                      <span className="text-xs text-muted-foreground">{opt.votes} votes ({pct}%)</span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {isSelected && <Badge variant="outline" className="text-[10px]">Your vote</Badge>}
+                        <span>{opt.votes} votes ({pct}%)</span>
+                      </div>
                     </div>
                   </button>
                 )
               })}
+              {userPollVoteOptionId && (
+                <p className="text-xs text-muted-foreground">Poll votes are limited to one choice per user.</p>
+              )}
             </div>
           )}
 
@@ -453,6 +518,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
+            <p className="mt-2 text-xs text-right text-muted-foreground">{replyContent.length}/5000</p>
           </CardContent>
         </Card>
       )}
@@ -488,6 +554,14 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
             />
           ))}
         </div>
+      )}
+
+      {replies.length === 0 && !post.isLocked && (
+        <Card>
+          <CardContent className="p-6 text-center text-sm text-muted-foreground">
+            No replies yet. Start the conversation.
+          </CardContent>
+        </Card>
       )}
     </div>
   )
