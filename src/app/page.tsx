@@ -18,7 +18,7 @@ export default function HomePage() {
             <span className="text-primary font-medium">Now Live</span>
           </div>
           <div className="flex justify-center mb-6">
-            <Image src="/logo.png" alt="Earn4Insights" width={72} height={72} priority />
+            <Image src="/logo.png" alt="Earn4Insights" width={96} height={96} className="rounded-2xl" priority />
           </div>
           <h1 className="text-balance text-foreground">
             Where Consumer Voice Powers Better Products.

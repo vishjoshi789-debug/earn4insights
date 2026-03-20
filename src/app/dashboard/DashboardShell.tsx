@@ -211,7 +211,7 @@ export default function DashboardShell({
         <SidebarHeader>
           <div className="flex flex-col gap-1" data-tour="welcome">
             <div className="flex items-center gap-2">
-              <Logo size={36} />
+              <Logo size={40} />
               <span className="text-lg font-headline font-semibold">
                 Earn4Insights
               </span>
