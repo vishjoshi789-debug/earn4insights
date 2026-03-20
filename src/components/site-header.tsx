@@ -40,11 +40,11 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center">
+      <div className="container flex h-16 items-center px-4 md:px-6">
         {/* Mobile hamburger menu */}
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="mr-2 md:hidden">
+            <Button variant="ghost" size="icon" className="mr-4 shrink-0 md:hidden">
               <Menu className="h-5 w-5" />
               <span className="sr-only">Toggle menu</span>
             </Button>
@@ -95,13 +95,13 @@ export function SiteHeader() {
           </SheetContent>
         </Sheet>
 
-        <Link href="/" className="mr-6 flex items-center space-x-2 group">
-          <Logo size={40} />
-          <div className="flex flex-col">
-            <span className="font-bold font-headline text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all leading-tight">
+        <Link href="/" className="flex items-center gap-2 group mr-4 md:mr-6 min-w-0">
+          <Logo size={36} className="shrink-0" />
+          <div className="flex flex-col min-w-0">
+            <span className="font-bold font-headline text-sm md:text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all leading-tight truncate">
               Earn4Insights
             </span>
-            <span className="text-[9px] text-muted-foreground leading-tight">
+            <span className="hidden sm:block text-[9px] text-muted-foreground leading-tight">
               Real Voices. Measurable Intelligence.
             </span>
           </div>
@@ -126,13 +126,13 @@ export function SiteHeader() {
             Community
           </Link>
         </nav>
-        <div className="flex flex-1 items-center justify-end space-x-2">
+        <div className="ml-auto flex shrink-0 items-center gap-3">
           {status === 'loading' ? null : !user ? (
             <>
-              <Button asChild variant="ghost" size="sm" className="font-semibold">
+              <Button asChild variant="ghost" size="sm" className="font-semibold text-xs sm:text-sm px-3">
                 <Link href="/login">Sign In</Link>
               </Button>
-              <Button asChild size="sm" className="font-semibold shadow-sm hover:shadow-md">
+              <Button asChild size="sm" className="font-semibold shadow-sm hover:shadow-md text-xs sm:text-sm px-3">
                 <Link href="/signup">Get Started</Link>
               </Button>
             </>
