@@ -552,7 +552,7 @@ export function ProductAnalytics({
                   dataKey="platform"
                   type="category"
                   width={110}
-                  tick={{ fontSize: 12, fontWeight: 600 }}
+                  tick={{ fontSize: 12, fontWeight: 700, fill: 'currentColor' }}
                 />
                 <Tooltip />
                 <Bar dataKey="reach" barSize={24}>
