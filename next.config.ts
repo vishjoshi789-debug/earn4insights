@@ -1,3 +1,4 @@
+// Earn4Insights Next.js configuration
 import type { NextConfig } from 'next'
 import path from 'path'
 
