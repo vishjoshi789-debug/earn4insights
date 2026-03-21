@@ -305,9 +305,20 @@ function PlatformBreakdownChart({ byPlatform }: { byPlatform: Record<string, num
 
   const data = entries.map(([platform, count]) => ({
     name: platform.charAt(0).toUpperCase() + platform.slice(1),
-    value: count,
+    mentions: count,
     fill: PLATFORM_COLORS[platform] || '#94a3b8',
   }))
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null
+    const d = payload[0].payload
+    return (
+      <div className="rounded-lg border bg-background p-2.5 shadow-md text-sm">
+        <p className="font-bold text-foreground">{d.name}</p>
+        <p className="text-muted-foreground">Mentions: <span className="font-semibold text-foreground">{d.mentions}</span></p>
+      </div>
+    )
+  }
 
   return (
     <Card>
@@ -322,11 +333,10 @@ function PlatformBreakdownChart({ byPlatform }: { byPlatform: Record<string, num
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" width={75} tick={{ fontSize: 11 }} />
-              <Tooltip />
-              {data.map((entry) => null)}
-              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              <XAxis type="number" tick={{ fontSize: 11 }} label={{ value: 'Mentions', position: 'insideBottom', offset: -2, fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 12, fontWeight: 600 }} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+              <Bar dataKey="mentions" radius={[0, 4, 4, 0]}>
                 {data.map((entry, index) => (
                   <Cell key={index} fill={entry.fill} />
                 ))}
