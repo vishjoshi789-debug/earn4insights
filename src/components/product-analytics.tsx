@@ -583,17 +583,18 @@ export function ProductAnalytics({
               {rankingChartData[0].week} – {rankingChartData[rankingChartData.length - 1].week} ({rankingChartData.length} weeks)
             </p>
           </CardHeader>
-          <CardContent className="h-72">
+          <CardContent className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={rankingChartData} margin={{ top: 8, right: 16, bottom: 32, left: 8 }}>
+              <LineChart data={rankingChartData} margin={{ top: 8, right: 16, bottom: 40, left: 24 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="week"
-                  interval={0}
-                  angle={-45}
+                  interval="preserveStartEnd"
+                  angle={-40}
                   textAnchor="end"
-                  tick={{ fontSize: 10 }}
-                  height={48}
+                  tick={{ fontSize: 10, fill: 'currentColor' }}
+                  height={56}
+                  padding={{ left: 12, right: 12 }}
                 />
                 <YAxis reversed domain={[1, 'auto']} />
                 <Tooltip />
