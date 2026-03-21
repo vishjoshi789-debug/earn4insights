@@ -76,6 +76,32 @@ type ProductAnalyticsProps = {
   communityDiscussions?: CommunityPost[];
 };
 
+const RADIAN = Math.PI / 180;
+
+const renderPieLabel = ({
+  cx, cy, midAngle, outerRadius, name, value,
+}: {
+  cx: number; cy: number; midAngle: number;
+  outerRadius: number; name: string; value: number;
+}) => {
+  if (!value) return null;
+  const radius = outerRadius + 28;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#374151"
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+      fontSize={11}
+    >
+      {`${name} (${value})`}
+    </text>
+  );
+};
+
 const SENTIMENT_COLORS: Record<string, string> = {
   positive: '#22c55e',
   negative: '#ef4444',
@@ -381,26 +407,27 @@ export function ProductAnalytics({
           <CardHeader>
             <CardTitle className="text-sm font-medium">Sentiment breakdown</CardTitle>
           </CardHeader>
-          <CardContent className="h-64">
+          <CardContent className="h-72">
             {sentimentCounts.every((s) => s.count === 0) ? (
               <p className="text-xs text-muted-foreground">No sentiment data yet.</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 24, right: 56, bottom: 24, left: 56 }}>
                   <Pie
                     data={sentimentCounts}
                     dataKey="count"
                     nameKey="sentiment"
                     cx="50%"
                     cy="50%"
-                    outerRadius={80}
-                    label={(entry) => `${entry.sentiment} (${entry.count})`}
+                    outerRadius={70}
+                    label={renderPieLabel}
+                    labelLine
                   >
                     {sentimentCounts.map((entry) => (
                       <Cell key={entry.sentiment} fill={SENTIMENT_COLORS[entry.sentiment]} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip formatter={(value, name) => [value, name]} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -435,17 +462,18 @@ export function ProductAnalytics({
             <CardHeader>
               <CardTitle className="text-sm font-medium">Mention types</CardTitle>
             </CardHeader>
-            <CardContent className="h-64">
+            <CardContent className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 24, right: 56, bottom: 24, left: 56 }}>
                   <Pie
                     data={mentionTypeData}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={80}
-                    label={(entry) => `${entry.name} (${entry.value})`}
+                    outerRadius={70}
+                    label={renderPieLabel}
+                    labelLine
                   >
                     {mentionTypeData.map((_, idx) => (
                       <Cell
