@@ -579,12 +579,22 @@ export function ProductAnalytics({
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Ranking history</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {rankingChartData[0].week} – {rankingChartData[rankingChartData.length - 1].week} ({rankingChartData.length} weeks)
+            </p>
           </CardHeader>
-          <CardContent className="h-64">
+          <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={rankingChartData}>
+              <LineChart data={rankingChartData} margin={{ top: 8, right: 16, bottom: 32, left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="week" />
+                <XAxis
+                  dataKey="week"
+                  interval={0}
+                  angle={-45}
+                  textAnchor="end"
+                  tick={{ fontSize: 10 }}
+                  height={48}
+                />
                 <YAxis reversed domain={[1, 'auto']} />
                 <Tooltip />
                 <Line type="monotone" dataKey="rank" stroke="#f97316" strokeWidth={2} name="Rank" />
