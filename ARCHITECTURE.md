@@ -3465,4 +3465,128 @@ The key insight: NextAuth v5's `signIn()` is designed for API route usage (retur
 
 ---
 
-*This document reflects the architecture as of March 16, 2026. It should be updated as new systems are added.*
+---
+
+## 37. Social Listening Charts, Data Fixes & Schema Drift Audit (March 21, 2026)
+
+### 37.1 Social Listening Charts
+
+Three analytics charts added to `SocialPageClient.tsx`:
+
+| Chart | Recharts Component | dataKey / data source |
+|-------|-------------------|-----------------------|
+| **Mentions Over Time** | `AreaChart` | `{ date, count }` — posts grouped by day (last 30 days) |
+| **Sentiment Trend** | `LineChart` | `{ date, score }` — daily avg sentiment (last 30 days) |
+| **Platform Breakdown** | `BarChart` (horizontal) | `{ platform, mentions }` — total posts per platform |
+
+All charts:
+- Wrapped in `ResponsiveContainer width="100%" height={300}`
+- Only rendered when `data.overview !== null`
+- Colors from `PLATFORM_COLORS` map (10 platforms: twitter, instagram, tiktok, meta, google, amazon, flipkart, reddit, youtube, linkedin)
+
+**Commit:** `cfcdc1e`
+
+### 37.2 Platform Breakdown Chart UX Improvements
+
+| Change | Detail |
+|--------|--------|
+| `dataKey` | `"value"` → `"mentions"` — Recharts tooltip shows key name, so "mentions" is meaningful |
+| Custom `CustomTooltip` | Bold platform name + "Mentions: N" label in a `bg-background border rounded` container |
+| Y-axis tick style | `tick={{ fontWeight: 600 }}` — bold platform labels |
+| X-axis label | `<Label value="Mentions" position="insideBottom" offset={-5} />` |
+
+**Commit:** `c4fb520`
+
+### 37.3 Brand User Fallback Fix
+
+**File:** `src/app/dashboard/social/page.tsx`
+
+**Root cause:** All 5 social-listening products had `owner_id = NULL` in the DB. The server component query `WHERE owner_id = userId` returned 0 rows → `productIds = []` → `overview = null` → `{data.overview && ...}` guard hid all charts and stats.
+
+**Fix applied:**
+
+```typescript
+// After owned-products query:
+if (productIds.length === 0) {
+  // Brand has no owned products — fall back to all social-enabled products
+  const allSocialProducts = await db.select({ id: products.id })
+    .from(products)
+    .where(eq(products.socialListeningEnabled, true));
+  productIds = allSocialProducts.map(p => p.id);
+}
+```
+
+**Also fixed (DB):** All 5 social products `UPDATE SET owner_id = 'user_1770175075455_vy7th'` so future owned-products queries return correctly.
+
+**Commit:** `b7630c4`
+
+### 37.4 Fake URL Fix
+
+**Problem:** 376 seed/scraper posts used placeholder format `https://google.com/post/{uuid}` which 404'd when users clicked "View original".
+
+**Fix:**
+```sql
+UPDATE social_posts SET url = NULL WHERE url LIKE '%/post/%';
+-- Rows affected: 376
+```
+
+`SocialPageClient.tsx` already renders `{post.url && <a href={post.url}>View original</a>}` so the link auto-hides for null URLs. 83 real API posts (Reddit, YouTube, Google Reviews) retain proper URLs.
+
+### 37.5 Full Schema Drift Audit & Fix
+
+Compared all 40 tables in `src/db/schema.ts` against `information_schema.tables` in Neon PostgreSQL.
+
+**Result: 4 missing tables, 0 missing columns**
+
+| Table | Created columns |
+|-------|----------------|
+| `product_watchlist` | id, userId, productId, createdAt |
+| `consumer_intents` | id, userId, productId, intentType, strength, context, detectedAt, expiresAt, isActioned, actionedAt, createdAt, updatedAt |
+| `brand_alert_rules` | id, brandId, alertType, isEnabled, threshold, emailEnabled, slackEnabled, slackWebhookUrl, whatsappEnabled, createdAt, updatedAt |
+| `brand_alerts` | id, brandId, productId, alertType, title, message, severity, isRead, readAt, metadata, createdAt |
+
+All applied via `CREATE TABLE IF NOT EXISTS` directly to Neon. Schema drift gap closed; all 40 tables now exist in production.
+
+### 37.6 Mobile Header Layout Fix
+
+**File:** `src/components/dashboard-header.tsx`
+
+Fixed layout on mobile devices — sidebar trigger, logo/title, and action buttons (bell + avatar) now properly flex-align on small screens without overflow or wrapping issues.
+
+**Commit:** `5b7abb0`
+
+### 37.7 Vercel Rebuild
+
+Added comment to `next.config.ts` to trigger a clean Vercel rebuild after all fixes were applied.
+
+**Commit:** `d4b33b4`
+
+### 37.8 Social Data Summary (as of March 21, 2026)
+
+| Platform | Post count | Source |
+|----------|-----------|--------|
+| YouTube | 100 | Seed |
+| Reddit | 75 | Seed + real API |
+| Google Reviews | 61 | Seed + real API |
+| Instagram | 55 | Seed |
+| LinkedIn | 50 | Seed |
+| Amazon | 42 | Seed |
+| Meta | 40 | Seed |
+| Twitter/X | 36 | Seed |
+| **Total** | **459** | |
+
+URLs: 376 nulled (seed/scraper), 83 real URLs retained (Reddit + YouTube + Google Reviews).
+
+### 37.9 Commits Summary
+
+| Commit | Description |
+|--------|-------------|
+| `5b7abb0` | fix: mobile header layout |
+| `cfcdc1e` | feat: add time-series mentions, sentiment trend, platform breakdown charts |
+| `b7630c4` | fix: brand users with no owned products now see social charts |
+| `c4fb520` | feat: improve platform breakdown chart (bold labels, custom tooltip, Mentions axis) |
+| `d4b33b4` | chore: trigger Vercel rebuild |
+
+---
+
+*This document reflects the architecture as of March 21, 2026. It should be updated as new systems are added.*

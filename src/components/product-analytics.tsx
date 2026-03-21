@@ -19,20 +19,70 @@ import {
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
-// Props coming from /dashboard/report/[id]/page.tsx
+// ── New prop types for expanded analytics ─────────────────────────
+
+type SurveyData = {
+  npsScore: number | null;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  submittedAt: string;
+};
+
+type RankingData = {
+  weekStart: string;
+  rank: number;
+  score: number;
+  category: string;
+};
+
+type MediaCounts = { audio: number; video: number; total: number };
+
+type EngagementTotals = {
+  views: number;
+  likes: number;
+  shares: number;
+  comments: number;
+};
+
+type KOL = {
+  author: string;
+  handle: string;
+  platform: string;
+  followers: number;
+  influenceScore: number;
+  content: string;
+};
+
+type CommunityPost = {
+  id: string;
+  title: string;
+  postType: string;
+  upvotes: number;
+  replyCount: number;
+  viewCount: number;
+  createdAt: string;
+};
+
 type ProductAnalyticsProps = {
   productId: string;
   feedback: Feedback[];
   socialPosts: SocialPost[];
+  surveyResponses?: SurveyData[];
+  rankings?: RankingData[];
+  mediaCounts?: MediaCounts;
+  mentionTypes?: Record<string, number>;
+  keywordCounts?: Record<string, number>;
+  engagement?: EngagementTotals;
+  kols?: KOL[];
+  communityDiscussions?: CommunityPost[];
 };
 
-const SENTIMENT_COLORS: Record<Feedback['analysis']['sentiment'], string> = {
+const SENTIMENT_COLORS: Record<string, string> = {
   positive: '#22c55e',
   negative: '#ef4444',
   neutral: '#eab308',
 };
 
-const PLATFORM_LABELS: Record<SocialPost['platform'], string> = {
+const PLATFORM_LABELS: Record<string, string> = {
   twitter: 'Twitter / X',
   instagram: 'Instagram',
   tiktok: 'TikTok',
@@ -41,14 +91,28 @@ const PLATFORM_LABELS: Record<SocialPost['platform'], string> = {
   reddit: 'Reddit',
   amazon: 'Amazon Reviews',
   flipkart: 'Flipkart Reviews',
+  youtube: 'YouTube',
+  linkedin: 'LinkedIn',
 };
+
+const MENTION_TYPE_COLORS = [
+  '#6366f1', '#0ea5e9', '#f97316', '#22c55e', '#ef4444', '#a855f7',
+];
 
 export function ProductAnalytics({
   productId,
   feedback,
   socialPosts,
+  surveyResponses = [],
+  rankings = [],
+  mediaCounts,
+  mentionTypes = {},
+  keywordCounts = {},
+  engagement,
+  kols = [],
+  communityDiscussions = [],
 }: ProductAnalyticsProps) {
-  // ------- BASIC METRICS -------
+  // ─── BASIC METRICS ──────────────────────────────────────────────
 
   const totalReviews = feedback.length;
   const averageRating =
@@ -62,7 +126,7 @@ export function ProductAnalytics({
     0,
   );
 
-  // ------- SENTIMENT BREAKDOWN (FEEDBACK + SOCIAL) -------
+  // ─── SENTIMENT BREAKDOWN ───────────────────────────────────────
 
   const allSentiments = [
     ...feedback.map((f) => f.analysis.sentiment),
@@ -76,40 +140,33 @@ export function ProductAnalytics({
     }),
   );
 
-  // ------- RATING OVER TIME (FEEDBACK) -------
+  // ─── RATING OVER TIME ──────────────────────────────────────────
 
   const ratingOverTime = feedback
     .slice()
-    .sort(
-      (a, b) =>
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    )
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .map((f) => ({
       date: new Date(f.timestamp).toLocaleDateString(),
       rating: f.rating,
     }));
 
-  // ------- SOCIAL REACH BY PLATFORM -------
+  // ─── SOCIAL REACH BY PLATFORM ─────────────────────────────────
 
-  const reachByPlatformMap: Record<
-    SocialPost['platform'],
-    { platform: string; reach: number }
-  > = socialPosts.reduce(
-    (acc, p) => {
-      const reach = p.likes + p.shares + p.comments;
-      const label = PLATFORM_LABELS[p.platform] ?? p.platform;
-      if (!acc[p.platform]) {
-        acc[p.platform] = { platform: label, reach: 0 };
-      }
-      acc[p.platform].reach += reach;
-      return acc;
-    },
-    {} as Record<SocialPost['platform'], { platform: string; reach: number }>,
-  );
+  const reachByPlatformMap: Record<string, { platform: string; reach: number }> =
+    socialPosts.reduce(
+      (acc, p) => {
+        const reach = p.likes + p.shares + p.comments;
+        const label = PLATFORM_LABELS[p.platform] ?? p.platform;
+        if (!acc[p.platform]) acc[p.platform] = { platform: label, reach: 0 };
+        acc[p.platform].reach += reach;
+        return acc;
+      },
+      {} as Record<string, { platform: string; reach: number }>,
+    );
 
   const reachByPlatform = Object.values(reachByPlatformMap);
 
-  // ------- TOP FEEDBACK / POSTS -------
+  // ─── TOP FEEDBACK / POSTS ─────────────────────────────────────
 
   const topPositiveFeedback = feedback
     .filter((f) => f.analysis.sentiment === 'positive')
@@ -118,29 +175,77 @@ export function ProductAnalytics({
 
   const topSocialPosts = socialPosts
     .slice()
-    .sort(
-      (a, b) =>
-        b.analysis.influenceScore -
-        a.analysis.influenceScore,
-    )
+    .sort((a, b) => b.analysis.influenceScore - a.analysis.influenceScore)
     .slice(0, 3);
+
+  // ─── NPS CALCULATION ──────────────────────────────────────────
+
+  const npsResponses = surveyResponses.filter((s) => s.npsScore !== null);
+  const npsScore =
+    npsResponses.length >= 1
+      ? (() => {
+          const promoters = npsResponses.filter((s) => s.npsScore! >= 9).length;
+          const detractors = npsResponses.filter((s) => s.npsScore! <= 6).length;
+          return Math.round(((promoters - detractors) / npsResponses.length) * 100);
+        })()
+      : null;
+
+  // ─── MENTION TYPE PIE DATA ────────────────────────────────────
+
+  const mentionTypeData = Object.entries(mentionTypes).map(([type, count]) => ({
+    name: type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    value: count,
+  }));
+
+  // ─── KEYWORD TOP 15 ──────────────────────────────────────────
+
+  const topKeywords = Object.entries(keywordCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15);
+
+  // ─── NEGATIVE FEEDBACK SPOTLIGHT ──────────────────────────────
+
+  const negativeFeedback = feedback
+    .filter((f) => f.analysis.sentiment === 'negative')
+    .sort((a, b) => a.analysis.sentimentScore - b.analysis.sentimentScore)
+    .slice(0, 5);
+
+  // ─── RANKING CHART DATA ───────────────────────────────────────
+
+  const rankingChartData = rankings
+    .slice()
+    .reverse()
+    .map((r) => ({
+      week: new Date(r.weekStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      rank: r.rank,
+      score: r.score,
+    }));
+
+  // ─── ENGAGEMENT BAR DATA ─────────────────────────────────────
+
+  const engagementBarData = engagement
+    ? [
+        { metric: 'Views', value: engagement.views },
+        { metric: 'Likes', value: engagement.likes },
+        { metric: 'Shares', value: engagement.shares },
+        { metric: 'Comments', value: engagement.comments },
+      ]
+    : [];
 
   return (
     <div className="space-y-8">
-      {/* SUMMARY CARDS */}
+      {/* ═══ SUMMARY CARDS ═══ */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Average Rating
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">
               {averageRating.toFixed(1)}
-              <span className="text-sm text-muted-foreground ml-1">/ 5</span>
+              <span className="ml-1 text-sm text-muted-foreground">/ 5</span>
             </p>
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="mt-2 text-xs text-muted-foreground">
               Based on {totalReviews} review{totalReviews === 1 ? '' : 's'}
             </p>
           </CardContent>
@@ -148,15 +253,11 @@ export function ProductAnalytics({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Total Social Reach
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Total Social Reach</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">
-              {totalReach.toLocaleString()}
-            </p>
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-3xl font-bold">{totalReach.toLocaleString()}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
               Across likes, shares & comments ({totalSocialPosts} posts)
             </p>
           </CardContent>
@@ -164,9 +265,7 @@ export function ProductAnalytics({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Overall Sentiment Mix
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Overall Sentiment Mix</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {sentimentCounts.map((s) => (
@@ -175,11 +274,9 @@ export function ProductAnalytics({
                 <div className="flex items-center gap-2">
                   <div
                     className="h-2 w-10 rounded-full"
-                    style={{ backgroundColor: SENTIMENT_COLORS[s.sentiment as keyof typeof SENTIMENT_COLORS] }}
+                    style={{ backgroundColor: SENTIMENT_COLORS[s.sentiment] }}
                   />
-                  <span className="text-xs text-muted-foreground">
-                    {s.count}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{s.count}</span>
                 </div>
               </div>
             ))}
@@ -187,19 +284,85 @@ export function ProductAnalytics({
         </Card>
       </div>
 
-      {/* RATING OVER TIME + SENTIMENT PIE */}
+      {/* ═══ NPS + SURVEY + MEDIA COUNTS ROW ═══ */}
+      {(npsScore !== null || surveyResponses.length > 0 || (mediaCounts && mediaCounts.total > 0)) && (
+        <div className="grid gap-4 md:grid-cols-3">
+          {npsScore !== null && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">NPS Score</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p
+                  className={`text-3xl font-bold ${
+                    npsScore >= 50
+                      ? 'text-green-500'
+                      : npsScore >= 0
+                        ? 'text-yellow-500'
+                        : 'text-red-500'
+                  }`}
+                >
+                  {npsScore > 0 ? '+' : ''}
+                  {npsScore}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  From {npsResponses.length} survey response{npsResponses.length === 1 ? '' : 's'}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {surveyResponses.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Survey Sentiment</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {['positive', 'neutral', 'negative'].map((s) => {
+                  const count = surveyResponses.filter((sr) => sr.sentiment === s).length;
+                  return (
+                    <div key={s} className="flex items-center justify-between">
+                      <span className="text-xs capitalize">{s}</span>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2 w-10 rounded-full"
+                          style={{ backgroundColor: SENTIMENT_COLORS[s] }}
+                        />
+                        <span className="text-xs text-muted-foreground">{count}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {mediaCounts && mediaCounts.total > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Feedback Media</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold">{mediaCounts.total}</p>
+                <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                  {mediaCounts.audio > 0 && <span>{mediaCounts.audio} audio</span>}
+                  {mediaCounts.video > 0 && <span>{mediaCounts.video} video</span>}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* ═══ RATING OVER TIME + SENTIMENT PIE ═══ */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Ratings over time
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Ratings over time</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             {ratingOverTime.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Not enough rating data yet.
-              </p>
+              <p className="text-xs text-muted-foreground">Not enough rating data yet.</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={ratingOverTime}>
@@ -207,12 +370,7 @@ export function ProductAnalytics({
                   <XAxis dataKey="date" />
                   <YAxis domain={[0, 5]} />
                   <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="rating"
-                    stroke="#6366f1"
-                    strokeWidth={2}
-                  />
+                  <Line type="monotone" dataKey="rating" stroke="#6366f1" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -221,15 +379,11 @@ export function ProductAnalytics({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Sentiment breakdown
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Sentiment breakdown</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             {sentimentCounts.every((s) => s.count === 0) ? (
-              <p className="text-xs text-muted-foreground">
-                No sentiment data yet.
-              </p>
+              <p className="text-xs text-muted-foreground">No sentiment data yet.</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -240,19 +394,10 @@ export function ProductAnalytics({
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={(entry) =>
-                      `${entry.sentiment} (${entry.count})`
-                    }
+                    label={(entry) => `${entry.sentiment} (${entry.count})`}
                   >
-                    {sentimentCounts.map((entry, idx) => (
-                      <Cell
-                        key={entry.sentiment}
-                        fill={
-                          SENTIMENT_COLORS[
-                            entry.sentiment as keyof typeof SENTIMENT_COLORS
-                          ]
-                        }
-                      />
+                    {sentimentCounts.map((entry) => (
+                      <Cell key={entry.sentiment} fill={SENTIMENT_COLORS[entry.sentiment]} />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -264,18 +409,68 @@ export function ProductAnalytics({
         </Card>
       </div>
 
-      {/* SOCIAL REACH BY PLATFORM */}
+      {/* ═══ ENGAGEMENT BREAKDOWN + MENTION TYPE ═══ */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {engagementBarData.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Engagement breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={engagementBarData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="metric" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#8b5cf6" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+
+        {mentionTypeData.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Mention types</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={mentionTypeData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    label={(entry) => `${entry.name} (${entry.value})`}
+                  >
+                    {mentionTypeData.map((_, idx) => (
+                      <Cell
+                        key={idx}
+                        fill={MENTION_TYPE_COLORS[idx % MENTION_TYPE_COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* ═══ SOCIAL REACH BY PLATFORM ═══ */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">
-            Social reach by platform
-          </CardTitle>
+          <CardTitle className="text-sm font-medium">Social reach by platform</CardTitle>
         </CardHeader>
         <CardContent className="h-72">
           {reachByPlatform.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No social posts for this product yet.
-            </p>
+            <p className="text-xs text-muted-foreground">No social posts for this product yet.</p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={reachByPlatform}>
@@ -290,32 +485,99 @@ export function ProductAnalytics({
         </CardContent>
       </Card>
 
-      {/* TOP FEEDBACK & POSTS */}
+      {/* ═══ RANKING HISTORY ═══ */}
+      {rankingChartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Ranking history</CardTitle>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={rankingChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="week" />
+                <YAxis reversed domain={[1, 'auto']} />
+                <Tooltip />
+                <Line type="monotone" dataKey="rank" stroke="#f97316" strokeWidth={2} name="Rank" />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ KEYWORD CLOUD ═══ */}
+      {topKeywords.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Top keywords from social posts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {topKeywords.map(([keyword, count]) => (
+                <span
+                  key={keyword}
+                  className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                >
+                  {keyword}
+                  <span className="ml-1 text-muted-foreground">({count})</span>
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ KEY OPINION LEADERS ═══ */}
+      {kols.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Key Opinion Leaders</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {kols.map((kol, idx) => (
+              <div key={idx} className="space-y-1 rounded-md border p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">
+                    {kol.author}{' '}
+                    {kol.handle && (
+                      <span className="text-xs text-muted-foreground">@{kol.handle}</span>
+                    )}
+                  </p>
+                  <span className="text-xs text-muted-foreground">
+                    {PLATFORM_LABELS[kol.platform] ?? kol.platform}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {kol.followers.toLocaleString()} followers · Influence:{' '}
+                  {(kol.influenceScore * 100).toFixed(0)}%
+                </p>
+                <p className="text-sm">{kol.content}{kol.content.length >= 120 ? '…' : ''}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ TOP FEEDBACK & SOCIAL POSTS ═══ */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Top customer feedback
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Top customer feedback</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {topPositiveFeedback.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No standout positive feedback yet.
-              </p>
+              <p className="text-xs text-muted-foreground">No standout positive feedback yet.</p>
             ) : (
               topPositiveFeedback.map((f) => (
-                <div key={f.id} className="border rounded-md p-3 space-y-1">
+                <div key={f.id} className="space-y-1 rounded-md border p-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold">{f.userName}</p>
                     <span className="text-xs text-muted-foreground">
                       {new Date(f.timestamp).toLocaleDateString()}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Rating: {f.rating} / 5
-                  </p>
-                  <p className="text-sm mt-1">{f.text}</p>
+                  <p className="text-xs text-muted-foreground">Rating: {f.rating} / 5</p>
+                  <p className="mt-1 text-sm">{f.text}</p>
                 </div>
               ))
             )}
@@ -324,44 +586,89 @@ export function ProductAnalytics({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Top social mentions
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Top social mentions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {topSocialPosts.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No key social posts yet.
-              </p>
+              <p className="text-xs text-muted-foreground">No key social posts yet.</p>
             ) : (
               topSocialPosts.map((p) => (
-                <div key={p.id} className="border rounded-md p-3 space-y-1">
+                <div key={p.id} className="space-y-1 rounded-md border p-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold">
                       {p.userName}{' '}
-                      <span className="text-xs text-muted-foreground">
-                        @{p.userHandle}
-                      </span>
+                      <span className="text-xs text-muted-foreground">@{p.userHandle}</span>
                     </p>
                     <span className="text-xs text-muted-foreground">
                       {PLATFORM_LABELS[p.platform]}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Reach: {(
-                      p.likes +
-                      p.shares +
-                      p.comments
-                    ).toLocaleString()}{' '}
-                    · Sentiment: {p.analysis.sentiment}
+                    Reach: {(p.likes + p.shares + p.comments).toLocaleString()} · Sentiment:{' '}
+                    {p.analysis.sentiment}
                   </p>
-                  <p className="text-sm mt-1">{p.text}</p>
+                  <p className="mt-1 text-sm">{p.text}</p>
                 </div>
               ))
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* ═══ NEGATIVE FEEDBACK SPOTLIGHT ═══ */}
+      {negativeFeedback.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Negative feedback spotlight</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {negativeFeedback.map((f) => (
+              <div key={f.id} className="space-y-1 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">{f.userName}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(f.timestamp).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">Rating: {f.rating} / 5</p>
+                <p className="mt-1 text-sm">{f.text}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ COMMUNITY DISCUSSIONS ═══ */}
+      {communityDiscussions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Community discussions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {communityDiscussions.slice(0, 10).map((c) => (
+              <div
+                key={c.id}
+                className="flex items-start justify-between rounded-md border p-3"
+              >
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold">{c.title}</p>
+                  <div className="flex gap-3 text-xs text-muted-foreground">
+                    <span className="capitalize">{c.postType.replace(/_/g, ' ')}</span>
+                    <span>{c.replyCount} replies</span>
+                    <span>{c.viewCount} views</span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-sm font-medium text-primary">+{c.upvotes}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(c.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

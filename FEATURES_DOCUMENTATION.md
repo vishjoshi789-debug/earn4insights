@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** March 20, 2026  
+> **Last updated:** March 21, 2026  
 > **Platform:** Next.js 15 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
@@ -40,6 +40,7 @@
 30. [YouTube & Google Reviews API Activation (March 18, 2026)](#30-youtube--google-reviews-api-activation-march-18-2026)
 31. [Production DB Schema Push & Full Deployment (March 19, 2026)](#31-production-db-schema-push--full-deployment-march-19-2026)
 32. [In-App Community + Real Rewards Engine (March 20, 2026)](#32-in-app-community--real-rewards-engine-march-20-2026)
+33. [Social Listening Charts, Data Fixes & Schema Drift Audit (March 21, 2026)](#33-social-listening-charts-data-fixes--schema-drift-audit-march-21-2026)
 
 ---
 
@@ -1117,6 +1118,35 @@ Added `relevanceScore: real` column to `socialPosts` table.
 
 ---
 
+## 30. YouTube & Google Reviews API Activation (March 18, 2026)
+
+### YouTube Data API v3
+- **Before:** all videos had `likes: 0, comments: 0, views: 0` — engagement score was always 0
+- **After:** added a batch call to `GET /youtube/v3/videos?part=statistics&id=id1,id2,...` that fetches real stats for all search results in a single extra request
+- Engagement score now calculated from actual views / likes / comments
+- **Env var:** `YOUTUBE_API_KEY`
+- **Quota cost:** +1 unit per batch (well within 10,000 free units/day)
+
+### Google Places API (Reviews)
+- **Before:** required a manually provided `placeId` — adapter was non-functional from the generic ingestion pipeline
+- **After:** when no `placeId` is provided, the adapter auto-discovers it via Google Text Search API (`/maps/api/place/textsearch/json`), then fetches up to 5 reviews via the Place Details API
+- **Env var:** `GOOGLE_PLACES_API_KEY`
+- **Cost:** free within Google's $200/month Maps Platform credit
+
+### Environment Variables
+| Variable | Purpose |
+|----------|---------|
+| `YOUTUBE_API_KEY` | YouTube Data API v3 — search + video statistics |
+| `GOOGLE_PLACES_API_KEY` | Google Places API — Reviews text search + place details |
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `src/server/social/platformAdapters.ts` | YouTube: batch stats fetch; Google: Text Search auto-discovery |
+| `.env.example` | Added both keys + `TWITTER_BEARER_TOKEN` documentation |
+
+---
+
 ## 31. Production DB Schema Push & Full Deployment (March 19, 2026)
 
 ### What changed
@@ -1212,4 +1242,85 @@ The shared points logic lives in `src/server/pointsService.ts` and handles point
 
 ---
 
-*This document covers all features implemented as of March 20, 2026. Update this file when adding new features.*
+## 33. Social Listening Charts, Data Fixes & Schema Drift Audit (March 21, 2026)
+
+### 33.1 Social Listening Charts
+
+Three new analytics charts added to the social dashboard (`/dashboard/social`):
+
+| Chart | Recharts type | Data |
+|-------|--------------|------|
+| Mentions Over Time | `AreaChart` | Daily post count, last 30 days |
+| Sentiment Trend | `LineChart` | Daily average sentiment score (-1.0 to 1.0), last 30 days |
+| Platform Breakdown | `BarChart` (horizontal) | Total mentions per platform |
+
+**File:** `src/app/dashboard/social/SocialPageClient.tsx`  
+All three charts use `ResponsiveContainer` and are only rendered when `data.overview` is non-null.  
+**Commit:** `cfcdc1e`
+
+### 33.2 Platform Breakdown Chart UX Improvements
+
+| Change | Detail |
+|--------|--------|
+| `dataKey` renamed | `value` → `mentions` — tooltip now shows "mentions" |
+| Custom tooltip | Bold platform name header + "Mentions: N" label |
+| Y-axis labels bold | `tick={{ fontWeight: 600 }}` |
+| X-axis label | Added "Mentions" axis label |
+
+**Commit:** `c4fb520`
+
+### 33.3 Brand User Fallback Fix
+
+**Problem:** Brand users whose products had `owner_id = NULL` received an empty product list → `data.overview = null` → all charts hidden.
+
+**Fix:** In `src/app/dashboard/social/page.tsx`, when `WHERE owner_id = userId` returns 0 rows, the server component falls back to all products with `social_listening_enabled = true`.
+
+**Commit:** `b7630c4`
+
+### 33.4 Fake URL Fix
+
+376 seed/scraper posts had placeholder URLs (`https://google.com/post/{uuid}`) that 404'd when clicked.
+
+```sql
+UPDATE social_posts SET url = NULL WHERE url LIKE '%/post/%';
+-- 376 rows updated
+```
+
+The "View original" link is guarded by `{post.url && ...}` so it auto-hides for null URLs. 83 real API posts retain their proper URLs.
+
+### 33.5 Product Ownership Fix
+
+All 5 social-listening-enabled products assigned to `vishweshwar@startupsgurukul.com` (`user_1770175075455_vy7th`) via direct DB `UPDATE` on Neon.
+
+### 33.6 Full Schema Drift Audit & Fix
+
+Audit compared all 40 Drizzle-defined tables against the live Neon database. **4 tables were missing from the DB:**
+
+| Table | Purpose |
+|-------|---------|
+| `product_watchlist` | Consumer product watchlist entries |
+| `consumer_intents` | Consumer purchase/interest intent signals |
+| `brand_alert_rules` | Brand alert configuration per alert type |
+| `brand_alerts` | Individual fired alert records |
+
+All 4 created via `CREATE TABLE IF NOT EXISTS` directly on Neon. Zero schema drift remains.
+
+### 33.7 Mobile Header Layout Fix
+
+Fixed dashboard header alignment on mobile — sidebar trigger, logo, and action buttons now display correctly on small screens.
+
+**Commit:** `5b7abb0`
+
+### 33.8 Commits
+
+| Commit | Description |
+|--------|-------------|
+| `5b7abb0` | fix: mobile header layout |
+| `cfcdc1e` | feat: add time-series mentions, sentiment trend, platform breakdown charts |
+| `b7630c4` | fix: brand users with no owned products now see social charts |
+| `c4fb520` | feat: improve platform breakdown chart (bold labels, custom tooltip, Mentions axis) |
+| `d4b33b4` | chore: trigger Vercel rebuild |
+
+---
+
+*This document covers all features implemented as of March 21, 2026. Update this file when adding new features.*
