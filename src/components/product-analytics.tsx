@@ -468,26 +468,28 @@ export function ProductAnalytics({
             <CardHeader>
               <CardTitle className="text-sm font-medium">Mention types</CardTitle>
             </CardHeader>
-            <CardContent className="h-72">
+            <CardContent className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 24, right: 56, bottom: 24, left: 56 }}>
+                <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                   <Pie
                     data={mentionTypeData}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
-                    cy="50%"
-                    outerRadius={70}
-                    label={(props) =>
-                      renderPieLabel({
-                        ...props,
-                        color: MENTION_TYPE_COLORS[
-                          mentionTypeData.findIndex((d) => d.name === props.name) %
-                            MENTION_TYPE_COLORS.length
-                        ] ?? '#374151',
-                      })
-                    }
-                    labelLine
+                    cy="45%"
+                    outerRadius={65}
+                    innerRadius={30}
+                    label={({ cx: pcx, cy: pcy, midAngle, innerRadius: ir, outerRadius: or, value }) => {
+                      const r = (ir + or) / 2;
+                      const x = pcx + r * Math.cos(-midAngle * RADIAN);
+                      const y = pcy + r * Math.sin(-midAngle * RADIAN);
+                      return value ? (
+                        <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold">
+                          {value}
+                        </text>
+                      ) : null;
+                    }}
+                    labelLine={false}
                   >
                     {mentionTypeData.map((_, idx) => (
                       <Cell
@@ -497,7 +499,17 @@ export function ProductAnalytics({
                     ))}
                   </Pie>
                   <Tooltip />
-                  <Legend />
+                  <Legend
+                    formatter={(value, entry) => {
+                      const item = mentionTypeData.find((d) => d.name === value);
+                      return (
+                        <span style={{ color: entry.color, fontWeight: 600, fontSize: 12 }}>
+                          {value} ({item?.value ?? 0})
+                        </span>
+                      );
+                    }}
+                    wrapperStyle={{ fontSize: 12 }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>
