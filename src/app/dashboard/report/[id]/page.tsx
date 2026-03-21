@@ -178,12 +178,12 @@ export default async function ReportPage({
   const now = new Date()
 
   return (
-    <div className="bg-background p-8 print:p-0">
+    <div className="bg-background px-4 py-6 sm:p-8 print:p-0">
       <div className="mx-auto max-w-4xl">
-        <header className="flex items-center justify-between border-b pb-8 print:hidden">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-6 sm:pb-8 print:hidden">
           <div className="flex items-center gap-2">
             <Logo />
-            <h1 className="font-headline text-2xl font-bold">Earn4Insights</h1>
+            <h1 className="font-headline text-xl sm:text-2xl font-bold">Earn4Insights</h1>
           </div>
           <PrintButton />
         </header>
