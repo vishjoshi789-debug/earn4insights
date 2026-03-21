@@ -30,7 +30,25 @@ import {
   ChevronDown,
   Loader2,
   AlertCircle,
+  Activity,
 } from 'lucide-react'
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts'
 import { SocialPostCard, type SocialPostCardData } from '@/components/social-post-card'
 import type { SocialAggregateMetrics, SocialTrendPoint } from '@/db/repositories/socialRepository'
 
@@ -183,6 +201,138 @@ function KeywordCloud({ keywords }: { keywords: Array<{ keyword: string; count: 
               </Badge>
             )
           })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================================
+// TREND CHARTS
+// ============================================================================
+
+const SENTIMENT_COLORS = { positive: '#10b981', neutral: '#6b7280', negative: '#ef4444' }
+const PLATFORM_COLORS: Record<string, string> = {
+  twitter: '#1d9bf0', instagram: '#e1306c', tiktok: '#00f2ea', meta: '#1877f2',
+  google: '#4285f4', amazon: '#ff9900', flipkart: '#f8e71c', reddit: '#ff4500',
+  youtube: '#ff0000', linkedin: '#0a66c2',
+}
+
+function MentionsTrendChart({ trends }: { trends: SocialTrendPoint[] }) {
+  if (trends.length < 2) return null
+
+  const data = trends.map((t) => ({
+    date: new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    mentions: t.totalPosts,
+    engagement: t.totalEngagement,
+  }))
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Activity className="h-4 w-4 text-blue-500" />
+          Mentions over time
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="h-[280px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <defs>
+                <linearGradient id="mentionGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <YAxis width={35} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Area type="monotone" dataKey="mentions" stroke="#3b82f6" fill="url(#mentionGrad)" strokeWidth={2} />
+              <Area type="monotone" dataKey="engagement" stroke="#8b5cf6" fill="none" strokeWidth={1.5} strokeDasharray="4 2" />
+              <Legend wrapperStyle={{ fontSize: '11px' }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SentimentTrendChart({ trends }: { trends: SocialTrendPoint[] }) {
+  if (trends.length < 2) return null
+
+  const data = trends.map((t) => ({
+    date: new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    positive: t.positive,
+    neutral: t.neutral,
+    negative: t.negative,
+    avgSentiment: Math.round(t.avgSentiment * 100) / 100,
+  }))
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-emerald-500" />
+          Sentiment trends
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="h-[280px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <YAxis width={30} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: '11px' }} />
+              <Line type="monotone" dataKey="positive" stroke={SENTIMENT_COLORS.positive} strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="neutral" stroke={SENTIMENT_COLORS.neutral} strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="negative" stroke={SENTIMENT_COLORS.negative} strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function PlatformBreakdownChart({ byPlatform }: { byPlatform: Record<string, number> }) {
+  const entries = Object.entries(byPlatform).sort((a, b) => b[1] - a[1])
+  if (entries.length === 0) return null
+
+  const data = entries.map(([platform, count]) => ({
+    name: platform.charAt(0).toUpperCase() + platform.slice(1),
+    value: count,
+    fill: PLATFORM_COLORS[platform] || '#94a3b8',
+  }))
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-indigo-500" />
+          Platform breakdown
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="h-[280px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" className="opacity-30" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={75} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              {data.map((entry) => null)}
+              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                {data.map((entry, index) => (
+                  <Cell key={index} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </CardContent>
     </Card>
@@ -393,6 +543,19 @@ export default function SocialPageClient({ data }: { data: SocialPageData }) {
       {/* Overview metrics */}
       {data.overview && data.overview.metrics.totalPosts > 0 && (
         <OverviewCards metrics={data.overview.metrics} />
+      )}
+
+      {/* Trend Charts */}
+      {data.overview && data.overview.trends.length >= 2 && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <MentionsTrendChart trends={data.overview.trends} />
+          <SentimentTrendChart trends={data.overview.trends} />
+        </div>
+      )}
+
+      {/* Platform Breakdown */}
+      {data.overview && data.overview.metrics.totalPosts > 0 && (
+        <PlatformBreakdownChart byPlatform={data.overview.metrics.byPlatform} />
       )}
 
       {/* Submit link + Keywords row */}
