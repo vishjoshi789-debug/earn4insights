@@ -16,6 +16,7 @@ import {
   Pie,
   Cell,
   Legend,
+  LabelList,
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
@@ -122,6 +123,19 @@ const PLATFORM_LABELS: Record<string, string> = {
   linkedin: 'LinkedIn',
 };
 
+const PLATFORM_COLORS: Record<string, string> = {
+  twitter: '#1DA1F2',
+  instagram: '#E1306C',
+  tiktok: '#010101',
+  meta: '#1877F2',
+  google: '#EA4335',
+  reddit: '#FF4500',
+  amazon: '#FF9900',
+  flipkart: '#2874F0',
+  youtube: '#FF0000',
+  linkedin: '#0A66C2',
+};
+
 const MENTION_TYPE_COLORS = [
   '#6366f1', '#0ea5e9', '#f97316', '#22c55e', '#ef4444', '#a855f7',
 ];
@@ -179,16 +193,16 @@ export function ProductAnalytics({
 
   // ─── SOCIAL REACH BY PLATFORM ─────────────────────────────────
 
-  const reachByPlatformMap: Record<string, { platform: string; reach: number }> =
+  const reachByPlatformMap: Record<string, { platform: string; reach: number; key: string }> =
     socialPosts.reduce(
       (acc, p) => {
         const reach = p.likes + p.shares + p.comments;
         const label = PLATFORM_LABELS[p.platform] ?? p.platform;
-        if (!acc[p.platform]) acc[p.platform] = { platform: label, reach: 0 };
+        if (!acc[p.platform]) acc[p.platform] = { platform: label, reach: 0, key: p.platform };
         acc[p.platform].reach += reach;
         return acc;
       },
-      {} as Record<string, { platform: string; reach: number }>,
+      {} as Record<string, { platform: string; reach: number; key: string }>,
     );
 
   const reachByPlatform = Object.values(reachByPlatformMap);
@@ -522,17 +536,38 @@ export function ProductAnalytics({
         <CardHeader>
           <CardTitle className="text-sm font-medium">Social reach by platform</CardTitle>
         </CardHeader>
-        <CardContent className="h-72">
+        <CardContent style={{ height: Math.max(200, reachByPlatform.length * 52) }}>
           {reachByPlatform.length === 0 ? (
             <p className="text-xs text-muted-foreground">No social posts for this product yet.</p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={reachByPlatform}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="platform" />
-                <YAxis />
+              <BarChart
+                data={reachByPlatform}
+                layout="vertical"
+                margin={{ top: 8, right: 48, bottom: 8, left: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" />
+                <YAxis
+                  dataKey="platform"
+                  type="category"
+                  width={110}
+                  tick={{ fontSize: 12, fontWeight: 600 }}
+                />
                 <Tooltip />
-                <Bar dataKey="reach" fill="#0ea5e9" />
+                <Bar dataKey="reach" barSize={24}>
+                  {reachByPlatform.map((entry) => (
+                    <Cell
+                      key={entry.key}
+                      fill={PLATFORM_COLORS[entry.key] ?? '#8b5cf6'}
+                    />
+                  ))}
+                  <LabelList
+                    dataKey="reach"
+                    position="right"
+                    style={{ fontSize: 11, fontWeight: 700, fill: '#374151' }}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
