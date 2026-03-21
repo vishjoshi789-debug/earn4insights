@@ -79,23 +79,24 @@ type ProductAnalyticsProps = {
 const RADIAN = Math.PI / 180;
 
 const renderPieLabel = ({
-  cx, cy, midAngle, outerRadius, name, value,
+  cx, cy, midAngle, outerRadius, name, value, color = '#374151',
 }: {
   cx: number; cy: number; midAngle: number;
-  outerRadius: number; name: string; value: number;
+  outerRadius: number; name: string; value: number; color?: string;
 }) => {
   if (!value) return null;
-  const radius = outerRadius + 28;
+  const radius = outerRadius + 30;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
   return (
     <text
       x={x}
       y={y}
-      fill="#374151"
+      fill={color}
       textAnchor={x > cx ? 'start' : 'end'}
       dominantBaseline="central"
-      fontSize={11}
+      fontSize={12}
+      fontWeight="bold"
     >
       {`${name} (${value})`}
     </text>
@@ -420,7 +421,12 @@ export function ProductAnalytics({
                     cx="50%"
                     cy="50%"
                     outerRadius={70}
-                    label={renderPieLabel}
+                    label={(props) =>
+                      renderPieLabel({
+                        ...props,
+                        color: SENTIMENT_COLORS[props.name as string] ?? '#374151',
+                      })
+                    }
                     labelLine
                   >
                     {sentimentCounts.map((entry) => (
@@ -472,7 +478,15 @@ export function ProductAnalytics({
                     cx="50%"
                     cy="50%"
                     outerRadius={70}
-                    label={renderPieLabel}
+                    label={(props) =>
+                      renderPieLabel({
+                        ...props,
+                        color: MENTION_TYPE_COLORS[
+                          mentionTypeData.findIndex((d) => d.name === props.name) %
+                            MENTION_TYPE_COLORS.length
+                        ] ?? '#374151',
+                      })
+                    }
                     labelLine
                   >
                     {mentionTypeData.map((_, idx) => (
