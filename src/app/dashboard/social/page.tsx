@@ -29,6 +29,20 @@ export default async function SocialPage() {
     for (const p of brandProducts) {
       productNameMap[p.id] = p.name
     }
+
+    // Fallback: if brand has no owned products, show all social-enabled products
+    if (productIds.length === 0) {
+      const socialProducts = await db
+        .select({ id: products.id, name: products.name })
+        .from(products)
+        .where(eq(products.socialListeningEnabled, true))
+        .limit(50)
+
+      productIds = socialProducts.map((p) => p.id)
+      for (const p of socialProducts) {
+        productNameMap[p.id] = p.name
+      }
+    }
   } else {
     // Consumer sees all products with social listening enabled
     const socialProducts = await db
