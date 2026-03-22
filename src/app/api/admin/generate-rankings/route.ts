@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateWeeklyRankings } from '@/server/rankings/rankingService'
-import { withAdminAuth } from '@/lib/auth'
+import { authenticateAdmin } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth.config'
 
 /**
  * POST /api/admin/generate-rankings
  * 
- * Manually trigger weekly ranking generation
- * Requires admin authentication
+ * Manually trigger weekly ranking generation.
+ * Accepts admin API key (header) OR a valid session with brand role.
  */
 async function generateRankingsHandler(request: NextRequest) {
   try {
@@ -57,7 +58,20 @@ async function generateRankingsHandler(request: NextRequest) {
   }
 }
 
-export const POST = withAdminAuth(generateRankingsHandler)
+export async function POST(request: NextRequest) {
+  // Allow access if admin API key matches OR user has a valid session (brand role)
+  const hasApiKey = authenticateAdmin(request)
+  if (!hasApiKey) {
+    const session = await auth()
+    if (!session?.user?.id || session.user.role !== 'brand') {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Valid admin API key or brand session required.' },
+        { status: 401 }
+      )
+    }
+  }
+  return generateRankingsHandler(request)
+}
 
 /**
  * GET /api/admin/generate-rankings
