@@ -7,26 +7,53 @@ import { analyzeSentiment } from '@/server/sentimentService'
 import { getSocialProductScore } from '@/server/social/socialAnalyticsService'
 
 /**
+ * Shape of a direct feedback record passed into the ranking engine.
+ * Avoids importing the full Drizzle schema into this module.
+ */
+export type DirectFeedbackRecord = {
+  id: string
+  productId: string
+  feedbackText: string | null
+  rating: number | null
+  sentiment: string | null // 'positive' | 'neutral' | 'negative'
+  createdAt: Date | string
+}
+
+/**
+ * Community engagement stats passed into the ranking engine.
+ */
+export type CommunityStats = {
+  postCount: number
+  totalUpvotes: number
+  totalReplyCount: number
+  watchlistCount: number
+}
+
+/**
  * RANKING ALGORITHM CONFIGURATION
  * 
  * Weights must sum to 1.0
+ * Updated to include direct feedback ratings and community signals.
  */
 const RANKING_WEIGHTS = {
-  NPS: 0.22,           // Core satisfaction metric
-  SENTIMENT: 0.18,     // Feedback quality
-  ENGAGEMENT: 0.18,    // User participation
-  VOLUME: 0.12,        // Data quantity
-  RECENCY: 0.10,       // Fresh data
-  TREND: 0.10,         // Week-over-week improvement
-  SOCIAL: 0.10,        // Social listening signals
+  NPS: 0.18,           // Core satisfaction metric (survey NPS)
+  SENTIMENT: 0.15,     // Combined sentiment from surveys + direct feedback
+  ENGAGEMENT: 0.14,    // User participation (survey completion + feedback text)
+  DIRECT_RATING: 0.13, // Star ratings from direct feedback (1-5)
+  VOLUME: 0.10,        // Total data quantity (surveys + direct feedback)
+  RECENCY: 0.08,       // Fresh data
+  TREND: 0.08,         // Week-over-week improvement
+  SOCIAL: 0.08,        // Social listening signals
+  COMMUNITY: 0.06,     // Community posts, upvotes, watchlist demand
 } as const
 
 /**
- * Minimum data thresholds for ranking eligibility
+ * Minimum data thresholds for ranking eligibility.
+ * A product needs enough data from ANY source (surveys OR direct feedback).
  */
 const MINIMUM_THRESHOLDS = {
-  TOTAL_RESPONSES: 5,         // Minimum responses to be ranked
-  RECENT_RESPONSES: 3,        // Minimum responses in last 30 days
+  TOTAL_RESPONSES: 5,         // Minimum total (surveys + direct feedback)
+  RECENT_RESPONSES: 3,        // Minimum recent in last 30 days
   DAYS_SINCE_LAST: 30,        // Maximum days since last response
 } as const
 
@@ -41,12 +68,16 @@ const CONFIDENCE_TIERS = [
 ] as const
 
 /**
- * Calculate comprehensive ranking metrics for a product
+ * Calculate comprehensive ranking metrics for a product.
+ * Now accepts direct feedback records and community stats alongside survey responses.
  */
 export async function calculateProductMetrics(
   product: Product,
   responses: SurveyResponse[],
-  previousWeekResponses?: SurveyResponse[]
+  previousWeekResponses?: SurveyResponse[],
+  directFeedback?: DirectFeedbackRecord[],
+  previousWeekDirectFeedback?: DirectFeedbackRecord[],
+  communityStats?: CommunityStats,
 ): Promise<ProductRankingMetrics | null> {
   // Ensure product has category
   if (!product.profile?.data?.category) {
@@ -54,89 +85,143 @@ export async function calculateProductMetrics(
     return null
   }
 
+  const fb = directFeedback ?? []
+  const prevFb = previousWeekDirectFeedback ?? []
+  const community = communityStats ?? { postCount: 0, totalUpvotes: 0, totalReplyCount: 0, watchlistCount: 0 }
+
   const now = new Date()
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-  // Filter recent responses
-  const recentResponses = responses.filter(r => {
-    const submittedAt = new Date(r.submittedAt)
-    return submittedAt >= thirtyDaysAgo
-  })
+  // Filter recent survey responses
+  const recentSurveyResponses = responses.filter(r => new Date(r.submittedAt) >= thirtyDaysAgo)
+  const weeklySurveyResponses = responses.filter(r => new Date(r.submittedAt) >= sevenDaysAgo)
 
-  const weeklyResponses = responses.filter(r => {
-    const submittedAt = new Date(r.submittedAt)
-    return submittedAt >= sevenDaysAgo
-  })
+  // Filter recent direct feedback
+  const recentDirectFeedback = fb.filter(f => new Date(f.createdAt) >= thirtyDaysAgo)
+  const weeklyDirectFeedback = fb.filter(f => new Date(f.createdAt) >= sevenDaysAgo)
 
-  // Check minimum data requirements
-  const hasMinimumData = 
-    responses.length >= MINIMUM_THRESHOLDS.TOTAL_RESPONSES &&
-    recentResponses.length >= MINIMUM_THRESHOLDS.RECENT_RESPONSES
+  // Combined counts
+  const totalCombined = responses.length + fb.length
+  const recentCombined = recentSurveyResponses.length + recentDirectFeedback.length
+  const weeklyCombined = weeklySurveyResponses.length + weeklyDirectFeedback.length
 
-  // Calculate NPS score
+  // Check minimum data requirements (surveys + direct feedback combined)
+  const hasMinimumData =
+    totalCombined >= MINIMUM_THRESHOLDS.TOTAL_RESPONSES &&
+    recentCombined >= MINIMUM_THRESHOLDS.RECENT_RESPONSES
+
+  // ── NPS (from surveys only — direct feedback has no NPS question) ──
   const npsScore = calculateNPSFromResponses(responses)
 
-  // Calculate sentiment
-  const sentimentData = await calculateSentiment(responses)
+  // ── Sentiment (combined from survey text answers + direct feedback text) ──
+  const sentimentData = await calculateCombinedSentiment(responses, fb)
 
-  // Calculate engagement
-  const engagement = calculateEngagement(responses)
-
-  // Calculate recency
-  const lastResponse = responses.length > 0
-    ? responses.reduce((latest, current) => 
-        new Date(current.submittedAt) > new Date(latest.submittedAt) ? current : latest
-      )
-    : null
-
-  const daysSinceLastResponse = lastResponse
-    ? Math.floor((now.getTime() - new Date(lastResponse.submittedAt).getTime()) / (1000 * 60 * 60 * 24))
-    : 999
-
-  // Calculate week-over-week trend
-  const currentWeekNPS = calculateNPSFromResponses(weeklyResponses)
-  const previousWeekNPS = previousWeekResponses ? calculateNPSFromResponses(previousWeekResponses) : null
-  
-  const weekOverWeekChange = previousWeekNPS !== null && previousWeekNPS !== 0
-    ? ((currentWeekNPS - previousWeekNPS) / Math.abs(previousWeekNPS)) * 100
+  // ── Direct feedback star rating ──
+  const ratedFeedback = fb.filter(f => f.rating !== null && f.rating !== undefined)
+  const directRating = ratedFeedback.length > 0
+    ? ratedFeedback.reduce((sum, f) => sum + f.rating!, 0) / ratedFeedback.length
     : 0
 
-  const trendDirection: 'up' | 'down' | 'stable' = 
+  // ── Direct feedback sentiment breakdown (pre-computed by DB) ──
+  const directSentimentBreakdown = {
+    positive: fb.filter(f => f.sentiment === 'positive').length,
+    neutral: fb.filter(f => f.sentiment === 'neutral').length,
+    negative: fb.filter(f => f.sentiment === 'negative').length,
+  }
+
+  // ── Engagement (surveys + direct feedback text richness) ──
+  const engagement = calculateCombinedEngagement(responses, fb)
+
+  // ── Recency (most recent across both tables) ──
+  const lastSurveyAt = responses.length > 0
+    ? responses.reduce((latest, cur) => new Date(cur.submittedAt) > new Date(latest.submittedAt) ? cur : latest).submittedAt
+    : null
+  const lastFeedbackAt = fb.length > 0
+    ? fb.reduce((latest, cur) => new Date(cur.createdAt) > new Date(latest.createdAt) ? cur : latest).createdAt
+    : null
+
+  let lastResponseAt: string | null = null
+  if (lastSurveyAt && lastFeedbackAt) {
+    lastResponseAt = new Date(lastSurveyAt) > new Date(lastFeedbackAt)
+      ? String(lastSurveyAt)
+      : String(lastFeedbackAt)
+  } else {
+    lastResponseAt = lastSurveyAt ? String(lastSurveyAt) : (lastFeedbackAt ? String(lastFeedbackAt) : null)
+  }
+
+  const daysSinceLastResponse = lastResponseAt
+    ? Math.floor((now.getTime() - new Date(lastResponseAt).getTime()) / (1000 * 60 * 60 * 24))
+    : 999
+
+  // ── Trend (week-over-week NPS change from surveys; rating change from feedback) ──
+  const currentWeekNPS = calculateNPSFromResponses(weeklySurveyResponses)
+  const previousWeekNPS = previousWeekResponses ? calculateNPSFromResponses(previousWeekResponses) : null
+
+  // Also factor in direct feedback rating trend
+  const currentWeekRatedFb = weeklyDirectFeedback.filter(f => f.rating !== null)
+  const prevWeekRatedFb = prevFb.filter(f => f.rating !== null)
+  const currentWeekAvgRating = currentWeekRatedFb.length > 0
+    ? currentWeekRatedFb.reduce((s, f) => s + f.rating!, 0) / currentWeekRatedFb.length
+    : null
+  const prevWeekAvgRating = prevWeekRatedFb.length > 0
+    ? prevWeekRatedFb.reduce((s, f) => s + f.rating!, 0) / prevWeekRatedFb.length
+    : null
+
+  // Blend NPS trend and rating trend
+  let weekOverWeekChange = 0
+  if (previousWeekNPS !== null && previousWeekNPS !== 0) {
+    weekOverWeekChange = ((currentWeekNPS - previousWeekNPS) / Math.abs(previousWeekNPS)) * 100
+  }
+  if (currentWeekAvgRating !== null && prevWeekAvgRating !== null && prevWeekAvgRating > 0) {
+    const ratingChange = ((currentWeekAvgRating - prevWeekAvgRating) / prevWeekAvgRating) * 100
+    // Average with NPS change if both exist
+    weekOverWeekChange = weekOverWeekChange !== 0
+      ? (weekOverWeekChange + ratingChange) / 2
+      : ratingChange
+  }
+
+  const trendDirection: 'up' | 'down' | 'stable' =
     weekOverWeekChange > 5 ? 'up' :
     weekOverWeekChange < -5 ? 'down' :
     'stable'
 
-  // Calculate confidence score
-  const confidenceScore = calculateConfidence(
-    responses.length,
-    recentResponses.length,
-    daysSinceLastResponse
-  )
+  // ── Confidence ──
+  const confidenceScore = calculateConfidence(totalCombined, recentCombined, daysSinceLastResponse)
 
   const result: ProductRankingMetrics = {
     productId: product.id,
     productName: product.name,
     category: product.profile.data.category as ProductCategory,
-    
+
     npsScore,
-    totalResponses: responses.length,
-    
+    totalResponses: totalCombined,
+
     sentimentScore: sentimentData.score,
     sentimentBreakdown: sentimentData.breakdown,
-    
+
+    directRating,
+    directFeedbackCount: fb.length,
+    directSentimentBreakdown,
+
     surveyCompletionRate: engagement.completionRate,
     feedbackVolume: engagement.feedbackCount,
-    
-    recentResponseCount: weeklyResponses.length,
-    lastResponseAt: lastResponse?.submittedAt || null,
-    
+
+    communityPostCount: community.postCount,
+    communityUpvotes: community.totalUpvotes,
+    communityReplyCount: community.totalReplyCount,
+    watchlistCount: community.watchlistCount,
+
+    recentResponseCount: weeklyCombined,
+    lastResponseAt,
+
     weekOverWeekChange,
     trendDirection,
-    
+
     confidenceScore,
     hasMinimumData,
-    // Social signals — fetched from social analytics
+
+    // Social signals — enriched below
     socialMentions: 0,
     socialSentimentScore: 0,
     socialEngagementScore: 0,
@@ -166,35 +251,39 @@ export function calculateRankingScore(metrics: ProductRankingMetrics): RankingSc
   // 1. NPS Score: -100 to 100 → 0 to 1
   const npsNormalized = (metrics.npsScore + 100) / 200
 
-  // 2. Sentiment Score: already 0 to 1
+  // 2. Sentiment Score: already 0 to 1 (combined surveys + direct feedback)
   const sentimentNormalized = metrics.sentimentScore
 
-  // 3. Engagement Score: combination of completion rate and feedback volume
+  // 3. Engagement Score: survey completion + feedback text richness
   const engagementNormalized = (
-    metrics.surveyCompletionRate * 0.6 +
-    Math.min(metrics.feedbackVolume / 50, 1) * 0.4
+    metrics.surveyCompletionRate * 0.5 +
+    Math.min(metrics.feedbackVolume / 50, 1) * 0.5
   )
 
-  // 4. Volume Score: logarithmic scale for diminishing returns
+  // 4. Direct Rating Score: average star rating 0-5 → 0 to 1
+  const directRatingNormalized = metrics.directFeedbackCount > 0
+    ? metrics.directRating / 5
+    : 0.5 // Neutral when no direct feedback exists
+
+  // 5. Volume Score: logarithmic scale for diminishing returns (combined total)
   const volumeNormalized = Math.min(
     Math.log10(metrics.totalResponses + 1) / Math.log10(1000),
     1
   )
 
-  // 5. Recency Score: exponential decay over 30 days
+  // 6. Recency Score: exponential decay over 30 days
   const daysSinceLastResponse = metrics.lastResponseAt
     ? Math.floor((Date.now() - new Date(metrics.lastResponseAt).getTime()) / (1000 * 60 * 60 * 24))
     : 30
-
   const recencyNormalized = Math.exp(-daysSinceLastResponse / 10)
 
-  // 6. Trend Score: week-over-week change bonus
+  // 7. Trend Score: week-over-week change bonus
   const trendNormalized = Math.max(0, Math.min(
-    0.5 + (metrics.weekOverWeekChange / 200), // -100% to +100% maps to 0 to 1
+    0.5 + (metrics.weekOverWeekChange / 200),
     1
   ))
 
-  // 7. Social Score: combination of social sentiment, engagement, and volume
+  // 8. Social Score: sentiment + engagement + volume from social listening
   const socialVolumeComponent = Math.min(Math.log10((metrics.socialMentions || 0) + 1) / Math.log10(500), 1)
   const socialNormalized = (
     (metrics.socialSentimentScore || 0) * 0.4 +
@@ -202,15 +291,29 @@ export function calculateRankingScore(metrics: ProductRankingMetrics): RankingSc
     socialVolumeComponent * 0.3
   )
 
+  // 9. Community Score: posts, upvotes, replies, watchlist
+  const communityPostComponent = Math.min(Math.log10((metrics.communityPostCount || 0) + 1) / Math.log10(100), 1)
+  const communityUpvoteComponent = Math.min(Math.log10((metrics.communityUpvotes || 0) + 1) / Math.log10(500), 1)
+  const communityReplyComponent = Math.min(Math.log10((metrics.communityReplyCount || 0) + 1) / Math.log10(200), 1)
+  const watchlistComponent = Math.min(Math.log10((metrics.watchlistCount || 0) + 1) / Math.log10(100), 1)
+  const communityNormalized = (
+    communityPostComponent * 0.2 +
+    communityUpvoteComponent * 0.3 +
+    communityReplyComponent * 0.2 +
+    watchlistComponent * 0.3
+  )
+
   // Calculate weighted components
   const breakdown = {
     nps: npsNormalized * RANKING_WEIGHTS.NPS,
     sentiment: sentimentNormalized * RANKING_WEIGHTS.SENTIMENT,
     engagement: engagementNormalized * RANKING_WEIGHTS.ENGAGEMENT,
+    directRating: directRatingNormalized * RANKING_WEIGHTS.DIRECT_RATING,
     volume: volumeNormalized * RANKING_WEIGHTS.VOLUME,
     recency: recencyNormalized * RANKING_WEIGHTS.RECENCY,
     trend: trendNormalized * RANKING_WEIGHTS.TREND,
     social: socialNormalized * RANKING_WEIGHTS.SOCIAL,
+    community: communityNormalized * RANKING_WEIGHTS.COMMUNITY,
   }
 
   // Sum all components
@@ -256,14 +359,17 @@ function calculateNPSFromResponses(responses: SurveyResponse[]): number {
 }
 
 /**
- * Helper: Calculate sentiment from text responses
+ * Helper: Calculate sentiment from survey text AND direct feedback text (combined)
  */
-async function calculateSentiment(responses: SurveyResponse[]): Promise<{
+async function calculateCombinedSentiment(
+  responses: SurveyResponse[],
+  directFeedback: DirectFeedbackRecord[]
+): Promise<{
   score: number
   breakdown: { positive: number; neutral: number; negative: number }
 }> {
+  // 1. Collect text from survey answers
   const textResponses: string[] = []
-
   responses.forEach(response => {
     Object.entries(response.answers).forEach(([_, answer]) => {
       if (typeof answer === 'string' && answer.length > 10) {
@@ -272,52 +378,87 @@ async function calculateSentiment(responses: SurveyResponse[]): Promise<{
     })
   })
 
-  if (textResponses.length === 0) {
+  // 2. For direct feedback — use pre-computed sentiment when available, else queue for analysis
+  const directTexts: string[] = []
+  let directPositive = 0
+  let directNeutral = 0
+  let directNegative = 0
+
+  for (const fb of directFeedback) {
+    if (fb.sentiment) {
+      // Already analyzed at submission time
+      if (fb.sentiment === 'positive') directPositive++
+      else if (fb.sentiment === 'negative') directNegative++
+      else directNeutral++
+    } else if (fb.feedbackText && fb.feedbackText.length > 10) {
+      // Queue for analysis
+      directTexts.push(fb.feedbackText)
+    }
+  }
+
+  // 3. Batch-analyze all un-analyzed text (surveys + any direct feedback without sentiment)
+  const allTexts = [...textResponses, ...directTexts]
+  if (allTexts.length === 0 && directPositive + directNeutral + directNegative === 0) {
     return { score: 0.5, breakdown: { positive: 0, neutral: 0, negative: 0 } }
   }
 
-  // Batch analyze sentiment
-  const sentiments = await Promise.all(
-    textResponses.map(text => analyzeSentiment(text))
-  )
+  let surveyPositive = 0
+  let surveyNeutral = 0
+  let surveyNegative = 0
 
-  const breakdown = {
-    positive: sentiments.filter(s => s.sentiment === 'positive').length,
-    neutral: sentiments.filter(s => s.sentiment === 'neutral').length,
-    negative: sentiments.filter(s => s.sentiment === 'negative').length,
+  if (allTexts.length > 0) {
+    const sentiments = await Promise.all(
+      allTexts.map(text => analyzeSentiment(text))
+    )
+    surveyPositive = sentiments.filter(s => s.sentiment === 'positive').length
+    surveyNeutral = sentiments.filter(s => s.sentiment === 'neutral').length
+    surveyNegative = sentiments.filter(s => s.sentiment === 'negative').length
   }
 
-  // Calculate overall sentiment score (0 to 1)
-  const score = breakdown.positive / sentiments.length
+  const breakdown = {
+    positive: surveyPositive + directPositive,
+    neutral: surveyNeutral + directNeutral,
+    negative: surveyNegative + directNegative,
+  }
+
+  const total = breakdown.positive + breakdown.neutral + breakdown.negative
+  const score = total > 0 ? breakdown.positive / total : 0.5
 
   return { score, breakdown }
 }
 
 /**
- * Helper: Calculate engagement metrics
+ * Helper: Calculate engagement from surveys + direct feedback combined
  */
-function calculateEngagement(responses: SurveyResponse[]): {
+function calculateCombinedEngagement(
+  responses: SurveyResponse[],
+  directFeedback: DirectFeedbackRecord[]
+): {
   completionRate: number
   feedbackCount: number
 } {
-  if (responses.length === 0) {
-    return { completionRate: 0, feedbackCount: 0 }
+  // Survey completion rate
+  let completionRate = 0
+  if (responses.length > 0) {
+    const avgQuestionsAnswered = responses.reduce((sum, r) =>
+      sum + Object.keys(r.answers).length, 0
+    ) / responses.length
+    completionRate = Math.min(avgQuestionsAnswered / 3, 1)
   }
 
-  // Calculate completion rate based on number of questions answered
-  const avgQuestionsAnswered = responses.reduce((sum, r) => 
-    sum + Object.keys(r.answers).length, 0
-  ) / responses.length
-
-  // Assume 2-3 questions per survey
-  const completionRate = Math.min(avgQuestionsAnswered / 3, 1)
-
-  // Count text feedback
-  const feedbackCount = responses.filter(r => 
+  // Count text-rich feedback across both sources
+  const surveyTextCount = responses.filter(r =>
     Object.values(r.answers).some(a => typeof a === 'string' && a.length > 20)
   ).length
 
-  return { completionRate, feedbackCount }
+  const directTextCount = directFeedback.filter(f =>
+    f.feedbackText && f.feedbackText.length > 20
+  ).length
+
+  return {
+    completionRate,
+    feedbackCount: surveyTextCount + directTextCount,
+  }
 }
 
 /**

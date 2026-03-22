@@ -11,6 +11,8 @@ import {
   calculateRankingScore,
   filterEligibleProducts,
   generateTopRankings,
+  type DirectFeedbackRecord,
+  type CommunityStats,
 } from './rankingEngine'
 import {
   saveWeeklyRanking,
@@ -21,6 +23,9 @@ import {
 } from './rankingStore'
 import { sendBulkRankingNotifications, type RankingEmailData } from '../emailNotifications'
 import { sendBulkWhatsAppNotifications, type WhatsAppRankingData } from '../whatsappNotifications'
+import { db } from '@/db'
+import { feedback, communityPosts, productWatchlist } from '@/db/schema'
+import { eq, sql, gte, and, lt } from 'drizzle-orm'
 
 /**
  * Main service to generate weekly rankings
@@ -37,11 +42,15 @@ export async function generateWeeklyRankings(): Promise<{
   console.log('🏆 Starting weekly ranking generation...')
 
   try {
-    // Load all products and responses
-    const allProducts = await getProducts()
-    const allResponses = await getAllResponses()
+    // Load all products, survey responses, direct feedback, and community data
+    const [allProducts, allResponses, allDirectFeedback, allCommunityStats] = await Promise.all([
+      getProducts(),
+      getAllResponses(),
+      fetchAllDirectFeedback(),
+      fetchAllCommunityStats(),
+    ])
 
-    console.log(`📊 Loaded ${allProducts.length} products and ${allResponses.length} responses`)
+    console.log(`📊 Loaded ${allProducts.length} products, ${allResponses.length} survey responses, ${allDirectFeedback.length} direct feedback records`)
 
     // Process each category
     for (const categoryKey of CATEGORY_KEYS) {
@@ -49,7 +58,9 @@ export async function generateWeeklyRankings(): Promise<{
         const ranking = await generateCategoryRanking(
           categoryKey,
           allProducts,
-          allResponses
+          allResponses,
+          allDirectFeedback,
+          allCommunityStats
         )
 
         if (ranking) {
@@ -155,7 +166,9 @@ export async function generateWeeklyRankings(): Promise<{
 async function generateCategoryRanking(
   category: ProductCategory,
   allProducts: Product[],
-  allResponses: any[]
+  allResponses: any[],
+  allDirectFeedback: DirectFeedbackRecord[] = [],
+  allCommunityStats: Map<string, CommunityStats> = new Map()
 ): Promise<WeeklyRanking | null> {
   // Filter products by category
   const categoryProducts = allProducts.filter(p => 
@@ -169,19 +182,36 @@ async function generateCategoryRanking(
   const weekStart = getWeekStart()
   const weekEnd = getWeekEnd()
 
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+
   // Calculate metrics for each product
   const metricsPromises = categoryProducts.map(async product => {
+    // Survey responses
     const productResponses = allResponses.filter(r => r.productId === product.id)
-    
-    // Get previous week responses for trend calculation
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
     const previousWeekResponses = productResponses.filter(r => {
       const submittedAt = new Date(r.submittedAt)
       return submittedAt >= fourteenDaysAgo && submittedAt < sevenDaysAgo
     })
 
-    return calculateProductMetrics(product, productResponses, previousWeekResponses)
+    // Direct feedback for this product
+    const productFeedback = allDirectFeedback.filter(f => f.productId === product.id)
+    const previousWeekFeedback = productFeedback.filter(f => {
+      const createdAt = new Date(f.createdAt)
+      return createdAt >= fourteenDaysAgo && createdAt < sevenDaysAgo
+    })
+
+    // Community stats for this product
+    const community = allCommunityStats.get(product.id)
+
+    return calculateProductMetrics(
+      product,
+      productResponses,
+      previousWeekResponses,
+      productFeedback,
+      previousWeekFeedback,
+      community
+    )
   })
 
   const allMetrics = await Promise.all(metricsPromises)
@@ -248,10 +278,14 @@ async function generateCategoryRanking(
 export async function regenerateCategoryRanking(
   category: ProductCategory
 ): Promise<WeeklyRanking | null> {
-  const allProducts = await getProducts()
-  const allResponses = await getAllResponses()
+  const [allProducts, allResponses, allDirectFeedback, allCommunityStats] = await Promise.all([
+    getProducts(),
+    getAllResponses(),
+    fetchAllDirectFeedback(),
+    fetchAllCommunityStats(),
+  ])
 
-  const ranking = await generateCategoryRanking(category, allProducts, allResponses)
+  const ranking = await generateCategoryRanking(category, allProducts, allResponses, allDirectFeedback, allCommunityStats)
   
   if (ranking) {
     await saveWeeklyRanking(ranking)
@@ -317,4 +351,96 @@ export async function checkProductRankingChange(
     isNewEntry,
     rankChange,
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Data fetchers — pull direct feedback and community signals from DB
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Fetch all direct feedback from the feedback table for ranking purposes.
+ * Falls back gracefully if the table doesn't exist.
+ */
+async function fetchAllDirectFeedback(): Promise<DirectFeedbackRecord[]> {
+  try {
+    const rows = await db
+      .select({
+        id: sql<string>`${feedback.id}::text`,
+        productId: feedback.productId,
+        feedbackText: feedback.feedbackText,
+        rating: feedback.rating,
+        sentiment: feedback.sentiment,
+        createdAt: feedback.createdAt,
+      })
+      .from(feedback)
+    return rows
+  } catch {
+    console.warn('⚠️ Could not fetch direct feedback for rankings (table may not exist)')
+    return []
+  }
+}
+
+/**
+ * Fetch community engagement stats per product from communityPosts + productWatchlist.
+ * Returns a Map keyed by productId.
+ */
+async function fetchAllCommunityStats(): Promise<Map<string, CommunityStats>> {
+  const result = new Map<string, CommunityStats>()
+
+  try {
+    // Community posts aggregation per product
+    const postStats = await db
+      .select({
+        productId: communityPosts.productId,
+        postCount: sql<number>`COUNT(*)::int`,
+        totalUpvotes: sql<number>`COALESCE(SUM(${communityPosts.upvotes}), 0)::int`,
+        totalReplyCount: sql<number>`COALESCE(SUM(${communityPosts.replyCount}), 0)::int`,
+      })
+      .from(communityPosts)
+      .where(sql`${communityPosts.productId} IS NOT NULL`)
+      .groupBy(communityPosts.productId)
+
+    for (const row of postStats) {
+      if (row.productId) {
+        result.set(row.productId, {
+          postCount: row.postCount,
+          totalUpvotes: row.totalUpvotes,
+          totalReplyCount: row.totalReplyCount,
+          watchlistCount: 0,
+        })
+      }
+    }
+  } catch {
+    console.warn('⚠️ Could not fetch community posts for rankings')
+  }
+
+  try {
+    // Watchlist count per product
+    const watchStats = await db
+      .select({
+        productId: productWatchlist.productId,
+        watchCount: sql<number>`COUNT(*)::int`,
+      })
+      .from(productWatchlist)
+      .where(eq(productWatchlist.active, true))
+      .groupBy(productWatchlist.productId)
+
+    for (const row of watchStats) {
+      const existing = result.get(row.productId)
+      if (existing) {
+        existing.watchlistCount = row.watchCount
+      } else {
+        result.set(row.productId, {
+          postCount: 0,
+          totalUpvotes: 0,
+          totalReplyCount: 0,
+          watchlistCount: row.watchCount,
+        })
+      }
+    }
+  } catch {
+    console.warn('⚠️ Could not fetch watchlist data for rankings')
+  }
+
+  return result
 }

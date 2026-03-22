@@ -20,10 +20,25 @@ export type ProductRankingMetrics = {
     negative: number
   }
   
+  // Direct feedback (from feedback table)
+  directRating: number // 0 to 5 average star rating
+  directFeedbackCount: number
+  directSentimentBreakdown: {
+    positive: number
+    neutral: number
+    negative: number
+  }
+
   // Engagement
   surveyCompletionRate: number // 0 to 1
   feedbackVolume: number
   
+  // Community signals
+  communityPostCount: number
+  communityUpvotes: number
+  communityReplyCount: number
+  watchlistCount: number
+
   // Recency
   recentResponseCount: number // Last 7 days
   lastResponseAt: string | null
@@ -56,6 +71,8 @@ export type RankingScore = {
     recency: number
     trend: number
     social: number
+    directRating: number
+    community: number
   }
   confidenceMultiplier: number
 }
