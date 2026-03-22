@@ -55,8 +55,8 @@ export default function ProfileClient({
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Initialize from persisted profile data
-  const [currentStep, setCurrentStep] = useState(profile.currentStep)
+  // Initialize from persisted profile data (treat step 0 as step 1 — step 0 has no content)
+  const [currentStep, setCurrentStep] = useState(profile.currentStep < 1 ? 1 : profile.currentStep)
 
   // STEP 1: Product Type
   const [productType, setProductType] = useState<ProductType>(

@@ -25,7 +25,7 @@ export async function launchProduct(formData: FormData) {
       social_listening: true,
     },
     profile: {
-      currentStep: 0,
+      currentStep: 1,
       isComplete: false,
       data: {
         category: 'TECH_SAAS',
