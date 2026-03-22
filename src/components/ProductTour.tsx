@@ -458,7 +458,7 @@ export function ProductTour() {
   useEffect(() => {
     if (!mounted) return
     const state = getTourState()
-    if (!state.completed && !state.dismissed && pathname === '/dashboard') {
+    if (!state.completed && !state.dismissed && pathname.startsWith('/dashboard')) {
       const timer = setTimeout(() => {
         setIsActive(true)
         setCurrentStep(0)

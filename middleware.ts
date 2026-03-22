@@ -47,7 +47,9 @@ export default auth((req: NextRequest & { auth: any }) => {
     return NextResponse.redirect(new URL('/login', nextUrl))
   }
 
-  if (isBrandRoute && isLoggedIn && req.auth?.user?.role !== 'brand') {
+  // Consumers can access /dashboard/* sub-routes (products, rewards, community, etc.)
+  // Only redirect consumers away from the /dashboard home page itself
+  if (nextUrl.pathname === '/dashboard' && isLoggedIn && req.auth?.user?.role !== 'brand') {
     return NextResponse.redirect(new URL('/top-products', nextUrl))
   }
 
