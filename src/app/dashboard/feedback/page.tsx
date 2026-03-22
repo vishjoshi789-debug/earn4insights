@@ -218,6 +218,23 @@ export default async function FeedbackDashboardPage() {
     }
   } catch { /* table may not exist yet */ }
 
+  // NPS calculation
+  let npsScore: number | null = null
+  try {
+    if (brandProductIds.length > 0) {
+      const npsRows = await db
+        .select({ score: surveyResponses.npsScore })
+        .from(surveyResponses)
+        .where(inArray(surveyResponses.productId, brandProductIds))
+      const valid = npsRows.filter((r) => r.score !== null)
+      if (valid.length >= 1) {
+        const promoters = valid.filter((r) => r.score! >= 9).length
+        const detractors = valid.filter((r) => r.score! <= 6).length
+        npsScore = Math.round(((promoters - detractors) / valid.length) * 100)
+      }
+    }
+  } catch { /* nps_score column may not exist */ }
+
   const totalCombined = (totals?.totalCount ?? 0) + surveyCount
 
   const productIds = overview.map((o) => o.productId)
@@ -304,6 +321,18 @@ export default async function FeedbackDashboardPage() {
             <p className="text-xs text-muted-foreground">Direct / Survey</p>
           </CardContent>
         </Card>
+        {npsScore !== null && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className={`text-2xl font-bold ${
+                npsScore >= 50 ? 'text-green-600' : npsScore >= 0 ? 'text-yellow-600' : 'text-red-600'
+              }`}>
+                {npsScore > 0 ? `+${npsScore}` : npsScore}
+              </div>
+              <p className="text-xs text-muted-foreground">NPS Score</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Pro Upgrade Prompt (free tier only) */}
