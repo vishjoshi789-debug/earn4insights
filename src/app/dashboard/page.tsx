@@ -459,16 +459,16 @@ async function ConsumerDashboard({ userId, userEmail }: { userId?: string; userE
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Surveys
+              <Trophy className="w-4 h-4" />
+              Weekly Top 10
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Complete brand surveys to earn 50 points each.
+              See this week&apos;s highest-rated products voted by consumers.
             </p>
             <Button asChild size="sm" variant="outline">
-              <Link href="/dashboard/surveys">Take surveys</Link>
+              <Link href="/dashboard/rankings">View rankings</Link>
             </Button>
           </CardContent>
         </Card>
