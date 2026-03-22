@@ -205,12 +205,12 @@ export default async function RecommendationsPage() {
       )}
 
       {/* How This Works */}
-      <Alert className="bg-purple-900/50 border-purple-700">
-        <Sparkles className="h-4 w-4 text-purple-600" />
-        <AlertTitle className="text-purple-900 dark:text-purple-100">
+      <Alert className="bg-slate-800 border-slate-600">
+        <Sparkles className="h-4 w-4 text-purple-400" />
+        <AlertTitle className="text-white font-bold">
           How Recommendations Work
         </AlertTitle>
-        <AlertDescription className="text-purple-800 dark:text-purple-200">
+        <AlertDescription className="text-slate-200">
           We analyze your interests, survey responses, and product views to find the best matches. 
           The match percentage shows how well a product aligns with your preferences.
         </AlertDescription>
