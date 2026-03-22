@@ -225,20 +225,22 @@ const TOUR_STEPS: TourStep[] = [
 
 // ─── Tour Storage ────────────────────────────────────────────────
 
-const TOUR_STORAGE_KEY = 'e4i_product_tour'
+function getTourStorageKey(userId?: string): string {
+  return userId ? `e4i_product_tour_${userId}` : 'e4i_product_tour'
+}
 
-function getTourState(): { completed: boolean; dismissed: boolean } {
+function getTourState(userId?: string): { completed: boolean; dismissed: boolean } {
   if (typeof window === 'undefined') return { completed: false, dismissed: false }
   try {
-    const raw = localStorage.getItem(TOUR_STORAGE_KEY)
+    const raw = localStorage.getItem(getTourStorageKey(userId))
     if (raw) return JSON.parse(raw)
   } catch { }
   return { completed: false, dismissed: false }
 }
 
-function setTourState(state: { completed: boolean; dismissed: boolean }) {
+function setTourState(state: { completed: boolean; dismissed: boolean }, userId?: string) {
   try {
-    localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(state))
+    localStorage.setItem(getTourStorageKey(userId), JSON.stringify(state))
   } catch { }
 }
 
@@ -431,16 +433,17 @@ function TourTooltip({
 // ─── Main Tour Component ─────────────────────────────────────────
 
 export function ProductTour() {
-  const { data: session } = useSession()
+const { data: session, status } = useSession()
   const pathname = usePathname()
   const router = useRouter()
   const [isActive, setIsActive] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
-  const [filteredSteps, setFilteredSteps] = useState<TourStep[]>([])
+  const [filteredSteps, setFilteredSteps] = useState<TourStep[]>([])  
   const [mounted, setMounted] = useState(false)
 
   const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | undefined
+  const userId = (session?.user as any)?.id as string | undefined
 
   // Filter steps by role
   useEffect(() => {
@@ -456,8 +459,8 @@ export function ProductTour() {
 
   // Auto-start tour for first-time users (after small delay for DOM to settle)
   useEffect(() => {
-    if (!mounted) return
-    const state = getTourState()
+    if (!mounted || status === 'loading') return
+    const state = getTourState(userId)
     if (!state.completed && !state.dismissed && pathname.startsWith('/dashboard')) {
       const timer = setTimeout(() => {
         setIsActive(true)
@@ -465,17 +468,17 @@ export function ProductTour() {
       }, 1500)
       return () => clearTimeout(timer)
     }
-  }, [mounted, pathname])
+  }, [mounted, pathname, status, userId])
 
   // Expose global function to restart tour
   useEffect(() => {
     (window as any).__startProductTour = () => {
-      setTourState({ completed: false, dismissed: false })
+      setTourState({ completed: false, dismissed: false }, userId)
       setCurrentStep(0)
       setIsActive(true)
     }
     return () => { delete (window as any).__startProductTour }
-  }, [])
+  }, [userId])
 
   // Position the spotlight on the target element
   const updateTargetRect = useCallback(() => {
@@ -511,11 +514,11 @@ export function ProductTour() {
     if (currentStep >= filteredSteps.length - 1) {
       // Tour complete
       setIsActive(false)
-      setTourState({ completed: true, dismissed: false })
+      setTourState({ completed: true, dismissed: false }, userId)
       return
     }
     setCurrentStep(prev => prev + 1)
-  }, [currentStep, filteredSteps.length])
+  }, [currentStep, filteredSteps.length, userId])
 
   const handlePrev = useCallback(() => {
     if (currentStep > 0) {
@@ -525,8 +528,8 @@ export function ProductTour() {
 
   const handleSkip = useCallback(() => {
     setIsActive(false)
-    setTourState({ completed: false, dismissed: true })
-  }, [])
+    setTourState({ completed: false, dismissed: true }, userId)
+  }, [userId])
 
   // Keyboard navigation
   useEffect(() => {
