@@ -154,7 +154,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
       toast.success('Profile completed! Enjoy personalized experiences.')
       
       // Redirect based on user role
-      const redirectUrl = userRole === 'brand' ? '/dashboard' : '/top-products'
+      // Consumers go to /dashboard/submit-feedback so they land in DashboardShell
+      // and see the product tour on their first visit
+      const redirectUrl = userRole === 'brand' ? '/dashboard' : '/dashboard/submit-feedback'
       router.push(redirectUrl)
     } catch (error) {
       toast.error('Failed to save profile. Please try again.')
