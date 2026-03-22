@@ -25,6 +25,7 @@ import {
   BarChart3,
   ArrowRight
 } from 'lucide-react';
+import Link from 'next/link';
 import { BrandAnalyticsDashboard } from '@/components/brand-analytics-dashboard';
 import { safeAggregate, filterSmallSegments, countSuppressedSegments, getPrivacyNote, MINIMUM_SEGMENT_SIZE } from '@/lib/analytics/safeAggregation';
 
@@ -742,6 +743,7 @@ export default async function BrandAnalyticsPage() {
                       <th className="text-right py-2 px-2 whitespace-nowrap">NPS</th>
                       <th className="text-right py-2 px-2 whitespace-nowrap">Rank</th>
                       <th className="text-left py-2 px-2 whitespace-nowrap">Sentiment</th>
+                      <th className="py-2 px-2" aria-label="Drill down"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -762,6 +764,16 @@ export default async function BrandAnalyticsPage() {
                             <span className="text-gray-600 dark:text-gray-400">={product.sentiment.neutral}</span>
                             <span className="text-red-600 dark:text-red-400">-{product.sentiment.negative}</span>
                           </div>
+                        </td>
+                        <td className="py-2 px-2">
+                          <Link
+                            href={`/dashboard/analytics/consumer-intelligence?product=${product.id}`}
+                            className="inline-flex items-center gap-1 text-xs text-purple-500 hover:text-purple-400 whitespace-nowrap"
+                            title="Consumer Intelligence drill-down"
+                          >
+                            <span className="hidden sm:inline">Drill down</span>
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
                         </td>
                       </tr>
                     ))}

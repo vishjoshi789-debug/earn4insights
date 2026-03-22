@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -78,6 +79,8 @@ const DIMENSION_CONFIG = {
 // ── Main Component ────────────────────────────────────────────────
 
 export default function ConsumerIntelligencePage() {
+  const searchParams = useSearchParams()
+  const preselectedProduct = searchParams.get('product')
   const [products, setProducts] = useState<Product[]>([])
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
   const [data, setData] = useState<ConsumerIntelligenceData | null>(null)
@@ -100,7 +103,8 @@ export default function ConsumerIntelligencePage() {
 
           if (productList.length > 0) {
             setProducts(productList)
-            setSelectedProduct(productList[0].id)
+            const match = preselectedProduct && productList.find((p: Product) => p.id === preselectedProduct)
+            setSelectedProduct(match ? match.id : productList[0].id)
             return
           }
         }
@@ -114,7 +118,8 @@ export default function ConsumerIntelligencePage() {
             .map((p: any) => ({ id: p.id, name: p.name }))
           setProducts(uniqueProducts)
           if (uniqueProducts.length > 0) {
-            setSelectedProduct(uniqueProducts[0].id)
+            const match = preselectedProduct && uniqueProducts.find((p: Product) => p.id === preselectedProduct)
+            setSelectedProduct(match ? match.id : uniqueProducts[0].id)
           }
         }
       } catch {
