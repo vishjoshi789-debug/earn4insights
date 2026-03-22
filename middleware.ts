@@ -20,7 +20,7 @@ export default auth((req: NextRequest & { auth: any }) => {
   // Redirect logged-in users away from auth pages
   if (isAuthPage && isLoggedIn) {
     // First-time users will be redirected to onboarding by OnboardingGuard
-    const redirectUrl = req.auth?.user?.role === 'brand' ? '/dashboard' : '/top-products'
+    const redirectUrl = '/dashboard'
     return NextResponse.redirect(new URL(redirectUrl, nextUrl))
   }
 
@@ -47,11 +47,8 @@ export default auth((req: NextRequest & { auth: any }) => {
     return NextResponse.redirect(new URL('/login', nextUrl))
   }
 
-  // Consumers can access /dashboard/* sub-routes (products, rewards, community, etc.)
-  // Only redirect consumers away from the /dashboard home page itself
-  if (nextUrl.pathname === '/dashboard' && isLoggedIn && req.auth?.user?.role !== 'brand') {
-    return NextResponse.redirect(new URL('/top-products', nextUrl))
-  }
+  // Both brands and consumers can access all /dashboard routes
+  // The dashboard page itself renders role-appropriate content
 
   // Protect consumer routes (if any are protected)
   if (isConsumerRoute && !isLoggedIn) {
