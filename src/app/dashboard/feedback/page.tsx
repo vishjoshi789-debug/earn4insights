@@ -373,7 +373,7 @@ export default async function FeedbackDashboardPage() {
             const latest = latestMap.get(stats.productId)
 
             return (
-              <Card key={stats.productId} className="flex flex-col">
+              <Card key={stats.productId} className="flex flex-col overflow-hidden">
                 <CardHeader className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <h2 className="font-semibold leading-tight min-w-0 truncate">{productName}</h2>
