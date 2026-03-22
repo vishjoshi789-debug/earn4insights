@@ -82,12 +82,12 @@ export function RecommendationCard({
 
   return (
     <Card 
-      className="border-slate-700 hover:border-purple-500/50 transition-colors"
+      className="border-slate-700 hover:border-purple-500/50 transition-colors min-w-0 overflow-hidden"
       style={{ backgroundColor: '#0f172a', color: 'white' }}
     >
       <CardHeader className={compact ? 'pb-3' : 'pb-4'}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0 overflow-hidden">
             <div className="flex items-center gap-2 mb-1">
               <Sparkles className="h-4 w-4 text-purple-400 flex-shrink-0" />
               <h3 className="font-semibold text-lg truncate text-white">{product.name}</h3>
