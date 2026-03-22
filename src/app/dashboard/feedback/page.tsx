@@ -4,9 +4,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatDistanceToNow } from 'date-fns'
 import { db } from '@/db'
-import { feedback, products } from '@/db/schema'
+import { feedback, products, surveyResponses } from '@/db/schema'
 import { eq, desc, sql, and, inArray, count } from 'drizzle-orm'
-import { ExternalLink, MessageSquare, Copy } from 'lucide-react'
+import { ExternalLink, MessageSquare, Copy, Mic, Video, BarChart3 } from 'lucide-react'
 import { auth } from '@/lib/auth/auth.config'
 import { redirect } from 'next/navigation'
 import { getMediaForFeedbackIds } from '@/db/repositories/feedbackRepository'
@@ -206,6 +206,20 @@ export default async function FeedbackDashboardPage() {
     getBrandFeedbackTotals(brandProductIds),
   ])
 
+  // Survey response count for source breakdown
+  let surveyCount = 0
+  try {
+    if (brandProductIds.length > 0) {
+      const [row] = await db
+        .select({ c: count() })
+        .from(surveyResponses)
+        .where(inArray(surveyResponses.productId, brandProductIds))
+      surveyCount = row?.c ?? 0
+    }
+  } catch { /* table may not exist yet */ }
+
+  const totalCombined = (totals?.totalCount ?? 0) + surveyCount
+
   const productIds = overview.map((o) => o.productId)
   const latestFeedback = await getLatestFeedbackPerProduct(productIds)
   const latestMap = new Map(latestFeedback.map((f) => [f.productId, f]))
@@ -223,19 +237,18 @@ export default async function FeedbackDashboardPage() {
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl md:text-3xl font-headline font-bold">
-          Feedback Overview
+          Feedback Hub
         </h1>
         <p className="text-muted-foreground">
-          Direct consumer feedback across all products. Click any product to see
-          full feedback details.
+          All feedback sources — direct submissions and surveys — in one place.
         </p>
       </header>
 
       {/* Global Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{totals?.totalCount ?? 0}</div>
+            <div className="text-2xl font-bold">{totalCombined}</div>
             <p className="text-xs text-muted-foreground">Total Feedback</p>
           </CardContent>
         </Card>
@@ -277,6 +290,18 @@ export default async function FeedbackDashboardPage() {
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{overview.length}</div>
             <p className="text-xs text-muted-foreground">Products with Feedback</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-1 text-sm">
+              <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
+              <span className="font-bold">{totals?.totalCount ?? 0}</span>
+              <span className="text-muted-foreground mx-0.5">·</span>
+              <BarChart3 className="h-3.5 w-3.5 text-purple-500" />
+              <span className="font-bold">{surveyCount}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Direct / Survey</p>
           </CardContent>
         </Card>
       </div>

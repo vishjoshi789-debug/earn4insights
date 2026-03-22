@@ -59,7 +59,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/products', label: 'Products', icon: Package, tourId: 'nav-products' },
   { href: '/dashboard/rankings', label: 'Weekly Top 10 products', icon: Trophy, tourId: 'nav-rankings' },
   // Brand: sees aggregated feedback from consumers
-  { href: '/dashboard/feedback', label: 'Feedback', icon: MessageSquare, tourId: 'nav-feedback', role: 'brand' },
+  { href: '/dashboard/feedback', label: 'Feedback Hub', icon: MessageSquare, tourId: 'nav-feedback', role: 'brand' },
   // Consumer: submit new feedback + view their history
   { href: '/dashboard/submit-feedback', label: 'Submit Feedback', icon: PenSquare, tourId: 'nav-submit-feedback', role: 'consumer' },
   { href: '/dashboard/my-feedback', label: 'My Feedback', icon: ClipboardList, tourId: 'nav-my-feedback', role: 'consumer' },
@@ -69,7 +69,6 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys' },
   { href: '/dashboard/analytics', label: 'Audience Analytics', icon: TrendingUp, tourId: 'nav-brand-analytics', role: 'brand' },
-  { href: '/dashboard/analytics/unified', label: 'Feedback Hub', icon: TrendingUp, tourId: 'nav-analytics', role: 'brand' },
   { href: '/dashboard/analytics/feature-insights', label: 'Feature Insights', icon: Activity, tourId: 'nav-feature-insights', role: 'brand' },
   { href: '/dashboard/analytics/consumer-intelligence', label: 'Consumer Intelligence', icon: Brain, tourId: 'nav-consumer-intelligence', role: 'brand' },
   { href: '/dashboard/analytics/weekly-digest', label: 'Weekly Digest', icon: Bell, tourId: 'nav-weekly-digest', role: 'brand' },
