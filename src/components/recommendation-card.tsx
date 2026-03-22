@@ -134,16 +134,16 @@ export function RecommendationCard({
           )}
           
           {/* Always-visible "Why you're seeing this" section */}
-          <div className="bg-blue-900/50 dark:bg-blue-950/50 border border-blue-700 dark:border-blue-800 rounded-lg p-3 mb-3">
+          <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 mb-3">
             <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+              <Info className="h-4 w-4 text-purple-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-xs font-semibold text-blue-200 mb-1">
-                  Why you're seeing this
+                <p className="text-xs font-bold text-white mb-1">
+                  Why you&apos;re seeing this
                 </p>
-                <p className="text-xs text-blue-300">
-                  {reasons.slice(0, 2).join(' ΓÇó ')}
-                  {reasons.length > 2 && ` ΓÇó +${reasons.length - 2} more reasons`}
+                <p className="text-xs text-slate-200 font-medium">
+                  {reasons.slice(0, 2).join(' · ')}
+                  {reasons.length > 2 && ` · +${reasons.length - 2} more reasons`}
                 </p>
               </div>
             </div>
@@ -153,7 +153,7 @@ export function RecommendationCard({
             {reasons.slice(0, 2).map((reason, idx) => (
               <div 
                 key={idx}
-                className="flex items-center gap-1.5 text-xs bg-purple-900/50 text-purple-300 px-2 py-1 rounded-full"
+                className="flex items-center gap-1.5 text-xs bg-purple-900/70 text-white font-medium px-2 py-1 rounded-full"
               >
                 <TrendingUp className="h-3 w-3" />
                 <span>{reason}</span>
