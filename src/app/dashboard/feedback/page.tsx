@@ -375,9 +375,9 @@ export default async function FeedbackDashboardPage() {
             return (
               <Card key={stats.productId} className="flex flex-col overflow-hidden">
                 <CardHeader className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-semibold leading-tight min-w-0 truncate">{productName}</h2>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex flex-col gap-1">
+                    <h2 className="font-semibold leading-tight break-words">{productName}</h2>
+                    <div className="flex items-center gap-1 flex-wrap">
                       <Badge variant="outline">{stats.totalCount} reviews</Badge>
                       {Number(stats.newCount) > 0 && (
                         <Badge className="bg-blue-600 text-white text-xs">
