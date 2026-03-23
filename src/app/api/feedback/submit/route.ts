@@ -339,7 +339,7 @@ export async function POST(request: Request) {
     let productName: string | undefined
     try {
       if (session.user.id) {
-        await awardPoints(session.user.id, 'feedback_submit', POINT_VALUES.feedback_submit)
+        await awardPoints(session.user.id, POINT_VALUES.feedback_submit, 'feedback_submit')
 
         // Get product name for notification
         const [prod] = await db.select({ name: products.name }).from(products).where(eq(products.id, productId)).limit(1)
