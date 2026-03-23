@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** March 21, 2026  
+> **Last updated:** March 23, 2026  
 > **Platform:** Next.js 15 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
@@ -41,6 +41,7 @@
 31. [Production DB Schema Push & Full Deployment (March 19, 2026)](#31-production-db-schema-push--full-deployment-march-19-2026)
 32. [In-App Community + Real Rewards Engine (March 20, 2026)](#32-in-app-community--real-rewards-engine-march-20-2026)
 33. [Social Listening Charts, Data Fixes & Schema Drift Audit (March 21, 2026)](#33-social-listening-charts-data-fixes--schema-drift-audit-march-21-2026)
+34. [Mobile Search, Welcome Notifications & Notification Pipeline Fix (March 23, 2026)](#34-mobile-search-welcome-notifications--notification-pipeline-fix-march-23-2026)
 
 ---
 
@@ -1323,4 +1324,77 @@ Fixed dashboard header alignment on mobile — sidebar trigger, logo, and action
 
 ---
 
-*This document covers all features implemented as of March 21, 2026. Update this file when adding new features.*
+## 34. Mobile Search, Welcome Notifications & Notification Pipeline Fix (March 23, 2026)
+
+### 34.1 Mobile Search & Command Palette
+
+The search button in the dashboard header was invisible on mobile devices. Now it shows an icon-only search button on small screens and the full "Search" button on larger screens.
+
+The command palette (`Ctrl+K`) was also not mobile-friendly — the dialog sat too high, text was too small for touch, and results could overflow. Updated with:
+- Lower dialog position on mobile (`mt-[10vh]`)
+- Larger input text for touch (`text-base` on mobile)
+- Scrollable results list capped at viewport height
+- Auto-focus on input when opened
+
+### 34.2 Welcome Email & WhatsApp Notifications
+
+New users now receive a branded welcome notification immediately after signup:
+
+**Consumer welcome:**
+- Email (via Resend): "Welcome to Earn4Insights" with steps: browse products → submit feedback → earn points → redeem rewards
+- WhatsApp (via Twilio): Short greeting with link to browse products
+
+**Brand welcome:**
+- Email: "Welcome to Earn4Insights" with steps: add products → track rankings → create surveys → get AI insights
+- WhatsApp: Short greeting with link to add first product
+
+Both channels are fire-and-forget — failures are logged but don't block signup. Works for both email/password and Google OAuth signup flows.
+
+**Key file:** `src/server/welcomeNotifications.ts`
+
+### 34.3 Notification Pipeline Fix
+
+**Problem:** Since launch, no email or WhatsApp notifications were ever delivered — not for brand alerts (new feedback, sentiment changes) and not for consumer events.
+
+**Root causes found and fixed:**
+
+1. **Missing cron job** (critical): `/api/cron/process-notifications` was never registered in `vercel.json`. All notifications were queued in the database but never processed.
+2. **Brand alerts email-less**: `fireAlert()` defaulted to `['in_app']` channels only — email was never queued for brand alerts. Changed to `['in_app', 'email']`.
+3. **New users dropped**: `queueNotification()` returned null when `getUserProfile()` found no profile (new users who haven't completed onboarding). Fixed to allow email even without a profile.
+4. **Email lookup failed**: `sendEmail()` required a `userProfiles` entry to find the user's email. Added fallback to the `users` table.
+
+### 34.4 Consumer Notification Types
+
+New file `src/server/consumerNotifications.ts` provides:
+
+| Notification | Trigger | Content |
+|-------------|---------|---------|
+| Points earned | After feedback submission | "You earned 25 points for your feedback on [Product]!" |
+| New product relevant | New product in category of interest | "New product in [Category]: [Product Name]" |
+| Watchlist update | New feedback on watchlisted product | "Your watchlisted product [Name] has new activity" |
+
+All are queued via the notification pipeline and processed by the daily cron.
+
+### 34.5 Build & Deployment Fixes
+
+| Issue | Impact | Fix |
+|-------|--------|-----|
+| Products page SSG timeout | Build failed — DB query >60s during static generation | Added `export const dynamic = 'force-dynamic'` |
+| `awardPoints()` args swapped | TypeScript error: `string` not assignable to `number` | Corrected argument order: `(userId, amount, source)` |
+| Test files in tsconfig | `@jest/globals` missing types broke build | Added `src/__tests__` to tsconfig `exclude` |
+| Vercel Hobby cron limit | `*/5 * * * *` silently blocked ALL deployments | Changed to `0 6 * * *` (daily) |
+
+### 34.6 Commits (March 23, 2026)
+
+| Commit | Description |
+|--------|-------------|
+| `e831e8e` | fix: mobile search visibility + type errors |
+| `5ffa900` | feat: welcome email & WhatsApp notifications on signup |
+| `5c05349` | fix: enable notification delivery pipeline |
+| `d4c7219` | fix: make products page dynamic to prevent build timeout |
+| `8c95218` | fix: correct awardPoints argument order and exclude tests from tsconfig |
+| `1c7d7bf` | fix: set notification cron to daily (Vercel Hobby plan limit) |
+
+---
+
+*This document covers all features implemented as of March 23, 2026. Update this file when adding new features.*

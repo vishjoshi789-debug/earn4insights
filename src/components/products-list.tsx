@@ -49,7 +49,7 @@ export function ProductsList({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Filter ${products.length} products…`}
-            className="pl-9"
+            className="pl-9 text-base sm:text-sm"
           />
         </div>
       )}

@@ -44,6 +44,7 @@
 35. [Production DB Schema Push & API Keys Deployed (March 19, 2026)](#35-production-db-schema-push--api-keys-deployed-march-19-2026)
 36. [In-App Community & Rewards Engine (March 20, 2026)](#36-in-app-community--rewards-engine-march-20-2026)
 37. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
+38. [Mobile Search, Welcome Notifications & Notification Pipeline Fix (March 23, 2026)](#38-mobile-search-welcome-notifications--notification-pipeline-fix-march-23-2026)
 
 ---
 
@@ -3589,4 +3590,120 @@ URLs: 376 nulled (seed/scraper), 83 real URLs retained (Reddit + YouTube + Googl
 
 ---
 
-*This document reflects the architecture as of March 21, 2026. It should be updated as new systems are added.*
+## 38. Mobile Search, Welcome Notifications & Notification Pipeline Fix (March 23, 2026)
+
+### 38.1 Mobile Search & Command Palette
+
+**Problem:** The search button in the dashboard header was hidden on mobile (`hidden sm:flex`), and the command palette dialog wasn't optimized for small screens.
+
+**Fixes applied:**
+
+| File | Change |
+|------|--------|
+| `src/components/dashboard-header.tsx` | Search button always visible: icon-only on mobile, full button on `sm:` screens |
+| `src/components/command-palette.tsx` | Mobile-friendly: lower margin (`mt-[10vh] sm:mt-[15vh]`), larger touch targets (`text-base sm:text-sm`), scrollable results (`max-h-[50vh] sm:max-h-[300px]`), `autoFocus` on input |
+
+**Commit:** `e831e8e`
+
+### 38.2 Welcome Email & WhatsApp on Signup
+
+New file: `src/server/welcomeNotifications.ts`
+
+Sends branded welcome notifications when a user signs up (fire-and-forget from `createUser()` in `src/lib/user/userStore.ts`).
+
+| Function | Channel | Template |
+|----------|---------|----------|
+| `sendWelcomeEmail()` | Resend (email) | Role-specific HTML: Consumer → browse, earn, redeem. Brand → add products, track rankings, surveys. |
+| `sendWelcomeWhatsApp()` | Twilio (WhatsApp) | Short text greeting with role-specific CTA |
+| `sendWelcomeNotifications()` | Both | Fire-and-forget wrapper; errors are logged not thrown |
+
+Called from `createUser()` after successful DB insert, covering both email/password and OAuth signup paths.
+
+**Commit:** `5ffa900`
+
+### 38.3 Notification Pipeline — Root Cause & Fix
+
+**Problem:** No notifications (brand or consumer) were ever received since launch.
+
+**Root cause:** The cron endpoint `/api/cron/process-notifications` was never added to `vercel.json`. All notifications were queued into the `notificationQueue` table but never processed.
+
+**Fixes:**
+
+| File | Issue | Fix |
+|------|-------|-----|
+| `vercel.json` | Missing cron entry | Added `process-notifications` (initially `*/5 * * * *`, later changed to `0 6 * * *` for Hobby plan) |
+| `src/server/brandAlertService.ts` | `fireAlert()` default channels = `['in_app']` only | Changed to `['in_app', 'email']` |
+| `src/server/notificationService.ts` | `queueNotification()` silently returned null for users without profiles | Now allows email channel through even without a profile |
+| `src/server/notificationService.ts` | `sendEmail()` required `userProfiles` entry to find email | Added fallback to `users` table |
+
+**Commit:** `5c05349`
+
+### 38.4 Consumer Notifications Service
+
+New file: `src/server/consumerNotifications.ts`
+
+| Function | Trigger | Email Template |
+|----------|---------|----------------|
+| `notifyPointsEarned()` | After feedback submission (wired in `/api/feedback/submit/route.ts`) | Points earned badge + source activity + product name |
+| `notifyNewProductRelevant()` | When new product matches consumer interests | Product card with category + CTA |
+| `notifyWatchlistUpdate()` | When watchlisted product gets new feedback | Update summary with CTA |
+
+All functions use `queueNotification()` to insert into the notification queue with HTML email templates.
+
+### 38.5 Build Fix: Products Page Timeout
+
+**Problem:** `/dashboard/products` was being statically generated at build time. The page queries the database, which took >60 seconds during SSG, causing the build to fail after 3 retries.
+
+**Fix:** Added `export const dynamic = 'force-dynamic'` to `src/app/dashboard/products/page.tsx` so it renders on demand at request time.
+
+**Commit:** `d4c7219`
+
+### 38.6 Type Error Fix: awardPoints Argument Order
+
+**Problem:** `awardPoints(userId, 'feedback_submit', POINT_VALUES.feedback_submit)` had swapped arguments — passing a `string` as the `amount` parameter and a `number` as the `source` parameter.
+
+**Fix:** Corrected to `awardPoints(userId, POINT_VALUES.feedback_submit, 'feedback_submit')` — `(userId: string, amount: number, source: string)`.
+
+Also excluded `src/__tests__/` from `tsconfig.json` to prevent missing `@jest/globals` types from failing the build.
+
+**Commit:** `8c95218`
+
+### 38.7 Vercel Hobby Plan Cron Limit
+
+**Problem:** Vercel Hobby plan only supports daily cron jobs. The `*/5 * * * *` schedule (every 5 minutes) silently blocked ALL deployments — Vercel rejected the entire `vercel.json` without triggering a visible deployment failure in the dashboard.
+
+**Fix:** Changed `process-notifications` schedule to `0 6 * * *` (once daily at 6 AM UTC), matching the daily cadence of all other crons.
+
+**Commit:** `1c7d7bf`
+
+### 38.8 Notification Queue Architecture (Updated)
+
+```
+User action (signup / feedback / survey / brand alert)
+        ↓
+queueNotification() → INSERT into notificationQueue table
+        ↓                    channels: ['in_app', 'email'] / ['email'] / ['whatsapp']
+Vercel Cron (daily 6AM UTC) → /api/cron/process-notifications
+        ↓
+processPendingNotifications() → SELECT pending WHERE scheduledAt <= NOW()
+        ↓
+Per notification:
+  ├── sendEmail() via Resend (fallback: users table if no profile)
+  ├── sendWhatsApp() via Twilio
+  └── Mark as sent / failed in notificationQueue
+```
+
+### 38.9 Commits Summary (March 23, 2026)
+
+| Commit | Description |
+|--------|-------------|
+| `e831e8e` | fix: mobile search visibility + type errors |
+| `5ffa900` | feat: welcome email & WhatsApp notifications on signup |
+| `5c05349` | fix: enable notification delivery pipeline |
+| `d4c7219` | fix: make products page dynamic to prevent build timeout |
+| `8c95218` | fix: correct awardPoints argument order and exclude tests from tsconfig |
+| `1c7d7bf` | fix: set notification cron to daily (Vercel Hobby plan limit) |
+
+---
+
+*This document reflects the architecture as of March 23, 2026. It should be updated as new systems are added.*

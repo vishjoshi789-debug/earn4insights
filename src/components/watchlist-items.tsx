@@ -49,7 +49,7 @@ export function WatchlistItems({ entries }: { entries: WatchlistEntry[] }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Filter ${entries.length} watched products…`}
-            className="pl-9"
+            className="pl-9 text-base sm:text-sm"
           />
         </div>
       )}

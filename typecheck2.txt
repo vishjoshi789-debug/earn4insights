@@ -1,0 +1,1 @@
+﻿src/__tests__/integration/schema-coupling.test.ts(11,50): error TS2307: Cannot find module '@jest/globals' or its corresponding type declarations.

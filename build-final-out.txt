@@ -1,0 +1,15 @@
+   ▲ Next.js 15.5.9
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · serverActions
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 3.7min
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/146) ...
+   Generating static pages (36/146) 
+   Generating static pages (72/146) 
+   Generating static pages (109/146) 
+Terminate batch job (Y/N)? 

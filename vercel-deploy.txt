@@ -1,0 +1,14 @@
+﻿npx : Vercel CLI 50.5.0
+At line:1 char:1
++ npx vercel --prod 2>&1 | Out-File "vercel-deploy.txt" -Encoding utf8
++ ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Vercel CLI 50.5.0:String) [], Rem 
+   oteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Retrieving projectΓÇª
+Deploying joshis-projects-51800fce/earn4insights
+Error: Hobby accounts are limited to daily cron jobs. This cron expression 
+(*/5 * * * *) would run more than once per day. Upgrade to the Pro plan to 
+unlock all Cron Jobs features on Vercel.
+Learn More: https://vercel.link/3Fpeeb1

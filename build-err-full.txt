@@ -1,0 +1,8 @@
+   ▲ Next.js 15.5.9
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · serverActions
+
+   Creating an optimized production build ...
+
+---STDERR---

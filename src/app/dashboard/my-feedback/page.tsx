@@ -149,7 +149,7 @@ export default function MyFeedbackPage() {
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
             placeholder={`Filter ${feedbackList.length} feedback items…`}
-            className="pl-9"
+            className="pl-9 text-base sm:text-sm"
           />
         </div>
       )}

@@ -1,0 +1,433 @@
+﻿npx : Vercel CLI 50.5.0
+At line:1 char:1
++ npx vercel --prod 2>&1 | Out-File "vercel-deploy2.txt" -Encoding utf8
++ ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Vercel CLI 50.5.0:String) [], Rem 
+   oteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Retrieving projectΓÇª
+Deploying joshis-projects-51800fce/earn4insights
+Uploading [--------------------] (0.0B/3.5MB)
+Uploading [=====---------------] (890.8KB/3.5MB)
+Uploading [==========----------] (1.7MB/3.5MB)
+Uploading [===============-----] (2.6MB/3.5MB)
+Uploading [====================] (3.5MB/3.5MB)
+Inspect: https://vercel.com/joshis-projects-51800fce/earn4insights/FC3GkAfZpgFh
+UHUsYBBpfH6rMjY6 [9s]
+Production: 
+https://earn4insights-mbq1vtkmz-joshis-projects-51800fce.vercel.app [9s]
+Building...
+Building...
+Building: Running build in Washington, D.C., USA (East) ΓÇô iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Downloading 570 deployment files...
+Building: Restored build cache from previous deployment 
+(3L9U2DApJGPSTSvFWLHoWQK1qb8c)
+Building: Running "vercel build"
+Building: Vercel CLI 50.34.2
+Building: Installing dependencies...
+Building: up to date in 3s
+Building: 226 packages are looking for funding
+Building: run `npm fund` for details
+Building: Detected Next.js version: 15.5.9
+Building: Running "npm run build"
+Building: > nextn@0.1.1 build
+Building: > next build
+Building: Γû▓ Next.js 15.5.9
+Building: - Environments: .env
+Building: - Experiments (use with caution):
+Building: ┬╖ serverActions
+Building: Creating an optimized production build ...
+Building: Γ£ô Compiled successfully in 42s
+Building: Skipping validation of types
+Building: Skipping linting
+Building: Collecting page data ...
+Building: Generating static pages (0/145) ...
+Building: Generating static pages (36/145)
+Building: Generating static pages (72/145)
+Building: Generating static pages (108/145)
+Building: Γ£ô Generating static pages (145/145)
+Building: Finalizing page optimization ...
+Building: Collecting build traces ...
+Building: Route (app)                                                Size  
+First Load JS
+Building: Γöî Γùï /                                                     177 B  
+       110 kB
+Building: Γö£ Γùï /_not-found                                            1 kB  
+       102 kB
+Building: Γö£ Γùï /about-us                                             401 B  
+       102 kB
+Building: Γö£ Γùï /admin/analytics                                    9.72 kB  
+       119 kB
+Building: Γö£ ╞Æ /admin/campaigns/analytics                            401 B   
+      102 kB
+Building: Γö£ Γùï /admin/campaigns/schedule                           3.17 kB  
+       147 kB
+Building: Γö£ Γùï /admin/send-time-analytics                          2.81 kB  
+       213 kB
+Building: Γö£ Γùï /admin/send-time-optimization                       4.28 kB  
+       114 kB
+Building: Γö£ ╞Æ /api/admin/analytics                                  401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/apply-migration                            401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/assign-categories-bulk                     401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/assign-category                            401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/campaigns/schedule                         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/check-products                             401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/feedback-media/[id]/download               401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/fix-surveys                                401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/generate-rankings                          401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/migrate                                    401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/migrate-categories                         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/migrate-data                               401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/migrate-data-get                           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/run-data-migration                         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/run-send-time-analysis                     401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/send-time-analytics                        401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/send-time-stats                            401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/test-db                                    401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/test-email                                 401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/admin/test-whatsapp                              401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/category-intelligence/[category]       401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/consumer-intelligence/[productId]      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/feature-sentiment/[productId]          401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/health-score/[productId]               401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/health-score/batch                     401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/public-summary/[productId]             401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/segments/[productId]                   401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/track                                  401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/analytics/weekly-digest                          401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/auth/[...nextauth]                               401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/auth/complete-signup                             401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/brand/alert-rules                                401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/brand/alerts                                     401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/brand/notification-settings                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/challenges                                       401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/community/poll/vote                              401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/community/posts                                  401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/community/posts/[postId]                         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/community/posts/[postId]/replies                 401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/community/react                                  401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/consumer/notifications                           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/contribution/brand-config                        401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/contribution/brand-feedback                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/contribution/intelligence                        401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/contribution/leaderboard                         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/create-google-user                               401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/create-personalization-tables                    401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/cron/cleanup-analytics-events                    401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/cron/cleanup-feedback-media                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/cron/extract-themes                              401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/cron/process-feedback-media                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/cron/process-notifications                       401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/cron/send-time-analysis                          401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/cron/update-behavioral                           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/feedback-media/[id]/download           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/feedback-media/[id]/moderate           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/feedback-media/[id]/retry              401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/feedback-media/process-now             401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/feedback/[id]/status                   401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/products/[productId]/extract-themes    401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/products/claim                         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/products/merge                         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/dashboard/survey-responses/[id]/review           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/debug/check-media                                401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/debug/media-status                               401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/feedback/my                                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/feedback/submit                                  401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/feedback/upload-media                            401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/generate-rankings                                401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/health-check                                     401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/import/csv                                       401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/import/webhook                                   401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/import/webhook/v2                                401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/jobs/process-deletions                           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/jobs/update-behavioral                           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/migrate-all-data                                 401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/migrate-products                                 401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/notifications/product-launch/[productId]         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/notifications/survey-distribute/[surveyId]       401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/payouts                                          401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/products/placeholder                             401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/products/search                                  401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/public/survey-responses/[id]/status              401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/rankings/[category]                              401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/rankings/[category]/history                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/rankings/[category]/trends                       401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/recommendations                                  401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/rewards                                          401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/setup-db                                         401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/social                                           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/social/cron                                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/social/ingest                                    401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/social/submit-link                               401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/track-event                                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/track/email-click                                401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/uploads/feedback-media                           401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/uploads/feedback-media/server                    401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/user/delete-account                              401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/user/export-data                                 401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/user/notification-settings                       401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/user/points                                      401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/user/renew-consent                               401 B   
+      102 kB
+Building: Γö£ ╞Æ /api/watchlist                                        401 B   
+      102 kB
+Building: Γö£ Γùï /community-features                                   521 B  
+       102 kB
+Building: Γö£ ╞Æ /community-features/c/[slug]                          401 B   
+      102 kB
+Building: Γö£ ╞Æ /community-features/c/[slug]/[postId]                 401 B   
+      102 kB
+Building: Γö£ Γùï /contact-us                                           401 B  
+       102 kB
+Building: Γö£ ╞Æ /dashboard                                            194 B   
+      136 kB
+Building: Γö£ ╞Æ /dashboard/alerts                                   4.29 kB   
+      121 kB
+Building: Γö£ ╞Æ /dashboard/analytics                                6.99 kB   
+      230 kB
+Building: Γö£ ╞Æ /dashboard/analytics/category-intelligence          9.92 kB   
+      122 kB
+Building: Γö£ ╞Æ /dashboard/analytics/consumer-intelligence          7.48 kB   
+      117 kB
+Building: Γö£ ╞Æ /dashboard/analytics/feature-insights               6.96 kB   
+      147 kB
+Building: Γö£ ╞Æ /dashboard/analytics/unified                          401 B   
+      102 kB
+Building: Γö£ ╞Æ /dashboard/analytics/weekly-digest                  5.75 kB   
+      115 kB
+Building: Γö£ ╞Æ /dashboard/community                                7.09 kB   
+      164 kB
+Building: Γö£ ╞Æ /dashboard/community/[postId]                       7.22 kB   
+      133 kB
+Building: Γö£ ╞Æ /dashboard/detailed-analytics                         182 B   
+      105 kB
+Building: Γö£ ╞Æ /dashboard/feedback                                 3.65 kB   
+      117 kB
+Building: Γö£ ╞Æ /dashboard/import                                   7.13 kB   
+      117 kB
+Building: Γö£ ╞Æ /dashboard/launch                                   2.77 kB   
+      112 kB
+Building: Γö£ ╞Æ /dashboard/my-feedback                              6.75 kB   
+      120 kB
+Building: Γö£ ╞Æ /dashboard/payouts                                   4.2 kB   
+      127 kB
+Building: Γö£ ╞Æ /dashboard/pricing                                    182 B   
+      105 kB
+Building: Γö£ ╞Æ /dashboard/products                                 4.11 kB   
+      117 kB
+Building: Γö£ ╞Æ /dashboard/products/[productId]                      9.2 kB   
+      127 kB
+Building: Γö£ ╞Æ /dashboard/products/[productId]/feedback            6.17 kB   
+      150 kB
+Building: Γö£ ╞Æ /dashboard/products/[productId]/nps                   182 B   
+      105 kB
+Building: Γö£ ╞Æ /dashboard/products/[productId]/profile             10.4 kB   
+      120 kB
+Building: Γö£ ╞Æ /dashboard/products/[productId]/social                182 B   
+      105 kB
+Building: Γö£ ╞Æ /dashboard/products/[productId]/themes              3.25 kB   
+      116 kB
+Building: Γö£ ╞Æ /dashboard/products/product                           401 B   
+      102 kB
+Building: Γö£ ╞Æ /dashboard/products/product/feedback                  401 B   
+      102 kB
+Building: Γö£ ╞Æ /dashboard/products/product/nps                       401 B   
+      102 kB
+Building: Γö£ ╞Æ /dashboard/products/product/social                    401 B   
+      102 kB
+Building: Γö£ ╞Æ /dashboard/rankings                                   10 kB   
+      144 kB
+Building: Γö£ ╞Æ /dashboard/rankings/analytics                       4.38 kB   
+      249 kB
+Building: Γö£ ╞Æ /dashboard/rankings/categories                      4.98 kB   
+      145 kB
+Building: Γö£ ╞Æ /dashboard/rankings/history                         4.92 kB   
+      149 kB
+Building: Γö£ ╞Æ /dashboard/rankings/test-email                      1.72 kB   
+      115 kB
+Building: Γö£ ╞Æ /dashboard/rankings/test-whatsapp                    2.6 kB   
+      115 kB
+Building: Γö£ ╞Æ /dashboard/recommendations                            539 B   
+      136 kB
+Building: Γö£ ╞Æ /dashboard/report/[id]                              6.73 kB   
+      233 kB
+Building: Γö£ ╞Æ /dashboard/rewards                                  5.36 kB   
+      124 kB
+Building: Γö£ ╞Æ /dashboard/settings                                 7.53 kB   
+      133 kB
+Building: Γö£ ╞Æ /dashboard/social                                   15.9 kB   
+      264 kB
+Building: Γö£ ╞Æ /dashboard/submit-feedback                          11.5 kB   
+      128 kB
+Building: Γö£ ╞Æ /dashboard/surveys                                    182 B   
+      105 kB
+Building: Γö£ ╞Æ /dashboard/surveys/[id]                             8.95 kB   
+      153 kB
+Building: Γö£ ╞Æ /dashboard/surveys/[id]/analytics                   4.31 kB   
+      217 kB
+Building: Γö£ ╞Æ /dashboard/surveys/[id]/embed                       2.87 kB   
+      112 kB
+Building: Γö£ ╞Æ /dashboard/surveys/[id]/responses                   14.8 kB   
+      266 kB
+Building: Γö£ ╞Æ /dashboard/surveys/create                           6.39 kB   
+      147 kB
+Building: Γö£ ╞Æ /dashboard/watchlist                                4.22 kB   
+      117 kB
+Building: Γö£ Γùï /login                                              4.88 kB  
+       127 kB
+Building: Γö£ ╞Æ /onboarding                                         11.8 kB   
+      161 kB
+Building: Γö£ Γùï /privacy-policy                                       401 B  
+       102 kB
+Building: Γö£ Γùï /public-products                                    4.59 kB  
+       136 kB
+Building: Γö£ ╞Æ /public-products/[id]                               5.33 kB   
+      142 kB
+Building: Γö£ ╞Æ /settings/privacy                                   5.64 kB   
+      159 kB
+Building: Γö£ Γùï /signup                                             4.34 kB  
+       137 kB
+Building: Γö£ Γùï /signup/complete                                    3.63 kB  
+       127 kB
+Building: Γö£ Γùï /submit-feedback                                    10.4 kB  
+       123 kB
+Building: Γö£ ╞Æ /submit-feedback/[productId]                        8.58 kB   
+      121 kB
+Building: Γö£ ╞Æ /survey/[surveyId]                                  10.2 kB   
+      120 kB
+Building: Γö£ Γùï /terms-of-service                                     401 B  
+       102 kB
+Building: Γö£ Γùï /top-products                                         544 B  
+       105 kB
+Building: Γö£ ΓùÅ /top-products/[category]                              544 B  
+       105 kB
+Building: Γö£   Γö£ /top-products/TECH_SAAS
+Building: Γö£   Γö£ /top-products/FINTECH
+Building: Γö£   Γö£ /top-products/ECOMMERCE
+Building: Γö£   Γöö [+9 more paths]
+Building: Γöö Γùï /transparency                                         182 B  
+       105 kB
+Building: + First Load JS shared by all                            101 kB
+Building: Γö£ chunks/1255-de0c1abd22c7cccd.js                     45.2 kB
+Building: Γö£ chunks/4bd1b696-182b6b13bdad92e3.js                 54.2 kB
+Building: Γöö other shared chunks (total)                         1.99 kB
+Building: Γùï  (Static)   prerendered as static content
+Building: ΓùÅ  (SSG)      prerendered as static HTML (uses 
+generateStaticParams)
+Building: ╞Æ  (Dynamic)  server-rendered on demand
+Building: Traced Next.js server files in: 80.604ms
+Building: Created all serverless functions in: 644.659ms
+Building: Collected static files (public/, static/, .next/static): 39.537ms
+Building: Build Completed in /vercel/output [1m]
+Building: Deploying outputs...
+Building: Deployment completed
+Building: Creating build cache...
+[2K[1A[2K[GProduction: 
+https://earn4insights-mbq1vtkmz-joshis-projects-51800fce.vercel.app [2m]
+Completing...
+Aliased: https://www.earn4insights.com [2m]
+https://earn4insights-mbq1vtkmz-joshis-projects-51800fce.vercel.app

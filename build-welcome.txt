@@ -1,0 +1,214 @@
+   ▲ Next.js 15.5.9
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · serverActions
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 4.6min
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/146) ...
+ ⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+   Generating static pages (36/146) 
+ ⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+   Generating static pages (72/146) 
+   Generating static pages (109/146) 
+Failed to build /dashboard/products/page: /dashboard/products (attempt 1 of 3) because it took more than 60 seconds. Retrying again shortly.
+   Generating static pages (130/146) 
+ ✓ Generating static pages (146/146)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                Size  First Load JS
+┌ ○ /                                                     176 B         110 kB
+├ ○ /_not-found                                            1 kB         103 kB
+├ ○ /about-us                                             412 B         102 kB
+├ ○ /admin/analytics                                    9.68 kB         119 kB
+├ ƒ /admin/campaigns/analytics                            412 B         102 kB
+├ ○ /admin/campaigns/schedule                           3.16 kB         147 kB
+├ ○ /admin/send-time-analytics                          2.82 kB         212 kB
+├ ○ /admin/send-time-optimization                       4.27 kB         114 kB
+├ ƒ /api/admin/analytics                                  412 B         102 kB
+├ ƒ /api/admin/apply-migration                            412 B         102 kB
+├ ƒ /api/admin/assign-categories-bulk                     412 B         102 kB
+├ ƒ /api/admin/assign-category                            412 B         102 kB
+├ ƒ /api/admin/campaigns/schedule                         412 B         102 kB
+├ ƒ /api/admin/check-products                             412 B         102 kB
+├ ƒ /api/admin/feedback-media/[id]/download               412 B         102 kB
+├ ƒ /api/admin/fix-surveys                                412 B         102 kB
+├ ƒ /api/admin/generate-rankings                          412 B         102 kB
+├ ƒ /api/admin/migrate                                    412 B         102 kB
+├ ƒ /api/admin/migrate-categories                         412 B         102 kB
+├ ƒ /api/admin/migrate-data                               412 B         102 kB
+├ ƒ /api/admin/migrate-data-get                           412 B         102 kB
+├ ƒ /api/admin/run-data-migration                         412 B         102 kB
+├ ƒ /api/admin/run-send-time-analysis                     412 B         102 kB
+├ ƒ /api/admin/send-time-analytics                        412 B         102 kB
+├ ƒ /api/admin/send-time-stats                            412 B         102 kB
+├ ƒ /api/admin/test-db                                    412 B         102 kB
+├ ƒ /api/admin/test-email                                 412 B         102 kB
+├ ƒ /api/admin/test-whatsapp                              412 B         102 kB
+├ ƒ /api/analytics/category-intelligence/[category]       412 B         102 kB
+├ ƒ /api/analytics/consumer-intelligence/[productId]      412 B         102 kB
+├ ƒ /api/analytics/feature-sentiment/[productId]          412 B         102 kB
+├ ƒ /api/analytics/health-score/[productId]               412 B         102 kB
+├ ƒ /api/analytics/health-score/batch                     412 B         102 kB
+├ ƒ /api/analytics/public-summary/[productId]             412 B         102 kB
+├ ƒ /api/analytics/segments/[productId]                   412 B         102 kB
+├ ƒ /api/analytics/track                                  412 B         102 kB
+├ ƒ /api/analytics/weekly-digest                          412 B         102 kB
+├ ƒ /api/auth/[...nextauth]                               412 B         102 kB
+├ ƒ /api/auth/complete-signup                             412 B         102 kB
+├ ƒ /api/brand/alert-rules                                412 B         102 kB
+├ ƒ /api/brand/alerts                                     412 B         102 kB
+├ ƒ /api/brand/notification-settings                      412 B         102 kB
+├ ƒ /api/challenges                                       412 B         102 kB
+├ ƒ /api/community/poll/vote                              412 B         102 kB
+├ ƒ /api/community/posts                                  412 B         102 kB
+├ ƒ /api/community/posts/[postId]                         412 B         102 kB
+├ ƒ /api/community/posts/[postId]/replies                 412 B         102 kB
+├ ƒ /api/community/react                                  412 B         102 kB
+├ ƒ /api/consumer/notifications                           412 B         102 kB
+├ ƒ /api/contribution/brand-config                        412 B         102 kB
+├ ƒ /api/contribution/brand-feedback                      412 B         102 kB
+├ ƒ /api/contribution/intelligence                        412 B         102 kB
+├ ƒ /api/contribution/leaderboard                         412 B         102 kB
+├ ƒ /api/create-google-user                               412 B         102 kB
+├ ƒ /api/create-personalization-tables                    412 B         102 kB
+├ ƒ /api/cron/cleanup-analytics-events                    412 B         102 kB
+├ ƒ /api/cron/cleanup-feedback-media                      412 B         102 kB
+├ ƒ /api/cron/extract-themes                              412 B         102 kB
+├ ƒ /api/cron/process-feedback-media                      412 B         102 kB
+├ ƒ /api/cron/process-notifications                       412 B         102 kB
+├ ƒ /api/cron/send-time-analysis                          412 B         102 kB
+├ ƒ /api/cron/update-behavioral                           412 B         102 kB
+├ ƒ /api/dashboard/feedback-media/[id]/download           412 B         102 kB
+├ ƒ /api/dashboard/feedback-media/[id]/moderate           412 B         102 kB
+├ ƒ /api/dashboard/feedback-media/[id]/retry              412 B         102 kB
+├ ƒ /api/dashboard/feedback-media/process-now             412 B         102 kB
+├ ƒ /api/dashboard/feedback/[id]/status                   412 B         102 kB
+├ ƒ /api/dashboard/products/[productId]/extract-themes    412 B         102 kB
+├ ƒ /api/dashboard/products/claim                         412 B         102 kB
+├ ƒ /api/dashboard/products/merge                         412 B         102 kB
+├ ƒ /api/dashboard/survey-responses/[id]/review           412 B         102 kB
+├ ƒ /api/debug/check-media                                412 B         102 kB
+├ ƒ /api/debug/media-status                               412 B         102 kB
+├ ƒ /api/feedback/my                                      412 B         102 kB
+├ ƒ /api/feedback/submit                                  412 B         102 kB
+├ ƒ /api/feedback/upload-media                            412 B         102 kB
+├ ƒ /api/generate-rankings                                412 B         102 kB
+├ ƒ /api/health-check                                     412 B         102 kB
+├ ƒ /api/import/csv                                       412 B         102 kB
+├ ƒ /api/import/webhook                                   412 B         102 kB
+├ ƒ /api/import/webhook/v2                                412 B         102 kB
+├ ƒ /api/jobs/process-deletions                           412 B         102 kB
+├ ƒ /api/jobs/update-behavioral                           412 B         102 kB
+├ ƒ /api/migrate-all-data                                 412 B         102 kB
+├ ƒ /api/migrate-products                                 412 B         102 kB
+├ ƒ /api/notifications/product-launch/[productId]         412 B         102 kB
+├ ƒ /api/notifications/survey-distribute/[surveyId]       412 B         102 kB
+├ ƒ /api/payouts                                          412 B         102 kB
+├ ƒ /api/products/placeholder                             412 B         102 kB
+├ ƒ /api/products/search                                  412 B         102 kB
+├ ƒ /api/public/survey-responses/[id]/status              412 B         102 kB
+├ ƒ /api/rankings/[category]                              412 B         102 kB
+├ ƒ /api/rankings/[category]/history                      412 B         102 kB
+├ ƒ /api/rankings/[category]/trends                       412 B         102 kB
+├ ƒ /api/recommendations                                  412 B         102 kB
+├ ƒ /api/rewards                                          412 B         102 kB
+├ ƒ /api/setup-db                                         412 B         102 kB
+├ ƒ /api/social                                           412 B         102 kB
+├ ƒ /api/social/cron                                      412 B         102 kB
+├ ƒ /api/social/ingest                                    412 B         102 kB
+├ ƒ /api/social/submit-link                               412 B         102 kB
+├ ƒ /api/track-event                                      412 B         102 kB
+├ ƒ /api/track/email-click                                412 B         102 kB
+├ ƒ /api/uploads/feedback-media                           412 B         102 kB
+├ ƒ /api/uploads/feedback-media/server                    412 B         102 kB
+├ ƒ /api/user/delete-account                              412 B         102 kB
+├ ƒ /api/user/export-data                                 412 B         102 kB
+├ ƒ /api/user/notification-settings                       412 B         102 kB
+├ ƒ /api/user/points                                      412 B         102 kB
+├ ƒ /api/user/renew-consent                               412 B         102 kB
+├ ƒ /api/watchlist                                        412 B         102 kB
+├ ○ /community-features                                   523 B         102 kB
+├ ƒ /community-features/c/[slug]                          412 B         102 kB
+├ ƒ /community-features/c/[slug]/[postId]                 412 B         102 kB
+├ ○ /contact-us                                           412 B         102 kB
+├ ƒ /dashboard                                            193 B         136 kB
+├ ƒ /dashboard/alerts                                   4.27 kB         121 kB
+├ ƒ /dashboard/analytics                                6.99 kB         230 kB
+├ ƒ /dashboard/analytics/category-intelligence          9.88 kB         122 kB
+├ ƒ /dashboard/analytics/consumer-intelligence          7.48 kB         117 kB
+├ ƒ /dashboard/analytics/feature-insights               6.95 kB         147 kB
+├ ƒ /dashboard/analytics/unified                          412 B         102 kB
+├ ƒ /dashboard/analytics/weekly-digest                  5.73 kB         115 kB
+├ ƒ /dashboard/community                                7.08 kB         164 kB
+├ ƒ /dashboard/community/[postId]                        7.2 kB         133 kB
+├ ƒ /dashboard/detailed-analytics                         182 B         105 kB
+├ ƒ /dashboard/feedback                                 3.64 kB         117 kB
+├ ƒ /dashboard/import                                   7.11 kB         117 kB
+├ ƒ /dashboard/launch                                   2.77 kB         112 kB
+├ ƒ /dashboard/my-feedback                              6.72 kB         120 kB
+├ ƒ /dashboard/payouts                                   4.2 kB         127 kB
+├ ƒ /dashboard/pricing                                    182 B         105 kB
+├ ƒ /dashboard/products                                  4.1 kB         117 kB
+├ ƒ /dashboard/products/[productId]                     9.16 kB         127 kB
+├ ƒ /dashboard/products/[productId]/feedback            6.15 kB         150 kB
+├ ƒ /dashboard/products/[productId]/nps                   182 B         105 kB
+├ ƒ /dashboard/products/[productId]/profile             10.4 kB         120 kB
+├ ƒ /dashboard/products/[productId]/social                182 B         105 kB
+├ ƒ /dashboard/products/[productId]/themes              3.25 kB         116 kB
+├ ƒ /dashboard/products/product                           412 B         102 kB
+├ ƒ /dashboard/products/product/feedback                  412 B         102 kB
+├ ƒ /dashboard/products/product/nps                       412 B         102 kB
+├ ƒ /dashboard/products/product/social                    412 B         102 kB
+├ ƒ /dashboard/rankings                                   10 kB         144 kB
+├ ƒ /dashboard/rankings/analytics                       4.36 kB         249 kB
+├ ƒ /dashboard/rankings/categories                      4.94 kB         145 kB
+├ ƒ /dashboard/rankings/history                          4.9 kB         149 kB
+├ ƒ /dashboard/rankings/test-email                      1.71 kB         115 kB
+├ ƒ /dashboard/rankings/test-whatsapp                    2.6 kB         116 kB
+├ ƒ /dashboard/recommendations                            536 B         137 kB
+├ ƒ /dashboard/report/[id]                              6.71 kB         233 kB
+├ ƒ /dashboard/rewards                                  5.35 kB         124 kB
+├ ƒ /dashboard/settings                                 7.51 kB         133 kB
+├ ƒ /dashboard/social                                   15.9 kB         264 kB
+├ ƒ /dashboard/submit-feedback                          11.5 kB         128 kB
+├ ƒ /dashboard/surveys                                    182 B         105 kB
+├ ƒ /dashboard/surveys/[id]                             8.92 kB         153 kB
+├ ƒ /dashboard/surveys/[id]/analytics                   4.29 kB         217 kB
+├ ƒ /dashboard/surveys/[id]/embed                       2.87 kB         112 kB
+├ ƒ /dashboard/surveys/[id]/responses                   14.7 kB         266 kB
+├ ƒ /dashboard/surveys/create                            6.4 kB         147 kB
+├ ƒ /dashboard/watchlist                                4.22 kB         117 kB
+├ ○ /login                                              4.85 kB         127 kB
+├ ƒ /onboarding                                         11.8 kB         161 kB
+├ ○ /privacy-policy                                       412 B         102 kB
+├ ○ /public-products                                    4.58 kB         136 kB
+├ ƒ /public-products/[id]                               5.33 kB         142 kB
+├ ƒ /settings/privacy                                   5.61 kB         159 kB
+├ ○ /signup                                             4.32 kB         137 kB
+├ ○ /signup/complete                                    3.62 kB         127 kB
+├ ○ /submit-feedback                                    10.4 kB         123 kB
+├ ƒ /submit-feedback/[productId]                        8.59 kB         122 kB
+├ ƒ /survey/[surveyId]                                  10.2 kB         120 kB
+├ ○ /terms-of-service                                     412 B         102 kB
+├ ○ /top-products                                         543 B         105 kB
+├ ● /top-products/[category]                              543 B         105 kB
+├   ├ /top-products/TECH_SAAS
+├   ├ /top-products/FINTECH
+├   ├ /top-products/ECOMMERCE
+├   └ [+9 more paths]
+└ ○ /transparency                                         182 B         105 kB
++ First Load JS shared by all                            102 kB
+  ├ chunks/1255-de0c1abd22c7cccd.js                     45.3 kB
+  ├ chunks/4bd1b696-182b6b13bdad92e3.js                 54.2 kB
+  └ other shared chunks (total)                         2.06 kB
+
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand
+

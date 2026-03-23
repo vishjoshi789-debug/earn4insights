@@ -1,0 +1,76 @@
+﻿npx : Vercel CLI 50.5.0
+At line:1 char:1
++ npx vercel ls 2>&1 | Out-File "vercel-ls.txt" -Encoding utf8
++ ~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Vercel CLI 50.5.0:String) [], Rem 
+   oteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Retrieving projectΓÇª
+Fetching deployments in joshis-projects-51800fce
+> Deployments for joshis-projects-51800fce/earn4insights [336ms]
+
+  Age     Deployment                                                           
+   Status      Environment     Duration     Username               
+  4h      https://earn4insights-6qu336hz3-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      1m           vishjoshi789-debug     
+  6h      https://earn4insights-hk4ffjyvc-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      57s          vishjoshi789-debug     
+  9h      https://earn4insights-da0qun74z-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      1m           vishjoshi789-debug     
+  21h     https://earn4insights-iyuygozwa-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      53s          vishjoshi789-debug     
+  21h     https://earn4insights-n12rqxzby-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      60s          vishjoshi789-debug     
+  21h     https://earn4insights-9jamib7sj-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      1m           vishjoshi789-debug     
+  21h     https://earn4insights-qc6fu7x0g-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      55s          vishjoshi789-debug     
+  22h     https://earn4insights-qxe1vzivn-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      58s          vishjoshi789-debug     
+  22h     https://earn4insights-i4fwa196v-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      59s          vishjoshi789-debug     
+  23h     https://earn4insights-mlindn6cn-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      54s          vishjoshi789-debug     
+  24h     https://earn4insights-6r5hcgmf0-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      1m           vishjoshi789-debug     
+  1d      https://earn4insights-ek43xdonn-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      56s          vishjoshi789-debug     
+https://earn4insights-6qu336hz3-joshis-projects-51800fce.vercel.app
+https://earn4insights-hk4ffjyvc-joshis-projects-51800fce.vercel.app
+https://earn4insights-da0qun74z-joshis-projects-51800fce.vercel.app
+https://earn4insights-iyuygozwa-joshis-projects-51800fce.vercel.app
+https://earn4insights-n12rqxzby-joshis-projects-51800fce.vercel.app
+https://earn4insights-9jamib7sj-joshis-projects-51800fce.vercel.app
+https://earn4insights-qc6fu7x0g-joshis-projects-51800fce.vercel.app
+https://earn4insights-qxe1vzivn-joshis-projects-51800fce.vercel.app
+https://earn4insights-i4fwa196v-joshis-projects-51800fce.vercel.app
+https://earn4insights-mlindn6cn-joshis-projects-51800fce.vercel.app
+https://earn4insights-6r5hcgmf0-joshis-projects-51800fce.vercel.app
+https://earn4insights-ek43xdonn-joshis-projects-51800fce.vercel.app
+https://earn4insights-go8hi30o1-joshis-projects-51800fce.vercel.app
+https://earn4insights-kj8rnn39o-joshis-projects-51800fce.vercel.app
+https://earn4insights-9x4kihzcd-joshis-projects-51800fce.vercel.app
+https://earn4insights-djpnjmjxn-joshis-projects-51800fce.vercel.app
+https://earn4insights-9bhj2mako-joshis-projects-51800fce.vercel.app
+https://earn4insights-72rhewetx-joshis-projects-51800fce.vercel.app
+https://earn4insights-hyua8nogb-joshis-projects-51800fce.vercel.app
+https://earn4insights-p6ddgmx8l-joshis-projects-51800fce.vercel.app
+  1d      https://earn4insights-go8hi30o1-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      58s          vishjoshi789-debug     
+  1d      https://earn4insights-kj8rnn39o-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      56s          vishjoshi789-debug     
+  1d      https://earn4insights-9x4kihzcd-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      53s          vishjoshi789-debug     
+  1d      https://earn4insights-djpnjmjxn-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      56s          vishjoshi789-debug     
+  1d      https://earn4insights-9bhj2mako-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      52s          vishjoshi789-debug     
+  1d      https://earn4insights-72rhewetx-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      55s          vishjoshi789-debug     
+  1d      https://earn4insights-hyua8nogb-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      54s          vishjoshi789-debug     
+  1d      https://earn4insights-p6ddgmx8l-joshis-projects-51800fce.vercel.app  
+   ΓùÅ Ready     Production      53s          vishjoshi789-debug     
+
+> To display the next page, run `vercel ls --next 1774166307993`
