@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import {
   ClipboardList, Star, MessageSquare, Loader2,
   ThumbsUp, ThumbsDown, Minus, PenSquare, Clock,
-  CheckCircle2, Eye, Mic, Camera, Globe, Video
+  CheckCircle2, Eye, Mic, Camera, Globe, Video, Search
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -38,6 +39,19 @@ export default function MyFeedbackPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [filterQuery, setFilterQuery] = useState('')
+
+  const filteredFeedback = useMemo(() => {
+    if (!filterQuery.trim()) return feedbackList
+    const q = filterQuery.toLowerCase()
+    return feedbackList.filter(
+      (item) =>
+        (item.productName || '').toLowerCase().includes(q) ||
+        item.feedbackText.toLowerCase().includes(q) ||
+        (item.category || '').toLowerCase().includes(q) ||
+        (item.sentiment || '').toLowerCase().includes(q)
+    )
+  }, [feedbackList, filterQuery])
 
   useEffect(() => {
     fetchMyFeedback()
@@ -127,6 +141,19 @@ export default function MyFeedbackPage() {
         </Button>
       </div>
 
+      {/* Filter */}
+      {feedbackList.length > 0 && (
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            placeholder={`Filter ${feedbackList.length} feedback items…`}
+            className="pl-9"
+          />
+        </div>
+      )}
+
       {/* Stats Cards */}
       {stats && stats.totalCount > 0 && (
         <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
@@ -208,9 +235,16 @@ export default function MyFeedbackPage() {
       )}
 
       {/* Feedback List */}
-      {feedbackList.length > 0 && (
+      {filteredFeedback.length === 0 && filterQuery && (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">
+            No feedback matching &ldquo;{filterQuery}&rdquo;
+          </CardContent>
+        </Card>
+      )}
+      {filteredFeedback.length > 0 && (
         <div className="space-y-3">
-          {feedbackList.map((item) => (
+          {filteredFeedback.map((item) => (
             <Card key={item.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-start gap-3">

@@ -43,6 +43,7 @@ import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { DashboardHeader } from '@/components/dashboard-header'
 import { ProductTour } from '@/components/ProductTour'
+import { CommandPalette } from '@/components/command-palette'
 import { useEffect, useState } from 'react'
 
 type MenuItem = {
@@ -230,6 +231,7 @@ export default function DashboardShell({
       </SidebarInset>
 
       <ProductTour />
+      <CommandPalette />
     </SidebarProvider>
   )
 }

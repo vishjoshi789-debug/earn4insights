@@ -7,6 +7,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
 import { feedback } from '@/db/schema'
 import { eq, sql, count, inArray } from 'drizzle-orm'
+import { ProductsList } from '@/components/products-list'
 
 type ProductStats = {
   totalCount: number
@@ -110,100 +111,16 @@ export default async function ProductsPage() {
         )}
       </div>
 
-      {products.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            No products launched yet.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {products.map((product: any) => {
-            const stats = statsMap.get(product.id)
-            const hasMedia =
-              stats && (stats.audioCount > 0 || stats.videoCount > 0 || stats.mixedCount > 0)
-
-            return (
-              <Card key={product.id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <CardTitle className="text-base sm:text-lg">{product.name}</CardTitle>
-                    {stats && stats.totalCount > 0 && (
-                      <div className="flex items-center gap-2">
-                        {/* Rating stars */}
-                        <div className="flex items-center gap-0.5">
-                          {[1, 2, 3, 4, 5].map((s) => (
-                            <span
-                              key={s}
-                              className={`text-sm ${
-                                s <= Math.round(stats.avgRating)
-                                  ? 'text-yellow-400'
-                                  : 'text-gray-300'
-                              }`}
-                            >
-                              ★
-                            </span>
-                          ))}
-                          <span className="text-xs text-muted-foreground ml-1">
-                            {stats.avgRating.toFixed(1)}
-                          </span>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          {stats.totalCount} review{stats.totalCount !== 1 ? 's' : ''}
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                </CardHeader>
-
-                <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span>
-                      Platform: {product.platform || '—'} • Launched{' '}
-                      {product.created_at
-                        ? new Date(product.created_at).toLocaleDateString()
-                        : '—'}
-                    </span>
-
-                    {/* Modality icons for brand */}
-                    {userRole === 'brand' && hasMedia && (
-                      <span className="flex gap-1 text-xs">
-                        {stats.audioCount > 0 && <span>🎤 {stats.audioCount}</span>}
-                        {stats.videoCount > 0 && <span>🎥 {stats.videoCount}</span>}
-                        {stats.mixedCount > 0 && <span>📎 {stats.mixedCount}</span>}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/dashboard/products/${product.id}`}>
-                        View details
-                      </Link>
-                    </Button>
-                    {userRole === 'consumer' && (
-                      <Button asChild size="sm">
-                        <Link
-                          href={`/dashboard/submit-feedback?productId=${product.id}&productName=${encodeURIComponent(product.name)}`}
-                        >
-                          Give Feedback
-                        </Link>
-                      </Button>
-                    )}
-                    {userRole === 'brand' && stats && stats.totalCount > 0 && (
-                      <Button asChild size="sm">
-                        <Link href={`/dashboard/products/${product.id}/feedback`}>
-                          View Feedback
-                        </Link>
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
+      <ProductsList
+        products={products.map((product: any) => ({
+          id: product.id,
+          name: product.name,
+          platform: product.platform || null,
+          created_at: product.created_at || null,
+          stats: statsMap.get(product.id) || null,
+        }))}
+        userRole={userRole}
+      />
     </div>
   )
 }

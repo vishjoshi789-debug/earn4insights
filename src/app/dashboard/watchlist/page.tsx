@@ -1,19 +1,11 @@
 import { auth } from '@/lib/auth/auth.config'
 import { redirect } from 'next/navigation'
 import { getWatchlist } from '@/server/watchlistService'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Bell, BellOff, Eye } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { BellOff } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-
-const watchTypeLabels: Record<string, string> = {
-  launch: '🚀 Launch',
-  price_drop: '💰 Price Drop',
-  feature: '✨ Feature',
-  update: '🔄 Update',
-  any: '📢 Any Change',
-}
+import { WatchlistItems } from '@/components/watchlist-items'
 
 export default async function WatchlistPage() {
   const session = await auth()
@@ -47,49 +39,17 @@ export default async function WatchlistPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {entries.map((entry) => (
-            <Card key={entry.id} className="hover:border-purple-500/50 transition-colors">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Bell className="h-4 w-4 text-purple-500 flex-shrink-0" />
-                    <CardTitle className="text-base truncate">
-                      {entry.productName || 'Unknown Product'}
-                    </CardTitle>
-                  </div>
-                  <Badge variant="secondary" className="text-xs flex-shrink-0">
-                    {watchTypeLabels[entry.watchType] || entry.watchType}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0 space-y-3">
-                {entry.desiredFeature && (
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">Watching for:</span>{' '}
-                    {entry.desiredFeature}
-                  </p>
-                )}
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
-                    Added {new Date(entry.createdAt).toLocaleDateString()}
-                  </span>
-                  {entry.notifiedAt && (
-                    <span>
-                      Last notified {new Date(entry.notifiedAt).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-                <Button asChild variant="outline" size="sm" className="w-full">
-                  <Link href={`/dashboard/products/${entry.productId}`}>
-                    <Eye className="h-3 w-3 mr-1" />
-                    View product
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <WatchlistItems
+          entries={entries.map((entry) => ({
+            id: entry.id,
+            productId: entry.productId,
+            productName: entry.productName || null,
+            watchType: entry.watchType,
+            desiredFeature: entry.desiredFeature || null,
+            createdAt: entry.createdAt instanceof Date ? entry.createdAt.toISOString() : String(entry.createdAt),
+            notifiedAt: entry.notifiedAt ? (entry.notifiedAt instanceof Date ? entry.notifiedAt.toISOString() : String(entry.notifiedAt)) : null,
+          }))}
+        />
       )}
     </div>
   )
