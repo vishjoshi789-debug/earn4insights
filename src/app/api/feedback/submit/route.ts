@@ -12,6 +12,7 @@ import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
 import { productExists } from '@/lib/entity-checks'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
 import { recordContribution } from '@/server/contributionPipeline'
+import { notifyPointsEarned, notifyWatchlistUpdate } from '@/server/consumerNotifications'
 
 // ── Anti-fraud constants ──────────────────────────────────────
 const MAX_TEXT_LENGTH = 5000
@@ -335,9 +336,22 @@ export async function POST(request: Request) {
     }
 
     // ── 11. Award points for feedback submission ───────────────
+    let productName: string | undefined
     try {
       if (session.user.id) {
         await awardPoints(session.user.id, 'feedback_submit', POINT_VALUES.feedback_submit)
+
+        // Get product name for notification
+        const [prod] = await db.select({ name: products.name }).from(products).where(eq(products.id, productId)).limit(1)
+        productName = prod?.name
+
+        // Notify consumer about points earned (non-blocking)
+        notifyPointsEarned({
+          userId: session.user.id,
+          points: POINT_VALUES.feedback_submit,
+          source: 'feedback_submit',
+          productName,
+        }).catch(err => console.error('[Feedback] Points notification failed:', err))
       }
     } catch (err) {
       console.error('[Feedback] Points award failed (non-blocking):', err)

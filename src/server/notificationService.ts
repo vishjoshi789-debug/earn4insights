@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { notificationQueue, type NewNotificationQueue } from '@/db/schema'
+import { notificationQueue, users, type NewNotificationQueue } from '@/db/schema'
 import { getUserProfile, adaptNotificationPreferences, type NotificationPreferences } from '@/db/repositories/userProfileRepository'
 import { eq, and, lte, gte } from 'drizzle-orm'
 import { Resend } from 'resend'
@@ -24,25 +24,30 @@ export async function queueNotification(data: {
   // Get user profile to check preferences
   const profile = await getUserProfile(data.userId)
   if (!profile) {
-    console.log(`[Notifications] User ${data.userId} profile not found`)
-    return null
+    // No profile yet (user hasn't completed onboarding) — still allow email notifications
+    if (data.channel !== 'email') {
+      console.log(`[Notifications] User ${data.userId} has no profile, skipping ${data.channel}`)
+      return null
+    }
+    // Fall through for email — use defaults
   }
 
   // Safely adapt notification preferences (handles schema versioning)
-  const prefs = adaptNotificationPreferences(profile.notificationPreferences)
-  if (!prefs[data.channel].enabled) {
-    console.log(`[Notifications] User ${data.userId} has ${data.channel} disabled`)
-    return null
-  }
+  if (profile) {
+    const prefs = adaptNotificationPreferences(profile.notificationPreferences)
+    if (!prefs[data.channel].enabled) {
+      console.log(`[Notifications] User ${data.userId} has ${data.channel} disabled`)
+      return null
+    }
 
-  // Check quiet hours (if scheduling for immediate send)
-  if (!data.scheduledFor || data.scheduledFor <= new Date()) {
-    const quietHours = prefs[data.channel].quietHours
-    if (quietHours && isInQuietHours(quietHours)) {
-      // Reschedule for after quiet hours
-      const scheduledFor = getNextAvailableTime(quietHours)
-      console.log(`[Notifications] Rescheduling for after quiet hours: ${scheduledFor}`)
-      data.scheduledFor = scheduledFor
+    // Check quiet hours (if scheduling for immediate send)
+    if (!data.scheduledFor || data.scheduledFor <= new Date()) {
+      const quietHours = prefs[data.channel].quietHours
+      if (quietHours && isInQuietHours(quietHours)) {
+        const scheduledFor = getNextAvailableTime(quietHours)
+        console.log(`[Notifications] Rescheduling for after quiet hours: ${scheduledFor}`)
+        data.scheduledFor = scheduledFor
+      }
     }
   }
 
@@ -141,15 +146,22 @@ export async function processPendingNotifications(): Promise<void> {
  * Send email via Resend
  */
 async function sendEmail(notification: typeof notificationQueue.$inferSelect): Promise<void> {
+  // Try profile first, fall back to users table
   const profile = await getUserProfile(notification.userId)
-  if (!profile) throw new Error('User profile not found')
-  
-  // Safely adapt notification preferences
-  const prefs = adaptNotificationPreferences(profile.notificationPreferences)
+  let toEmail: string
+
+  if (profile) {
+    toEmail = profile.email
+  } else {
+    // Fallback: look up email from users table
+    const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, notification.userId)).limit(1)
+    if (!user) throw new Error('User not found')
+    toEmail = user.email
+  }
 
   await resend.emails.send({
     from: process.env.EMAIL_FROM || 'Earn4Insights <notifications@earn4insights.com>',
-    to: profile.email,
+    to: toEmail,
     subject: notification.subject || 'Notification from Earn4Insights',
     html: notification.body
   })

@@ -150,8 +150,8 @@ export async function fireAlert(input: FireAlertInput) {
     (r) => !r.productId || r.productId === productId,
   )
 
-  // If no matching rules, use defaults: in-app alert for everything
-  const channels = new Set<string>(['in_app'])
+  // If no matching rules, use defaults: in-app + email for everything
+  const channels = new Set<string>(['in_app', 'email'])
   let matchedRuleId: string | null = null
 
   if (matchingRules.length > 0) {

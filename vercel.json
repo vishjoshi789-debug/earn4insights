@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/process-notifications",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/jobs/update-behavioral",
       "schedule": "0 3 * * *"
     },
