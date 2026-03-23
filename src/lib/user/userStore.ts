@@ -4,6 +4,7 @@ import { users } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import type { User, CreateUserInput } from './types'
 import { hashPassword } from './password'
+import { sendWelcomeNotifications } from '@/server/welcomeNotifications'
 
 /**
  * Get user by ID
@@ -102,6 +103,13 @@ export async function createUser(input: CreateUserInput): Promise<User> {
   }
 
   await db.insert(users).values(newUser)
+
+  // Send welcome email & WhatsApp (fire-and-forget, non-blocking)
+  sendWelcomeNotifications({
+    email: newUser.email,
+    name: newUser.name,
+    role: newUser.role as 'brand' | 'consumer',
+  })
 
   return {
     id: newUser.id,
