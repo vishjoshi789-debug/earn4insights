@@ -68,7 +68,7 @@ async function getConsumerPoints(userId: string) {
 export default async function DashboardPage() {
   const session = await auth();
   const userId = session?.user?.id;
-  const userEmail = session?.user?.email;
+  const userEmail = session?.user?.email || undefined;
   const isBrand = session?.user?.role === 'brand';
 
   if (isBrand) {

@@ -203,7 +203,7 @@ export default function CommunityPage() {
           <p className="text-sm text-muted-foreground mt-1">Discuss, share tips, and connect with the community</p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
+          <DialogTrigger>
             <Button><Plus className="h-4 w-4 mr-2" />New Post</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg">

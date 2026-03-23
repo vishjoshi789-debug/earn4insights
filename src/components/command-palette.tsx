@@ -114,7 +114,7 @@ export function CommandPalette() {
         onClick={() => { setOpen(false); setQuery('') }}
       />
       {/* Dialog */}
-      <div className="relative mx-auto mt-[15vh] w-full max-w-lg px-4">
+      <div className="relative mx-auto mt-[10vh] sm:mt-[15vh] w-full max-w-lg px-3 sm:px-4">
         <Command
           className="rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl overflow-hidden"
           shouldFilter={true}
@@ -125,14 +125,15 @@ export function CommandPalette() {
               value={query}
               onValueChange={setQuery}
               placeholder="Search pages, products…"
-              className="flex h-12 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+              className="flex h-12 w-full bg-transparent py-3 text-base sm:text-sm outline-none placeholder:text-muted-foreground"
+              autoFocus
             />
             <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
               ESC
             </kbd>
           </div>
 
-          <Command.List className="max-h-[300px] overflow-y-auto p-2">
+          <Command.List className="max-h-[50vh] sm:max-h-[300px] overflow-y-auto p-2">
             <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
               {searching ? 'Searching…' : 'No results found.'}
             </Command.Empty>

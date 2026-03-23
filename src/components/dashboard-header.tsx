@@ -300,23 +300,25 @@ export function DashboardHeader() {
       <div className="flex-1 text-xl font-headline font-semibold tracking-tight" />
 
       <TooltipProvider>
+        {/* Search – icon-only on mobile, full button on sm+ */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="relative h-9 gap-2 text-sm text-muted-foreground px-3 hidden sm:flex"
+              className="relative h-9 w-9 sm:w-auto sm:gap-2 sm:px-3 text-muted-foreground sm:border sm:border-input"
               onClick={() => {
                 const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
                 document.dispatchEvent(event)
               }}
+              data-tour="search-button"
             >
               <Search className="h-4 w-4" />
-              <span>Search…</span>
+              <span className="hidden sm:inline">Search…</span>
               <kbd className="pointer-events-none h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium hidden sm:flex">Ctrl K</kbd>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Search pages &amp; products (Ctrl+K)</TooltipContent>
+          <TooltipContent>Search pages &amp; products</TooltipContent>
         </Tooltip>
         <NotificationDropdown userRole={userRole} />
 
