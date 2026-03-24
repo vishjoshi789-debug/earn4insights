@@ -10,9 +10,9 @@ export async function POST(request: NextRequest) {
   try {
     // Check for admin API key
     const apiKey = request.headers.get('x-api-key')
-    if (apiKey !== 'test123' && apiKey !== process.env.ADMIN_API_KEY) {
+    if (!process.env.ADMIN_API_KEY || apiKey !== process.env.ADMIN_API_KEY) {
       return NextResponse.json(
-        { error: 'Unauthorized', received: apiKey ? 'key provided' : 'no key' },
+        { error: 'Unauthorized' },
         { status: 401 }
       )
     }
@@ -48,6 +48,6 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   return NextResponse.json({
     message: 'Data migration endpoint. Use POST with x-api-key header to run migration.',
-    usage: 'POST /api/admin/run-data-migration with header: x-api-key: test123',
+    usage: 'POST /api/admin/run-data-migration with header: x-api-key: <ADMIN_API_KEY>',
   })
 }

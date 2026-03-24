@@ -3,9 +3,10 @@ import { db } from '@/db'
 import { analyticsEvents, users, userProfiles } from '@/db/schema'
 import { desc, sql, eq, gte, and, count, inArray } from 'drizzle-orm'
 
-const ADMIN_SECRET = process.env.ANALYTICS_ADMIN_SECRET || process.env.ADMIN_API_KEY || 'e4i-admin-2026'
+const ADMIN_SECRET = process.env.ANALYTICS_ADMIN_SECRET || process.env.ADMIN_API_KEY
 
 function checkAuth(request: NextRequest): boolean {
+  if (!ADMIN_SECRET) return false
   const key = request.headers.get('x-admin-key')
     || request.nextUrl.searchParams.get('key')
   return key === ADMIN_SECRET

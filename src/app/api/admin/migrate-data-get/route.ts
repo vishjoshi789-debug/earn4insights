@@ -3,15 +3,14 @@ import { migrateJSONData } from '@/db/migrateData'
 
 /**
  * Migrate data - GET endpoint for easy testing
- * GET /api/admin/migrate-data-get?key=test123
+ * GET /api/admin/migrate-data-get
+ * Requires x-api-key header with ADMIN_API_KEY
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check for admin API key in query params
-    const { searchParams } = new URL(request.url)
-    const apiKey = searchParams.get('key')
-    
-    if (apiKey !== 'test123') {
+    // Check for admin API key via header (query params leak in logs/referrers)
+    const apiKey = request.headers.get('x-api-key')
+    if (!process.env.ADMIN_API_KEY || apiKey !== process.env.ADMIN_API_KEY) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

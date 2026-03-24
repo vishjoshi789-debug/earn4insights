@@ -9,6 +9,7 @@ export default auth((req: NextRequest & { auth: any }) => {
   // Define route patterns
   const isAuthPage = nextUrl.pathname.startsWith('/login') || nextUrl.pathname.startsWith('/signup')
   const isBrandRoute = nextUrl.pathname.startsWith('/dashboard')
+  const isAdminPage = nextUrl.pathname.startsWith('/admin')
   const isConsumerRoute = nextUrl.pathname.startsWith('/surveys') || nextUrl.pathname.startsWith('/respond')
   const isOnboardingRoute = nextUrl.pathname.startsWith('/onboarding')
   const isSettingsRoute = nextUrl.pathname.startsWith('/settings')
@@ -34,6 +35,17 @@ export default auth((req: NextRequest & { auth: any }) => {
 
   // Allow settings route for logged-in users
   if (isSettingsRoute && isLoggedIn) {
+    return NextResponse.next()
+  }
+
+  // Protect admin pages — require login + admin role
+  if (isAdminPage) {
+    if (!isLoggedIn) {
+      return NextResponse.redirect(new URL('/login', nextUrl))
+    }
+    if (req.auth?.user?.role !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', nextUrl))
+    }
     return NextResponse.next()
   }
 

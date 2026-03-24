@@ -12,7 +12,7 @@ import path from 'path'
 export async function POST(request: NextRequest) {
   try {
     const apiKey = request.headers.get('x-api-key')
-    if (apiKey !== 'test123' && apiKey !== process.env.ADMIN_API_KEY) {
+    if (!process.env.ADMIN_API_KEY || apiKey !== process.env.ADMIN_API_KEY) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

@@ -8,11 +8,9 @@ import { migrateJSONData } from '@/db/migrateData'
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check for admin API key (optional for now - can be enforced later)
+    // Check for admin API key
     const apiKey = request.headers.get('x-api-key')
-    const expectedKey = process.env.ADMIN_API_KEY || 'test123'
-    
-    if (apiKey !== expectedKey) {
+    if (!process.env.ADMIN_API_KEY || apiKey !== process.env.ADMIN_API_KEY) {
       return NextResponse.json(
         { error: 'Unauthorized - Invalid API key' },
         { status: 401 }

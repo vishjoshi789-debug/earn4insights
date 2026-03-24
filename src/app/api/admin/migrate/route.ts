@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   try {
     // Check for admin API key
     const apiKey = request.headers.get('x-api-key')
-    if (apiKey !== process.env.ADMIN_API_KEY && apiKey !== 'test123') {
+    if (!process.env.ADMIN_API_KEY || apiKey !== process.env.ADMIN_API_KEY) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
