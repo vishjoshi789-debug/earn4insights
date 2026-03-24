@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { runSendTimeAnalysis } from '@/jobs/sendTimeAnalysisJob'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
 /**
  * API Route: Run Send-Time Analysis
@@ -7,7 +8,8 @@ import { runSendTimeAnalysis } from '@/jobs/sendTimeAnalysisJob'
  * Manually trigger the send-time optimization analysis
  * (normally runs via cron daily at 3am UTC)
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
   try {
     const result = await runSendTimeAnalysis()
     

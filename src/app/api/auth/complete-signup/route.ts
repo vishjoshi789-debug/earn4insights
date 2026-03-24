@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createUser } from '@/lib/user/userStore'
+import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit signup attempts
+    const rlKey = getRateLimitKey(request, 'signup')
+    const rl = checkRateLimit(rlKey, RATE_LIMITS.signup)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many signup attempts. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
     const { email, name, role, provider, acceptedTerms, acceptedPrivacy } = body
 

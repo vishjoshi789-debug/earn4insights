@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials"
 import { getUserByEmail, createUser } from "@/lib/user/userStore"
 import { verifyPassword } from "@/lib/user/password"
 import type { UserRole } from "@/lib/user/types"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // Extend NextAuth types
 declare module "next-auth" {
@@ -53,8 +54,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) {
+          return null
+        }
+
+        // Rate limit login attempts by email
+        const email = (credentials.email as string).toLowerCase()
+        const rl = checkRateLimit(`auth:${email}`, RATE_LIMITS.authAttempt)
+        if (!rl.allowed) {
+          console.warn('[Auth] Rate limited login attempt for:', email)
           return null
         }
 

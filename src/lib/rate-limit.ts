@@ -83,4 +83,6 @@ export const RATE_LIMITS = {
   surveyResponse: { maxRequests: 20, windowSeconds: 60 } as RateLimitConfig,
   analyticsEvent: { maxRequests: 100, windowSeconds: 60 } as RateLimitConfig,
   authAttempt: { maxRequests: 5, windowSeconds: 60 } as RateLimitConfig,
+  communityPost: { maxRequests: 5, windowSeconds: 60 } as RateLimitConfig,
+  signup: { maxRequests: 3, windowSeconds: 60 } as RateLimitConfig,
 } as const

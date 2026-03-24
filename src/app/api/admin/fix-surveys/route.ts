@@ -1,11 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { surveys } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
   const results: string[] = []
 
   try {

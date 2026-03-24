@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { migrateProductCategories } from '@/server/rankings/migrationScript'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
 /**
  * POST /api/admin/migrate-categories
@@ -9,6 +10,8 @@ import { migrateProductCategories } from '@/server/rankings/migrationScript'
  * Body: { dryRun?: boolean }
  */
 export async function POST(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
+
   try {
     const body = await request.json().catch(() => ({}))
     const dryRun = body.dryRun !== false // Default to true

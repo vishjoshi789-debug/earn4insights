@@ -62,8 +62,7 @@ export async function GET() {
   } catch (error: any) {
     return NextResponse.json({
       success: false,
-      error: error.message,
-      stack: error.stack,
+      error: 'Health check failed',
       tests
     }, { status: 500 })
   }

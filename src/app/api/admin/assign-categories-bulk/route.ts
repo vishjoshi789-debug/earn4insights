@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { updateProductProfile } from '@/lib/product/store'
 import type { ProductCategory } from '@/lib/categories'
 import { PRODUCT_CATEGORIES } from '@/lib/categories'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
+
   try {
     const { assignments } = await request.json()
 

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { 
   sendTimeAnalytics, 
@@ -7,6 +7,7 @@ import {
   emailSendEvents 
 } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
 /**
  * API Route: Get Send-Time Analytics
@@ -17,7 +18,8 @@ import { eq, sql } from 'drizzle-orm'
  * - Demographic performance
  * - Cohort A/B test results
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
   try {
     const today = new Date().toISOString().split('T')[0]
     

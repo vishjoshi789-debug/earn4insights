@@ -45,6 +45,7 @@
 36. [In-App Community & Rewards Engine (March 20, 2026)](#36-in-app-community--rewards-engine-march-20-2026)
 37. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 38. [Mobile Search, Welcome Notifications & Notification Pipeline Fix (March 23, 2026)](#38-mobile-search-welcome-notifications--notification-pipeline-fix-march-23-2026)
+39. [Security Audit & Hardening (March 24, 2026)](#39-security-audit--hardening-march-24-2026)
 
 ---
 
@@ -3706,4 +3707,119 @@ Per notification:
 
 ---
 
-*This document reflects the architecture as of March 23, 2026. It should be updated as new systems are added.*
+---
+
+## 39. Security Audit & Hardening (March 24, 2026)
+
+Full architecture audit identified 14 fragile areas across security, reliability, data integrity, and build hygiene. 10 were fixed in commit `60ace6d`.
+
+### 39.1 Hardcoded Admin Key Removal
+
+Five admin API routes had `'test123'` as a hardcoded fallback key, and one had `'e4i-admin-2026'`.
+
+| Route | Old Pattern | Fix |
+|-------|-------------|-----|
+| `/api/admin/apply-migration` | `apiKey !== 'test123' && apiKey !== env` | Require `ADMIN_API_KEY` env only |
+| `/api/admin/migrate` | `apiKey !== env && apiKey !== 'test123'` | Require `ADMIN_API_KEY` env only |
+| `/api/admin/migrate-data` | `env \|\| 'test123'` fallback | Require `ADMIN_API_KEY` env only |
+| `/api/admin/run-data-migration` | `apiKey !== 'test123' && apiKey !== env` | Require `ADMIN_API_KEY` env only |
+| `/api/admin/migrate-data-get` | `searchParams.get('key') !== 'test123'` | Switched to `x-api-key` header |
+| `/api/admin/analytics` | `env \|\| 'e4i-admin-2026'` | Require env var, reject if unset |
+
+All routes now return 401 if `ADMIN_API_KEY` is not set in environment.
+
+### 39.2 Admin Page Middleware Protection
+
+`middleware.ts` now protects `/admin/*` pages:
+
+```
+/admin/* → not logged in? → redirect /login
+/admin/* → logged in but role !== 'admin'? → redirect /dashboard
+/admin/* → role === 'admin' → allow
+```
+
+Previously admin pages were unprotected — any authenticated user could access them.
+
+### 39.3 Auth Header Standardization
+
+The codebase now has two auth patterns (both secure, different use cases):
+
+| Pattern | Header | Used By |
+|---------|--------|---------|
+| `authenticateAdmin()` | `Authorization: Bearer <key>` or `x-admin-api-key` | Newer admin routes |
+| Inline check | `x-api-key` | Migration routes (legacy, one-time use) |
+| `checkAuth()` | `x-admin-key` or `?key=` query param | Analytics route |
+
+`src/lib/auth.ts` provides `authenticateAdmin()`, `unauthorizedResponse()`, and `withAdminAuth()` helper.
+
+### 39.4 Build Artifact Cleanup
+
+28 `.txt` build artifact files were removed from git tracking. Added patterns to `.gitignore`:
+
+```
+build-*.txt
+build*.txt
+audit-results.txt
+media-check-result.txt
+nix-scan-results.txt
+broken_components.txt
+cookies.txt
+prod-cookies*.txt
+```
+
+Files remain on disk but are no longer tracked in the repository.
+
+### 39.5 Environment Variables
+
+`.env.example` updated with all 43 environment variables used across the codebase, organized into sections: Database, Auth, Admin/Cron, Email, WhatsApp, OpenAI, Encryption, App URLs, Analytics, Social APIs, Media Processing.
+
+### 39.6 External Cron Setup
+
+Vercel Hobby plan limits cron to daily schedules. `DEPLOY.md` now documents external cron setup (e.g., cron-job.org) for more frequent notification processing:
+
+| Endpoint | Purpose | Recommended |
+|----------|---------|-------------|
+| `/api/cron/process-notifications` | Send queued notifications | Every 5 min |
+| `/api/cron/process-feedback-media` | Process audio/video uploads | Every 15 min |
+| `/api/cron/extract-themes` | Extract feedback themes | Every 30 min |
+
+All cron endpoints require `Authorization: Bearer <CRON_SECRET>` header.
+
+### 39.7 Dead File Removal
+
+- `src/app/dashboard/layout.tsx.backup` — deleted (dead backup file)
+- `emailNotifications.ts` and `emailService.ts` — still actively imported by `rankingService.ts`, `digestService.ts`, `responseService.ts`, `test-email/route.ts`; left in place
+
+### 39.8 Notification Retry Logic (Verified)
+
+`processPendingNotifications()` in `src/server/notificationService.ts` already implements exponential backoff:
+
+```
+Failure → retryCount + 1
+Delay = 3^retryCount × 5 minutes (5min, 15min, 45min)
+Max retries: 3
+After 3 failures → status = 'failed'
+```
+
+No changes needed — retry logic was already robust.
+
+### 39.9 Audit Summary
+
+| Category | Issues Found | Fixed | Deferred |
+|----------|-------------|-------|-----------|
+| Security | 6 | 6 | 0 |
+| Reliability | 4 | 1 (external cron docs) | 3 (Hobby plan limits) |
+| Data Integrity | 2 | 1 (.env.example) | 1 (email services in use) |
+| Build/Deploy | 2 | 2 | 0 |
+| **Total** | **14** | **10** | **4** |
+
+### 39.10 Commits (March 24, 2026)
+
+| Commit | Description |
+|--------|-------------|
+| `c4b37f4` | pre-audit snapshot |
+| `60ace6d` | security: remove hardcoded admin keys, protect /admin pages, clean build artifacts |
+
+---
+
+*This document reflects the architecture as of March 24, 2026. It should be updated as new systems are added.*

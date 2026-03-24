@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendRankingNotification } from '@/server/emailNotifications'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
 /**
  * Test email notification endpoint
  * POST /api/admin/test-email
  */
 export async function POST(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
+
   try {
     const body = await request.json()
     const { email, name } = body

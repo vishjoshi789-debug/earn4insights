@@ -1,10 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAllProducts } from '@/db/repositories/productRepository'
 import { db } from '@/db'
 import { surveyResponses } from '@/db/schema'
 import { sql } from 'drizzle-orm'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
   try {
     const products = await getAllProducts()
 

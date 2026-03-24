@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { notifyNewSurvey } from '@/server/campaigns/surveyNotificationCampaign'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
+
   try {
     const body = await request.json()
     

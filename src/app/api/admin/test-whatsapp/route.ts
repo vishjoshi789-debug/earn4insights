@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendWhatsAppRankingNotification } from '@/server/whatsappNotifications'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
 /**
  * Test WhatsApp notification endpoint
  * POST /api/admin/test-whatsapp
  */
 export async function POST(request: NextRequest) {
+  if (!authenticateAdmin(request)) return unauthorizedResponse()
+
   try {
     const body = await request.json()
     const { phoneNumber, name } = body

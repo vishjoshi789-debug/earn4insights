@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** March 23, 2026  
+> **Last updated:** March 24, 2026  
 > **Platform:** Next.js 15 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
@@ -42,6 +42,7 @@
 32. [In-App Community + Real Rewards Engine (March 20, 2026)](#32-in-app-community--real-rewards-engine-march-20-2026)
 33. [Social Listening Charts, Data Fixes & Schema Drift Audit (March 21, 2026)](#33-social-listening-charts-data-fixes--schema-drift-audit-march-21-2026)
 34. [Mobile Search, Welcome Notifications & Notification Pipeline Fix (March 23, 2026)](#34-mobile-search-welcome-notifications--notification-pipeline-fix-march-23-2026)
+35. [Security Audit & Hardening (March 24, 2026)](#35-security-audit--hardening-march-24-2026)
 
 ---
 
@@ -1397,4 +1398,64 @@ All are queued via the notification pipeline and processed by the daily cron.
 
 ---
 
-*This document covers all features implemented as of March 23, 2026. Update this file when adding new features.*
+---
+
+## 35. Security Audit & Hardening (March 24, 2026)
+
+Full architecture audit of 73 pages, 103 API routes, 40 server services, and 66 UI components. Identified 14 fragile areas and fixed 10.
+
+### 35.1 Admin API Security
+
+Removed hardcoded admin keys (`test123`, `e4i-admin-2026`) from 6 API routes. All admin endpoints now require `ADMIN_API_KEY` environment variable — no fallback keys.
+
+Affected routes:
+- `/api/admin/apply-migration`
+- `/api/admin/migrate`
+- `/api/admin/migrate-data`
+- `/api/admin/run-data-migration`
+- `/api/admin/migrate-data-get` (also switched from query param to header auth)
+- `/api/admin/analytics` (removed `e4i-admin-2026` fallback)
+
+### 35.2 Admin Page Protection
+
+`middleware.ts` now blocks non-admin users from `/admin/*` pages. Unauthenticated users are redirected to `/login`, non-admin roles to `/dashboard`.
+
+### 35.3 Environment Documentation
+
+`.env.example` updated with all 43 environment variables organized by category (Database, Auth, Admin, Email, WhatsApp, OpenAI, Encryption, URLs, Analytics, Social APIs, Media Processing).
+
+### 35.4 Repository Cleanup
+
+- 28 build artifact `.txt` files removed from git tracking
+- `.gitignore` updated with patterns to prevent future re-addition
+- Deleted dead `layout.tsx.backup` file
+
+### 35.5 External Cron Documentation
+
+`DEPLOY.md` updated with setup guide for external cron services (e.g., cron-job.org) to run notification processing every 5 minutes, bypassing Vercel Hobby plan's daily-only cron limit.
+
+### 35.6 Files Changed
+
+| File | Change |
+|------|--------|
+| `src/app/api/admin/apply-migration/route.ts` | Removed `test123` fallback |
+| `src/app/api/admin/migrate/route.ts` | Removed `test123` fallback |
+| `src/app/api/admin/migrate-data/route.ts` | Removed `test123` fallback |
+| `src/app/api/admin/run-data-migration/route.ts` | Removed `test123` fallback |
+| `src/app/api/admin/migrate-data-get/route.ts` | Query param → header auth |
+| `src/app/api/admin/analytics/route.ts` | Removed `e4i-admin-2026` fallback |
+| `middleware.ts` | Added `/admin` route protection |
+| `.env.example` | Complete rewrite with 43 vars |
+| `.gitignore` | Added build artifact patterns |
+| `DEPLOY.md` | External cron setup guide |
+
+### 35.7 Commits (March 24, 2026)
+
+| Commit | Description |
+|--------|-------------|
+| `c4b37f4` | pre-audit snapshot |
+| `60ace6d` | security: remove hardcoded admin keys, protect /admin pages, clean build artifacts |
+
+---
+
+*This document covers all features implemented as of March 24, 2026. Update this file when adding new features.*
