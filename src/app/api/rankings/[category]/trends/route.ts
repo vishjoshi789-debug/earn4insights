@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getProductRankingHistory } from '@/server/rankings/rankingStore'
-import { getProducts } from '@/lib/product/store'
+import { getAllProducts as getProducts } from '@/db/repositories/productRepository'
 import type { ProductCategory } from '@/lib/categories'
 import { PRODUCT_CATEGORIES } from '@/lib/categories'
 

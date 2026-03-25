@@ -11,7 +11,7 @@ import 'server-only'
  * Run this ONCE after deploying the ranking system.
  */
 
-import { getProducts, updateProductProfile } from '@/lib/product/store'
+import { getAllProducts as getProducts, updateProductProfile } from '@/db/repositories/productRepository'
 import type { ProductCategory } from '@/lib/categories'
 
 type CategoryMapping = Record<string, ProductCategory>

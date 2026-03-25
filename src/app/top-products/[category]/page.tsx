@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentRanking } from '@/server/rankings/rankingStore'
-import { getProductById } from '@/lib/product/store'
+import { getProductById } from '@/db/repositories/productRepository'
 import { CATEGORY_ICONS, getCategoryName, type ProductCategory, CATEGORY_KEYS } from '@/lib/categories'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'

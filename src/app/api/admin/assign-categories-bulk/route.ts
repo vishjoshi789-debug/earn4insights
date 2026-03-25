@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { updateProductProfile } from '@/lib/product/store'
+import { updateProductProfile } from '@/db/repositories/productRepository'
 import type { ProductCategory } from '@/lib/categories'
 import { PRODUCT_CATEGORIES } from '@/lib/categories'
 import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'

@@ -4,7 +4,7 @@ import type { Product } from '@/lib/types/product'
 import type { WeeklyRanking, RankingEntry, RankedProduct } from '@/lib/types/ranking'
 import type { ProductCategory } from '@/lib/categories'
 import { CATEGORY_KEYS, getCategoryName } from '@/lib/categories'
-import { getProducts } from '@/lib/product/store'
+import { getAllProducts as getProducts } from '@/db/repositories/productRepository'
 import { getAllResponses } from '@/lib/survey/responseStore'
 import {
   calculateProductMetrics,
