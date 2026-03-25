@@ -38,10 +38,11 @@ export function FeedbackForm({ productId }: FeedbackFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">
+        <label htmlFor="feedback-rating" className="block text-sm font-medium text-foreground mb-1">
           Rating (1–5)
         </label>
         <select
+          id="feedback-rating"
           value={rating}
           onChange={(e) => setRating(Number(e.target.value))}
           className="border border-border bg-muted text-foreground rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -55,10 +56,11 @@ export function FeedbackForm({ productId }: FeedbackFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">
+        <label htmlFor="feedback-text" className="block text-sm font-medium text-foreground mb-1">
           Your feedback
         </label>
         <textarea
+          id="feedback-text"
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={4}

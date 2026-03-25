@@ -121,6 +121,7 @@ function ReplyCard({
           <div className="flex items-center gap-3 mt-2">
             <button
               onClick={() => onVote(null, reply.id, 'upvote')}
+              aria-label="Upvote reply"
               className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
                 userReaction === 'upvote' ? 'text-green-600 bg-green-50 dark:bg-green-900/30' : 'hover:bg-green-50 dark:hover:bg-green-900/30 text-muted-foreground'
               }`}
@@ -130,6 +131,7 @@ function ReplyCard({
             </button>
             <button
               onClick={() => onVote(null, reply.id, 'downvote')}
+              aria-label="Downvote reply"
               className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
                 userReaction === 'downvote' ? 'text-red-600 bg-red-50 dark:bg-red-900/30' : 'hover:bg-red-50 dark:hover:bg-red-900/30 text-muted-foreground'
               }`}
@@ -140,6 +142,7 @@ function ReplyCard({
             {!isLocked && depth < 2 && (
               <button
                 onClick={() => onReplyTo(reply.id)}
+                aria-label="Reply to comment"
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
               >
                 <Reply className="h-3 w-3" />
@@ -431,6 +434,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
                 return (
                   <button
                     key={opt.id}
+                    aria-label={`Vote for ${opt.text}`}
                     className={`w-full text-left p-2 border rounded-md hover:bg-muted/50 transition-colors relative overflow-hidden ${isSelected ? 'ring-1 ring-indigo-400 border-indigo-300' : ''}`}
                     onClick={() => handlePollVote(opt.id)}
                     disabled={votingPoll || Boolean(userPollVoteOptionId)}
@@ -465,6 +469,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
           <div className="flex items-center gap-4 border-t pt-3">
             <button
               onClick={() => handleVote(post.id, null, 'upvote')}
+              aria-label="Upvote post"
               className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
                 getUserReaction(post.id, null) === 'upvote' ? 'text-green-600 bg-green-50 dark:bg-green-900/30' : 'hover:bg-green-50 dark:hover:bg-green-900/30'
               }`}
@@ -474,6 +479,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
             </button>
             <button
               onClick={() => handleVote(post.id, null, 'downvote')}
+              aria-label="Downvote post"
               className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
                 getUserReaction(post.id, null) === 'downvote' ? 'text-red-600 bg-red-50 dark:bg-red-900/30' : 'hover:bg-red-50 dark:hover:bg-red-900/30'
               }`}
@@ -497,7 +503,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
               <div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
                 <Reply className="h-3 w-3" />
                 Replying to a comment
-                <button onClick={() => setReplyingTo(null)} className="text-red-500 hover:underline text-xs">Cancel</button>
+                <button onClick={() => setReplyingTo(null)} aria-label="Cancel reply" className="text-red-500 hover:underline text-xs">Cancel</button>
               </div>
             )}
             <div className="flex gap-3">
