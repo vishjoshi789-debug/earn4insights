@@ -44,7 +44,7 @@ import { useSession } from 'next-auth/react'
 import { DashboardHeader } from '@/components/dashboard-header'
 import { ProductTour } from '@/components/ProductTour'
 import { CommandPalette } from '@/components/command-palette'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 
 type MenuItem = {
   href: string
@@ -179,14 +179,23 @@ export default function DashboardShell({
 }: {
   children: React.ReactNode
 }) {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | undefined
   const [unreadAlerts, setUnreadAlerts] = useState(0)
+  const isVisible = useRef(true)
 
-  // Poll unread alert count for brands
+  // Track document visibility to pause polling when tab is hidden
+  useEffect(() => {
+    const onVisChange = () => { isVisible.current = !document.hidden }
+    document.addEventListener('visibilitychange', onVisChange)
+    return () => document.removeEventListener('visibilitychange', onVisChange)
+  }, [])
+
+  // Poll unread alert count for brands (only when tab is visible)
   useEffect(() => {
     if (userRole !== 'brand') return
     const fetchCount = async () => {
+      if (!isVisible.current) return
       try {
         const res = await fetch('/api/brand/alerts?countOnly=true')
         if (res.ok) {
@@ -200,9 +209,18 @@ export default function DashboardShell({
     return () => clearInterval(interval)
   }, [userRole])
 
-  // Filter menu items by user role — show items with no role restriction + items matching user's role
-  const visibleItems = menuItems.filter(
-    (item) => !item.role || item.role === userRole
+  // Memoize visible items — only recompute when role changes, not every render
+  const visibleItems = useMemo(
+    () => menuItems.filter((item) => !item.role || item.role === userRole),
+    [userRole]
+  )
+
+  // While session is loading, show all shared (non-role-specific) items to avoid flicker
+  const displayItems = useMemo(
+    () => status === 'loading'
+      ? menuItems.filter((item) => !item.role)
+      : visibleItems,
+    [status, visibleItems]
   )
 
   return (
@@ -222,7 +240,7 @@ export default function DashboardShell({
           </div>
         </SidebarHeader>
 
-        <SidebarNav visibleItems={visibleItems} unreadAlerts={unreadAlerts} />
+        <SidebarNav visibleItems={displayItems} unreadAlerts={unreadAlerts} />
       </Sidebar>
 
       <SidebarInset>

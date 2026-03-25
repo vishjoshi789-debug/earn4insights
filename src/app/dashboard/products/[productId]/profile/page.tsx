@@ -15,10 +15,12 @@ export default async function ProductProfilePage({
     return <div className="p-6">Product not found</div>
   }
 
+  const profile = product.profile ?? { currentStep: 1, data: {} }
+
   return (
     <ProfileClient
       productId={product.id}
-      profile={product.profile}
+      profile={profile as any}
     />
   )
 }

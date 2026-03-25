@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,33 +13,71 @@ import { toast } from 'sonner'
 import { ProgressIndicator } from '@/components/ProgressIndicator'
 import { FieldTooltip } from '@/components/FieldTooltip'
 
+const ONBOARDING_STORAGE_KEY = 'e4i_onboarding_draft'
+
+function loadDraft() {
+  try {
+    const raw = sessionStorage.getItem(ONBOARDING_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveDraft(data: Record<string, unknown>) {
+  try {
+    sessionStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(data))
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(ONBOARDING_STORAGE_KEY)
+  } catch { /* ignore */ }
+}
+
 export default function OnboardingClient({ userRole }: { userRole?: string }) {
   const router = useRouter()
-  const [step, setStep] = useState(1)
+  const draft = typeof window !== 'undefined' ? loadDraft() : null
+
+  const [step, setStep] = useState<number>(draft?.step ?? 1)
   const [loading, setLoading] = useState(false)
 
   // Demographics
-  const [gender, setGender] = useState<string>('')
-  const [ageRange, setAgeRange] = useState<string>('')
-  const [location, setLocation] = useState<string>('')
-  const [language, setLanguage] = useState<string>('English')
-  const [education, setEducation] = useState<string>('')
-  const [profession, setProfession] = useState<string>('')
-  const [fieldOfStudy, setFieldOfStudy] = useState<string>('')
-  const [culture, setCulture] = useState<string>('')
-  const [aspirations, setAspirations] = useState<string[]>([])
+  const [gender, setGender] = useState<string>(draft?.gender ?? '')
+  const [ageRange, setAgeRange] = useState<string>(draft?.ageRange ?? '')
+  const [location, setLocation] = useState<string>(draft?.location ?? '')
+  const [language, setLanguage] = useState<string>(draft?.language ?? 'English')
+  const [education, setEducation] = useState<string>(draft?.education ?? '')
+  const [profession, setProfession] = useState<string>(draft?.profession ?? '')
+  const [fieldOfStudy, setFieldOfStudy] = useState<string>(draft?.fieldOfStudy ?? '')
+  const [culture, setCulture] = useState<string>(draft?.culture ?? '')
+  const [aspirations, setAspirations] = useState<string[]>(draft?.aspirations ?? [])
 
   // Sensitive Data (now mandatory for accurate recommendations)
-  const [incomeRange, setIncomeRange] = useState<string>('')
-  const [amazonCategories, setAmazonCategories] = useState<string[]>([])
-  const [purchaseFrequency, setPurchaseFrequency] = useState<string>('')
+  const [incomeRange, setIncomeRange] = useState<string>(draft?.incomeRange ?? '')
+  const [amazonCategories, setAmazonCategories] = useState<string[]>(draft?.amazonCategories ?? [])
+  const [purchaseFrequency, setPurchaseFrequency] = useState<string>(draft?.purchaseFrequency ?? '')
   
   // Consent acknowledgments
   const [dataProcessingConsent, setDataProcessingConsent] = useState(false)
   const [privacyPolicyConsent, setPrivacyPolicyConsent] = useState(false)
 
   // Interests
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(draft?.selectedCategories ?? [])
+
+  // Persist draft to sessionStorage on every change
+  const persistDraft = useCallback(() => {
+    saveDraft({
+      step, gender, ageRange, location, language, education, profession,
+      fieldOfStudy, culture, aspirations, incomeRange, amazonCategories,
+      purchaseFrequency, selectedCategories,
+    })
+  }, [step, gender, ageRange, location, language, education, profession,
+      fieldOfStudy, culture, aspirations, incomeRange, amazonCategories,
+      purchaseFrequency, selectedCategories])
+
+  useEffect(() => { persistDraft() }, [persistDraft])
 
   const progressSteps = [
     { id: 1, title: 'Welcome', description: 'Get started' },
@@ -151,6 +189,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
       }
 
       await completeOnboarding({ demographics, interests, sensitiveData })
+      clearDraft()
       toast.success('Profile completed! Enjoy personalized experiences.')
       
       // Redirect based on user role
@@ -469,8 +508,8 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     const completion = calculateCompletion()
     
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 overflow-visible">
-        <Card className="max-w-4xl w-full overflow-visible sm:max-w-2xl sm:w-full md:max-w-3xl md:w-full lg:max-w-4xl lg:w-full" style={{ width: '100%', maxWidth: '100vw', overflow: 'visible' }}>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <Card className="w-full max-w-4xl">
           <CardHeader>
             <ProgressIndicator currentStep={3} steps={progressSteps} />
             <div className="flex items-center justify-between mt-4">
@@ -486,7 +525,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-6 overflow-visible" style={{ width: '100%', maxWidth: '100vw', overflow: 'visible' }}>
+          <CardContent className="space-y-6">
             {/* Privacy Assurance Banner */}
             <div className="bg-blue-900/50 border-2 border-blue-700 rounded-lg p-4">
               <div className="flex items-start gap-3">
