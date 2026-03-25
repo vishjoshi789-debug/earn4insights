@@ -893,6 +893,16 @@ export const trustFlags = pgTable('trust_flags', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ── Password Reset Tokens ────────────────────────────────────────
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  tokenHash: text('token_hash').notNull(),       // SHA-256 hash of the token (never store raw)
+  expiresAt: timestamp('expires_at').notNull(),
+  usedAt: timestamp('used_at'),                  // set when token is consumed
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -967,3 +977,5 @@ export type NewBrandRewardConfig = typeof brandRewardConfigs.$inferInsert
 export type UserReputationRow = typeof userReputation.$inferSelect
 export type BrandQualityFeedbackRow = typeof brandQualityFeedback.$inferSelect
 export type TrustFlag = typeof trustFlags.$inferSelect
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect
+export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert

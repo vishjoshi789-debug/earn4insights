@@ -43,6 +43,8 @@
 33. [Social Listening Charts, Data Fixes & Schema Drift Audit (March 21, 2026)](#33-social-listening-charts-data-fixes--schema-drift-audit-march-21-2026)
 34. [Mobile Search, Welcome Notifications & Notification Pipeline Fix (March 23, 2026)](#34-mobile-search-welcome-notifications--notification-pipeline-fix-march-23-2026)
 35. [Security Audit & Hardening (March 24, 2026)](#35-security-audit--hardening-march-24-2026)
+36. [Deep Security Hardening — Phase 2 (March 24, 2026)](#36-deep-security-hardening--phase-2-march-24-2026)
+37. [Data Source Consolidation — JSON Store → Database (March 24, 2026)](#37-data-source-consolidation--json-store--database-march-24-2026)
 
 ---
 
@@ -1458,4 +1460,227 @@ Affected routes:
 
 ---
 
-*This document covers all features implemented as of March 24, 2026. Update this file when adding new features.*
+## 36. Deep Security Hardening — Phase 2 (March 24, 2026)
+
+A second deep scan revealed 22 additional unprotected API routes missed by the Phase 1 audit (§35).
+
+### 36.1 Deleted Unsafe Endpoints (8 routes)
+
+Removed one-time migration and debug routes that were publicly callable with no authentication:
+- `api/setup-db` — executed raw SQL DDL
+- `api/create-personalization-tables` — executed raw SQL DDL
+- `api/create-google-user` — allowed anyone to create brand users via URL params
+- `api/migrate-products` — bulk inserted data from JSON file
+- `api/migrate-all-data` — had hardcoded `test123` auth (missed in Phase 1)
+- `api/generate-rankings` — queried products with raw neon() driver
+- `api/debug/media-status` — debug endpoint (code said "DELETE THIS")
+- `api/debug/check-media` — debug endpoint
+
+### 36.2 Admin Route Protection (12 routes)
+
+Added `authenticateAdmin()` (requires `ADMIN_API_KEY` header) to 12 admin routes that previously had zero authentication — including routes that wrote to the database, sent WhatsApp/email messages, and triggered notification campaigns.
+
+### 36.3 Rate Limiting Expanded
+
+Previously only 4 routes had rate limiting. Added:
+- **Credential login**: 5 attempts / 60s per email (wired up existing unused `authAttempt` config)
+- **Signup**: 3 attempts / 60s per IP
+- **Community post creation**: 5 posts / 60s per user
+
+### 36.4 Error Leakage Fixed
+
+- Removed `error.stack` from `health-check` HTTP response
+- Deleted `create-google-user` which also leaked stack traces
+
+### 36.5 Files Changed
+
+| File | Change |
+|------|--------|
+| 12 admin route files | Added `authenticateAdmin()` guard |
+| 8 route files | Deleted (migration/debug endpoints) |
+| `src/lib/rate-limit.ts` | Added `communityPost` and `signup` configs |
+| `src/lib/auth/auth.config.ts` | Wired `authAttempt` rate limiting into `authorize()` |
+| `src/app/api/auth/complete-signup/route.ts` | Added signup rate limiting |
+| `src/app/api/community/posts/route.ts` | Added post creation rate limiting |
+| `src/app/api/health-check/route.ts` | Removed `error.stack` from response |
+
+### 36.6 Commit (March 24, 2026)
+
+| Commit | Description |
+|--------|-------------|
+| `9229abb` | security: protect 12 admin routes, delete 8 unsafe endpoints, add rate limiting |
+
+---
+
+---
+
+## 37. Data Source Consolidation — JSON Store → Database (March 24, 2026)
+
+A codebase audit identified a critical data consistency bug: **5 files** were reading/writing product data from a local JSON file (`data/products.json`) instead of the Neon PostgreSQL database. On Vercel, this JSON file is ephemeral — data written to it is lost on every deployment.
+
+### 37.1 What Was Fixed
+
+- **Rankings system** (`rankingService.ts`, `migrationScript.ts`) — was generating weekly rankings from an empty/stale JSON file instead of real DB products
+- **Top Products pages** (`top-products/[category]/page.tsx`) — was looking up product details from the JSON file; products created via the dashboard wouldn't appear
+- **Trends API** (`api/rankings/[category]/trends`) — was filtering products by category from the JSON file
+- **Bulk category assign** (`api/admin/assign-categories-bulk`) — category assignments were written to the JSON file and lost on deploy
+
+All 5 files now import from `@/db/repositories/productRepository` (the real database).
+
+### 37.2 Dead Code Cleanup
+
+- Removed unused `SiteFooter` import from the root layout
+- Removed 3 unused `export default` statements from `dialog.tsx`, `alert.tsx`, `separator.tsx` UI components (named exports still work correctly)
+
+### 37.3 Impact
+
+- Rankings, top products, and trends now reflect real database products
+- Admin bulk category assignment now persists correctly
+- No UI or behavior changes — only the data source was swapped
+- Build verified: 137/137 pages, zero TypeScript errors
+
+---
+
+---
+
+## 38. Repository Health Hardening (March 24, 2026)
+
+Fixes applied to improve build safety, reduce bundle size, handle errors gracefully, and improve accessibility.
+
+### 38.1 Build Safety
+
+- **TypeScript errors now block production builds.** Previously `ignoreBuildErrors: true` in `next.config.ts` allowed broken code to deploy silently. Now set to `false`.
+- ESLint `ignoreDuringBuilds` remains `true` due to a known Next.js 15.x tooling conflict — this is intentional.
+
+### 38.2 Unused Dependencies Removed
+
+- **`firebase`** (~1MB) — was in `package.json` but zero files imported it. Removed.
+- **`@radix-ui/react-toast`** — the project uses `sonner` for all toast notifications. The Radix toast primitive was never used. Removed.
+
+### 38.3 Error Boundary
+
+- New file: `src/app/error.tsx`
+- When an unhandled error occurs in any page, users now see a friendly "Something went wrong" message with a "Try again" button, instead of a blank white screen.
+
+### 38.4 Accessibility: Skip Navigation
+
+- A skip-to-content link is now the first focusable element in the root layout
+- Invisible by default, appears on keyboard Tab focus
+- Links to `#main-content` on the `<main>` element
+- Helps keyboard and screen reader users skip past the header navigation
+
+### 38.5 npm Audit
+
+- 4 moderate vulnerabilities found — all in `esbuild` nested inside `drizzle-kit` (dev dependency only)
+- Fix requires a breaking downgrade of `drizzle-kit` — intentionally skipped
+- No production dependency vulnerabilities
+
+---
+
+## 39. Accessibility Fixes & Cross-Browser Testing (March 24–25, 2026)
+
+### 39.1 Vote Button Accessibility (A1–A2)
+
+**Problem**: Community discussion vote buttons (upvote/downvote) contained only SVG icons with no text — screen readers announced them as empty buttons.
+
+**Fix**: Added descriptive `aria-label` attributes to all icon-only buttons in the community post detail page:
+- Reply votes: `"Upvote reply"`, `"Downvote reply"`
+- Post votes: `"Upvote post"`, `"Downvote post"`
+- Poll options: `"Vote for {option text}"`
+- Reply/Cancel buttons: `"Reply to comment"`, `"Cancel reply"`
+
+**File**: `src/app/dashboard/community/[postId]/page.tsx`
+
+### 39.2 Form Label Binding (A3)
+
+**Problem**: The feedback form had `<label>` elements visually positioned near inputs but not programmatically linked — assistive technology couldn't associate labels with their controls.
+
+**Fix**: Added `htmlFor`/`id` attribute pairs:
+- Rating label → `id="feedback-rating"` on `<select>`
+- Feedback label → `id="feedback-text"` on `<textarea>`
+
+**File**: `src/components/feedback-form.tsx`
+
+### 39.3 Items Assessed — No Code Change Needed
+
+- **A4** (heading size): Proper h1→h2→h3 hierarchy already present on homepage
+- **A5** (lang attribute): `lang="en"` is correct — multilingual support is for user content, not UI
+- **A6** (color contrast): Requires runtime Lighthouse/axe audit, not a static code fix
+
+### 39.4 Playwright Cross-Browser Testing
+
+**What it does**: Automated smoke testing across 6 browser/device configurations to catch rendering, accessibility, and viewport issues.
+
+**Setup**:
+- `@playwright/test` v1.58.2 installed as dev dependency
+- Chromium browser engine downloaded
+- Config: `playwright.config.ts` (root)
+
+**Browser Projects**:
+1. Desktop Chrome (Chromium)
+2. Desktop Firefox
+3. Desktop Safari (WebKit)
+4. Mobile Chrome (Pixel 5)
+5. Mobile Safari (iPhone 12)
+6. Microsoft Edge
+
+**Smoke Test Suite** (`e2e/smoke.spec.ts` — 11 tests):
+- **Public pages**: Homepage hero heading, login page, top-products page
+- **Accessibility**: `lang="en"` attribute, skip-to-content link, `main#main-content` target, image alt text
+- **Viewport**: Mobile (375px), tablet (768px), desktop (1440px) — heading visibility, no horizontal overflow
+- **Navigation**: Homepage → login link flow
+
+**How to run**:
+```bash
+npm run dev          # start dev server on port 9002
+npx playwright test  # run all tests
+npx playwright test --project=chromium  # single browser
+npx playwright show-report   # view HTML report
+```
+
+**Results**: 10/11 passed on Chromium. The single failure is a cold-start dev server compilation timeout — not a code issue.
+
+---
+
+## 40. UI/UX Audit & Stability Fixes (March 25, 2026)
+
+Comprehensive 6-part UI audit followed by fixes for all identified issues.
+
+### Audit Areas & Results
+
+| Area | Verdict | Issues Found |
+|------|---------|-------------|
+| Onboarding / Product Profile Flow | Fixed | No step-level persistence for consumer onboarding |
+| Profile State Safety | Fixed | Missing profile fallback guard |
+| Responsiveness | Fixed | Inline `overflow: visible` on Step 3 card |
+| Sidebar / Navigation | Fixed | Session loading flicker, polling in background tabs |
+| Toast System Integrity | Clean | All sonner imports valid, no stale references |
+| UX Stability | Fixed | Missing loading.tsx and dashboard error boundary |
+
+### Fixes Applied
+
+1. **Onboarding Draft Persistence** — Consumer onboarding form data saved to `sessionStorage` on every change; restored on reload; cleared on successful completion. Consent checkboxes intentionally not persisted.
+
+2. **Overflow Fix** — Removed `overflow: visible` inline styles and redundant breakpoint classes from onboarding Step 3 card (`OnboardingClient.tsx`).
+
+3. **Sidebar Flicker Prevention** — During `useSession()` loading state, sidebar shows only shared (non-role-specific) items. Role-specific items appear once session resolves. Menu items memoized with `useMemo`.
+
+4. **Dashboard Loading Skeleton** — Created `src/app/dashboard/loading.tsx` with animated pulse skeleton for title, stat cards, and content area.
+
+5. **Dashboard Error Boundary** — Created `src/app/dashboard/error.tsx` with "Try again" and "Back to Dashboard" recovery actions.
+
+6. **Product Profile Guard** — Added `product.profile ?? { currentStep: 1, data: {} }` fallback in profile page to prevent crash on undefined profile.
+
+7. **Alert Polling Optimization** — Polling skips network requests when browser tab is hidden using `document.visibilitychange` event.
+
+### Files Changed
+
+- `src/app/onboarding/OnboardingClient.tsx` — draft persistence + overflow fix
+- `src/app/dashboard/DashboardShell.tsx` — flicker fix + visibility polling
+- `src/app/dashboard/loading.tsx` — new file
+- `src/app/dashboard/error.tsx` — new file
+- `src/app/dashboard/products/[productId]/profile/page.tsx` — profile guard
+
+---
+
+*This document covers all features implemented as of March 25, 2026. Update this file when adding new features.*

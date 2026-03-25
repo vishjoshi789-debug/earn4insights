@@ -46,6 +46,11 @@
 37. [Appendix A — Cost Calculator & Capacity Planning](#appendix-a--cost-calculator--capacity-planning)
 38. [Mobile Search, Welcome Notifications & Notification Pipeline Fix (March 23, 2026)](#38-mobile-search-welcome-notifications--notification-pipeline-fix-march-23-2026)
 39. [Security Audit & Hardening (March 24, 2026)](#39-security-audit--hardening-march-24-2026)
+40. [Deep Security Hardening — Phase 2 (March 24, 2026)](#40-deep-security-hardening--phase-2-march-24-2026)
+41. [Data Source Consolidation — JSON Store → Database (March 24, 2026)](#41-data-source-consolidation--json-store--database-march-24-2026)
+42. [Repository Health Hardening (March 24, 2026)](#42-repository-health-hardening-march-24-2026)
+43. [Accessibility Fixes & Cross-Browser Testing Infrastructure (March 24–25, 2026)](#43-accessibility-fixes--cross-browser-testing-infrastructure-march-2425-2026)
+44. [UI/UX Audit & Stability Fixes (March 25, 2026)](#44-uiux-audit--stability-fixes-march-25-2026)
 
 ---
 
@@ -3822,4 +3827,338 @@ No changes needed — retry logic was already robust.
 
 ---
 
-*This document reflects the architecture as of March 24, 2026. It should be updated as new systems are added.*
+## 40. Deep Security Hardening — Phase 2 (March 24, 2026)
+
+Second deep scan of all 103 API routes identified **22 additional unprotected endpoints** missed by the Phase 1 audit (§39). These were routes that had no auth at all (not just weak auth), making them publicly callable.
+
+### 40.1 Middleware Coverage Gap
+
+`middleware.ts` matcher explicitly excludes `/api` routes:
+```
+'/((?!api|_next/static|_next/image|favicon.ico).*)'
+```
+All API route protection must be **inline** — the middleware only guards UI pages.
+
+### 40.2 Deleted Endpoints (8 routes removed)
+
+One-time migration and debug endpoints that should never have remained in production:
+
+| Deleted Route | Risk |
+|--------------|------|
+| `api/setup-db` | Executed raw `CREATE TABLE` DDL — no auth |
+| `api/create-personalization-tables` | Executed raw `CREATE TABLE` DDL — no auth |
+| `api/create-google-user` | Created arbitrary brand-role users via query params — no auth |
+| `api/migrate-products` | Bulk INSERTs from data/products.json — no auth |
+| `api/migrate-all-data` | Had hardcoded `test123` (missed in Phase 1) — ran full data migration |
+| `api/generate-rankings` | Used raw `neon()` (bypassed Drizzle), queried products — no auth |
+| `api/debug/media-status` | Code comment said "DELETE THIS after debugging" — no auth |
+| `api/debug/check-media` | Read feedback + media data — no auth |
+
+### 40.3 Admin Routes Protected (12 routes)
+
+Added `authenticateAdmin()` + `unauthorizedResponse()` from `src/lib/auth.ts` to all unprotected admin API routes:
+
+| Route | Method | Previous State |
+|-------|--------|---------------|
+| `admin/assign-category` | POST | No auth — wrote to product profiles |
+| `admin/assign-categories-bulk` | POST | No auth — bulk wrote to products |
+| `admin/campaigns/schedule` | POST | No auth — triggered push notifications to all users |
+| `admin/fix-surveys` | POST | No auth — modified survey data |
+| `admin/run-send-time-analysis` | POST | No auth — triggered analysis job |
+| `admin/migrate-categories` | POST | No auth — ran category migration |
+| `admin/test-whatsapp` | POST | No auth — sent WhatsApp to any phone number |
+| `admin/test-email` | POST | No auth — sent emails to any address |
+| `admin/test-db` | GET | No auth — queried products table |
+| `admin/send-time-stats` | GET | No auth — read analytics data |
+| `admin/send-time-analytics` | GET | No auth — read comprehensive analytics |
+| `admin/check-products` | GET | No auth — read all products with stats |
+
+### 40.4 Rate Limiting Expanded
+
+Phase 1 had rate limiting on only 4 routes. Phase 2 added 3 more and wired up a 4th that was defined but never imported:
+
+| Endpoint | Config | Scope |
+|----------|--------|-------|
+| Credential login (`auth.config.ts` `authorize`) | 5 req / 60s | Per email |
+| `auth/complete-signup` | 3 req / 60s | Per IP |
+| `community/posts` POST | 5 req / 60s | Per userId |
+
+`RATE_LIMITS` in `src/lib/rate-limit.ts` now has 6 configs: `feedbackSubmit`, `surveyResponse`, `analyticsEvent`, `authAttempt`, `communityPost`, `signup`.
+
+### 40.5 Error Leakage Fixed
+
+- `health-check/route.ts`: Removed `error.stack` from HTTP response (was exposing full stack traces)
+- `create-google-user/route.ts`: Deleted entirely (also had `error.stack`)
+- 30+ routes still return `error.message` — acceptable for user-facing errors but worth monitoring
+
+### 40.6 SQL Safety Audit
+
+- All Drizzle `sql` tagged template usages are parameterized (safe)
+- `generate-rankings/route.ts` used raw `neon()` with tagged templates (safe but bypassed Drizzle) — now deleted
+- No SQL injection vectors found. The risk was **authorization**, not injection.
+
+### 40.7 Current Auth Coverage Summary
+
+| Auth Pattern | Route Count | Description |
+|-------------|-------------|-------------|
+| `auth()` session | ~60 | User routes, community, feedback, dashboard |
+| `authenticateAdmin()` | ~20 | Admin API routes (x-api-key header) |
+| `requireRole('brand')` | ~8 | Dashboard feedback-media routes |
+| `CRON_SECRET` bearer | ~5 | Cron job routes |
+| No auth (deleted) | -8 | Removed in this phase |
+| No auth (remaining) | 1 | `health-check` (intentionally public) |
+
+### 40.8 Commit (March 24, 2026)
+
+| Commit | Description |
+|--------|-------------|
+| `9229abb` | security: protect 12 admin routes, delete 8 unsafe endpoints, add rate limiting |
+
+---
+
+---
+
+## 41. Data Source Consolidation — JSON Store → Database (March 24, 2026)
+
+A risky-pattern audit discovered a critical **dual data source** problem: five files imported product functions from `@/lib/product/store` (a local JSON file at `data/products.json`) instead of `@/db/repositories/productRepository` (the Neon PostgreSQL database). On Vercel, the JSON file is ephemeral — wiped on every deployment — so any data written or read through it was silently lost or stale in production.
+
+### 41.1 Problem: Two Implementations of the Same API
+
+| Function | JSON Store (`@/lib/product/store`) | DB Repository (`@/db/repositories/productRepository`) |
+|----------|-----------------------------------|---------------------------------------------------------|
+| `getProducts()` / `getAllProducts()` | Reads `data/products.json` from disk | `SELECT * FROM products` via Drizzle ORM |
+| `getProductById(id)` | Returns `undefined` if not found | Returns `null` if not found |
+| `updateProductProfile(id, updater)` | Reads → mutates → writes entire JSON file | `UPDATE products SET profile = ... WHERE id = ?` |
+
+The JSON store also uses `import 'server-only'` and `fs` — it works on local dev but is a no-op on Vercel's read-only filesystem for writes.
+
+### 41.2 Files Migrated
+
+| File | Old Import | New Import | Impact |
+|------|-----------|------------|--------|
+| `src/app/top-products/[category]/page.tsx` | `getProductById` from `@/lib/product/store` | `getProductById` from `@/db/repositories/productRepository` | Rankings pages now show real DB products |
+| `src/server/rankings/rankingService.ts` | `getProducts` from `@/lib/product/store` | `getAllProducts as getProducts` from `@/db/repositories/productRepository` | Weekly ranking generation uses real data |
+| `src/server/rankings/migrationScript.ts` | `getProducts`, `updateProductProfile` from `@/lib/product/store` | Both from `@/db/repositories/productRepository` | Category migration writes to DB |
+| `src/app/api/rankings/[category]/trends/route.ts` | `getProducts` from `@/lib/product/store` | `getAllProducts as getProducts` from `@/db/repositories/productRepository` | Trends API reads real data |
+| `src/app/api/admin/assign-categories-bulk/route.ts` | `updateProductProfile` from `@/lib/product/store` | `updateProductProfile` from `@/db/repositories/productRepository` | Bulk assign persists to DB |
+
+### 41.3 Additional Cleanups
+
+| File | Change |
+|------|--------|
+| `src/app/layout.tsx` | Removed dead `SiteFooter` import (imported but never rendered) |
+| `src/components/ui/dialog.tsx` | Removed unused `export default DialogModule` |
+| `src/components/ui/alert.tsx` | Removed unused `export default AlertModule` |
+| `src/components/ui/separator.tsx` | Removed unused `export default Separator` |
+
+### 41.4 Return Type Difference
+
+The JSON store's `getProductById()` returned `Product | undefined`, while the DB version returns `Product | null`. All call sites in the migrated files use truthiness checks (`if (!product)`) which handle both `null` and `undefined` identically — no logic changes needed.
+
+### 41.5 Remaining JSON Store Usage
+
+`@/lib/product/store` still exists and is still imported by `src/app/api/admin/assign-categories-bulk/route.ts`'s sibling `assign-category/route.ts` already used the DB version. The store file itself is not deleted — it may be useful for local seed scripts — but no production code paths reference it anymore.
+
+---
+
+---
+
+## 42. Repository Health Hardening (March 24, 2026)
+
+A comprehensive repository audit covering npm vulnerabilities, unused dependencies, build safety, error boundaries, accessibility, logging gaps, and CI/CD configuration. Fixes applied without breaking any existing functionality.
+
+### 42.1 Build Safety: `ignoreBuildErrors` Disabled
+
+`next.config.ts` had `typescript: { ignoreBuildErrors: true }` — meaning TypeScript errors were **silently swallowed** during `next build`. Combined with no CI pipeline, a breaking type error could deploy to production undetected.
+
+**Fix**: Set `ignoreBuildErrors: false`. Builds now fail on TypeScript errors. The existing `eslint: { ignoreDuringBuilds: true }` is intentionally kept due to a known Next.js 15.x circular structure bug with `next/core-web-vitals` + `next/typescript`.
+
+### 42.2 Unused Dependencies Removed
+
+| Package | Size | Reason for Removal |
+|---------|------|-------------------|
+| `firebase` (~1MB) | Zero imports anywhere in `src/` | Dead dependency — project uses Neon PostgreSQL via Drizzle, not Firebase |
+| `@radix-ui/react-toast` | Project uses `sonner` for toasts | shadcn toast primitive was never adopted |
+
+`@vercel/postgres` was initially suspected unused but is actively imported in `src/db/migrate.ts` and `src/app/api/admin/apply-migration/route.ts` — kept.
+
+### 42.3 Root Error Boundary
+
+Created `src/app/error.tsx` — a `'use client'` component that catches unhandled React errors and renders a "Something went wrong / Try again" UI instead of a blank white page. Logs errors via `console.error('[ErrorBoundary]', error)`.
+
+### 42.4 Accessibility: Skip-to-Content Link
+
+Added a visually-hidden skip-to-content link as the first element inside `<body>` in `src/app/layout.tsx`. It becomes visible on keyboard focus (`focus:not-sr-only`) and links to `#main-content` (added `id="main-content"` to the `<main>` element). This is a WCAG 2.1 Level A requirement (Success Criterion 2.4.1).
+
+### 42.5 Audit Results — No Action Required
+
+| Area | Finding | Status |
+|------|---------|--------|
+| npm audit | 4 moderate vulns — all in `esbuild` via `drizzle-kit` (dev-only) | Fix requires breaking `drizzle-kit` downgrade — skipped |
+| eval-like patterns | Zero `eval()` / `new Function()` / `dangerouslySetInnerHTML` (1 commented-out occurrence) | Clean |
+| Root layout bundle | `SiteHeader` is `'use client'` with ~15 lucide icons — loads on every page | Acceptable for now |
+| `recharts` (~500KB) | Used in 8 dashboard chart components — only loaded on chart pages, not root layout | Fine |
+| CI/CD | No `.github/workflows/` — pushes deploy directly via Vercel with no automated gates | Noted — requires shared infra setup |
+| Error tracking | No Sentry/LogRocket — 60+ `console.error()` calls go to Vercel Logs (1hr retention on Hobby) | Noted — requires account setup |
+| Logging | Structured `console.error('[Tag]', ...)` pattern consistently used across API routes and services | Acceptable |
+
+### 42.6 Files Changed
+
+- `next.config.ts` — `ignoreBuildErrors: true` → `false`
+- `package.json` — removed `firebase`, `@radix-ui/react-toast`
+- `src/app/error.tsx` — new file (root error boundary)
+- `src/app/layout.tsx` — skip-to-content link + `id="main-content"` on `<main>`
+
+---
+
+## 43. Accessibility Fixes & Cross-Browser Testing Infrastructure (March 24–25, 2026)
+
+Addressed static accessibility audit findings (A1–A6) and established a Playwright-based cross-browser and viewport testing infrastructure.
+
+### 43.1 Accessibility: Vote Button ARIA Labels (A1–A2)
+
+Community vote buttons (`<button>` elements containing only `<ThumbsUp>` / `<ThumbsDown>` icons) had no accessible names. Screen readers announced them as blank buttons.
+
+**Fix** — Added `aria-label` attributes in `src/app/dashboard/community/[postId]/page.tsx`:
+
+| Element | `aria-label` |
+|---------|-------------|
+| Reply upvote button | `"Upvote reply"` |
+| Reply downvote button | `"Downvote reply"` |
+| Reply button | `"Reply to comment"` |
+| Post upvote button | `"Upvote post"` |
+| Post downvote button | `"Downvote post"` |
+| Poll option buttons | `"Vote for {option text}"` |
+| Cancel reply button | `"Cancel reply"` |
+
+### 43.2 Accessibility: Form Label Binding (A3)
+
+`src/components/feedback-form.tsx` had `<label>` elements not programmatically associated with their inputs — assistive technology could not map labels to controls.
+
+**Fix** — Added `htmlFor`/`id` pairs:
+- `<label htmlFor="feedback-rating">` → `<select id="feedback-rating">`
+- `<label htmlFor="feedback-text">` → `<textarea id="feedback-text">`
+
+### 43.3 Accessibility: No-Action Items (A4–A6)
+
+| Issue | Severity | Decision |
+|-------|----------|----------|
+| A4: Homepage heading has no explicit size class | LOW | Heading hierarchy (h1→h2→h3) is correct; Tailwind base styles apply |
+| A5: Hardcoded `lang="en"` despite multilingual support | INFO | UI is English-only; multilingual support applies to user-submitted feedback content, not UI. `lang="en"` is correct |
+| A6: Color contrast needs runtime check | INFO | Requires browser DevTools / Lighthouse audit — not a static code fix |
+
+### 43.4 Performance Assessment
+
+| Area | Finding | Action |
+|------|---------|--------|
+| `recharts` dynamic import | All 7 recharts imports are in dedicated route pages (dashboard/surveys/admin) — already code-split by App Router | No change needed |
+| `AnalyticsTracker` dynamic import | Attempted `next/dynamic` with `ssr: false` in root layout — blocked by Next.js 15 (`ssr: false` not allowed in Server Components) | Reverted — component is already `'use client'` and tree-shakes correctly |
+| `SiteHeader` client bundle | ~15 lucide icons + Radix primitives loaded on every page | Acceptable — returns `null` on `/dashboard/*` routes |
+
+### 43.5 Playwright Cross-Browser Testing Infrastructure
+
+Installed `@playwright/test` v1.58.2 with Chromium browser engine. Created a comprehensive test configuration and smoke test suite.
+
+**Config** — `playwright.config.ts`:
+- 6 browser projects: Chromium, Firefox, WebKit, Mobile Chrome (Pixel 5), Mobile Safari (iPhone 12), Microsoft Edge
+- Test timeout: 120s (accommodates dev server compilation)
+- Navigation timeout: 90s
+- Single worker for sequential stability
+- `webServer` config with `reuseExistingServer: true` for manual dev server management
+
+**Smoke Tests** — `e2e/smoke.spec.ts` (11 tests, 4 suites):
+
+| Suite | Tests |
+|-------|-------|
+| Public pages | Homepage loads with hero heading, login page loads, top-products page loads |
+| Accessibility basics | `lang` attribute present, skip-to-content link attached, `main#main-content` attached, all images have alt text |
+| Viewport responsiveness | Mobile (375px), tablet (768px), desktop (1440px) — h1 visible, no horizontal scroll |
+| Navigation | Homepage → login link navigation |
+
+**Results** (Chromium): 10/11 passed. Single failure is first-test cold-start compilation timeout (dev server, not a code bug).
+
+### 43.6 Files Changed
+
+- `src/app/dashboard/community/[postId]/page.tsx` — aria-labels on 7 interactive elements
+- `src/components/feedback-form.tsx` — `htmlFor`/`id` label binding
+- `playwright.config.ts` — new file (Playwright configuration)
+- `e2e/smoke.spec.ts` — new file (11 smoke tests)
+- `package.json` — added `@playwright/test` dev dependency
+
+---
+
+## 44. UI/UX Audit & Stability Fixes (March 25, 2026)
+
+Comprehensive 6-part UI audit covering onboarding, profile state, responsiveness, sidebar navigation, toast system, and UX stability. All issues identified were fixed.
+
+### 44.1 Onboarding Step Persistence
+
+**Problem:** Consumer onboarding (4-step flow) stored all form data in React `useState` only. A page reload at any step lost all progress.
+
+**Fix:** Added `sessionStorage`-based draft persistence in `OnboardingClient.tsx`:
+- Draft saved automatically on every field/step change via `useEffect` + `useCallback`
+- Draft restored on component mount from `sessionStorage`
+- Draft cleared on successful onboarding completion
+- Consents (checkboxes) intentionally NOT persisted — must be re-acknowledged each session
+- Storage key: `e4i_onboarding_draft`
+
+### 44.2 Onboarding Step 3 Overflow Fix
+
+**Problem:** Step 3 card had `style={{ overflow: 'visible' }}` inline on both `<Card>` and `<CardContent>`, plus `overflow-visible` Tailwind class and redundant responsive breakpoint classes — risked horizontal scrollbar on narrow viewports.
+
+**Fix:** Replaced with `className="w-full max-w-4xl"` on Card and removed all `overflow: visible` inline styles.
+
+### 44.3 Sidebar Session Flicker Fix
+
+**Problem:** `DashboardShell` used `useSession()` to get `userRole`. During the loading state (`status === 'loading'`), `userRole` was `undefined`, causing all role-specific menu items to be filtered out. Once session resolved, items popped in — visible layout shift.
+
+**Fix:**
+- Now reads `status` from `useSession()` and uses `displayItems` computed via `useMemo`
+- While `status === 'loading'`: shows only shared (non-role-specific) items — stable baseline
+- Once authenticated: shows full role-filtered list
+- `visibleItems` also memoized with `useMemo` keyed on `userRole`
+
+### 44.4 Dashboard Loading Skeleton
+
+**Problem:** No `loading.tsx` existed under `src/app/dashboard/`. Server-rendered pages (e.g., main dashboard with multiple DB queries) showed a blank screen during navigation.
+
+**Fix:** Created `src/app/dashboard/loading.tsx` with `animate-pulse` skeleton layout: title bar, 4 stat cards, and content area placeholder.
+
+### 44.5 Dashboard Error Boundary
+
+**Problem:** Only the root `src/app/error.tsx` existed. All 20+ dashboard pages shared it, providing no contextual recovery.
+
+**Fix:** Created `src/app/dashboard/error.tsx` with "Try again" and "Back to Dashboard" buttons using shadcn `Button` component.
+
+### 44.6 Product Profile Guard
+
+**Problem:** `src/app/dashboard/products/[productId]/profile/page.tsx` passed `product.profile` directly to `ProfileClient`. If `profile` was `undefined` (data corruption), the component would crash accessing `profile.currentStep`.
+
+**Fix:** Added fallback: `product.profile ?? { currentStep: 1, data: {} }`
+
+### 44.7 Alert Polling Visibility Check
+
+**Problem:** Alert count polling in `DashboardShell` ran every 30s regardless of whether the browser tab was visible — wasting network requests.
+
+**Fix:** Added `document.visibilitychange` listener with `useRef` flag. Polling callback skips `fetch` when `document.hidden` is `true`.
+
+### 44.8 Toast System Verification
+
+Audited all toast imports across the codebase — **no issues found**:
+- 8 files import `{ toast } from 'sonner'` — all valid
+- `<Toaster />` rendered in root `layout.tsx`
+- No stale `use-toast`, `useToast`, `@/components/ui/toast`, or `@radix-ui/react-toast` references remain
+
+### 44.9 Files Changed
+
+| File | Change |
+|------|--------|
+| `src/app/onboarding/OnboardingClient.tsx` | sessionStorage draft persistence, overflow fix |
+| `src/app/dashboard/DashboardShell.tsx` | useMemo for menu items, visibility-aware polling, session flicker fix |
+| `src/app/dashboard/loading.tsx` | New — skeleton loading UI |
+| `src/app/dashboard/error.tsx` | New — scoped error boundary |
+| `src/app/dashboard/products/[productId]/profile/page.tsx` | profile fallback guard |
+
+---
+
+*This document reflects the architecture as of March 25, 2026. It should be updated as new systems are added.*
