@@ -46,6 +46,4 @@ export function AlertDescription({
   );
 }
 
-// Optional default export (not strictly required, but harmless)
-const AlertModule = { Alert, AlertTitle, AlertDescription };
-export default AlertModule;
+

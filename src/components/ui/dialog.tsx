@@ -173,5 +173,3 @@ const DialogModule = {
   DialogDescription,
   DialogClose,
 };
-
-export default DialogModule;
