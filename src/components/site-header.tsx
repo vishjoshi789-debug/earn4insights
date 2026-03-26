@@ -54,7 +54,7 @@ export function SiteHeader() {
               <SheetTitle>
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-2">
-                    <Logo size={40} />
+                    <Logo size={48} />
                     <span className="font-bold font-headline text-lg">Earn4Insights</span>
                   </div>
                   <span className="text-[10px] text-muted-foreground font-normal leading-tight pl-1">
@@ -112,7 +112,7 @@ export function SiteHeader() {
 
         {/* Logo + brand — takes center space, shrinks if needed */}
         <Link href="/" className="flex min-w-0 items-center gap-2 group">
-          <Logo size={32} className="shrink-0" />
+          <Logo size={40} className="shrink-0" />
           <div className="flex min-w-0 flex-col">
             <span className="truncate font-bold font-headline text-sm md:text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all leading-tight">
               Earn4Insights

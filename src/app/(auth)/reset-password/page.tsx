@@ -154,7 +154,7 @@ export default function ResetPasswordPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-3">
           <div className="flex flex-col items-center gap-1">
-            <Logo size={48} />
+            <Logo size={56} />
             <span className="font-headline font-bold text-lg">Earn4Insights</span>
             <span className="text-[10px] text-muted-foreground">
               Real Voices. Measurable Intelligence.

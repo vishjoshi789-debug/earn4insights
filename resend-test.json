@@ -1,0 +1,24 @@
+{
+  "data": null,
+  "error": {
+    "statusCode": 403,
+    "name": "validation_error",
+    "message": "You can only send testing emails to your own email address (vishjoshi789@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+  },
+  "headers": {
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "9e2358028c207faf-MAA",
+    "connection": "keep-alive",
+    "content-encoding": "br",
+    "content-type": "application/json",
+    "date": "Thu, 26 Mar 2026 04:17:07 GMT",
+    "ratelimit-limit": "5",
+    "ratelimit-policy": "5;w=1",
+    "ratelimit-remaining": "4",
+    "ratelimit-reset": "1",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked",
+    "x-resend-daily-quota": "0",
+    "x-resend-monthly-quota": "0"
+  }
+}
