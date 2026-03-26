@@ -67,7 +67,6 @@ export function SiteHeader() {
               {/* Public Pages */}
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">Explore</p>
               <MobileNavLink href="/top-products" icon={Trophy} label="Rankings" onClick={() => setMobileMenuOpen(false)} />
-              <MobileNavLink href="/submit-feedback" icon={MessageSquare} label="Give Feedback" onClick={() => setMobileMenuOpen(false)} />
 
               {user && (
                 <>
@@ -131,12 +130,6 @@ export function SiteHeader() {
             className="font-medium transition-colors hover:text-primary"
           >
             Rankings
-          </Link>
-          <Link
-            href="/submit-feedback"
-            className="font-medium transition-colors hover:text-primary"
-          >
-            Give Feedback
           </Link>
           {user && (
             <Link

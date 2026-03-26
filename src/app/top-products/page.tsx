@@ -4,7 +4,7 @@ import { CATEGORY_ICONS, getCategoryName, CATEGORY_KEYS } from '@/lib/categories
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { TrendingUp, TrendingDown, Minus, Trophy, Star, Users } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, Trophy, Star, Users, MessageSquare } from 'lucide-react'
 import { RankingsViewTracker } from './RankingsViewTracker'
 
 export const metadata = {
@@ -33,6 +33,16 @@ export default async function TopProductsPage() {
           <p className="text-xl text-center text-blue-100 max-w-2xl mx-auto">
             Ranked by real user feedback, NPS scores, sentiment analysis, and engagement metrics
           </p>
+
+          <div className="mt-6 flex justify-center">
+            <Link
+              href="/submit-feedback"
+              className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-sm px-6 py-3 text-sm font-semibold text-white hover:bg-white/25 transition-colors border border-white/20"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Share Your Feedback on a Product
+            </Link>
+          </div>
           
           {rankings.length > 0 && (
             <div className="mt-8 flex justify-center gap-8 text-center">
