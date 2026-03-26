@@ -45,7 +45,7 @@ export async function sendRankingNotification(data: RankingEmailData) {
       : `📊 ${data.productName} is #${data.rank} this week`
 
     const { data: emailData, error } = await client.emails.send({
-      from: process.env.EMAIL_FROM || 'rankings@brandpulse.com',
+      from: process.env.EMAIL_FROM || 'rankings@earn4insights.com',
       to: data.ownerEmail,
       subject,
       html: generateRankingEmailHTML(data, rankChange),
@@ -145,7 +145,7 @@ function generateRankingEmailHTML(data: RankingEmailData, rankChange: number | n
                 Rankings are updated every Monday based on user feedback, NPS scores, and engagement metrics.
               </p>
               <p style="margin: 10px 0 0 0; font-size: 12px; color: #d1d5db;">
-                © ${new Date().getFullYear()} BrandPulse. All rights reserved.
+                © ${new Date().getFullYear()} Earn4Insights. All rights reserved.
               </p>
             </div>
           </div>
