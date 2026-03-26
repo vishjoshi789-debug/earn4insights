@@ -66,15 +66,16 @@ export async function POST(request: Request) {
     })
 
     // Build reset URL
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+      || process.env.NEXTAUTH_URL
+      || 'http://localhost:3000'
     const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`
 
     // Send email via Resend
     if (process.env.RESEND_API_KEY) {
       const { error } = await resend.emails.send({
-        from: process.env.EMAIL_FROM || 'noreply@earn4insights.com',
+        from: process.env.EMAIL_FROM || 'Earn4Insights <notifications@earn4insights.com>',
         to: normalizedEmail,
         subject: 'Reset your Earn4Insights password',
         html: buildResetEmailHTML(user.name || 'there', resetUrl),
