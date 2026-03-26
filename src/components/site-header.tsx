@@ -67,28 +67,44 @@ export function SiteHeader() {
               {/* Public Pages */}
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">Explore</p>
               <MobileNavLink href="/top-products" icon={Trophy} label="Rankings" onClick={() => setMobileMenuOpen(false)} />
-              <MobileNavLink href="/submit-feedback" icon={MessageSquare} label="Submit Feedback" onClick={() => setMobileMenuOpen(false)} />
-              <MobileNavLink href="/community" icon={MessagesSquare} label="Community" onClick={() => setMobileMenuOpen(false)} />
+              <MobileNavLink href="/submit-feedback" icon={MessageSquare} label="Give Feedback" onClick={() => setMobileMenuOpen(false)} />
 
               {user && (
                 <>
-                  <div className="border-t my-3" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">Dashboard</p>
-                  <MobileNavLink href="/dashboard" icon={LayoutDashboard} label="Overview" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/products" icon={Package} label="Products" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/rankings" icon={Trophy} label="Weekly Top 10" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/feedback" icon={MessageSquare} label="Feedback" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/social" icon={Users} label="Social" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/community" icon={MessagesSquare} label="Community" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/surveys" icon={BarChart3} label="Surveys & NPS" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/analytics/unified" icon={TrendingUp} label="Unified Analytics" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/rewards" icon={Award} label="Rewards" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/payouts" icon={HandCoins} label="Payouts" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/detailed-analytics" icon={FileText} label="Detailed Analytics" onClick={() => setMobileMenuOpen(false)} />
-                  <MobileNavLink href="/dashboard/launch" icon={PackagePlus} label="Launch Product" onClick={() => setMobileMenuOpen(false)} />
+                  {(() => {
+                    const role = (user as any).role as 'brand' | 'consumer' | undefined
+                    return (
+                      <>
+                        <div className="border-t my-3" />
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">Dashboard</p>
+                        <MobileNavLink href="/dashboard" icon={LayoutDashboard} label="Overview" onClick={() => setMobileMenuOpen(false)} />
+                        <MobileNavLink href="/dashboard/products" icon={Package} label="Products" onClick={() => setMobileMenuOpen(false)} />
+                        <MobileNavLink href="/dashboard/rankings" icon={Trophy} label="Weekly Top 10" onClick={() => setMobileMenuOpen(false)} />
+                        {role === 'brand' && (
+                          <>
+                            <MobileNavLink href="/dashboard/feedback" icon={MessageSquare} label="Feedback Hub" onClick={() => setMobileMenuOpen(false)} />
+                            <MobileNavLink href="/dashboard/surveys" icon={BarChart3} label="Surveys & NPS" onClick={() => setMobileMenuOpen(false)} />
+                            <MobileNavLink href="/dashboard/analytics" icon={TrendingUp} label="Audience Analytics" onClick={() => setMobileMenuOpen(false)} />
+                            <MobileNavLink href="/dashboard/detailed-analytics" icon={FileText} label="Product Deep Dive" onClick={() => setMobileMenuOpen(false)} />
+                            <MobileNavLink href="/dashboard/launch" icon={PackagePlus} label="Launch Product" onClick={() => setMobileMenuOpen(false)} />
+                          </>
+                        )}
+                        {role === 'consumer' && (
+                          <>
+                            <MobileNavLink href="/dashboard/submit-feedback" icon={MessageSquare} label="Submit Feedback" onClick={() => setMobileMenuOpen(false)} />
+                            <MobileNavLink href="/dashboard/my-feedback" icon={FileText} label="My Feedback" onClick={() => setMobileMenuOpen(false)} />
+                            <MobileNavLink href="/dashboard/rewards" icon={Award} label="Rewards" onClick={() => setMobileMenuOpen(false)} />
+                            <MobileNavLink href="/dashboard/payouts" icon={HandCoins} label="Payouts" onClick={() => setMobileMenuOpen(false)} />
+                          </>
+                        )}
+                        <MobileNavLink href="/dashboard/social" icon={Users} label="Social" onClick={() => setMobileMenuOpen(false)} />
+                        <MobileNavLink href="/dashboard/community" icon={MessagesSquare} label="Community" onClick={() => setMobileMenuOpen(false)} />
 
-                  <div className="border-t my-3" />
-                  <MobileNavLink href="/dashboard/settings" icon={Settings} label="Settings" onClick={() => setMobileMenuOpen(false)} />
+                        <div className="border-t my-3" />
+                        <MobileNavLink href="/dashboard/settings" icon={Settings} label="Settings" onClick={() => setMobileMenuOpen(false)} />
+                      </>
+                    )
+                  })()}
                 </>
               )}
             </nav>
@@ -120,14 +136,16 @@ export function SiteHeader() {
             href="/submit-feedback"
             className="font-medium transition-colors hover:text-primary"
           >
-            Submit Feedback
+            Give Feedback
           </Link>
-          <Link
-            href="/community"
-            className="font-medium transition-colors hover:text-primary"
-          >
-            Community
-          </Link>
+          {user && (
+            <Link
+              href="/dashboard/community"
+              className="font-medium transition-colors hover:text-primary"
+            >
+              Community
+            </Link>
+          )}
         </nav>
         {/* Spacer pushes buttons to the right on mobile */}
         <div className="flex-1 md:hidden" />
