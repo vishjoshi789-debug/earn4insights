@@ -893,6 +893,45 @@ export const trustFlags = pgTable('trust_flags', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ════════════════════════════════════════════════════════════════
+// SECTION: IMPORT JOBS (Self-Serve Data Import Tracking)
+// ════════════════════════════════════════════════════════════════
+
+export const importJobs = pgTable('import_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  
+  // Import source & method
+  source: text('source').notNull(), // 'csv' | 'webhook_v1' | 'webhook_v2'
+  fileName: text('file_name'), // Original filename for CSV imports
+  
+  // Column mapping (for CSV imports)
+  columnMapping: jsonb('column_mapping').$type<Record<string, string>>(), 
+  // e.g. { "Product ID": "productId", "Review Text": "feedbackText", "Stars": "rating" }
+  
+  // Status tracking
+  status: text('status').notNull().default('pending'),
+  // 'pending' | 'processing' | 'completed' | 'failed' | 'partial'
+  
+  // Counts
+  totalRows: integer('total_rows').notNull().default(0),
+  importedRows: integer('imported_rows').notNull().default(0),
+  skippedRows: integer('skipped_rows').notNull().default(0),
+  duplicateRows: integer('duplicate_rows').notNull().default(0),
+  
+  // Error tracking
+  errors: jsonb('errors').$type<string[]>().default([]),
+  
+  // Default product assignment
+  defaultProductId: text('default_product_id'),
+  
+  // Metadata
+  metadata: jsonb('metadata').$type<Record<string, any>>(),
+  
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+})
+
 // ── Password Reset Tokens ────────────────────────────────────────
 export const passwordResetTokens = pgTable('password_reset_tokens', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -979,3 +1018,5 @@ export type BrandQualityFeedbackRow = typeof brandQualityFeedback.$inferSelect
 export type TrustFlag = typeof trustFlags.$inferSelect
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect
 export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert
+export type ImportJob = typeof importJobs.$inferSelect
+export type NewImportJob = typeof importJobs.$inferInsert
