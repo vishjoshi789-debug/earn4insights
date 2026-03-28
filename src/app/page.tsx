@@ -223,6 +223,36 @@ export default function HomePage() {
                 </Link>
               </CardContent>
             </Card>
+
+            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+                  <MessagesSquare className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-sm">Community</h3>
+                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                  Engage with your audience directly — join conversations, share updates, and see what consumers are talking about.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
+                  Book a Demo <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+                  <Users className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-sm">Social</h3>
+                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                  Monitor social discussions around your products, track consumer sentiment publicly, and build brand presence.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
+                  Book a Demo <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
