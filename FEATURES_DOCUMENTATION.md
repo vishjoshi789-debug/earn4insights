@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** March 24, 2026  
+> **Last updated:** March 27, 2026  
 > **Platform:** Next.js 15 + Drizzle ORM + PostgreSQL + Vercel  
 > **Domain:** [earn4insights.com](https://earn4insights.com)
 
@@ -45,6 +45,10 @@
 35. [Security Audit & Hardening (March 24, 2026)](#35-security-audit--hardening-march-24-2026)
 36. [Deep Security Hardening — Phase 2 (March 24, 2026)](#36-deep-security-hardening--phase-2-march-24-2026)
 37. [Data Source Consolidation — JSON Store → Database (March 24, 2026)](#37-data-source-consolidation--json-store--database-march-24-2026)
+38. [Repository Health Hardening (March 24, 2026)](#38-repository-health-hardening-march-24-2026)
+39. [Accessibility Fixes & Cross-Browser Testing (March 24–25, 2026)](#39-accessibility-fixes--cross-browser-testing-march-2425-2026)
+40. [UI/UX Audit & Stability Fixes (March 25, 2026)](#40-uiux-audit--stability-fixes-march-25-2026)
+41. [Self-Serve Import System & Downstream Analytics Coverage (March 27, 2026)](#41-self-serve-import-system--downstream-analytics-coverage-march-27-2026)
 
 ---
 
@@ -1069,7 +1073,7 @@ Platform Adapter → Dedup → Relevance Score → Sentiment Analysis → DB →
 ```
 
 ### Cross-App Integration
-Social data feeds into: Rankings (10% weight), Product Health Score, Feature Sentiment, Category Intelligence, Theme Extraction, Consumer Intelligence.
+Social data feeds into: Rankings (10% weight), Product Health Score, Feature Sentiment, Category Intelligence, and Theme Extraction. Consumer Intelligence is driven primarily by `feedback` joined with `userProfiles`, not raw `social_posts`.
 
 ### UI
 - Dashboard page: `/dashboard/social`
@@ -1683,4 +1687,100 @@ Comprehensive 6-part UI audit followed by fixes for all identified issues.
 
 ---
 
-*This document covers all features implemented as of March 25, 2026. Update this file when adding new features.*
+## 41. Self-Serve Import System & Downstream Analytics Coverage (March 27, 2026)
+
+### Overview
+
+Brand users can now import external feedback data themselves through a dashboard workflow instead of depending on manual DB work or rigid CSV formats.
+
+### Brand UX
+
+- New navigation item for brand users: `/dashboard/import`
+- CSV upload flow is now two-step:
+  1. Upload and preview
+  2. Map columns and confirm import
+- Import history panel shows recent jobs with status, imported count, skipped count, duplicate count, and total rows
+- Downloadable CSV template included on the page
+
+### Smart Column Mapping
+
+The import UI auto-detects common source headers for:
+
+- Product ID
+- Feedback Text
+- Rating
+- User Name
+- User Email
+- Category
+
+If the file does not contain a product identifier column, the user can assign all rows to one owned product.
+
+### CSV Import API
+
+`POST /api/import/csv` supports two modes:
+
+- `action=preview` — parse CSV, return headers, sample rows, row count, survey format detection
+- `action=import` — apply mapping, validate rows, deduplicate, analyze sentiment, persist into `feedback`
+
+Validation rules:
+
+- only `.csv`
+- max 5 MB
+- max 500 rows
+- requires `feedbackText`
+- requires either mapped `productId` or `defaultProductId`
+
+### Survey Import Support
+
+The importer detects and normalizes exports from:
+
+- Google Forms
+- SurveyMonkey
+- Typeform
+- generic Q&A style CSVs
+
+Survey answers are transformed into a single feedback body so they can participate in the same downstream analytics pipeline as direct feedback.
+
+### Import Tracking
+
+New table: `import_jobs`
+
+Tracks brand ID, source, original file name, selected column mapping, default product, status, row counters, errors, and timestamps.
+
+Related APIs:
+
+- `GET /api/import/jobs`
+- `GET /api/import/products`
+
+### Dedup + Metadata
+
+- Duplicate detection uses SHA-256 of `productId:feedbackText`
+- Imported rows are tagged in `feedback.multimodalMetadata` with `importSource`, `importJobId`, `fileName`, and optional survey format metadata
+
+### Verified Downstream Coverage
+
+Imported data reaches these systems because it is saved into the canonical `feedback` table:
+
+| System | Coverage |
+|---|---|
+| Feedback Hub | Full |
+| Product Deep Dive | Full |
+| Weekly Rankings | Full |
+| Feature Insights | Full |
+| Product Health Score | Full |
+| Category Intelligence | Full |
+| Consumer Intelligence | Partial for segmentation; full for raw feedback metrics |
+
+### Consumer Intelligence Caveat
+
+Consumer Intelligence joins feedback rows to `userProfiles` using email. Imported feedback helps immediately with overall counts, rating, and sentiment, but demographic segmentation only improves when imported emails match known user profiles.
+
+### Status
+
+- Import system committed and pushed: `9a67eeb` (`feat: self-serve import system (P0-P4)`)
+- Build verification completed successfully on March 27, 2026
+- Earlier email branding fix: `37ae2e1`
+
+---
+
+*This document covers all features implemented as of March 27, 2026. Update this file when adding new features.*

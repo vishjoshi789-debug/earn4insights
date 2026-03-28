@@ -51,6 +51,7 @@
 42. [Repository Health Hardening (March 24, 2026)](#42-repository-health-hardening-march-24-2026)
 43. [Accessibility Fixes & Cross-Browser Testing Infrastructure (March 24–25, 2026)](#43-accessibility-fixes--cross-browser-testing-infrastructure-march-2425-2026)
 44. [UI/UX Audit & Stability Fixes (March 25, 2026)](#44-uiux-audit--stability-fixes-march-25-2026)
+45. [Self-Serve Import System & Analytics Data Flow Verification (March 27, 2026)](#45-self-serve-import-system--analytics-data-flow-verification-march-27-2026)
 
 ---
 
@@ -224,6 +225,7 @@ surveys                  → Survey definitions (questions as JSONB) linked to p
 survey_responses         → Individual survey submissions per user per survey
 feedback                 → Direct multimodal feedback per product
 feedback_media           → Audio / video / image files linked to survey_responses or feedback
+import_jobs              → CSV import tracking, column mapping, row counts, status, errors
 
 brand_subscriptions      → Tier (free/pro/enterprise) + Stripe fields per brand
 
@@ -2835,9 +2837,9 @@ Social data feeds into 6 existing analytics services:
 | Rankings Engine | `socialSentimentScore` field | 10% of total score |
 | Product Health Score | Social sentiment component | Weighted input |
 | Feature Sentiment | Social mentions of features | Cross-referenced |
-| Category Intelligence | Industry-level social trends | Aggregated |
+| Category Intelligence | Category-level product health, sentiment, and theme comparison | Feedback + surveys + social + extracted themes |
 | Theme Extraction | Social themes merged | Unified themes |
-| Consumer Intelligence | Segment social behavior | Behavioral data |
+| Consumer Intelligence | Segment feedback by demographic and behavioral profile | Feedback + user profiles |
 
 ### 32.6 API Routes
 
@@ -4161,4 +4163,83 @@ Audited all toast imports across the codebase — **no issues found**:
 
 ---
 
-*This document reflects the architecture as of March 25, 2026. It should be updated as new systems are added.*
+## 45. Self-Serve Import System & Analytics Data Flow Verification (March 27, 2026)
+
+Complete self-serve import capability was added for brand users, then traced through the downstream analytics stack to verify exactly where imported rows are consumed.
+
+### 45.1 What Was Added
+
+- New brand dashboard route: `/dashboard/import`
+- Guided CSV upload flow with preview, smart column mapping, and final import confirmation
+- New `import_jobs` table for operational tracking
+- New APIs:
+  - `POST /api/import/csv` — preview and import modes
+  - `GET /api/import/jobs` — import history
+  - `GET /api/import/products` — owned product list for default assignment
+
+### 45.2 Import Flow
+
+```
+Brand uploads CSV
+  ↓
+Preview mode parses headers + sample rows
+  ↓
+Column mapper auto-detects likely fields
+  ↓
+Brand confirms mapping or selects default product
+  ↓
+Import job created (status=processing)
+  ↓
+Rows validated → deduped → sentiment analyzed → inserted into feedback
+  ↓
+Import job updated with counts/errors/completion timestamp
+```
+
+### 45.3 CSV Mapping & Validation
+
+- Required logical fields: `feedbackText` and either `productId` or `defaultProductId`
+- Auto-detection supports common aliases such as `review`, `comment`, `stars`, `sku`, `email`, `customer name`
+- CSV constraints: `.csv` only, max 5 MB, max 500 rows
+- Default product assignment is available when the source file has no product identifier column
+- Ownership check ensures the selected default product belongs to the logged-in brand user
+
+### 45.4 Dedup, Survey Detection, and Persistence
+
+- Dedup uses SHA-256 hash of `productId:feedbackText` within the batch
+- Survey export detection supports Google Forms, SurveyMonkey, Typeform, and generic question/answer style CSVs
+- Survey-style imports are normalized into a single feedback body using `Q: ... / A: ...` blocks
+- Imported rows are stored in the existing `feedback` table with `multimodalMetadata.importSource='csv'` and `importJobId`
+
+### 45.5 Import Jobs Table
+
+`import_jobs` stores importer brand ID, source, original file name, chosen column mapping, status, row counters, error summaries, default product assignment, survey metadata, and completion timestamps.
+
+### 45.6 Verified Downstream Data Flow
+
+Imported rows are first-class `feedback` records, so any subsystem that queries `feedback` by `productId` automatically includes them.
+
+| System | Imported data status | Notes |
+|---|---|---|
+| Feedback Hub | Direct | Brand dashboard feedback views read `feedback` for owned products |
+| Product Deep Dive | Direct | Report pages aggregate feedback alongside surveys, rankings, and community/social context |
+| Weekly Rankings | Direct | `fetchAllDirectFeedback()` reads all feedback rows without filtering by import source |
+| Feature Insights | Direct | Reads product text from `feedback`, `surveyResponses`, and `socialPosts` |
+| Product Health Score | Direct | Uses `feedback`, `surveyResponses`, and `socialPosts` |
+| Category Intelligence | Direct | Built from per-product health/sentiment/theme data, which now includes imported feedback |
+| Consumer Intelligence | Partial/direct | Imported rows count if they exist in `feedback`; demographic segmentation depends on matching `userProfiles` by email |
+
+### 45.7 Important Nuance: Consumer Intelligence
+
+Consumer Intelligence is not driven by raw social posts. Its main input is product feedback joined to `user_profiles` by email. Imported CSV rows help immediately with product-level counts, average rating, and average sentiment. Demographic and behavioral segment breakdowns only improve when imported rows carry emails that resolve to known `user_profiles` records.
+
+### 45.8 Current Operational Status
+
+- Build verification completed successfully on March 27, 2026 (`npx next build`, exit code `0`)
+- TypeScript error checks returned clean for the import files and workspace
+- Import system committed and pushed on `main` as `9a67eeb`
+- Ranking email branding fix committed earlier as `37ae2e1`
+- WhatsApp notification infrastructure exists but Twilio credentials / Meta approval are still not configured
+
+---
+
+*This document reflects the architecture as of March 27, 2026. It should be updated as new systems are added.*
