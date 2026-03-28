@@ -9,7 +9,7 @@ export default function ContactUsPage() {
           For any questions, support, or partnership inquiries, please reach out to us:
         </p>
         <ul className="mb-4 text-lg text-muted-foreground">
-          <li><b>Email:</b> <a href="mailto:vishweshwar@earn4insights.com" className="text-purple-600 underline">vishweshwar@earn4insights.com</a></li>
+          <li><b>Email:</b> <a href="mailto:Contact@earn4insights.com" className="text-purple-600 underline">Contact@earn4insights.com</a></li>
           <li><b>Contact Number:</b> <a href="tel:+918830403955" className="text-purple-600 underline">+91-8830403955</a></li>
         </ul>
         <p className="text-lg text-muted-foreground">
