@@ -1,5 +1,5 @@
 /**
- * Brand Alert Service — Phase 1B
+ * Brand Alert Service — Phase 1B + Phase 9 (ICP-aware)
  *
  * Routes real-time signals to brands:
  * - New feedback received
@@ -7,6 +7,14 @@
  * - Survey completed
  * - High-intent consumer detected
  * - Watchlist milestone hit
+ * - ICP match: consumer crossed an ICP's score threshold (Phase 9)
+ *
+ * Phase 9 additions:
+ * - Alert rules can be ICP-gated (rule.icpId + rule.minMatchScore).
+ *   When set, the alert only fires if the consumer's cached match score
+ *   for that ICP meets the threshold. Score is computed on-demand if stale/missing.
+ * - brand_alerts now stores matchScoreSnapshot so brands can see why an
+ *   ICP-gated alert fired.
  *
  * Alerts are written to brand_alerts (in-app) and optionally queued
  * to notificationService (email channel). No WebSocket yet — dashboard
@@ -14,12 +22,16 @@
  */
 
 import { db } from '@/db'
-import { brandAlerts, brandAlertRules, products } from '@/db/schema'
+import { brandAlerts, brandAlertRules } from '@/db/schema'
 import { eq, and, desc, count, isNull, or } from 'drizzle-orm'
 import { queueNotification } from '@/server/notificationService'
 import { sendSlackNotification } from '@/server/slackNotifications'
 import { sendWhatsAppAlertMessage } from '@/server/whatsappNotifications'
 import { getUserProfile } from '@/db/repositories/userProfileRepository'
+import { getMatchScore, getIcpById } from '@/db/repositories/icpRepository'
+import { scoreConsumerForIcp } from '@/server/icpMatchScoringService'
+import type { IcpMatchBreakdown } from '@/db/repositories/icpRepository'
+import type { BrandAlert } from '@/db/schema'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -30,6 +42,9 @@ export type AlertType =
   | 'high_intent_consumer'
   | 'watchlist_milestone'
   | 'frustration_spike'
+  | 'icp_match'                  // Phase 9: consumer crossed an ICP threshold
+
+type MatchScoreSnapshot = NonNullable<BrandAlert['matchScoreSnapshot']>
 
 interface FireAlertInput {
   brandId: string
@@ -39,6 +54,8 @@ interface FireAlertInput {
   title: string
   body: string
   payload?: Record<string, any>
+  // Pre-computed snapshot from scoring engine (skips re-fetch when caller already has it)
+  matchScoreSnapshot?: MatchScoreSnapshot
 }
 
 // ── Alert Rule Management ──────────────────────────────────────────
@@ -60,8 +77,11 @@ export async function upsertAlertRule(params: {
   channels?: string[]
   threshold?: Record<string, any>
   enabled?: boolean
+  // Phase 9: ICP gating
+  icpId?: string       // when set, alert fires only if consumer score >= minMatchScore
+  minMatchScore?: number  // 0-100, defaults to 60
 }) {
-  const { brandId, alertType, productId, channels, threshold, enabled } = params
+  const { brandId, alertType, productId, channels, threshold, enabled, icpId, minMatchScore } = params
 
   // Check for existing rule (same brand + type + product)
   const existing = await db
@@ -85,6 +105,8 @@ export async function upsertAlertRule(params: {
         channels: channels || existing[0].channels,
         threshold: threshold ?? existing[0].threshold,
         enabled: enabled ?? existing[0].enabled,
+        ...(icpId !== undefined && { icpId }),
+        ...(minMatchScore !== undefined && { minMatchScore }),
         updatedAt: new Date(),
       })
       .where(eq(brandAlertRules.id, existing[0].id))
@@ -101,6 +123,8 @@ export async function upsertAlertRule(params: {
       channels: channels || ['in_app'],
       threshold: threshold || null,
       enabled: enabled ?? true,
+      icpId: icpId ?? null,
+      minMatchScore: minMatchScore ?? 60,
     })
     .returning()
   return created
@@ -127,10 +151,16 @@ export async function toggleAlertRule(ruleId: string, brandId: string, enabled: 
  * Fire a brand alert. Checks alert rules to determine channels
  * and whether the alert should be sent.
  *
- * - Always writes to brand_alerts (in-app).
- * - If the matching rule includes 'email', also queues via notificationService.
+ * Phase 9 ICP gating:
+ * - If a matching rule has `icpId` set, the alert only fires for that rule's
+ *   channels if the consumer's ICP match score >= `rule.minMatchScore`.
+ * - Score is read from the cache (icp_match_scores) if fresh, computed on-demand
+ *   if missing/stale, and attached to the alert record as matchScoreSnapshot.
+ * - Rules without `icpId` always fire (existing behaviour unchanged).
+ * - Returns null (not stored) if all matching ICP-gated rules are suppressed
+ *   and there are no non-ICP-gated rules that match.
  */
-export async function fireAlert(input: FireAlertInput) {
+export async function fireAlert(input: FireAlertInput): Promise<BrandAlert | null> {
   const { brandId, alertType, productId, consumerId, title, body, payload } = input
 
   // Find matching rules (global rules for this alertType + product-specific rules)
@@ -150,19 +180,60 @@ export async function fireAlert(input: FireAlertInput) {
     (r) => !r.productId || r.productId === productId,
   )
 
-  // If no matching rules, use defaults: in-app + email for everything
-  const channels = new Set<string>(['in_app', 'email'])
+  // ── ICP gating (Phase 9) ──────────────────────────────────────
+  // Evaluate each rule independently. Rules with icpId are only included
+  // in the effective channel set if the consumer's match score qualifies.
+  const effectiveChannels = new Set<string>()
   let matchedRuleId: string | null = null
+  let resolvedSnapshot: MatchScoreSnapshot | null = input.matchScoreSnapshot ?? null
 
-  if (matchingRules.length > 0) {
-    matchedRuleId = matchingRules[0].id
+  if (matchingRules.length === 0) {
+    // No rules configured — fall back to default channels
+    effectiveChannels.add('in_app')
+    effectiveChannels.add('email')
+  } else {
+    let atLeastOneRuleFired = false
+
     for (const rule of matchingRules) {
-      const ruleChannels = (rule.channels as string[]) || ['in_app']
-      ruleChannels.forEach((ch) => channels.add(ch))
+      let rulePasses = true
+
+      if (rule.icpId) {
+        if (!consumerId) {
+          // Can't ICP-gate without a consumer — suppress this rule silently
+          rulePasses = false
+        } else {
+          const minScore = rule.minMatchScore ?? 60
+          const snapshot = await resolveMatchScore(rule.icpId, consumerId)
+
+          if (snapshot === null || snapshot.matchScore < minScore) {
+            rulePasses = false
+          } else {
+            // Keep the highest-scoring snapshot across multiple ICP-gated rules
+            if (!resolvedSnapshot || snapshot.matchScore > resolvedSnapshot.matchScore) {
+              resolvedSnapshot = snapshot
+            }
+          }
+        }
+      }
+
+      if (rulePasses) {
+        atLeastOneRuleFired = true
+        if (!matchedRuleId) matchedRuleId = rule.id
+        const ruleChannels = (rule.channels as string[]) || ['in_app']
+        ruleChannels.forEach((ch) => effectiveChannels.add(ch))
+      }
+    }
+
+    // All rules were ICP-gated and suppressed — do not write an alert
+    if (!atLeastOneRuleFired) {
+      return null
     }
   }
 
-  // 1. Always write in-app alert
+  // Always include in_app
+  effectiveChannels.add('in_app')
+
+  // 1. Write in-app alert (with optional match score snapshot)
   const [alert] = await db
     .insert(brandAlerts)
     .values({
@@ -176,11 +247,12 @@ export async function fireAlert(input: FireAlertInput) {
       payload: payload || null,
       channel: 'in_app',
       status: 'pending',
+      matchScoreSnapshot: resolvedSnapshot ?? undefined,
     })
     .returning()
 
   // 2. If email channel is enabled, also queue email notification
-  if (channels.has('email')) {
+  if (effectiveChannels.has('email')) {
     try {
       await queueNotification({
         userId: brandId,
@@ -198,7 +270,7 @@ export async function fireAlert(input: FireAlertInput) {
 
   // 3. If slack or whatsapp channel is enabled, fetch brand profile once for both
   let brandProfile: Awaited<ReturnType<typeof getUserProfile>> | null = null
-  if (channels.has('slack') || channels.has('whatsapp')) {
+  if (effectiveChannels.has('slack') || effectiveChannels.has('whatsapp')) {
     try {
       brandProfile = await getUserProfile(brandId)
     } catch (err) {
@@ -207,7 +279,7 @@ export async function fireAlert(input: FireAlertInput) {
   }
 
   // 3a. Slack — send to brand's configured webhook
-  if (channels.has('slack') && brandProfile) {
+  if (effectiveChannels.has('slack') && brandProfile) {
     try {
       const slackPrefs = (brandProfile.notificationPreferences as any)?.slack
       const webhookUrl = slackPrefs?.webhookUrl as string | undefined
@@ -228,7 +300,7 @@ export async function fireAlert(input: FireAlertInput) {
   }
 
   // 3b. WhatsApp — send immediately via Twilio (real-time)
-  if (channels.has('whatsapp') && brandProfile) {
+  if (effectiveChannels.has('whatsapp') && brandProfile) {
     try {
       const waPrefs = (brandProfile.notificationPreferences as any)?.whatsapp
       const phoneNumber = waPrefs?.phoneNumber as string | undefined
@@ -419,6 +491,53 @@ export async function markAllAlertsRead(brandId: string) {
     )
 }
 
+// ── Phase 9: ICP match alert ───────────────────────────────────────
+
+/**
+ * Fire an 'icp_match' alert when a consumer's score crosses an ICP's threshold.
+ *
+ * Called by the daily recompute cron (recomputeIcpScores.ts) after a consumer
+ * newly qualifies for an ICP. The caller already has the breakdown — it is
+ * passed directly to avoid re-fetching.
+ *
+ * If the brand has an ICP-gated alert rule pointing at this ICP, the ICP gate
+ * is satisfied automatically (we're already above threshold). The snapshot is
+ * attached to the alert so the brand can see the detailed score breakdown.
+ */
+export async function alertOnIcpMatch(params: {
+  brandId: string
+  productId?: string
+  consumerId: string
+  icpId: string
+  icpName: string
+  matchScore: number
+  breakdown: IcpMatchBreakdown
+}): Promise<BrandAlert | null> {
+  const { brandId, productId, consumerId, icpId, icpName, matchScore, breakdown } = params
+
+  const snapshot: MatchScoreSnapshot = {
+    matchScore,
+    criteriaScores: breakdown.criteriaScores,
+    totalEarned: breakdown.totalEarned,
+    totalPossible: breakdown.totalPossible,
+    consentGaps: breakdown.consentGaps,
+    explainability: breakdown.explainability,
+  }
+
+  return fireAlert({
+    brandId,
+    alertType: 'icp_match',
+    productId,
+    consumerId,
+    title: `New ICP match: "${icpName}"`,
+    body:
+      `A consumer matched your ICP "${icpName}" with a score of ${matchScore}/100. ` +
+      breakdown.explainability,
+    payload: { icpId, icpName, matchScore },
+    matchScoreSnapshot: snapshot,
+  })
+}
+
 // ── Default Rules Bootstrap ────────────────────────────────────────
 
 /**
@@ -432,6 +551,7 @@ export async function bootstrapDefaultAlertRules(brandId: string) {
     { alertType: 'high_intent_consumer', channels: ['in_app', 'email'] },
     { alertType: 'watchlist_milestone', channels: ['in_app'] },
     { alertType: 'frustration_spike', channels: ['in_app', 'email'] },
+    { alertType: 'icp_match', channels: ['in_app', 'email'] },
   ]
 
   for (const rule of defaults) {
@@ -440,5 +560,42 @@ export async function bootstrapDefaultAlertRules(brandId: string) {
       alertType: rule.alertType,
       channels: rule.channels,
     })
+  }
+}
+
+// ── Internal helpers ───────────────────────────────────────────────
+
+/**
+ * Get a consumer's match score for an ICP.
+ * Uses the cached score if present and not stale; recomputes on-demand otherwise.
+ * Returns null if the ICP doesn't exist.
+ */
+async function resolveMatchScore(
+  icpId: string,
+  consumerId: string
+): Promise<MatchScoreSnapshot | null> {
+  // Try cache first
+  const cached = await getMatchScore(icpId, consumerId)
+
+  if (cached && !cached.isStale) {
+    return {
+      matchScore: cached.matchScore,
+      ...(cached.breakdown as Omit<MatchScoreSnapshot, 'matchScore'>),
+    }
+  }
+
+  // Cache miss or stale — compute on demand
+  try {
+    const icp = await getIcpById(icpId)
+    if (!icp || !icp.isActive) return null
+
+    const result = await scoreConsumerForIcp(icpId, consumerId, true)
+    return {
+      matchScore: result.matchScore,
+      ...result.breakdown,
+    }
+  } catch (err) {
+    console.error(`[BrandAlert] resolveMatchScore failed icp=${icpId} consumer=${consumerId}:`, err)
+    return null
   }
 }

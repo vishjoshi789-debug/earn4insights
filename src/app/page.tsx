@@ -79,8 +79,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <MessageSquare className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Feedback Hub</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Feedback Hub</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   All consumer feedback in one place — text, audio, and video with AI-powered sentiment analysis.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -94,8 +94,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <BarChart3 className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Surveys & NPS</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Surveys & NPS</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Create targeted surveys and track Net Promoter Score to measure customer satisfaction.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -109,8 +109,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <TrendingUp className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Audience Analytics</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Audience Analytics</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Know who your customers are — demographics, behavior patterns, and preferences at a glance.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -124,8 +124,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <Activity className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Feature Insights</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Feature Insights</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   See which features delight users and which need work — backed by real feedback data.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -139,8 +139,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <Brain className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Consumer Intelligence</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Consumer Intelligence</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Understand how different user segments feel about your product and why.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -154,8 +154,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <Globe className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Category Intelligence</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Category Intelligence</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Compare your product against competitors and catch market shifts early.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -169,8 +169,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <FileText className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Product Deep Dive</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Product Deep Dive</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   In-depth analytics per product — sentiment trends, scores, and detailed feedback breakdowns.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -184,8 +184,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <Trophy className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Rankings & Alerts</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Rankings & Alerts</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Track your weekly category ranking and get instant alerts on position changes.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -199,8 +199,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <Bell className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Weekly Digest</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Weekly Digest</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Automated weekly summary of new feedback, score changes, and emerging trends.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -214,8 +214,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <Upload className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Import Data</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Import Data</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Bring existing feedback from Google Forms, Typeform, or SurveyMonkey — no re-collection needed.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -229,8 +229,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <MessagesSquare className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Community</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Community</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Engage with your audience directly — join conversations, share updates, and see what consumers are talking about.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -244,8 +244,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
                   <Users className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Social</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Social</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Monitor social discussions around your products, track consumer sentiment publicly, and build brand presence.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
@@ -287,8 +287,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
                   <PenSquare className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Submit Feedback</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Submit Feedback</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Share your thoughts via text, audio, or video — in any language you prefer.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
@@ -302,8 +302,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
                   <Award className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Earn Rewards</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Earn Rewards</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Get rewarded for every review you share. More feedback means more earnings.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
@@ -317,8 +317,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
                   <HandCoins className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Payouts</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Payouts</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Withdraw your earnings anytime — simple, transparent, and hassle-free.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
@@ -332,8 +332,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
                   <Sparkles className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">For You</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">For You</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Discover products matched to your taste based on your interests and feedback history.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
@@ -347,8 +347,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
                   <Trophy className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Top Products</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Top Products</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Browse the highest-ranked products each week — rated by real consumers like you.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
@@ -362,8 +362,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
                   <Bell className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">My Watchlist</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">My Watchlist</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Follow products you love and get notified when reviews or rankings change.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
@@ -377,8 +377,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
                   <MessagesSquare className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Community</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Community</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Join conversations, share tips, and connect with consumers who share your interests.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
@@ -392,8 +392,8 @@ export default function HomePage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
                   <Users className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="mt-3 font-semibold text-foreground text-sm">Social</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <h3 className="mt-3 font-semibold text-foreground text-base">Social</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
                   Follow friends, see what they review, and find great products through your network.
                 </p>
                 <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">

@@ -195,3 +195,154 @@ export const __test__ = {
   AUTH_TAG_LENGTH,
   SALT_LENGTH
 }
+
+// ════════════════════════════════════════════════════════════════
+// VERSIONED KEY SYSTEM
+// For special-category sensitive data (GDPR Art. 9) that requires
+// independent key rotation without re-encrypting all other data.
+//
+// Environment variables:
+//   CURRENT_ENCRYPTION_KEY_ID   — e.g. "v1" (which key is active)
+//   ENCRYPTION_KEY_v1           — key material for version v1
+//   ENCRYPTION_KEY_v2           — key material for version v2
+//   (falls back to ENCRYPTION_KEY if versioned key is not set)
+//
+// Key rotation procedure:
+//   1. Generate a new key:  generateEncryptionKey()
+//   2. Add ENCRYPTION_KEY_v2=<new key> to environment
+//   3. Set CURRENT_ENCRYPTION_KEY_ID=v2
+//   4. Run re-encryption job: reEncryptWithNewKey() on each stored row
+//   5. Remove ENCRYPTION_KEY_v1 after all rows are migrated
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Get the current active key ID from environment.
+ * Defaults to 'v1' if not configured.
+ */
+export function getCurrentKeyId(): string {
+  return process.env.CURRENT_ENCRYPTION_KEY_ID ?? 'v1'
+}
+
+/**
+ * Get the raw key material for a given key ID.
+ * Looks for ENCRYPTION_KEY_<keyId> first, then falls back to ENCRYPTION_KEY.
+ */
+function getKeyMaterialForId(keyId: string): string {
+  const versionedKey = process.env[`ENCRYPTION_KEY_${keyId}`]
+  if (versionedKey) {
+    if (versionedKey.length < 32) {
+      throw new Error(`ENCRYPTION_KEY_${keyId} must be at least 32 characters long`)
+    }
+    return versionedKey
+  }
+
+  // Fall back to the base ENCRYPTION_KEY (backward compat for keyId='v1')
+  const baseKey = process.env.ENCRYPTION_KEY
+  if (!baseKey) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        `No encryption key found for keyId="${keyId}". ` +
+        `Set ENCRYPTION_KEY_${keyId} or ENCRYPTION_KEY in environment.`
+      )
+    }
+    console.warn(`⚠️  WARNING: Using default encryption key for keyId="${keyId}". Set ENCRYPTION_KEY_${keyId} in production!`)
+    return 'dev-key-32-chars-minimum-length-required-for-aes256'
+  }
+
+  if (baseKey.length < 32) {
+    throw new Error('ENCRYPTION_KEY must be at least 32 characters long')
+  }
+  return baseKey
+}
+
+/**
+ * Encrypt data using a specific key version.
+ * Returns the encrypted base64 string (same format as encrypt()).
+ */
+async function encryptWithKeyId(plaintext: any, keyId: string): Promise<string> {
+  const text = typeof plaintext === 'string' ? plaintext : JSON.stringify(plaintext)
+  const salt = randomBytes(SALT_LENGTH)
+  const iv = randomBytes(IV_LENGTH)
+  const password = getKeyMaterialForId(keyId)
+  const key = await deriveKey(password, salt)
+  const cipher = createCipheriv(ALGORITHM, key, iv)
+  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()])
+  const authTag = cipher.getAuthTag()
+  const combined = Buffer.concat([salt, iv, authTag, encrypted])
+  return combined.toString('base64')
+}
+
+/**
+ * Decrypt data using a specific key version.
+ */
+async function decryptWithKeyId(encryptedData: string, keyId: string): Promise<any> {
+  const combined = Buffer.from(encryptedData, 'base64')
+  const salt = combined.subarray(0, SALT_LENGTH)
+  const iv = combined.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH)
+  const authTag = combined.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH)
+  const encrypted = combined.subarray(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH)
+  const password = getKeyMaterialForId(keyId)
+  const key = await deriveKey(password, salt)
+  const decipher = createDecipheriv(ALGORITHM, key, iv)
+  decipher.setAuthTag(authTag)
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()])
+  const text = decrypted.toString('utf8')
+  try { return JSON.parse(text) } catch { return text }
+}
+
+/**
+ * Encrypt data for database storage using the current active key.
+ * Returns both the encrypted value and the key ID used — store both in the DB row.
+ *
+ * Usage:
+ *   const { encryptedValue, encryptionKeyId } = await encryptForStorage(data)
+ *   // save both columns to DB
+ */
+export async function encryptForStorage(
+  data: any
+): Promise<{ encryptedValue: string; encryptionKeyId: string }> {
+  const encryptionKeyId = getCurrentKeyId()
+  const encryptedValue = await encryptWithKeyId(data, encryptionKeyId)
+  return { encryptedValue, encryptionKeyId }
+}
+
+/**
+ * Decrypt data retrieved from the database.
+ * Requires the key ID that was stored alongside the encrypted value.
+ *
+ * Usage:
+ *   const plaintext = await decryptFromStorage(row.encryptedValue, row.encryptionKeyId)
+ */
+export async function decryptFromStorage(
+  encryptedValue: string,
+  encryptionKeyId: string
+): Promise<any> {
+  return decryptWithKeyId(encryptedValue, encryptionKeyId)
+}
+
+/**
+ * Re-encrypt a stored value using a new key ID.
+ * Use this during key rotation to migrate rows without downtime.
+ *
+ * Algorithm:
+ *   1. Decrypt with oldKeyId
+ *   2. Re-encrypt with newKeyId
+ *   3. Return new encrypted value + new key ID — UPDATE the DB row
+ *
+ * Usage:
+ *   for each row with encryptionKeyId = oldKeyId:
+ *     const rotated = await reEncryptWithNewKey(row.encryptedValue, row.encryptionKeyId, 'v2')
+ *     await db.update(...).set(rotated).where(...)
+ */
+export async function reEncryptWithNewKey(
+  encryptedValue: string,
+  oldKeyId: string,
+  newKeyId: string
+): Promise<{ encryptedValue: string; encryptionKeyId: string }> {
+  if (oldKeyId === newKeyId) {
+    throw new Error('reEncryptWithNewKey: oldKeyId and newKeyId must be different')
+  }
+  const plaintext = await decryptWithKeyId(encryptedValue, oldKeyId)
+  const newEncryptedValue = await encryptWithKeyId(plaintext, newKeyId)
+  return { encryptedValue: newEncryptedValue, encryptionKeyId: newKeyId }
+}

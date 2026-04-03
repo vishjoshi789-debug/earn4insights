@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate": "dotenv -e .env.local -- tsx src/db/migrate.ts",
+    "db:migrate002": "dotenv -e .env.local -- tsx src/db/migrate002.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

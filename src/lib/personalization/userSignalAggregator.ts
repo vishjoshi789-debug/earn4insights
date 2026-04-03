@@ -5,6 +5,11 @@ import { userProfiles, userEvents, feedback, surveyResponses, products, analytic
 import { eq, and, gte, desc, sql, inArray } from 'drizzle-orm'
 import { checkConsent } from '@/lib/consent-enforcement'
 import type { ProductCategory } from '@/lib/categories'
+import {
+  insertSignalSnapshot,
+  markSignalsComputed,
+  type TriggeredBy,
+} from '@/db/repositories/signalRepository'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -420,4 +425,52 @@ function buildNewUserVector(userId: string): UserSignalVector {
     },
     computedAt: new Date().toISOString(),
   }
+}
+
+// ── Persistence wrapper ───────────────────────────────────────────
+
+/**
+ * Aggregate signals and persist a 'behavioral' snapshot in one call.
+ *
+ * Use this instead of calling aggregateUserSignals() directly when you
+ * want the result stored in consumer_signal_snapshots for history/ICP scoring.
+ * The behavioral category snapshot is always persisted regardless of consent
+ * (the data originates from within the platform, not from external collection).
+ *
+ * @param userId       - User to aggregate for
+ * @param triggeredBy  - What triggered this computation (for the snapshot record)
+ * @returns The computed signal vector
+ */
+export async function aggregateAndPersistUserSignals(
+  userId: string,
+  triggeredBy: TriggeredBy = 'cron_daily'
+): Promise<UserSignalVector> {
+  const vector = await aggregateUserSignals(userId)
+
+  // Persist the behavioral portion as a snapshot
+  await insertSignalSnapshot(
+    userId,
+    'behavioral',
+    {
+      engagementScore: vector.engagementScore,
+      engagementTier: vector.engagementTier,
+      categoryScores: vector.categoryScores,
+      totalFeedbackGiven: vector.behavioral.totalFeedbackGiven,
+      avgRating: vector.behavioral.avgRating,
+      sentimentBias: vector.behavioral.sentimentBias,
+      feedbackFrequency: vector.behavioral.feedbackFrequency,
+      recentCategories: vector.behavioral.recentCategories,
+      activeDayParts: vector.behavioral.activeDayParts,
+      topDeviceType: vector.behavioral.topDeviceType,
+      daysSinceLastActivity: vector.behavioral.daysSinceLastActivity,
+    },
+    triggeredBy
+  ).catch((err) => {
+    // Log but don't fail the aggregation — the vector is still valid
+    console.error('[userSignalAggregator] Failed to persist behavioral snapshot:', err)
+  })
+
+  await markSignalsComputed(userId).catch(console.error)
+
+  return vector
 }

@@ -351,6 +351,19 @@ export const userProfiles = pgTable('user_profiles', {
   // Sensitive data (opt-in only, encrypted at rest)
   sensitiveData: jsonb('sensitive_data'),
   // { spendingCapacity, explicitIncome } - never inferred
+
+  // Phase 9: Hyper-personalization signal extensions
+  psychographic: jsonb('psychographic'),
+  // { aspirations: string[], lifestyle: string[], values: string[],
+  //   interests: string[], spendingStyle: string }
+  // Voluntary, requires 'psychographic' consent record
+  socialSignals: jsonb('social_signals'),
+  // { inferredInterests: Record<string,number>, platform: string, lastSyncedAt: string }
+  // Inferred from connected social accounts, requires 'social' consent record
+  signalVersion: text('signal_version').default('1.0'),
+  // Schema version for forward-compat signal reading
+  lastSignalComputedAt: timestamp('last_signal_computed_at'),
+  // When signals were last aggregated and persisted to consumer_signal_snapshots
 })
 
 // User events table (for behavior tracking)
@@ -559,6 +572,12 @@ export const brandAlertRules = pgTable('brand_alert_rules', {
   enabled: boolean('enabled').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+
+  // Phase 9: ICP-aware alert filtering
+  icpId: uuid('icp_id'),
+  // → brand_icps.id. When set, alert only fires if consumer match score >= minMatchScore
+  minMatchScore: integer('min_match_score').default(60),
+  // 0-100. Alert fires only if icp_match_scores.matchScore >= this value (default: 60)
 })
 
 // ── Granular Personalization: Brand Alerts ────────────────────────
@@ -578,6 +597,16 @@ export const brandAlerts = pgTable('brand_alerts', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   sentAt: timestamp('sent_at'),
   readAt: timestamp('read_at'),
+
+  // Phase 9: ICP match score at the moment this alert was fired
+  matchScoreSnapshot: jsonb('match_score_snapshot').$type<{
+    matchScore: number
+    criteriaScores: Record<string, { earned: number; max: number; matched?: string | string[]; reason?: string }>
+    totalEarned: number
+    totalPossible: number
+    consentGaps: string[]
+    explainability: string
+  }>(),
 })
 
 // ── Phase 8: AI-Powered Theme Extraction ──────────────────────────
@@ -942,6 +971,197 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ══════════════════════════════════════════════════════════════════
+// SECTION 10: HYPER-PERSONALIZATION ENGINE (Phase 9)
+// ══════════════════════════════════════════════════════════════════
+
+// ── Consumer Signal Snapshots (append-only time-series) ───────────
+// Each row is an immutable snapshot of one signal category for one user
+// at a point in time. Never updated — new snapshots are inserted.
+// Retention: SIGNAL_RETENTION_DAYS (default 365) rolling window.
+export const consumerSignalSnapshots = pgTable('consumer_signal_snapshots', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),           // → users.id
+  signalCategory: text('signal_category').notNull(),
+  // 'behavioral' | 'demographic' | 'psychographic' | 'sensitive' | 'social'
+  signals: jsonb('signals').$type<Record<string, any>>().notNull(),
+  // Shape varies by category — see design doc for per-category JSONB shapes
+  triggeredBy: text('triggered_by').notNull(),
+  // 'cron_daily' | 'onboarding_complete' | 'feedback_submit' | 'social_sync' | 'manual'
+  schemaVersion: text('schema_version').notNull().default('1.0'),
+  snapshotAt: timestamp('snapshot_at').defaultNow().notNull(),
+})
+
+// ── Consent Records (per-category, individually revocable) ────────
+// Replaces userProfiles.consent JSONB blob.
+// One row per user per dataCategory — independently grantable and revocable.
+// GDPR Art. 7 / India DPDP Act 2023 §6 compliance.
+export const consentRecords = pgTable('consent_records', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),           // → users.id
+
+  dataCategory: text('data_category').notNull().$type<
+    // Standard categories
+    | 'behavioral'
+    | 'demographic'
+    | 'psychographic'
+    | 'social'
+    // Special categories (GDPR Art. 9 / DPDP sensitive personal data)
+    | 'sensitive_health'
+    | 'sensitive_dietary'
+    | 'sensitive_religion'
+    | 'sensitive_caste'
+    // Legacy categories (migrated from userProfiles.consent JSONB)
+    | 'tracking'
+    | 'personalization'
+    | 'analytics'
+    | 'marketing'
+  >(),
+
+  purpose: text('purpose').notNull(),
+  // Human-readable notice shown to user at grant time.
+  // e.g. "Personalising product recommendations based on your browsing behaviour"
+
+  legalBasis: text('legal_basis').notNull().default('explicit_consent').$type<
+    'explicit_consent' | 'legitimate_interest' | 'contract'
+  >(),
+  // sensitive_* categories MUST use 'explicit_consent'
+
+  granted: boolean('granted').notNull().default(false),
+  grantedAt: timestamp('granted_at'),          // set when granted = true
+  revokedAt: timestamp('revoked_at'),          // set when user withdraws consent
+
+  consentVersion: text('consent_version').notNull(),
+  // Policy version shown at grant time, e.g. 'privacy-policy-v2.1'
+  // Critical for proving what the user agreed to
+
+  ipAddress: text('ip_address'),               // captured at grant time
+  userAgent: text('user_agent'),               // captured at grant time
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // UNIQUE (userId, dataCategory) enforced in migration SQL
+})
+
+// ── Consumer Sensitive Attributes (GDPR Art. 9 special categories) ─
+// Religion, caste, dietary, health — stored encrypted, independently deletable.
+// NEVER queried in bulk analytics. Read only on explicit consumer request
+// or (with consent) in ICP scoring.
+export const consumerSensitiveAttributes = pgTable('consumer_sensitive_attributes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),           // → users.id
+  attributeCategory: text('attribute_category').notNull().$type<
+    'religion' | 'caste' | 'dietary' | 'health'
+  >(),
+  encryptedValue: text('encrypted_value').notNull(),
+  // AES-256-GCM encrypted JSON string via encryptForStorage()
+  // Plaintext shapes per category:
+  //   religion:  { faith: string, practices?: string[] }
+  //   caste:     { community: string }
+  //   dietary:   { preferences: string[], allergies?: string[] }
+  //   health:    { interests: string[] }
+  encryptionKeyId: text('encryption_key_id').notNull(),
+  // e.g. "v1", "v2" — used to look up correct key for decryption
+  // Supports key rotation: old rows keep old keyId until re-encrypted
+  consentRecordId: uuid('consent_record_id').notNull(),
+  // → consent_records.id. The specific consent authorising this data.
+  // If consent is revoked, this row must be deleted.
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at'),
+  // Soft delete on GDPR/DPDP erasure request.
+  // Physical DELETE scheduled 30 days after deletedAt.
+  // UNIQUE (userId, attributeCategory) WHERE deletedAt IS NULL — enforced in migration SQL
+})
+
+// ── Brand ICPs (Ideal Consumer Profiles) ─────────────────────────
+// Brands define weighted targeting criteria.
+// One brand can have multiple ICPs (per product, per campaign, or brand-wide).
+export const brandIcps = pgTable('brand_icps', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),         // → users.id (role='brand')
+  productId: text('product_id'),               // → products.id. NULL = brand-wide ICP
+  name: text('name').notNull(),
+  // e.g. "Urban Health-Conscious Female 25-35"
+  description: text('description'),
+
+  attributes: jsonb('attributes').$type<{
+    version: string        // '1.0'
+    criteria: Record<string, {
+      values: string[]
+      weight: number       // must sum to 100 across all criteria — enforced in service
+      required: boolean
+      requiresConsentCategory?: string   // e.g. 'psychographic' | 'sensitive_dietary'
+    }>
+    totalWeight: number    // must equal 100 — validated before save
+  }>().notNull(),
+
+  matchThreshold: integer('match_threshold').notNull().default(60),
+  // 0-100. Alerts only fire when consumer match score >= this value.
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── ICP Match Scores (consumer ↔ ICP match cache) ─────────────────
+// Persisted cache of match scores. Avoids re-computation on every alert.
+// isStale=true means the score needs recomputing (done by daily cron).
+// UNIQUE (icpId, consumerId) — upserted on each recompute.
+export const icpMatchScores = pgTable('icp_match_scores', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  icpId: uuid('icp_id').notNull(),             // → brand_icps.id
+  consumerId: text('consumer_id').notNull(),   // → users.id
+
+  matchScore: integer('match_score').notNull(), // 0-100
+
+  breakdown: jsonb('breakdown').$type<{
+    criteriaScores: Record<string, {
+      earned: number
+      max: number
+      matched?: string | string[]
+      reason?: string      // e.g. 'consent_not_granted' | 'no_signal_data'
+    }>
+    totalEarned: number
+    totalPossible: number  // excludes unconsented criteria (normalised upward)
+    consentGaps: string[]  // criteria skipped due to missing consent
+    explainability: string // human-readable summary
+  }>().notNull(),
+
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+  isStale: boolean('is_stale').notNull().default(false),
+  // Set true when: consumer submits feedback, updates profile,
+  // brand edits ICP, or daily cron (computedAt > 24h ago)
+  // UNIQUE (icpId, consumerId) enforced in migration SQL
+})
+
+// ── Consumer Social Connections ───────────────────────────────────
+// Connected social accounts for interest inference.
+// Only inferred interest categories stored — no raw posts, no follower data.
+// OAuth + sync implementation deferred to a later phase.
+// Table created now to avoid a future ALTER TABLE.
+export const consumerSocialConnections = pgTable('consumer_social_connections', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),           // → users.id
+  platform: text('platform').notNull().$type<
+    'instagram' | 'twitter' | 'linkedin' | 'youtube'
+  >(),
+  encryptedAccessToken: text('encrypted_access_token'),
+  // AES-256-GCM encrypted OAuth token. NULL after expiry or revocation.
+  encryptionKeyId: text('encryption_key_id'),
+  inferredInterests: jsonb('inferred_interests').$type<Record<string, number>>(),
+  // { "fitness": 0.8, "travel": 0.6 } — normalised 0-1 per category
+  // Derived from public interest signals only. No raw content stored.
+  inferenceMethod: text('inference_method').$type<
+    'followed_accounts' | 'public_profile_analysis'
+  >(),
+  consentRecordId: uuid('consent_record_id').notNull(),
+  // → consent_records.id. Must have active 'social' consent to exist.
+  connectedAt: timestamp('connected_at').defaultNow().notNull(),
+  lastSyncedAt: timestamp('last_synced_at'),
+  revokedAt: timestamp('revoked_at'),          // set when user disconnects account
+  // UNIQUE (userId, platform) WHERE revokedAt IS NULL — enforced in migration SQL
+})
+
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type Survey = typeof surveys.$inferSelect
@@ -1020,3 +1240,17 @@ export type PasswordResetToken = typeof passwordResetTokens.$inferSelect
 export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert
 export type ImportJob = typeof importJobs.$inferSelect
 export type NewImportJob = typeof importJobs.$inferInsert
+
+// Phase 9: Hyper-personalization types
+export type ConsumerSignalSnapshot = typeof consumerSignalSnapshots.$inferSelect
+export type NewConsumerSignalSnapshot = typeof consumerSignalSnapshots.$inferInsert
+export type ConsentRecord = typeof consentRecords.$inferSelect
+export type NewConsentRecord = typeof consentRecords.$inferInsert
+export type ConsumerSensitiveAttribute = typeof consumerSensitiveAttributes.$inferSelect
+export type NewConsumerSensitiveAttribute = typeof consumerSensitiveAttributes.$inferInsert
+export type BrandIcp = typeof brandIcps.$inferSelect
+export type NewBrandIcp = typeof brandIcps.$inferInsert
+export type IcpMatchScore = typeof icpMatchScores.$inferSelect
+export type NewIcpMatchScore = typeof icpMatchScores.$inferInsert
+export type ConsumerSocialConnection = typeof consumerSocialConnections.$inferSelect
+export type NewConsumerSocialConnection = typeof consumerSocialConnections.$inferInsert

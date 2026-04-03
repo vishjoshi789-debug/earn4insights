@@ -295,14 +295,29 @@ export async function updateBehavioral(
 }
 
 /**
- * Check if user has given consent for specific purpose
+ * Check if user has given consent for a specific purpose.
+ *
+ * Phase 9: Reads from consent_records table (granular per-category consent).
+ * Falls back to the legacy userProfiles.consent JSONB blob if no consent_records
+ * row exists for this user+purpose (handles users not yet migrated).
+ *
+ * @deprecated For new code, use hasConsentForCategory() from consentRepository directly.
  */
-export async function hasConsent(userId: string, purpose: 'tracking' | 'personalization' | 'analytics' | 'marketing'): Promise<boolean> {
-  const profile = await getUserProfile(userId)
-  if (!profile) return false
-
-  const consent = profile.consent as any
-  return consent?.[purpose] === true
+export async function hasConsent(
+  userId: string,
+  purpose: 'tracking' | 'personalization' | 'analytics' | 'marketing'
+): Promise<boolean> {
+  // Primary path: consent_records table (authoritative after migration)
+  try {
+    const { hasConsentForCategory } = await import('@/db/repositories/consentRepository')
+    return await hasConsentForCategory(userId, purpose)
+  } catch {
+    // Fallback: legacy JSONB blob (pre-migration safety net)
+    const profile = await getUserProfile(userId)
+    if (!profile) return false
+    const consent = profile.consent as any
+    return consent?.[purpose] === true
+  }
 }
 
 /**

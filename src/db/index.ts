@@ -21,3 +21,7 @@ const client = postgres(connectionString, {
 
 export const db = drizzle(client, { schema })
 export { sql } from 'drizzle-orm'
+
+// Raw postgres.js client — use only for DDL migrations and raw multi-statement SQL.
+// All application queries must go through `db` (Drizzle ORM).
+export { client as pgClient }
