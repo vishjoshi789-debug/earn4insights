@@ -1,7 +1,30 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (Session: Hyper-Personalization Engine — Phases 1–7)
+> Last updated: April 2026 (Session: Hyper-Personalization Engine — Phases 1–7 COMPLETE + Security Hardening)
 > Read this file at the start of every session. It is the authoritative source of truth for this project.
+
+## Phase Status Summary
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Schema + Repositories | ✅ COMPLETE |
+| Phase 2 | Consent Layer | ✅ COMPLETE |
+| Phase 3 | Signal Collection Services | ✅ COMPLETE |
+| Phase 4 | ICP Scoring + Brand API | ✅ COMPLETE |
+| Phase 5 | ICP-Aware Alert Service | ✅ COMPLETE |
+| Phase 6 | Consumer Data Access APIs | ✅ COMPLETE |
+| Phase 7 | Cron Jobs | ✅ COMPLETE |
+| Security Hardening | 8 issues found and fixed by Opus review | ✅ COMPLETE |
+| Consumer Dashboard UI | Privacy, signals, data-export pages | ⏳ Not started |
+| Brand ICP Builder UI | Weight slider, match leaderboard, audience charts | ⏳ Not started |
+| Social OAuth Integration | Instagram, LinkedIn OAuth + interest inference | ⏳ Not started |
+| GDPR Erasure Flow | Right to be forgotten, physical delete cron | ⏳ Not started |
+| Bulk Score API | `POST /api/brand/icps/[id]/bulk-score` + rate limiting | ⏳ Not started |
+
+**Production migration steps still required:**
+1. `POST /api/admin/run-migration-002` — apply schema (6 new tables)
+2. `POST /api/admin/migrate-consent-records` — backfill legacy JSONB consent
+3. `POST /api/admin/run-migration-003` — add FK constraints + partial UNIQUE index
 
 ---
 
@@ -283,9 +306,37 @@ matchScore = round((totalEarned / totalPossible) × 100)   // 0–100
 
 ---
 
-## 8. What Was Completed This Session (April 2026)
+## 8. What Was Completed (April 2026)
 
-### Phase 1 — Schema + Repositories
+### Security Hardening — Opus Deep Review (8 issues fixed)
+
+A full security review was run on encryption, GDPR compliance, ICP scoring, and data integrity.
+All 8 findings were fixed and committed (`672069e`).
+
+| # | Severity | Finding | Fix |
+|---|----------|---------|-----|
+| 1 | HIGH | No FK constraints on any of the 6 new tables | Migration 003: FK constraints with `ON DELETE CASCADE` |
+| 2 | HIGH | Hardcoded dev fallback key in `getEncryptionKey()` — would silently use a known key in preview deploys | Throw in ALL environments; key generation command in error message |
+| 3 | HIGH | IP/UA retained forever on revoked consents — violates GDPR Art. 5(1)(e) storage limitation | `anonymizeExpiredConsentMetadata()` nulls IP/UA on revoked records older than 3 years; runs in daily cron |
+| 4 | MEDIUM | `required` boolean on ICP criteria was stored but never enforced — required criterion could score 0 silently | Post-loop check: if any required criterion scored 0 (excluding consent gaps), total score is zeroed |
+| 5 | MEDIUM | Rounding drift: `Math.round(weight * ratio)` could produce `earned > weight` due to floating-point rounding | All 4 overlap paths now use `Math.min(Math.round(weight * ratio), weight)` |
+| 6 | MEDIUM | Table-level `UNIQUE (user_id, attribute_category)` on `consumer_sensitive_attributes` blocked re-insert after soft-delete | Replaced with partial unique index `WHERE deleted_at IS NULL` in migration 003 |
+| 7 | MEDIUM | Versioned encryption used scrypt KDF — unnecessary CPU overhead when key material is already 32+ bytes of entropy | Replaced with `deriveKeyFast()` using SHA-256(salt ‖ keyMaterial) — same domain separation, no CPU waste |
+| 8 | MEDIUM | `isEncrypted()` used a regex heuristic — could produce false positives on base64 image thumbnails stored in JSONB | Replaced with base64 roundtrip check + structural length validation (salt+iv+authTag+1 minimum) |
+
+**New files from security hardening:**
+- `src/db/migrations/003_foreign_keys_and_constraints.sql`
+- `src/app/api/admin/run-migration-003/route.ts`
+
+**Modified files:**
+- `src/lib/encryption.ts` — fixes 2, 7, 8
+- `src/server/icpMatchScoringService.ts` — fixes 4, 5
+- `src/db/repositories/consentRepository.ts` — fix 3 (`anonymizeExpiredConsentMetadata`)
+- `src/server/updateConsumerSignals.ts` — fix 3 (wired into daily cron)
+
+---
+
+### Phase 1 — Schema + Repositories ✅
 - `src/lib/encryption.ts` — added versioned key rotation (`encryptForStorage`, `decryptFromStorage`, `reEncryptWithNewKey`, `getCurrentKeyId`)
 - `src/db/schema.ts` — 6 new tables + 3 table modifications (see Section 4)
 - `src/db/migrations/002_hyper_personalization.sql` — migration SQL (277 lines, all IF NOT EXISTS, idempotent)
@@ -297,31 +348,31 @@ matchScore = round((totalEarned / totalPossible) × 100)   // 0–100
 - `src/app/api/admin/run-migration-002/route.ts` — admin route to apply migration from within the running server (workaround for local firewall blocking port 5432)
 - `src/app/api/admin/migrate-consent-records/route.ts` — one-time backfill of legacy JSONB consent → `consent_records`
 
-### Phase 2 — Consent Layer
+### Phase 2 — Consent Layer ✅
 - `src/db/repositories/userProfileRepository.ts` — updated `hasConsent()` to delegate to `consent_records` with JSONB fallback
 - `src/lib/consent-enforcement.ts` — rewritten to import from `consentRepository`; added 13 new Phase 9 operations; added `isSensitiveCategory()` helper
 - `src/app/api/consumer/consent/route.ts` — `GET` (list all consents), `POST` (grant), `DELETE` (revoke + cascade)
 
-### Phase 3 — Signal Collection Services
+### Phase 3 — Signal Collection Services ✅
 - `src/server/signalCollectionService.ts` — per-category collectors; consent-gated; `Promise.allSettled` for parallel collection
 - `src/lib/personalization/userSignalAggregator.ts` — added `aggregateAndPersistUserSignals()` wrapper
 - `src/server/sensitiveAttributeService.ts` — service layer for sensitive attributes; owns consent→attribute category mapping; `ConsentDeniedError`
 
-### Phase 4 — ICP Scoring + Brand API
+### Phase 4 — ICP Scoring + Brand API ✅
 - `src/server/icpMatchScoringService.ts` — scoring engine with full criterion resolution + consent gating
 - `src/app/api/brand/icps/route.ts` — `GET` list, `POST` create
 - `src/app/api/brand/icps/[icpId]/route.ts` — `GET`, `PATCH`, `DELETE`
 - `src/app/api/brand/icps/[icpId]/matches/route.ts` — `GET` cached matches, `POST` on-demand score
 
-### Phase 5 — ICP-Aware Alert Service
+### Phase 5 — ICP-Aware Alert Service ✅
 - `src/server/brandAlertService.ts` — added ICP gating to `fireAlert()`; added `alertOnIcpMatch()`; added `icp_match` alert type; added `resolveMatchScore()` helper (cache → compute on demand)
 
-### Phase 6 — Consumer Data Access APIs
+### Phase 6 — Consumer Data Access APIs ✅
 - `src/app/api/consumer/my-data/route.ts` — GDPR Art. 15 full data export
 - `src/app/api/consumer/signals/route.ts` — paginated signal history with consent filtering
 - `src/app/api/analytics/icp-audience/route.ts` — aggregate ICP audience stats (privacy-safe, min cohort 5)
 
-### Phase 7 — Cron Jobs
+### Phase 7 — Cron Jobs ✅
 - `src/server/updateConsumerSignals.ts` — batch signal collection for all users
 - `src/server/recomputeIcpScores.ts` — batch ICP score recomputation + new-match alert triggering
 - `src/app/api/cron/update-consumer-signals/route.ts` — cron route (02:30 UTC daily)
@@ -332,7 +383,7 @@ matchScore = round((totalEarned / totalPossible) × 100)   // 0–100
 
 ## 9. Remaining Phases (Not Yet Built)
 
-These were out of scope for this session and are documented here for future work.
+Phases 1–7 and security hardening are complete. The following remain for future sessions.
 
 ### Consumer Dashboard UI
 Consumer-facing UI components to:
@@ -408,12 +459,12 @@ CRON_SECRET=                           # Bearer token Vercel injects into cron r
 
 ---
 
-## 12. File Map — New Files Added This Session
+## 12. File Map — All Files Added/Modified
 
 ```
 src/
 ├── lib/
-│   ├── encryption.ts                              # MODIFIED — added versioned key rotation
+│   ├── encryption.ts                              # MODIFIED — versioned key rotation + security fixes (2,7,8)
 │   ├── consent-enforcement.ts                     # REWRITTEN — Phase 9 operations added
 │   └── personalization/
 │       └── userSignalAggregator.ts                # MODIFIED — added aggregateAndPersistUserSignals()
@@ -422,9 +473,10 @@ src/
 │   ├── index.ts                                   # MODIFIED — exported pgClient
 │   ├── schema.ts                                  # MODIFIED — 6 new tables + 3 altered
 │   ├── migrations/
-│   │   └── 002_hyper_personalization.sql          # NEW
+│   │   ├── 002_hyper_personalization.sql          # NEW — 6 tables, 3 ALTERs, all IF NOT EXISTS
+│   │   └── 003_foreign_keys_and_constraints.sql   # NEW — FK constraints + partial UNIQUE (security fix 1,6)
 │   └── repositories/
-│       ├── consentRepository.ts                   # NEW
+│       ├── consentRepository.ts                   # NEW + anonymizeExpiredConsentMetadata() (fix 3)
 │       ├── signalRepository.ts                    # NEW
 │       ├── icpRepository.ts                       # NEW
 │       ├── sensitiveAttributeRepository.ts        # NEW
@@ -434,13 +486,14 @@ src/
 │   ├── brandAlertService.ts                       # MODIFIED — ICP gating + alertOnIcpMatch
 │   ├── signalCollectionService.ts                 # NEW
 │   ├── sensitiveAttributeService.ts               # NEW
-│   ├── icpMatchScoringService.ts                  # NEW
-│   ├── updateConsumerSignals.ts                   # NEW (cron logic)
-│   └── recomputeIcpScores.ts                      # NEW (cron logic)
+│   ├── icpMatchScoringService.ts                  # NEW + required enforcement + rounding fix (fix 4,5)
+│   ├── updateConsumerSignals.ts                   # NEW + IP anonymization cron call (fix 3)
+│   └── recomputeIcpScores.ts                      # NEW
 │
 └── app/api/
     ├── admin/
     │   ├── run-migration-002/route.ts             # NEW
+    │   ├── run-migration-003/route.ts             # NEW — FK constraints migration
     │   └── migrate-consent-records/route.ts       # NEW
     ├── consumer/
     │   ├── consent/route.ts                       # NEW — GET/POST/DELETE
