@@ -206,6 +206,22 @@ async function computeBreakdown(
     }
   }
 
+  // ── Fix 4: Enforce required criteria ────────────────────────────
+  // If any required criterion scored 0 (excluding consent gaps), zero the total.
+  let requiredFailed: string[] = []
+  for (const [criterionKey, criterion] of Object.entries(attributes.criteria)) {
+    if (!criterion.required) continue
+    if (consentGaps.includes(criterionKey)) continue // consent gap — not the consumer's fault
+    const score = criteriaScores[criterionKey]
+    if (score && score.earned === 0) {
+      requiredFailed.push(criterionKey)
+    }
+  }
+
+  if (requiredFailed.length > 0) {
+    totalEarned = 0
+  }
+
   // ── Build human-readable explainability string ─────────────────
   const matchPct = totalPossible > 0
     ? Math.round((totalEarned / totalPossible) * 100)
@@ -215,9 +231,13 @@ async function computeBreakdown(
     ? ` ${consentGaps.length} criteria skipped (no consent): ${consentGaps.join(', ')}.`
     : ''
 
+  const requiredNote = requiredFailed.length > 0
+    ? ` Score zeroed: required criteria not met (${requiredFailed.join(', ')}).`
+    : ''
+
   const explainability =
     `Score ${matchPct}% based on ${Object.keys(attributes.criteria).length - consentGaps.length} ` +
-    `of ${Object.keys(attributes.criteria).length} criteria.${gapNote}`
+    `of ${Object.keys(attributes.criteria).length} criteria.${gapNote}${requiredNote}`
 
   return {
     criteriaScores,
@@ -284,7 +304,7 @@ async function resolveCriterionScore(
     const overlap = targetValues.filter((v) => consumerInterests.includes(v))
     const ratio = Math.min(overlap.length / targetValues.length, 1)
     return {
-      earned: Math.round(weight * ratio),
+      earned: Math.min(Math.round(weight * ratio), weight),
       matched: overlap.length > 0 ? overlap : undefined,
       reason: overlap.length === 0 ? 'no_category_overlap' : undefined,
     }
@@ -299,7 +319,7 @@ async function resolveCriterionScore(
     const overlap = targetValues.filter((v) => consumerArr.includes(v))
     const ratio = Math.min(overlap.length / targetValues.length, 1)
     return {
-      earned: Math.round(weight * ratio),
+      earned: Math.min(Math.round(weight * ratio), weight),
       matched: overlap.length > 0 ? overlap : undefined,
       reason: overlap.length === 0 ? 'no_value_overlap' : undefined,
     }
@@ -332,7 +352,7 @@ async function resolveCriterionScore(
       const overlap = targetValues.filter((v) => interests.includes(v))
       const ratio = Math.min(overlap.length / targetValues.length, 1)
       return {
-        earned: Math.round(weight * ratio),
+        earned: Math.min(Math.round(weight * ratio), weight),
         matched: overlap.length > 0 ? overlap : undefined,
       }
     }
@@ -343,7 +363,7 @@ async function resolveCriterionScore(
       const overlap = targetValues.filter((v) => prefs.includes(v))
       const ratio = Math.min(overlap.length / targetValues.length, 1)
       return {
-        earned: Math.round(weight * ratio),
+        earned: Math.min(Math.round(weight * ratio), weight),
         matched: overlap.length > 0 ? overlap : undefined,
       }
     }

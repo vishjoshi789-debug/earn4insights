@@ -28,6 +28,7 @@ import { userProfiles } from '@/db/schema'
 import { collectAndPersistSignals } from '@/server/signalCollectionService'
 import { deleteExpiredSnapshots } from '@/db/repositories/signalRepository'
 import { markScoresStaleByConsumer } from '@/db/repositories/icpRepository'
+import { anonymizeExpiredConsentMetadata } from '@/db/repositories/consentRepository'
 
 export type SignalCronResult = {
   startedAt: string
@@ -35,6 +36,7 @@ export type SignalCronResult = {
   usersProcessed: number
   usersErrored: number
   snapshotsExpiredDeleted: number
+  consentMetadataAnonymized: number
   details: Array<{
     userId: string
     categories: Record<string, string>
@@ -88,11 +90,17 @@ export async function runUpdateConsumerSignals(): Promise<SignalCronResult> {
     return 0
   })
 
+  // Anonymize IP/UA on revoked consents older than 3 years (GDPR Art. 5(1)(e))
+  const consentMetadataAnonymized = await anonymizeExpiredConsentMetadata().catch((err) => {
+    console.error('[SignalCron] Failed to anonymize expired consent metadata:', err)
+    return 0
+  })
+
   const completedAt = new Date().toISOString()
 
   console.log(
     `[SignalCron] Done. processed=${usersProcessed} errored=${usersErrored} ` +
-      `expiredDeleted=${snapshotsExpiredDeleted}`
+      `expiredDeleted=${snapshotsExpiredDeleted} consentAnonymized=${consentMetadataAnonymized}`
   )
 
   return {
@@ -101,6 +109,7 @@ export async function runUpdateConsumerSignals(): Promise<SignalCronResult> {
     usersProcessed,
     usersErrored,
     snapshotsExpiredDeleted,
+    consentMetadataAnonymized,
     details,
   }
 }

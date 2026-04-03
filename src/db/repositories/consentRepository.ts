@@ -7,7 +7,7 @@ import {
   type ConsentRecord,
   type NewConsentRecord,
 } from '@/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, lt, isNotNull, sql } from 'drizzle-orm'
 import { logSensitiveDataAccess } from '@/lib/audit-log'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -191,6 +191,46 @@ export async function revokeConsent(
   }
 
   return rows[0] ?? null
+}
+
+// ── IP/UA Anonymization (GDPR data minimisation) ─────────────────
+
+/**
+ * Anonymize IP addresses and user agents on revoked consent records
+ * older than the retention period (default: 3 years / 1095 days).
+ *
+ * GDPR Art. 5(1)(e) — storage limitation. IP/UA are only needed for
+ * proof-of-consent while consent is active. After revocation + retention
+ * period, they must be minimised.
+ *
+ * Called by the daily signal cron (updateConsumerSignals).
+ * Returns the number of rows anonymized.
+ */
+export async function anonymizeExpiredConsentMetadata(
+  retentionDays = 1095
+): Promise<number> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - retentionDays)
+
+  const result = await db
+    .update(consentRecords)
+    .set({
+      ipAddress: null,
+      userAgent: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(consentRecords.granted, false),
+        isNotNull(consentRecords.revokedAt),
+        lt(consentRecords.revokedAt, cutoff),
+        // Only update rows that still have IP or UA data
+        sql`(${consentRecords.ipAddress} IS NOT NULL OR ${consentRecords.userAgent} IS NOT NULL)`
+      )
+    )
+    .returning({ id: consentRecords.id })
+
+  return result.length
 }
 
 // ── Legacy Migration ──────────────────────────────────────────────

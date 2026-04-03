@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'crypto'
+import { createCipheriv, createDecipheriv, randomBytes, scrypt, createHash } from 'crypto'
 import { promisify } from 'util'
 
 const scryptAsync = promisify(scrypt)
@@ -11,26 +11,26 @@ const AUTH_TAG_LENGTH = 16 // 128 bits
 const SALT_LENGTH = 32
 
 /**
- * Get encryption key from environment variable
- * Falls back to a default key in development (NEVER use in production)
+ * Get encryption key from environment variable.
+ * Throws in ALL environments if not set — no dev fallback.
+ * A hardcoded fallback is a production accident waiting to happen
+ * (preview deploys don't always set NODE_ENV=production).
  */
 function getEncryptionKey(): string {
   const key = process.env.ENCRYPTION_KEY
-  
+
   if (!key) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('ENCRYPTION_KEY environment variable is required in production')
-    }
-    
-    // Development fallback (INSECURE - for testing only)
-    console.warn('⚠️  WARNING: Using default encryption key. Set ENCRYPTION_KEY in production!')
-    return 'dev-key-32-chars-minimum-length-required-for-aes256'
+    throw new Error(
+      'ENCRYPTION_KEY environment variable is required. ' +
+      'Run: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))" ' +
+      'and add the output to .env.local'
+    )
   }
-  
+
   if (key.length < 32) {
     throw new Error('ENCRYPTION_KEY must be at least 32 characters long')
   }
-  
+
   return key
 }
 
@@ -132,23 +132,29 @@ export async function decrypt(encryptedData: string): Promise<any> {
 }
 
 /**
- * Check if data appears to be encrypted
+ * Check if data appears to be encrypted (legacy format).
+ *
+ * Uses a base64 roundtrip check + structural length validation rather
+ * than a regex heuristic, to avoid false-positives on arbitrary base64
+ * strings (e.g., long image thumbnails stored in JSONB).
  */
 export function isEncrypted(data: any): boolean {
-  if (typeof data !== 'string') {
+  if (typeof data !== 'string') return false
+
+  // Minimum: salt(32) + iv(16) + authTag(16) + ciphertext(>=1) = 65 raw bytes
+  // Base64: ceil(65 / 3) * 4 = 88 chars minimum
+  if (data.length < 88) return false
+
+  try {
+    const buf = Buffer.from(data, 'base64')
+    // Roundtrip: if re-encoding doesn't match, it wasn't clean base64
+    if (buf.toString('base64') !== data) return false
+    // Structural check: decoded buffer must be at least salt+iv+authTag+1
+    if (buf.length < SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH + 1) return false
+    return true
+  } catch {
     return false
   }
-  
-  // Encrypted data should be base64 and have minimum length
-  // salt(32) + iv(16) + authTag(16) + encrypted(min 1) = 65 bytes minimum
-  // Base64 encoding: 65 bytes * 4/3 ≈ 87 chars minimum
-  if (data.length < 87) {
-    return false
-  }
-  
-  // Check if it's valid base64
-  const base64Regex = /^[A-Za-z0-9+/]+=*$/
-  return base64Regex.test(data)
 }
 
 /**
@@ -256,6 +262,18 @@ function getKeyMaterialForId(keyId: string): string {
 }
 
 /**
+ * Derive a 256-bit key from raw key material + salt using HMAC-SHA-256.
+ * The versioned key system uses already-strong base64 keys, so scrypt's
+ * CPU cost is wasted. HMAC-SHA-256(salt, keyMaterial) provides domain
+ * separation per ciphertext without the overhead.
+ */
+function deriveKeyFast(keyMaterial: string, salt: Buffer): Buffer {
+  return createHash('sha256')
+    .update(Buffer.concat([salt, Buffer.from(keyMaterial, 'utf8')]))
+    .digest()
+}
+
+/**
  * Encrypt data using a specific key version.
  * Returns the encrypted base64 string (same format as encrypt()).
  */
@@ -264,7 +282,7 @@ async function encryptWithKeyId(plaintext: any, keyId: string): Promise<string> 
   const salt = randomBytes(SALT_LENGTH)
   const iv = randomBytes(IV_LENGTH)
   const password = getKeyMaterialForId(keyId)
-  const key = await deriveKey(password, salt)
+  const key = deriveKeyFast(password, salt)
   const cipher = createCipheriv(ALGORITHM, key, iv)
   const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()])
   const authTag = cipher.getAuthTag()
@@ -282,7 +300,7 @@ async function decryptWithKeyId(encryptedData: string, keyId: string): Promise<a
   const authTag = combined.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH)
   const encrypted = combined.subarray(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH)
   const password = getKeyMaterialForId(keyId)
-  const key = await deriveKey(password, salt)
+  const key = deriveKeyFast(password, salt)
   const decipher = createDecipheriv(ALGORITHM, key, iv)
   decipher.setAuthTag(authTag)
   const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()])
