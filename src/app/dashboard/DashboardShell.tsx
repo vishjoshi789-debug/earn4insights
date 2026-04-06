@@ -28,6 +28,7 @@ import {
   FileText,
   Trophy,
   TrendingUp,
+  Target,
   PenSquare,
   ClipboardList,
   Activity,
@@ -38,6 +39,10 @@ import {
   Brain,
   CreditCard,
   AlertCircle,
+  ShieldCheck,
+  Download,
+  Megaphone,
+  UserCheck,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -75,8 +80,17 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/analytics/weekly-digest', label: 'Weekly Digest', icon: Bell, tourId: 'nav-weekly-digest', role: 'brand' },
   { href: '/dashboard/analytics/category-intelligence', label: 'Category Intelligence', icon: Globe, tourId: 'nav-category-intelligence', role: 'brand' },
   { href: '/dashboard/alerts', label: 'Alerts', icon: AlertCircle, tourId: 'nav-alerts', role: 'brand' },
+  { href: '/dashboard/brand/icps', label: 'ICP Profiles', icon: Target, tourId: 'nav-icps', role: 'brand' },
+  { href: '/dashboard/brand/campaigns', label: 'Influencer Campaigns', icon: Megaphone, tourId: 'nav-brand-campaigns', role: 'brand' },
+  { href: '/dashboard/brand/influencers', label: 'Discover Influencers', icon: UserCheck, tourId: 'nav-discover-influencers', role: 'brand' },
   { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards', role: 'consumer' },
   { href: '/dashboard/payouts', label: 'Payouts', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer' },
+  { href: '/dashboard/privacy', label: 'Privacy & Consent', icon: ShieldCheck, tourId: 'nav-privacy', role: 'consumer' },
+  { href: '/dashboard/my-signals', label: 'My Signals', icon: Activity, tourId: 'nav-my-signals', role: 'consumer' },
+  { href: '/dashboard/my-data', label: 'My Data Export', icon: Download, tourId: 'nav-my-data', role: 'consumer' },
+  { href: '/dashboard/influencer/profile', label: 'Influencer Profile', icon: UserCheck, tourId: 'nav-influencer-profile', role: 'consumer' },
+  { href: '/dashboard/influencer/campaigns', label: 'My Campaigns', icon: Megaphone, tourId: 'nav-influencer-campaigns', role: 'consumer' },
+  { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: 'consumer' },
   {
     href: '/dashboard/detailed-analytics',
     label: 'Product Deep Dive',

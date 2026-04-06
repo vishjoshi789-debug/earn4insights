@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Bell, Mail, Slack, Smartphone, Check, Loader2, BarChart3,
   MessageSquare, AlertCircle, TrendingUp, Eye, Zap, Info, MessageCircle,
+  Link2, Link2Off, ExternalLink,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -87,6 +88,12 @@ export default function NotificationSettingsPage() {
   const [savingWa, setSavingWa] = useState(false)
   const [waSaved, setWaSaved] = useState(false)
 
+  // ── Consumer-only: social connections ──────────────────────────
+  type SocialConnection = { platform: string; connectedAt: string; lastSyncedAt: string | null }
+  const [socialConnections, setSocialConnections] = useState<SocialConnection[]>([])
+  const [loadingSocial, setLoadingSocial] = useState(false)
+  const [disconnecting, setDisconnecting] = useState<string | null>(null)
+
   // ── Brand-only state ────────────────────────────────────────────
   const [rules, setRules] = useState<AlertRule[]>([])
   const [slackWebhookUrl, setSlackWebhookUrl] = useState('')
@@ -147,6 +154,55 @@ export default function NotificationSettingsPage() {
   useEffect(() => {
     loadSettings()
   }, [loadSettings])
+
+  // Load social connections for consumers
+  useEffect(() => {
+    if (userRole !== 'consumer') return
+    setLoadingSocial(true)
+    fetch('/api/consumer/social/connections')
+      .then((r) => r.ok ? r.json() : { connections: [] })
+      .then((data) => setSocialConnections(data.connections ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingSocial(false))
+  }, [userRole])
+
+  async function handleSocialDisconnect(platform: string) {
+    setDisconnecting(platform)
+    try {
+      const res = await fetch('/api/consumer/social/disconnect', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error ?? 'Failed to disconnect')
+      }
+      setSocialConnections((prev) => prev.filter((c) => c.platform !== platform))
+      toast.success(`${platform} disconnected`)
+    } catch (err: any) {
+      toast.error(err.message ?? 'Failed to disconnect')
+    } finally {
+      setDisconnecting(null)
+    }
+  }
+
+  function getSocialOAuthUrl(platform: 'linkedin' | 'instagram') {
+    const state = Buffer.from(
+      JSON.stringify({
+        platform,
+        userId: (session?.user as any)?.id ?? '',
+        returnTo: '/dashboard/settings',
+      })
+    ).toString('base64')
+    const redirectUri = encodeURIComponent(
+      `${window.location.origin}/api/consumer/social/callback`
+    )
+    if (platform === 'linkedin') {
+      return `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID ?? ''}&redirect_uri=${redirectUri}&scope=r_liteprofile%20r_emailaddress&state=${state}`
+    }
+    return '#'   // Instagram: pending App Review
+  }
 
   // Save WhatsApp preferences
   async function saveWhatsApp() {
@@ -594,6 +650,93 @@ export default function NotificationSettingsPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* ── Connected Accounts (consumer only) ── */}
+      {!isBrand && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5" />
+              Connected Accounts
+            </CardTitle>
+            <CardDescription>
+              Connect social accounts to improve your personalization and ICP match scores.
+              Only public interest signals are used — no posts or private data are stored.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {loadingSocial ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading connections…
+              </div>
+            ) : (
+              <>
+                {/* LinkedIn */}
+                {(() => {
+                  const conn = socialConnections.find((c) => c.platform === 'linkedin')
+                  return (
+                    <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0A66C2]/10 text-[#0A66C2] font-bold text-sm">
+                          in
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">LinkedIn</p>
+                          <p className="text-xs text-muted-foreground">
+                            {conn
+                              ? `Connected ${new Date(conn.connectedAt).toLocaleDateString()}`
+                              : 'Not connected'}
+                          </p>
+                        </div>
+                      </div>
+                      {conn ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={disconnecting === 'linkedin'}
+                          onClick={() => handleSocialDisconnect('linkedin')}
+                          className="text-destructive hover:bg-destructive/10"
+                        >
+                          {disconnecting === 'linkedin'
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <><Link2Off className="h-3.5 w-3.5 mr-1" /> Disconnect</>
+                          }
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          asChild
+                        >
+                          <a href={getSocialOAuthUrl('linkedin')}>
+                            <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                            Connect
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Instagram — pending App Review */}
+                <div className="flex items-center justify-between rounded-lg border px-4 py-3 opacity-60">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-pink-100 text-pink-600 font-bold text-sm">
+                      IG
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Instagram</p>
+                      <p className="text-xs text-muted-foreground">Coming soon — pending provider approval</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">Soon</Badge>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

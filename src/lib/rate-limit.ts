@@ -85,4 +85,6 @@ export const RATE_LIMITS = {
   authAttempt: { maxRequests: 5, windowSeconds: 60 } as RateLimitConfig,
   communityPost: { maxRequests: 5, windowSeconds: 60 } as RateLimitConfig,
   signup: { maxRequests: 3, windowSeconds: 60 } as RateLimitConfig,
+  // Bulk ICP scoring is CPU+DB intensive (sequential per-consumer). 2 req/min per IP.
+  bulkScore: { maxRequests: 2, windowSeconds: 60 } as RateLimitConfig,
 } as const

@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (Session: Hyper-Personalization Engine — Phases 1–7 COMPLETE + Security Hardening)
+> Last updated: April 2026 (Session: Influencers Adda complete)
 > Read this file at the start of every session. It is the authoritative source of truth for this project.
 
 ## Phase Status Summary
@@ -15,16 +15,22 @@
 | Phase 6 | Consumer Data Access APIs | ✅ COMPLETE |
 | Phase 7 | Cron Jobs | ✅ COMPLETE |
 | Security Hardening | 8 issues found and fixed by Opus review | ✅ COMPLETE |
-| Consumer Dashboard UI | Privacy, signals, data-export pages | ⏳ Not started |
-| Brand ICP Builder UI | Weight slider, match leaderboard, audience charts | ⏳ Not started |
-| Social OAuth Integration | Instagram, LinkedIn OAuth + interest inference | ⏳ Not started |
-| GDPR Erasure Flow | Right to be forgotten, physical delete cron | ⏳ Not started |
-| Bulk Score API | `POST /api/brand/icps/[id]/bulk-score` + rate limiting | ⏳ Not started |
+| Bulk Score API | `POST /api/brand/icps/[id]/bulk-score` + rate limiting | ✅ COMPLETE |
+| GDPR Erasure Flow | `DELETE /api/consumer/account` + physical-delete cron | ✅ COMPLETE |
+| Brand ICP Builder UI | Weight slider, match leaderboard, audience charts | ✅ COMPLETE |
+| Social OAuth Integration | LinkedIn stub built; Instagram pending App Review | ✅ COMPLETE (stub) |
+| Consumer Dashboard UI | Privacy, signals, data-export pages | ✅ COMPLETE |
+| Influencers Adda | Influencer marketing marketplace — 11 tables, repos, services, APIs, UI | ✅ COMPLETE |
 
-**Production migration steps still required:**
-1. `POST /api/admin/run-migration-002` — apply schema (6 new tables)
-2. `POST /api/admin/migrate-consent-records` — backfill legacy JSONB consent
+---
+
+**Production migration steps required before going live:**
+1. `POST /api/admin/run-migration-002` — apply schema (6 new tables + 3 ALTERs)
+2. `POST /api/admin/migrate-consent-records` — backfill legacy JSONB consent → `consent_records`
 3. `POST /api/admin/run-migration-003` — add FK constraints + partial UNIQUE index
+4. `POST /api/admin/run-migration-004` — Influencers Adda (11 new tables, ALTER users)
+
+All 4 routes are idempotent (safe to re-run). Require `x-api-key: <ADMIN_API_KEY>` header.
 
 ---
 
@@ -144,7 +150,7 @@ Encrypted storage for GDPR Art. 9 / DPDP "sensitive personal data":
 religion, caste, dietary preferences, health interests.
 Each row has `encryptedValue` (AES-256-GCM ciphertext) + `encryptionKeyId` (for key rotation) + `deletedAt` (soft-delete).
 
-**Purpose:** Independently deletable sensitive data. Physical deletion 30 days after soft-delete. Linked to a `consent_records` row — if consent is revoked, attribute is immediately soft-deleted.
+**Purpose:** Independently deletable sensitive data. Physical deletion 30 days after soft-delete via daily cron. Linked to a `consent_records` row — if consent is revoked, attribute is immediately soft-deleted.
 
 ### `brand_icps`
 Brand's Ideal Consumer Profile definitions.
@@ -161,7 +167,7 @@ Cached match scores between a consumer and an ICP. UNIQUE (icpId, consumerId).
 
 ### `consumer_social_connections`
 Connected social platform accounts (Instagram, Twitter, LinkedIn, YouTube).
-OAuth token stored encrypted. Actual OAuth flow + sync deferred to a later phase — table created now to avoid a future ALTER TABLE.
+OAuth token stored encrypted (AES-256-GCM). LinkedIn OAuth flow implemented; Instagram pending App Review.
 
 **Purpose:** Social signal enrichment (interests from connected platform activity).
 
@@ -185,10 +191,10 @@ Two encryption systems coexist:
 ```ts
 encryptSensitiveData(data)   // AES-256-GCM, single key from ENCRYPTION_KEY env
 decryptSensitiveData(value)
-isEncrypted(value)           // checks if string is base64-encoded ciphertext
+isEncrypted(value)           // base64 roundtrip check + structural length validation
 ```
 
-**Versioned (for `consumer_sensitive_attributes`):**
+**Versioned (for `consumer_sensitive_attributes` and social OAuth tokens):**
 ```ts
 encryptForStorage(data)      // returns { encryptedValue, encryptionKeyId }
 decryptFromStorage(value, keyId)
@@ -201,10 +207,7 @@ getCurrentKeyId()            // reads CURRENT_ENCRYPTION_KEY_ID env var
 Keys are identified by version ID (e.g., `v1`, `v2`). Each row stores which key encrypted it.
 
 ```bash
-# Active key (used for all new encryptions)
 CURRENT_ENCRYPTION_KEY_ID=v1
-
-# Keys by version ID (add new versions without removing old ones)
 ENCRYPTION_KEY_v1=<32-byte hex or base64>
 ENCRYPTION_KEY_v2=<32-byte hex or base64>   # add when rotating
 ```
@@ -221,13 +224,13 @@ ENCRYPTION_KEY_v2=<32-byte hex or base64>   # add when rotating
 
 ### Three tiers of data categories
 
-**Tier 1 — Legacy (migrated from JSONB blob):**
+**Tier 1 — Platform Essentials:**
 - `tracking` — on-platform event tracking
 - `personalization` — personalised recommendations
 - `analytics` — usage pattern analysis
 - `marketing` — marketing communications
 
-**Tier 2 — Standard signals (Phase 9):**
+**Tier 2 — Insight Signals:**
 - `behavioral` — engagement scores, category interests, feedback patterns
 - `demographic` — age, gender, location, education (from onboarding)
 - `psychographic` — values, lifestyle, personality, aspirations
@@ -255,6 +258,7 @@ ENCRYPTION_KEY_v2=<32-byte hex or base64>   # add when rotating
 'collect_sensitive_health'      → ['sensitive_health']
 'compute_icp_match_score'       → ['behavioral', 'personalization']
 'send_personalized_notification' → ['personalization']
+'connect_social_account'        → ['social']
 // ...etc
 ```
 
@@ -274,7 +278,6 @@ for each criterion in icp.criteria:
       continue
 
   totalPossible += criterion.weight
-
   consumerValue = lookup(signalSnapshots, criterionKey)
 
   if criterionValue is string (ageRange, gender, engagementTier, ...):
@@ -282,14 +285,15 @@ for each criterion in icp.criteria:
 
   if criterionValue is array (interests, values, lifestyle, ...):
     overlap = count(consumerArr intersect criterion.values)
-    earned = weight × (overlap / criterion.values.length)  capped at weight
+    earned = Math.min(Math.round(weight × overlap/criterion.values.length), weight)
 
   totalEarned += earned
 
+// Post-loop: if any required criterion scored 0 (excluding consent gaps) → zero total
 matchScore = round((totalEarned / totalPossible) × 100)   // 0–100
 ```
 
-**Normalise upward, not downward:** Unconsented criteria are excluded from `totalPossible`. A consumer who has granted fewer consents is not penalised — their score is computed over the criteria that can be evaluated.
+**Normalise upward, not downward:** Unconsented criteria are excluded from `totalPossible`. A consumer who has granted fewer consents is not penalised.
 
 **Criterion key mapping:**
 | Key | Source |
@@ -300,114 +304,41 @@ matchScore = round((totalEarned / totalPossible) × 100)   // 0–100
 | `values`, `lifestyle`, `personality`, `aspirations` | psychographic snapshot |
 | `health`, `dietary`, `religion`, `caste` | `consumer_sensitive_attributes` (decrypted on-the-fly) |
 
-**Output:** `IcpMatchBreakdown` — per-criterion earned/max, `consentGaps[]`, `explainability` string, `totalEarned`, `totalPossible`.
-
-**Weight validation:** ICP weights MUST sum to exactly 100. This is a hard throw at write time — not a warning. Enforced in `icpRepository.validateIcpWeights()`.
+**Weight validation:** ICP weights MUST sum to exactly 100. Hard throw at write time — not a warning.
 
 ---
 
-## 8. What Was Completed (April 2026)
-
-### Security Hardening — Opus Deep Review (8 issues fixed)
-
-A full security review was run on encryption, GDPR compliance, ICP scoring, and data integrity.
-All 8 findings were fixed and committed (`672069e`).
+## 8. Security Hardening (April 2026 — 8 issues fixed)
 
 | # | Severity | Finding | Fix |
 |---|----------|---------|-----|
 | 1 | HIGH | No FK constraints on any of the 6 new tables | Migration 003: FK constraints with `ON DELETE CASCADE` |
-| 2 | HIGH | Hardcoded dev fallback key in `getEncryptionKey()` — would silently use a known key in preview deploys | Throw in ALL environments; key generation command in error message |
-| 3 | HIGH | IP/UA retained forever on revoked consents — violates GDPR Art. 5(1)(e) storage limitation | `anonymizeExpiredConsentMetadata()` nulls IP/UA on revoked records older than 3 years; runs in daily cron |
-| 4 | MEDIUM | `required` boolean on ICP criteria was stored but never enforced — required criterion could score 0 silently | Post-loop check: if any required criterion scored 0 (excluding consent gaps), total score is zeroed |
-| 5 | MEDIUM | Rounding drift: `Math.round(weight * ratio)` could produce `earned > weight` due to floating-point rounding | All 4 overlap paths now use `Math.min(Math.round(weight * ratio), weight)` |
-| 6 | MEDIUM | Table-level `UNIQUE (user_id, attribute_category)` on `consumer_sensitive_attributes` blocked re-insert after soft-delete | Replaced with partial unique index `WHERE deleted_at IS NULL` in migration 003 |
-| 7 | MEDIUM | Versioned encryption used scrypt KDF — unnecessary CPU overhead when key material is already 32+ bytes of entropy | Replaced with `deriveKeyFast()` using SHA-256(salt ‖ keyMaterial) — same domain separation, no CPU waste |
-| 8 | MEDIUM | `isEncrypted()` used a regex heuristic — could produce false positives on base64 image thumbnails stored in JSONB | Replaced with base64 roundtrip check + structural length validation (salt+iv+authTag+1 minimum) |
-
-**New files from security hardening:**
-- `src/db/migrations/003_foreign_keys_and_constraints.sql`
-- `src/app/api/admin/run-migration-003/route.ts`
-
-**Modified files:**
-- `src/lib/encryption.ts` — fixes 2, 7, 8
-- `src/server/icpMatchScoringService.ts` — fixes 4, 5
-- `src/db/repositories/consentRepository.ts` — fix 3 (`anonymizeExpiredConsentMetadata`)
-- `src/server/updateConsumerSignals.ts` — fix 3 (wired into daily cron)
+| 2 | HIGH | Hardcoded dev fallback key in `getEncryptionKey()` | Throw in ALL environments; key generation command in error message |
+| 3 | HIGH | IP/UA retained forever on revoked consents — GDPR Art. 5(1)(e) violation | `anonymizeExpiredConsentMetadata()` nulls IP/UA after 3 years; runs in daily cron |
+| 4 | MEDIUM | `required` boolean on ICP criteria never enforced | Post-loop: if any required criterion scored 0, total score is zeroed |
+| 5 | MEDIUM | Rounding drift: `Math.round(weight * ratio)` could produce `earned > weight` | All 4 overlap paths use `Math.min(Math.round(weight * ratio), weight)` |
+| 6 | MEDIUM | Table-level UNIQUE on `consumer_sensitive_attributes` blocked re-insert after soft-delete | Replaced with partial unique index `WHERE deleted_at IS NULL` in migration 003 |
+| 7 | MEDIUM | Versioned encryption used scrypt KDF — unnecessary CPU overhead | Replaced with `deriveKeyFast()` using SHA-256(salt ‖ keyMaterial) |
+| 8 | MEDIUM | `isEncrypted()` regex heuristic caused false positives on base64 image data | Replaced with base64 roundtrip check + structural length validation |
 
 ---
 
-### Phase 1 — Schema + Repositories ✅
-- `src/lib/encryption.ts` — added versioned key rotation (`encryptForStorage`, `decryptFromStorage`, `reEncryptWithNewKey`, `getCurrentKeyId`)
-- `src/db/schema.ts` — 6 new tables + 3 table modifications (see Section 4)
-- `src/db/migrations/002_hyper_personalization.sql` — migration SQL (277 lines, all IF NOT EXISTS, idempotent)
-- `src/db/index.ts` — exported raw `pgClient` for DDL use
-- `src/db/repositories/consentRepository.ts` — full CRUD for `consent_records` + `migrateAllLegacyConsents()`
-- `src/db/repositories/signalRepository.ts` — append-only signal snapshots with `SIGNAL_RETENTION_DAYS` config
-- `src/db/repositories/icpRepository.ts` — ICP CRUD + match score cache + staleness management
-- `src/db/repositories/sensitiveAttributeRepository.ts` — encrypted attribute storage with soft/physical delete + key rotation
-- `src/app/api/admin/run-migration-002/route.ts` — admin route to apply migration from within the running server (workaround for local firewall blocking port 5432)
-- `src/app/api/admin/migrate-consent-records/route.ts` — one-time backfill of legacy JSONB consent → `consent_records`
+## 9. Cron Schedule
 
-### Phase 2 — Consent Layer ✅
-- `src/db/repositories/userProfileRepository.ts` — updated `hasConsent()` to delegate to `consent_records` with JSONB fallback
-- `src/lib/consent-enforcement.ts` — rewritten to import from `consentRepository`; added 13 new Phase 9 operations; added `isSensitiveCategory()` helper
-- `src/app/api/consumer/consent/route.ts` — `GET` (list all consents), `POST` (grant), `DELETE` (revoke + cascade)
+| Time (UTC) | Route | Purpose |
+|------------|-------|---------|
+| 00:00 | `/api/cron/process-feedback-media` | Process pending feedback media |
+| 01:00 | `/api/cron/physical-delete-sensitive-attributes` | Physical-delete soft-deleted sensitive attributes older than 30 days (GDPR Art. 17) |
+| 01:30 | `/api/cron/cleanup-feedback-media` | Clean up expired feedback media |
+| 02:00 | `/api/jobs/process-deletions` | Hard-delete user accounts after 30-day grace period |
+| 02:30 | `/api/cron/update-consumer-signals` | Batch signal collection for all users |
+| 03:00 | `/api/cron/recompute-icp-scores` | Recompute stale ICP match scores + fire alerts |
+| 03:00 | `/api/jobs/update-behavioral` | Update behavioral signals |
+| 04:00 | `/api/cron/send-time-analysis` | Analyse optimal send times |
+| 05:00 | `/api/cron/cleanup-analytics-events` | Purge old analytics events |
+| 06:00 | `/api/cron/process-notifications` | Process queued notifications |
 
-### Phase 3 — Signal Collection Services ✅
-- `src/server/signalCollectionService.ts` — per-category collectors; consent-gated; `Promise.allSettled` for parallel collection
-- `src/lib/personalization/userSignalAggregator.ts` — added `aggregateAndPersistUserSignals()` wrapper
-- `src/server/sensitiveAttributeService.ts` — service layer for sensitive attributes; owns consent→attribute category mapping; `ConsentDeniedError`
-
-### Phase 4 — ICP Scoring + Brand API ✅
-- `src/server/icpMatchScoringService.ts` — scoring engine with full criterion resolution + consent gating
-- `src/app/api/brand/icps/route.ts` — `GET` list, `POST` create
-- `src/app/api/brand/icps/[icpId]/route.ts` — `GET`, `PATCH`, `DELETE`
-- `src/app/api/brand/icps/[icpId]/matches/route.ts` — `GET` cached matches, `POST` on-demand score
-
-### Phase 5 — ICP-Aware Alert Service ✅
-- `src/server/brandAlertService.ts` — added ICP gating to `fireAlert()`; added `alertOnIcpMatch()`; added `icp_match` alert type; added `resolveMatchScore()` helper (cache → compute on demand)
-
-### Phase 6 — Consumer Data Access APIs ✅
-- `src/app/api/consumer/my-data/route.ts` — GDPR Art. 15 full data export
-- `src/app/api/consumer/signals/route.ts` — paginated signal history with consent filtering
-- `src/app/api/analytics/icp-audience/route.ts` — aggregate ICP audience stats (privacy-safe, min cohort 5)
-
-### Phase 7 — Cron Jobs ✅
-- `src/server/updateConsumerSignals.ts` — batch signal collection for all users
-- `src/server/recomputeIcpScores.ts` — batch ICP score recomputation + new-match alert triggering
-- `src/app/api/cron/update-consumer-signals/route.ts` — cron route (02:30 UTC daily)
-- `src/app/api/cron/recompute-icp-scores/route.ts` — cron route (03:00 UTC daily)
-- `vercel.json` — two new cron entries added
-
----
-
-## 9. Remaining Phases (Not Yet Built)
-
-Phases 1–7 and security hardening are complete. The following remain for future sessions.
-
-### Consumer Dashboard UI
-Consumer-facing UI components to:
-- View and manage consent per category (`/dashboard/privacy`)
-- View their signal history (`/dashboard/my-signals`)
-- Download their data (`/dashboard/my-data`) — calls `GET /api/consumer/my-data`
-
-### Brand ICP Builder UI
-Brand-facing UI to:
-- Create/edit ICPs with a weight slider interface (must sum to 100)
-- View ICP match leaderboard (`/dashboard/brand/icps/[id]/matches`)
-- See audience analytics charts (`/dashboard/brand/icps/[id]/audience`)
-
-### Social OAuth Integration
-Currently the `consumer_social_connections` table exists but OAuth flow is not implemented.
-Needs: OAuth provider setup (Instagram, LinkedIn), token encryption on callback, interest inference from connected account data.
-
-### GDPR Erasure Flow (Right to Be Forgotten)
-- `DELETE /api/consumer/account` — deletes profile, all signal snapshots, soft-deletes sensitive attributes
-- Cron job to physically delete soft-deleted sensitive attributes after 30-day delay (the `getAttributesPendingPhysicalDeletion()` + `physicallyDeleteAttribute()` functions exist in the repository — just needs the cron route)
-- `DSAR` formal request flow for encrypted sensitive data export
-
-### ICP Score API for Third-Party Integrations
-`POST /api/brand/icps/[icpId]/bulk-score` — score a large batch of consumers at once (for ad-targeting use cases). Current `batchScoreConsumersForIcp()` in the service layer is ready; just needs the route + rate limiting.
+All cron routes are authenticated via `Authorization: Bearer CRON_SECRET`.
 
 ---
 
@@ -423,19 +354,19 @@ Needs: OAuth provider setup (Instagram, LinkedIn), token encryption on callback,
 | **Physical deletion delay (30 days)** | Grace period for accidental revocations. Industry standard. Implemented as soft-delete (`deletedAt`) + cron physical delete after threshold. |
 | **`pgClient.unsafe()` for DDL, not `db.execute()`** | Drizzle's `db.execute()` is designed for DML. DDL (especially multi-statement migrations) requires raw postgres.js. `BEGIN`/`COMMIT` must be stripped because postgres.js blocks transaction control on pooled connections. |
 | **Admin API route for running migrations** | Local machine's firewall/ISP blocks outbound port 5432. Running migrations via an API route on the already-running dev server sidesteps this entirely. Idempotency via `IF NOT EXISTS` makes re-running safe. |
-| **`dotenv-cli` for standalone tsx scripts** | Next.js auto-loads `.env.local` for the dev server but tsx scripts run outside Next.js and need explicit env loading. |
-| **Legacy consent fallback** | Six users with existing JSONB consent records needed a safe migration path. The fallback in `hasConsent()` ensures zero downtime — old behaviour preserved until backfill runs. |
+| **Bulk score capped at 200 consumers** | `batchScoreConsumersForIcp` is intentionally sequential to avoid DB pressure. 200 × ~100ms ≈ 20s — safe within Vercel's 60s Pro function limit. |
+| **GDPR erasure: signal snapshots deleted immediately, sensitive attributes after 30 days** | Signals have no mandatory retention period. Sensitive attributes get a 30-day grace period so accidental revocations can be recovered. |
+| **Social OAuth stub — LinkedIn implemented, Instagram deferred** | Instagram Basic Display API was deprecated in 2025. Instagram Graph API requires App Review (4–6 weeks). LinkedIn is available immediately with standard OAuth2. |
+| **`confirm: true` required on DELETE /api/consumer/account** | Prevents accidental erasure from stray DELETE calls. Forces explicit client acknowledgement. |
 | **Min cohort size of 5 in analytics endpoint** | Prevents re-identification attacks where a brand could narrow down individual consumers by querying small audience segments. |
-| **`isSensitiveCategory()` in consent-enforcement** | Single source of truth for whether a category requires GDPR Art. 9 handling. Used in the consent API, the scoring engine, and the sensitive attribute service. |
+| **`isSensitiveCategory()` in consent-enforcement** | Single source of truth for whether a category requires GDPR Art. 9 handling. Used in the consent API, scoring engine, sensitive attribute service, and privacy dashboard UI. |
 
 ---
 
 ## 11. Environment Variables Required
 
-Add these to `.env.local` for the Hyper-Personalization Engine to work:
-
 ```bash
-# ── Database (already set) ──────────────────────────────────────
+# ── Database ────────────────────────────────────────────────────
 POSTGRES_URL=                          # or DATABASE_URL
 ADMIN_API_KEY=                         # for /api/admin/* routes
 
@@ -451,21 +382,28 @@ SIGNAL_RETENTION_DAYS=365              # days before signal snapshots are purged
 SIGNAL_CRON_BATCH_SIZE=                # max users per signal cron run (default: all)
 ICP_SCORE_CRON_BATCH_SIZE=200          # max stale scores per ICP cron run
 
-# ── Cron auth (already set if existing crons work) ────────────
+# ── Cron auth ─────────────────────────────────────────────────
 CRON_SECRET=                           # Bearer token Vercel injects into cron requests
+
+# ── Social OAuth (LinkedIn) ───────────────────────────────────
+LINKEDIN_CLIENT_ID=                    # LinkedIn App client ID
+LINKEDIN_CLIENT_SECRET=                # LinkedIn App client secret
+SOCIAL_OAUTH_REDIRECT_URI=             # e.g. https://yourdomain.com/api/consumer/social/callback
+NEXT_PUBLIC_LINKEDIN_CLIENT_ID=        # Same as LINKEDIN_CLIENT_ID — exposed to client for OAuth URL construction
 ```
 
-**All other required env vars** (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are already documented in `ARCHITECTURE.md` and should already be set.
+**All other required env vars** (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are documented in `ARCHITECTURE.md` and should already be set.
 
 ---
 
-## 12. File Map — All Files Added/Modified
+## 12. Complete File Map
 
 ```
 src/
 ├── lib/
 │   ├── encryption.ts                              # MODIFIED — versioned key rotation + security fixes (2,7,8)
-│   ├── consent-enforcement.ts                     # REWRITTEN — Phase 9 operations added
+│   ├── consent-enforcement.ts                     # REWRITTEN — 13 operations + isSensitiveCategory()
+│   ├── rate-limit.ts                              # MODIFIED — added bulkScore rate limit config
 │   └── personalization/
 │       └── userSignalAggregator.ts                # MODIFIED — added aggregateAndPersistUserSignals()
 │
@@ -476,40 +414,216 @@ src/
 │   │   ├── 002_hyper_personalization.sql          # NEW — 6 tables, 3 ALTERs, all IF NOT EXISTS
 │   │   └── 003_foreign_keys_and_constraints.sql   # NEW — FK constraints + partial UNIQUE (security fix 1,6)
 │   └── repositories/
-│       ├── consentRepository.ts                   # NEW + anonymizeExpiredConsentMetadata() (fix 3)
+│       ├── consentRepository.ts                   # NEW + anonymizeExpiredConsentMetadata() (security fix 3)
 │       ├── signalRepository.ts                    # NEW
 │       ├── icpRepository.ts                       # NEW
-│       ├── sensitiveAttributeRepository.ts        # NEW
-│       └── userProfileRepository.ts               # MODIFIED — hasConsent() delegation
+│       ├── sensitiveAttributeRepository.ts        # NEW — soft/physical delete + key rotation
+│       ├── socialConnectionRepository.ts          # NEW — encrypted OAuth token storage
+│       └── userProfileRepository.ts               # MODIFIED — hasConsent() delegation + JSONB fallback
 │
 ├── server/
-│   ├── brandAlertService.ts                       # MODIFIED — ICP gating + alertOnIcpMatch
-│   ├── signalCollectionService.ts                 # NEW
-│   ├── sensitiveAttributeService.ts               # NEW
-│   ├── icpMatchScoringService.ts                  # NEW + required enforcement + rounding fix (fix 4,5)
-│   ├── updateConsumerSignals.ts                   # NEW + IP anonymization cron call (fix 3)
-│   └── recomputeIcpScores.ts                      # NEW
+│   ├── brandAlertService.ts                       # MODIFIED — ICP gating + alertOnIcpMatch()
+│   ├── signalCollectionService.ts                 # NEW — per-category consent-gated collectors
+│   ├── sensitiveAttributeService.ts               # NEW — ConsentDeniedError + category mapping
+│   ├── icpMatchScoringService.ts                  # NEW — scoring engine (security fixes 4,5)
+│   ├── updateConsumerSignals.ts                   # NEW — batch signal cron + IP anonymization (fix 3)
+│   └── recomputeIcpScores.ts                      # NEW — batch ICP score recomputation
 │
-└── app/api/
-    ├── admin/
-    │   ├── run-migration-002/route.ts             # NEW
-    │   ├── run-migration-003/route.ts             # NEW — FK constraints migration
-    │   └── migrate-consent-records/route.ts       # NEW
-    ├── consumer/
-    │   ├── consent/route.ts                       # NEW — GET/POST/DELETE
-    │   ├── signals/route.ts                       # NEW — GET
-    │   └── my-data/route.ts                       # NEW — GET (GDPR Art. 15)
-    ├── brand/
-    │   └── icps/
-    │       ├── route.ts                           # NEW — GET/POST
-    │       └── [icpId]/
-    │           ├── route.ts                       # NEW — GET/PATCH/DELETE
-    │           └── matches/route.ts               # NEW — GET/POST
-    ├── analytics/
-    │   └── icp-audience/route.ts                  # NEW — GET
-    └── cron/
-        ├── update-consumer-signals/route.ts       # NEW
-        └── recompute-icp-scores/route.ts          # NEW
+├── components/
+│   └── icp-weight-editor.tsx                      # NEW — reusable ICP weight slider component
+│
+└── app/
+    ├── dashboard/
+    │   ├── DashboardShell.tsx                     # MODIFIED — added ICP, Privacy, My Signals, My Data nav items
+    │   ├── privacy/
+    │   │   └── page.tsx                           # NEW — consent management UI (12 categories, 3 tiers)
+    │   ├── my-signals/
+    │   │   └── page.tsx                           # NEW — signal history UI (tabbed by category)
+    │   ├── my-data/
+    │   │   └── page.tsx                           # NEW — GDPR Art. 15 data export UI + JSON download
+    │   └── brand/
+    │       └── icps/
+    │           ├── page.tsx                       # NEW — ICP list + create dialog
+    │           └── [icpId]/
+    │               └── page.tsx                   # NEW — ICP edit: weights, leaderboard, charts, bulk rescore
+    └── api/
+        ├── admin/
+        │   ├── run-migration-002/route.ts         # NEW — apply schema migration
+        │   ├── run-migration-003/route.ts         # NEW — FK constraints migration
+        │   └── migrate-consent-records/route.ts   # NEW — backfill legacy consent
+        ├── consumer/
+        │   ├── consent/route.ts                   # NEW — GET/POST/DELETE
+        │   ├── signals/route.ts                   # NEW — GET (paginated, consent-gated)
+        │   ├── my-data/route.ts                   # NEW — GET (GDPR Art. 15 full export)
+        │   ├── account/route.ts                   # NEW — DELETE (GDPR Art. 17 erasure)
+        │   └── social/
+        │       ├── connections/route.ts            # NEW — GET active connections
+        │       ├── connect/route.ts                # NEW — POST encrypted token storage
+        │       ├── disconnect/route.ts             # NEW — DELETE revocation
+        │       └── callback/route.ts               # NEW — OAuth redirect handler (LinkedIn)
+        ├── brand/
+        │   └── icps/
+        │       ├── route.ts                       # NEW — GET/POST
+        │       └── [icpId]/
+        │           ├── route.ts                   # NEW — GET/PATCH/DELETE
+        │           ├── matches/route.ts            # NEW — GET cached matches / POST on-demand score
+        │           └── bulk-score/route.ts         # NEW — POST batch scoring (max 200, rate limited)
+        ├── analytics/
+        │   └── icp-audience/route.ts              # NEW — GET aggregate audience stats (min cohort 5)
+        └── cron/
+            ├── update-consumer-signals/route.ts   # NEW — 02:30 UTC daily
+            ├── recompute-icp-scores/route.ts      # NEW — 03:00 UTC daily
+            └── physical-delete-sensitive-attributes/route.ts  # NEW — 01:00 UTC daily (GDPR Art. 17)
 
-vercel.json                                        # MODIFIED — 2 new cron entries
+vercel.json                                        # MODIFIED — 3 new cron entries added
 ```
+
+### Influencers Adda file map (added April 2026)
+
+```
+src/
+├── db/
+│   ├── schema.ts                                  # MODIFIED — 11 new tables + is_influencer flag on users
+│   ├── migrations/
+│   │   └── 004_influencer_adda.sql                # NEW — 11 tables, 15 indexes, ALTER users
+│   └── repositories/
+│       ├── influencerProfileRepository.ts         # NEW — profile CRUD, search, verification
+│       ├── influencerSocialStatsRepository.ts     # NEW — per-platform stats upsert
+│       ├── influencerContentPostRepository.ts     # NEW — content post CRUD
+│       ├── influencerCampaignRepository.ts        # NEW — campaign CRUD, brand/influencer queries
+│       ├── campaignInfluencerRepository.ts        # NEW — invitation management
+│       ├── campaignMilestoneRepository.ts         # NEW — milestone CRUD, amount totals
+│       ├── campaignPaymentRepository.ts           # NEW — payment CRUD, escrow/release totals
+│       ├── campaignPerformanceRepository.ts       # NEW — metrics recording, aggregation
+│       ├── influencerFollowRepository.ts          # NEW — follow/unfollow, counts
+│       ├── influencerReviewRepository.ts          # NEW — reviews, average rating
+│       └── campaignDisputeRepository.ts           # NEW — dispute CRUD, resolution
+│
+├── server/
+│   ├── influencerProfileService.ts                # NEW — registration, discovery, public profiles
+│   ├── campaignManagementService.ts               # NEW — campaign lifecycle, invitations, status transitions
+│   ├── campaignPaymentService.ts                  # NEW — milestone + escrow payment flows
+│   ├── campaignPerformanceService.ts              # NEW — metrics recording, campaign analytics
+│   └── disputeResolutionService.ts                # NEW — dispute lifecycle, admin resolution
+│
+├── app/
+│   ├── dashboard/
+│   │   ├── DashboardShell.tsx                     # MODIFIED — added influencer + brand campaign nav items
+│   │   ├── influencer/
+│   │   │   ├── profile/page.tsx                   # NEW — register/edit influencer profile
+│   │   │   ├── campaigns/
+│   │   │   │   ├── page.tsx                       # NEW — list campaign invitations
+│   │   │   │   └── [campaignId]/page.tsx          # NEW — campaign detail, accept/reject, submit milestones
+│   │   │   └── content/page.tsx                   # NEW — manage content posts
+│   │   └── brand/
+│   │       ├── campaigns/
+│   │       │   ├── page.tsx                       # NEW — list/create campaigns
+│   │       │   └── [campaignId]/page.tsx          # NEW — campaign detail, milestones, payments, influencers
+│   │       └── influencers/page.tsx               # NEW — discover/search influencer profiles
+│   └── api/
+│       ├── admin/
+│       │   └── run-migration-004/route.ts         # NEW — apply Influencers Adda migration
+│       ├── influencer/
+│       │   ├── profile/route.ts                   # NEW — GET/POST/PATCH own profile
+│       │   ├── discover/route.ts                  # NEW — GET search/browse influencers
+│       │   ├── social-stats/route.ts              # NEW — GET/POST platform stats
+│       │   ├── content/route.ts                   # NEW — GET/POST content posts
+│       │   ├── content/[postId]/route.ts          # NEW — GET/PATCH/DELETE single post
+│       │   └── campaigns/
+│       │       ├── route.ts                       # NEW — GET influencer's campaigns
+│       │       └── [campaignId]/route.ts          # NEW — GET detail, PATCH accept/reject/submit
+│       ├── brand/
+│       │   └── campaigns/
+│       │       ├── route.ts                       # NEW — GET/POST brand campaigns
+│       │       └── [campaignId]/
+│       │           ├── route.ts                   # NEW — GET/PATCH/DELETE campaign
+│       │           ├── influencers/route.ts       # NEW — GET/POST/DELETE manage influencers
+│       │           ├── milestones/route.ts        # NEW — GET/POST milestones
+│       │           ├── milestones/[milestoneId]/route.ts # NEW — PATCH approve/reject/escrow, DELETE
+│       │           ├── payments/route.ts          # NEW — GET payment summary
+│       │           ├── performance/route.ts       # NEW — GET analytics, POST record metrics
+│       │           └── disputes/route.ts          # NEW — GET/POST brand disputes
+│       ├── campaigns/
+│       │   └── [campaignId]/
+│       │       ├── reviews/route.ts               # NEW — GET/POST campaign reviews
+│       │       └── disputes/route.ts              # NEW — GET/POST/PATCH disputes (influencer + admin)
+│       └── consumer/
+│           └── follows/[influencerId]/route.ts    # NEW — GET/POST/DELETE follow/unfollow
+```
+
+---
+
+## 14. Influencers Adda — Architecture
+
+### Tables (migration 004)
+
+11 new tables + ALTER on `users`:
+
+| Table | Purpose |
+|-------|---------|
+| `influencer_profiles` | Influencer public profiles (niche, handles, rates, verification) |
+| `influencer_social_stats` | Per-platform follower/engagement metrics (UNIQUE per influencer+platform) |
+| `influencer_content_posts` | Content posts with media, cross-posting, campaign links |
+| `influencer_campaigns` | Campaign briefs, budgets, deliverables, status lifecycle |
+| `campaign_influencers` | Junction: campaigns ↔ influencers with invitation status |
+| `campaign_milestones` | Milestone-based deliverables with payment amounts |
+| `campaign_payments` | Payment records with Razorpay integration, escrow tracking |
+| `campaign_performance` | Per-post/platform metrics (views, likes, reach, etc.) |
+| `influencer_follows` | Consumer → influencer follow relationships |
+| `influencer_reviews` | Post-campaign reviews with 1-5 rating |
+| `campaign_disputes` | Dispute filing and admin resolution |
+
+### Campaign lifecycle
+
+```
+draft → proposed → negotiating → active → completed
+                                      ↘ cancelled
+                                      ↘ disputed → active (after resolution)
+```
+
+### Payment flow
+
+```
+1. Brand creates campaign with budget
+2. Brand adds milestones (total must not exceed budget)
+3. Brand escrows funds for milestone → payment status: 'escrowed'
+4. Influencer submits deliverable → milestone status: 'submitted'
+5. Brand approves milestone → milestone: 'approved', payment: 'released'
+   Brand rejects → milestone: 'rejected' (influencer can resubmit)
+```
+
+Platform fee is calculated at escrow time: `Math.round(amount * platformFeePct / 100)`
+
+### Key design decisions
+
+| Decision | Why |
+|----------|-----|
+| **Consumers can register as influencers** | `is_influencer` flag on users table. Same auth, extended profile. No separate user type. |
+| **Milestone payments don't exceed budget** | Hard validation at milestone creation. Prevents over-commitment. |
+| **Status transitions are validated** | `VALID_TRANSITIONS` map prevents invalid state changes (e.g., draft→completed). |
+| **Disputes auto-set campaign to 'disputed'** | Makes dispute status visible in campaign listings. Reverts to 'active' when all disputes resolved. |
+| **Reviews only on completed campaigns** | Prevents premature reviews. One review per reviewer per campaign (UNIQUE constraint). |
+
+---
+
+## 15. Known Gaps & Future Work
+
+**Influencers Adda gaps:**
+
+| Item | Notes |
+|------|-------|
+| **Influencer earnings dashboard** | UI page for influencers to view payment history and total earnings. Data exists in `campaign_payments`, needs a dedicated `/dashboard/influencer/earnings` page. |
+| **Razorpay integration** | Payment records store Razorpay IDs but actual payment gateway integration (order creation, webhook handling) is not implemented. |
+| **Campaign content approval flow** | Content posts can be linked to campaigns but there's no brand-side review/approval workflow for content before publishing. |
+| **Social stats API verification** | Stats are self-declared. Need platform API integrations to verify follower counts and engagement rates. |
+| **Campaign search for influencers** | Influencers can only see campaigns they're invited to. No public campaign marketplace/browse feature yet. |
+
+**Previous gaps:**
+
+| Item | Notes |
+|------|-------|
+| **Instagram OAuth** | Basic Display API deprecated 2025. Requires Facebook App in Advanced Access + App Review (4–6 weeks). Table and plumbing exist; just needs provider approval. |
+| **Social interest inference** | `inferredInterests` starts empty on connect. A future `POST /api/consumer/social/sync` route should call the provider API, infer interests, and call `upsertInferredInterests()`. |
+| **`icp_match_scores` orphan cleanup** | When a consumer account is deleted, `icp_match_scores` rows with that `consumerId` become orphaned (no FK on `consumerId` — denormalised cache). Should be cleaned up in the `process-deletions` cron. |
+| **DSAR flow** | Formal Data Subject Access Request for decrypted sensitive data export. Currently sensitive data is listed by category only in `/api/consumer/my-data`. Full decrypted export requires identity verification and is out of scope. |
+| **`consumerSignalSnapshots` in process-deletions cron** | The existing account-deletion cron does not clean signal snapshots. The new `DELETE /api/consumer/account` route handles immediate deletion, but if a user's profile is deleted via admin/other means, snapshots may be orphaned. |

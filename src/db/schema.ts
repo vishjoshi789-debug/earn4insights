@@ -10,6 +10,7 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   name: text('name'),
   role: text('role').notNull(), // 'brand' | 'consumer'
+  isInfluencer: boolean('is_influencer').notNull().default(false), // true = consumer can access influencer features
   passwordHash: text('password_hash'), // For email/password auth
   googleId: text('google_id'), // For Google OAuth
   consent: jsonb('consent'), // { termsAcceptedAt, privacyAcceptedAt }
@@ -1254,3 +1255,227 @@ export type IcpMatchScore = typeof icpMatchScores.$inferSelect
 export type NewIcpMatchScore = typeof icpMatchScores.$inferInsert
 export type ConsumerSocialConnection = typeof consumerSocialConnections.$inferSelect
 export type NewConsumerSocialConnection = typeof consumerSocialConnections.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION: INFLUENCERS ADDA — Influencer Marketing Marketplace
+// ════════════════════════════════════════════════════════════════
+
+export const influencerProfiles = pgTable('influencer_profiles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull().unique(),           // → users.id (consumer with isInfluencer=true)
+  displayName: text('display_name').notNull(),
+  bio: text('bio'),
+  niche: text('niche').array().notNull().default([]),   // ['beauty', 'tech', 'food']
+  location: text('location'),
+  instagramHandle: text('instagram_handle'),
+  youtubeHandle: text('youtube_handle'),
+  twitterHandle: text('twitter_handle'),
+  linkedinHandle: text('linkedin_handle'),
+  baseRate: integer('base_rate'),                       // smallest currency unit (paise for INR)
+  currency: text('currency').notNull().default('INR'),
+  verificationStatus: text('verification_status').notNull().default('unverified')
+    .$type<'unverified' | 'pending' | 'verified'>(),
+  isActive: boolean('is_active').notNull().default(true),
+  portfolioUrls: jsonb('portfolio_urls').$type<{ url: string; title?: string; thumbnail?: string }[]>().default([]),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const influencerSocialStats = pgTable('influencer_social_stats', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  influencerId: text('influencer_id').notNull(),        // → users.id
+  platform: text('platform').notNull()
+    .$type<'instagram' | 'youtube' | 'twitter' | 'linkedin'>(),
+  followerCount: integer('follower_count').default(0),
+  engagementRate: decimal('engagement_rate', { precision: 5, scale: 2 }),
+  avgViews: integer('avg_views'),
+  avgLikes: integer('avg_likes'),
+  avgComments: integer('avg_comments'),
+  verifiedAt: timestamp('verified_at'),
+  verificationMethod: text('verification_method').notNull().default('self_declared')
+    .$type<'self_declared' | 'api_verified'>(),
+  rawApiResponse: jsonb('raw_api_response'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // UNIQUE (influencer_id, platform) enforced in migration
+})
+
+export const influencerContentPosts = pgTable('influencer_content_posts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  influencerId: text('influencer_id').notNull(),        // → users.id
+  title: text('title').notNull(),
+  body: text('body'),
+  mediaType: text('media_type').notNull().default('image')
+    .$type<'image' | 'video' | 'reel' | 'story' | 'carousel' | 'article'>(),
+  mediaUrls: text('media_urls').array().default([]),
+  thumbnailUrl: text('thumbnail_url'),
+  platformsCrossPosted: text('platforms_cross_posted').array().default([]),
+  productId: text('product_id'),                        // → products.id (nullable)
+  brandId: text('brand_id'),                            // → users.id (nullable)
+  campaignId: uuid('campaign_id'),                      // → influencer_campaigns.id (nullable, FK deferred)
+  tags: text('tags').array().default([]),
+  status: text('status').notNull().default('draft')
+    .$type<'draft' | 'pending_review' | 'published' | 'archived' | 'removed'>(),
+  publishedAt: timestamp('published_at'),
+  externalPostUrls: jsonb('external_post_urls').$type<Record<string, string>>().default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const influencerCampaigns = pgTable('influencer_campaigns', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),                  // → users.id (brand)
+  productId: text('product_id'),                        // → products.id (nullable)
+  icpId: uuid('icp_id'),                                // → brand_icps.id (nullable)
+  title: text('title').notNull(),
+  brief: text('brief'),
+  requirements: text('requirements'),
+  deliverables: text('deliverables').array().default([]),
+  targetGeography: text('target_geography').array().default([]),
+  targetPlatforms: text('target_platforms').array().default([]),
+  budgetTotal: integer('budget_total').notNull(),       // smallest currency unit (paise)
+  budgetCurrency: text('budget_currency').notNull().default('INR'),
+  paymentType: text('payment_type').notNull().default('escrow')
+    .$type<'escrow' | 'milestone' | 'direct'>(),
+  status: text('status').notNull().default('draft')
+    .$type<'draft' | 'proposed' | 'negotiating' | 'active' | 'completed' | 'cancelled' | 'disputed'>(),
+  startDate: date('start_date'),
+  endDate: date('end_date'),
+  platformFeePct: decimal('platform_fee_pct', { precision: 4, scale: 2 }).notNull().default('10.00'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const campaignInfluencers = pgTable('campaign_influencers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').notNull(),            // → influencer_campaigns.id
+  influencerId: text('influencer_id').notNull(),        // → users.id
+  status: text('status').notNull().default('invited')
+    .$type<'invited' | 'accepted' | 'rejected' | 'active' | 'completed'>(),
+  deliverables: text('deliverables').array().default([]),
+  agreedRate: integer('agreed_rate'),                   // negotiated rate (paise)
+  invitedAt: timestamp('invited_at').defaultNow().notNull(),
+  acceptedAt: timestamp('accepted_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // UNIQUE (campaign_id, influencer_id) enforced in migration
+})
+
+export const campaignMilestones = pgTable('campaign_milestones', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').notNull(),            // → influencer_campaigns.id
+  title: text('title').notNull(),
+  description: text('description'),
+  dueDate: date('due_date'),
+  paymentAmount: integer('payment_amount').notNull(),   // paise
+  status: text('status').notNull().default('pending')
+    .$type<'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected'>(),
+  completedAt: timestamp('completed_at'),
+  approvedAt: timestamp('approved_at'),
+  approvedBy: text('approved_by'),                      // → users.id (nullable)
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const campaignPayments = pgTable('campaign_payments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').notNull(),            // → influencer_campaigns.id
+  milestoneId: uuid('milestone_id'),                    // → campaign_milestones.id (nullable)
+  amount: integer('amount').notNull(),                  // paise
+  currency: text('currency').notNull().default('INR'),
+  paymentType: text('payment_type').notNull()
+    .$type<'escrow' | 'milestone' | 'direct'>(),
+  status: text('status').notNull().default('pending')
+    .$type<'pending' | 'escrowed' | 'released' | 'refunded' | 'failed'>(),
+  razorpayOrderId: text('razorpay_order_id'),
+  razorpayPaymentId: text('razorpay_payment_id'),
+  razorpayTransferId: text('razorpay_transfer_id'),
+  platformFee: integer('platform_fee').notNull().default(0),
+  escrowedAt: timestamp('escrowed_at'),
+  releasedAt: timestamp('released_at'),
+  refundedAt: timestamp('refunded_at'),
+  failureReason: text('failure_reason'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const campaignPerformance = pgTable('campaign_performance', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').notNull(),            // → influencer_campaigns.id
+  postId: uuid('post_id'),                              // → influencer_content_posts.id (nullable)
+  platform: text('platform').notNull(),
+  metricDate: date('metric_date').notNull(),
+  views: integer('views').default(0),
+  likes: integer('likes').default(0),
+  comments: integer('comments').default(0),
+  shares: integer('shares').default(0),
+  saves: integer('saves').default(0),
+  clicks: integer('clicks').default(0),
+  reach: integer('reach').default(0),
+  impressions: integer('impressions').default(0),
+  icpMatchedViewers: integer('icp_matched_viewers').default(0),
+  dataSource: text('data_source').notNull().default('manual')
+    .$type<'manual' | 'api' | 'estimated'>(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  // UNIQUE (post_id, platform, metric_date) enforced in migration
+})
+
+export const influencerFollows = pgTable('influencer_follows', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  consumerId: text('consumer_id').notNull(),            // → users.id (consumer)
+  influencerId: text('influencer_id').notNull(),        // → users.id (influencer)
+  followedAt: timestamp('followed_at').defaultNow().notNull(),
+  // UNIQUE (consumer_id, influencer_id) enforced in migration
+})
+
+export const influencerReviews = pgTable('influencer_reviews', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').notNull(),            // → influencer_campaigns.id
+  reviewerId: text('reviewer_id').notNull(),            // → users.id
+  revieweeId: text('reviewee_id').notNull(),            // → users.id
+  rating: integer('rating').notNull(),                  // 1-5, CHECK enforced in migration
+  review: text('review'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  // UNIQUE (campaign_id, reviewer_id) enforced in migration
+})
+
+export const campaignDisputes = pgTable('campaign_disputes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').notNull(),            // → influencer_campaigns.id
+  raisedBy: text('raised_by').notNull(),                // → users.id
+  reason: text('reason').notNull(),
+  evidence: jsonb('evidence').$type<string[]>().default([]),
+  status: text('status').notNull().default('open')
+    .$type<'open' | 'under_review' | 'resolved' | 'closed'>(),
+  resolvedBy: text('resolved_by'),                      // → users.id (admin)
+  resolvedAt: timestamp('resolved_at'),
+  resolution: text('resolution'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Influencers Adda types
+export type InfluencerProfile = typeof influencerProfiles.$inferSelect
+export type NewInfluencerProfile = typeof influencerProfiles.$inferInsert
+export type InfluencerSocialStat = typeof influencerSocialStats.$inferSelect
+export type NewInfluencerSocialStat = typeof influencerSocialStats.$inferInsert
+export type InfluencerContentPost = typeof influencerContentPosts.$inferSelect
+export type NewInfluencerContentPost = typeof influencerContentPosts.$inferInsert
+export type InfluencerCampaign = typeof influencerCampaigns.$inferSelect
+export type NewInfluencerCampaign = typeof influencerCampaigns.$inferInsert
+export type CampaignInfluencer = typeof campaignInfluencers.$inferSelect
+export type NewCampaignInfluencer = typeof campaignInfluencers.$inferInsert
+export type CampaignMilestone = typeof campaignMilestones.$inferSelect
+export type NewCampaignMilestone = typeof campaignMilestones.$inferInsert
+export type CampaignPayment = typeof campaignPayments.$inferSelect
+export type NewCampaignPayment = typeof campaignPayments.$inferInsert
+export type CampaignPerformanceRow = typeof campaignPerformance.$inferSelect
+export type NewCampaignPerformanceRow = typeof campaignPerformance.$inferInsert
+export type InfluencerFollow = typeof influencerFollows.$inferSelect
+export type NewInfluencerFollow = typeof influencerFollows.$inferInsert
+export type InfluencerReview = typeof influencerReviews.$inferSelect
+export type NewInfluencerReview = typeof influencerReviews.$inferInsert
+export type CampaignDispute = typeof campaignDisputes.$inferSelect
+export type NewCampaignDispute = typeof campaignDisputes.$inferInsert
