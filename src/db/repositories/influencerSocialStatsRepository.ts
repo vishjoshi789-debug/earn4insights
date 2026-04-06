@@ -47,7 +47,7 @@ export async function getStatsByInfluencer(influencerId: string): Promise<Influe
 
 export async function getStatsByPlatform(
   influencerId: string,
-  platform: string
+  platform: InfluencerSocialStat['platform']
 ): Promise<InfluencerSocialStat | null> {
   const rows = await db
     .select()
@@ -64,7 +64,7 @@ export async function getStatsByPlatform(
 
 // ── Delete ───────────────────────────────────────────────────────
 
-export async function deleteStats(influencerId: string, platform: string): Promise<void> {
+export async function deleteStats(influencerId: string, platform: InfluencerSocialStat['platform']): Promise<void> {
   await db
     .delete(influencerSocialStats)
     .where(

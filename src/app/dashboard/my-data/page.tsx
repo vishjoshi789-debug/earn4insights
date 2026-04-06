@@ -258,7 +258,7 @@ export default function MyDataPage() {
             </dl>
           </>
         )}
-        {data.profile.interests && (
+        {!!data.profile.interests && (
           <>
             <Separator className="my-3" />
             <p className="text-xs font-medium mb-2 text-muted-foreground">Interests</p>

@@ -91,7 +91,7 @@ export async function DELETE(req: NextRequest) {
           to_jsonb(${scheduledDeletionAt.toISOString()}::text)
         )`,
       })
-      .where(eq(userProfiles.userId, userId))
+      .where(eq(userProfiles.id, userId))
 
     return NextResponse.json({
       success: true,

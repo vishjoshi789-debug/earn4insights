@@ -47,31 +47,28 @@ export function Dialog({ open, defaultOpen = false, onOpenChange, children }: Di
 /**
  * Optional trigger button that opens the dialog when clicked.
  */
-export type DialogTriggerProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
+export type DialogTriggerProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  asChild?: boolean;
+};
 
-export function DialogTrigger({ children, onClick, ...rest }: DialogTriggerProps) {
+export function DialogTrigger({ children, onClick, asChild, ...rest }: DialogTriggerProps) {
   const ctx = React.useContext(DialogContext);
 
-  if (!ctx) {
-    // If used outside Dialog, just render a normal button.
-    return (
-      <button type="button" onClick={onClick} {...rest}>
-        {children}
-      </button>
-    );
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    onClick?.(e);
+    if (!e.defaultPrevented && ctx) {
+      ctx.setOpen(true);
+    }
+  };
+
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children as React.ReactElement<any>, {
+      onClick: handleClick,
+    });
   }
 
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        onClick?.(e);
-        if (!e.defaultPrevented) {
-          ctx.setOpen(true);
-        }
-      }}
-      {...rest}
-    >
+    <button type="button" onClick={handleClick} {...rest}>
       {children}
     </button>
   );

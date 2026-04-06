@@ -226,7 +226,7 @@ export function IcpWeightEditor({ initialCriteria, onSave, saving = false }: Pro
                   min={0}
                   max={100}
                   step={1}
-                  onValueChange={([val]) => setWeight(criterion.key, val)}
+                  onValueChange={([val]: number[]) => setWeight(criterion.key, val)}
                   className="flex-1"
                 />
                 <Badge variant="outline" className="w-12 text-center justify-center shrink-0">
