@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (Session: Influencers Adda complete)
+> Last updated: April 2026 (Session: Production hardening, cron fixes, TypeScript build fixes)
 > Read this file at the start of every session. It is the authoritative source of truth for this project.
 
 ## Phase Status Summary
@@ -21,6 +21,9 @@
 | Social OAuth Integration | LinkedIn stub built; Instagram pending App Review | ✅ COMPLETE (stub) |
 | Consumer Dashboard UI | Privacy, signals, data-export pages | ✅ COMPLETE |
 | Influencers Adda | Influencer marketing marketplace — 11 tables, repos, services, APIs, UI | ✅ COMPLETE |
+| TypeScript Build Fixes | 12 type errors resolved — missing UI components, DialogTrigger asChild, type safety | ✅ COMPLETE |
+| Migration Route Fix | Inlined SQL in all 3 migration routes — fs.readFileSync fails on Vercel serverless | ✅ COMPLETE |
+| Cron Hardening | 3 new cron routes added, stale path fixed, extract-themes registered (10→13 total) | ✅ COMPLETE |
 
 ---
 
@@ -125,6 +128,23 @@ const role = (session.user as any).role   // 'consumer' | 'brand' | 'admin'
 - **All application queries:** use `db` (Drizzle ORM) from `@/db`
 - **DDL migrations only:** use `pgClient` (raw postgres.js) from `@/db` — needed because Drizzle's `db.execute()` is DML-only
 - When running DDL via API: strip `BEGIN`/`COMMIT` from SQL before passing to `pgClient.unsafe()` — postgres.js blocks transaction control on pooled connections. All DDL statements use `IF NOT EXISTS` so idempotency is preserved.
+
+### Migration routes — SQL must be inlined
+
+**CRITICAL:** Migration routes (`/api/admin/run-migration-*`) must have their SQL inlined as template literals. Do NOT use `fs.readFileSync()` to load `.sql` files — Vercel serverless functions do not bundle files from `src/db/migrations/` in the output. `fs.readFileSync` throws `ENOENT` in production.
+
+```ts
+// WRONG — fails on Vercel
+const sql = fs.readFileSync(path.join(process.cwd(), 'src/db/migrations/004.sql'), 'utf-8')
+
+// CORRECT — inline the SQL
+const sql = `
+  CREATE TABLE IF NOT EXISTS ...
+`
+await pgClient.unsafe(sql)
+```
+
+Migration 003 also runs each `ALTER` individually in a loop, catching `42710` (duplicate_object) errors to stay idempotent.
 
 ---
 
@@ -331,14 +351,34 @@ matchScore = round((totalEarned / totalPossible) × 100)   // 0–100
 | 01:00 | `/api/cron/physical-delete-sensitive-attributes` | Physical-delete soft-deleted sensitive attributes older than 30 days (GDPR Art. 17) |
 | 01:30 | `/api/cron/cleanup-feedback-media` | Clean up expired feedback media |
 | 02:00 | `/api/jobs/process-deletions` | Hard-delete user accounts after 30-day grace period |
+| 02:00 Sun | `/api/cron/extract-themes` | Extract AI themes for all products with feedback (weekly) |
 | 02:30 | `/api/cron/update-consumer-signals` | Batch signal collection for all users |
+| 03:00 | `/api/cron/update-behavioral` | Update behavioral signals |
 | 03:00 | `/api/cron/recompute-icp-scores` | Recompute stale ICP match scores + fire alerts |
-| 03:00 | `/api/jobs/update-behavioral` | Update behavioral signals |
+| 03:30 | `/api/cron/update-campaign-performance` | Aggregate performance metrics for active campaigns |
 | 04:00 | `/api/cron/send-time-analysis` | Analyse optimal send times |
+| 04:30 | `/api/cron/sync-social-stats` | Validate influencer social stats (placeholder for platform API sync) |
 | 05:00 | `/api/cron/cleanup-analytics-events` | Purge old analytics events |
 | 06:00 | `/api/cron/process-notifications` | Process queued notifications |
 
-All cron routes are authenticated via `Authorization: Bearer CRON_SECRET`.
+**13 total cron entries.** All authenticated via `Authorization: Bearer CRON_SECRET` (Vercel injects automatically).
+
+**Auth pattern used by ALL cron routes:**
+```ts
+const authHeader = request.headers.get('authorization')
+const cronSecret = process.env.CRON_SECRET
+if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
+```
+Note: if `CRON_SECRET` is unset, the check is skipped (routes run unauthenticated). Always set in production.
+
+**Middleware does NOT intercept cron routes.** The matcher in `middleware.ts` explicitly excludes `/api/*`:
+```ts
+'/((?!api|_next/static|_next/image|favicon.ico).*)'
+```
+
+**Stale route note:** `/api/jobs/update-behavioral/route.ts` still exists on disk but is no longer registered in `vercel.json`. It was replaced by `/api/cron/update-behavioral/route.ts` (uses structured logger). Safe to delete the jobs version.
 
 ---
 
@@ -430,7 +470,11 @@ src/
 │   └── recomputeIcpScores.ts                      # NEW — batch ICP score recomputation
 │
 ├── components/
-│   └── icp-weight-editor.tsx                      # NEW — reusable ICP weight slider component
+│   ├── icp-weight-editor.tsx                      # NEW — reusable ICP weight slider component
+│   └── ui/
+│       ├── slider.tsx                             # NEW — Slider component (range input wrapper)
+│       ├── accordion.tsx                          # NEW — Accordion component (custom, no Radix dep)
+│       └── dialog.tsx                             # MODIFIED — added asChild prop to DialogTrigger
 │
 └── app/
     ├── dashboard/
@@ -471,11 +515,14 @@ src/
         ├── analytics/
         │   └── icp-audience/route.ts              # NEW — GET aggregate audience stats (min cohort 5)
         └── cron/
-            ├── update-consumer-signals/route.ts   # NEW — 02:30 UTC daily
-            ├── recompute-icp-scores/route.ts      # NEW — 03:00 UTC daily
-            └── physical-delete-sensitive-attributes/route.ts  # NEW — 01:00 UTC daily (GDPR Art. 17)
+            ├── update-consumer-signals/route.ts               # NEW — 02:30 UTC daily
+            ├── recompute-icp-scores/route.ts                  # NEW — 03:00 UTC daily
+            ├── physical-delete-sensitive-attributes/route.ts  # NEW — 01:00 UTC daily (GDPR Art. 17)
+            ├── extract-themes/route.ts                        # EXISTING — 02:00 UTC Sundays (was unregistered)
+            ├── update-campaign-performance/route.ts           # NEW — 03:30 UTC daily (Influencers Adda)
+            └── sync-social-stats/route.ts                     # NEW — 04:30 UTC daily (Influencers Adda)
 
-vercel.json                                        # MODIFIED — 3 new cron entries added
+vercel.json                                        # MODIFIED — 13 cron entries (was 10)
 ```
 
 ### Influencers Adda file map (added April 2026)
@@ -606,7 +653,37 @@ Platform fee is calculated at escrow time: `Math.round(amount * platformFeePct /
 
 ---
 
-## 15. Known Gaps & Future Work
+## 15. Production Deployment Notes (April 2026)
+
+### TypeScript build fixes applied
+
+12 type errors were resolved to make Vercel builds pass:
+
+| File | Fix |
+|------|-----|
+| `src/app/api/consumer/account/route.ts` | `userProfiles.userId` → `userProfiles.id` |
+| `src/db/repositories/influencerSocialStatsRepository.ts` | `platform: string` → `platform: InfluencerSocialStat['platform']` |
+| `src/components/icp-weight-editor.tsx` | Explicit `number[]` type on `onValueChange` destructure |
+| `src/components/ui/dialog.tsx` | Added `asChild` prop to `DialogTriggerProps` with `cloneElement` support |
+| `src/components/ui/slider.tsx` | Created from scratch — was an empty file |
+| `src/components/ui/accordion.tsx` | Created from scratch — was an empty file |
+| `src/app/dashboard/my-data/page.tsx` | `{data.profile.interests && ...}` → `{!!data.profile.interests && ...}` (unknown→ReactNode) |
+
+### Vercel-specific gotchas
+
+1. **`fs.readFileSync` in API routes** — Vercel does not include arbitrary source files in the serverless bundle. Only files imported via `import` statements are bundled. Any route that reads `.sql` or other files at runtime via `fs` will fail with `ENOENT`. **Always inline file content as template literals.**
+
+2. **Cron route paths** — vercel.json cron `path` must be a relative path (e.g. `/api/cron/foo`). No domain, no protocol. Vercel prepends the production URL automatically.
+
+3. **`CRON_SECRET` scope** — Must be set for the **Production** environment in Vercel dashboard (not just Preview). If unset, all cron routes run unauthenticated.
+
+4. **Middleware excludes `/api`** — The `middleware.ts` matcher `/((?!api|...)*)` means no NextAuth session wrapping for API routes. Cron and admin routes handle their own auth.
+
+---
+
+## 16. Known Gaps & Future Work
+
+
 
 **Influencers Adda gaps:**
 
