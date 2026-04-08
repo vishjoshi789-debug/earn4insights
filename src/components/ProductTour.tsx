@@ -16,7 +16,11 @@ export interface TourStep {
   title: string
   /** Description / outcome explanation */
   description: string
-  /** Which role sees this step (omit for all) */
+  /**
+   * Which role sees this step (omit = all roles).
+   * Influencers use role:'consumer' — they are consumers with is_influencer:true
+   * and see all consumer steps including the influencer sub-section.
+   */
   role?: 'brand' | 'consumer'
   /** Position of tooltip relative to target */
   position?: 'top' | 'bottom' | 'left' | 'right'
@@ -29,30 +33,43 @@ export interface TourStep {
 }
 
 // ─── Tour Steps ──────────────────────────────────────────────────
+//
+// Role filtering:
+//   omit role  → shown to everyone
+//   role:'brand'    → brands only
+//   role:'consumer' → consumers AND influencers (influencer = consumer + is_influencer flag)
+//
+// Order within each role group matters — steps are shown in array order
+// after filtering. Keep Welcome first, Finale last.
 
 const TOUR_STEPS: TourStep[] = [
-  // ── Welcome (all users) ──
+
+  // ═══════════════════════════════════════════════════════════════
+  // ALL USERS
+  // ═══════════════════════════════════════════════════════════════
+
   {
     target: '[data-tour="welcome"]',
     title: '👋 Welcome to Earn4Insights!',
-    description: 'This quick tour will show you everything you can do here. It takes under 2 minutes!',
+    description: 'This quick tour shows you everything you can do here. Takes under 2 minutes — let\'s go!',
     position: 'bottom',
     icon: '🎉',
   },
-
-  // ── Sidebar nav (all users) ──
   {
     target: '[data-tour="nav-dashboard"]',
     title: '🏠 Your Dashboard',
-    description: 'This is your home base. See personalized recommendations, feedback stats, and quick actions at a glance.',
+    description: 'Your home base. Personalized recommendations, stats, and quick actions — all at a glance.',
     position: 'right',
   },
 
-  // ── Brand-specific tour ──
+  // ═══════════════════════════════════════════════════════════════
+  // BRANDS
+  // ═══════════════════════════════════════════════════════════════
+
   {
     target: '[data-tour="nav-products"]',
     title: '📦 Your Products',
-    description: 'View and manage all your products. Track performance, see ratings, and monitor how consumers engage with each one.',
+    description: 'View and manage all your products. Track performance, see consumer ratings, and monitor engagement in real time.',
     role: 'brand',
     position: 'right',
     icon: '📦',
@@ -60,7 +77,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-launch"]',
     title: '🚀 Launch a New Product',
-    description: 'Add new products to the platform. Once launched, consumers can discover, review, and rate them — giving you real feedback.',
+    description: 'Add a product to the platform. Once live, consumers can discover, review, and rate it — giving you honest, unprompted feedback.',
     role: 'brand',
     position: 'right',
     icon: '🚀',
@@ -68,49 +85,100 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-surveys"]',
     title: '📊 Surveys & NPS',
-    description: 'Create surveys to gather direct consumer opinions. Track your Net Promoter Score (NPS) to measure customer loyalty.',
+    description: 'Create targeted surveys and track your Net Promoter Score. Ask exactly what you need to know, to the right audience.',
     role: 'brand',
     position: 'right',
     icon: '📊',
   },
   {
     target: '[data-tour="nav-feedback"]',
-    title: '💬 Consumer Feedback',
-    description: 'Read honest feedback from real consumers. See what they love, what needs improvement, and respond to build trust.',
+    title: '💬 Consumer Feedback Hub',
+    description: 'All consumer feedback in one place — text, audio, and video. AI sentiment analysis tells you what people really feel, not just what they said.',
     role: 'brand',
     position: 'right',
     icon: '💬',
   },
   {
     target: '[data-tour="nav-analytics"]',
-    title: '📈 Unified Analytics',
-    description: 'Your command center! See demographics, engagement trends, sentiment analysis, and conversion metrics — all in one view.',
+    title: '📈 Audience Analytics',
+    description: 'Your intelligence command center. Demographics, engagement trends, sentiment, and category comparisons — all in one view.',
     role: 'brand',
     position: 'right',
     icon: '📈',
   },
   {
-    target: '[data-tour="nav-detailed-analytics"]',
-    title: '🔍 Detailed Product Analytics',
-    description: 'Deep-dive into individual product performance. Compare metrics, track trends over time, and identify your top performers.',
+    target: '[data-tour="nav-consumer-intelligence"]',
+    title: '🧠 Consumer Intelligence',
+    description: 'Understand how different segments feel about your product and why. Spot behavioral patterns before they become market shifts.',
+    role: 'brand',
+    position: 'right',
+    icon: '🧠',
+  },
+  {
+    target: '[data-tour="nav-feature-insights"]',
+    title: '🔍 Feature Insights',
+    description: 'See which features delight users and which need work — backed by real feedback data. Stop guessing what to build next.',
     role: 'brand',
     position: 'right',
     icon: '🔍',
   },
   {
+    target: '[data-tour="nav-detailed-analytics"]',
+    title: '📉 Product Deep Dive',
+    description: 'Per-product analytics — sentiment trends over time, score breakdowns, and detailed feedback summaries.',
+    role: 'brand',
+    position: 'right',
+    icon: '📉',
+  },
+  {
     target: '[data-tour="nav-rankings"]',
-    title: '🏆 Weekly Top 10',
-    description: 'See how your products rank against competitors each week. Higher rankings mean more visibility to consumers!',
+    title: '🏆 Weekly Rankings',
+    description: 'See how your products rank against competitors each week. Higher rankings = more consumer visibility.',
     role: 'brand',
     position: 'right',
     icon: '🏆',
   },
+  {
+    target: '[data-tour="nav-alerts"]',
+    title: '🔔 Smart Alerts',
+    description: 'Get instant notifications when new feedback arrives, rankings change, or a high-match consumer engages with your product. Never miss a signal.',
+    role: 'brand',
+    position: 'right',
+    icon: '🔔',
+  },
+  {
+    target: '[data-tour="nav-icps"]',
+    title: '🎯 ICP Profiles',
+    description: 'Define your Ideal Consumer Profile with weighted criteria — age, interests, behavior, values, psychographics. The platform scores every consumer against it daily and surfaces the best matches.',
+    role: 'brand',
+    position: 'right',
+    icon: '🎯',
+  },
+  {
+    target: '[data-tour="nav-brand-campaigns"]',
+    title: '📣 Influencer Campaigns',
+    description: 'Create campaigns, set budgets, define deliverables, and manage milestone-based payments. Funds are escrowed upfront — influencers only get paid when you approve their work.',
+    role: 'brand',
+    position: 'right',
+    icon: '📣',
+  },
+  {
+    target: '[data-tour="nav-discover-influencers"]',
+    title: '🔎 Discover Influencers',
+    description: 'Search verified influencers by niche, platform, location, and engagement rate. Invite them to your campaign directly — no cold emails needed.',
+    role: 'brand',
+    position: 'right',
+    icon: '🔎',
+  },
 
-  // ── Consumer-specific tour ──
+  // ═══════════════════════════════════════════════════════════════
+  // CONSUMERS (including influencers — influencer = consumer + flag)
+  // ═══════════════════════════════════════════════════════════════
+
   {
     target: '[data-tour="nav-products"]',
     title: '🛍️ Discover Products',
-    description: 'Browse products from brands looking for your honest opinion. Click "Give Feedback" on any product to earn rewards!',
+    description: 'Browse products from brands looking for your honest opinion. Click "Give Feedback" on any product to start earning!',
     role: 'consumer',
     position: 'right',
     icon: '🛍️',
@@ -118,7 +186,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-submit-feedback"]',
     title: '✍️ Submit Feedback',
-    description: 'Your voice matters! Write reviews, record voice or video feedback, upload photos — in any language. Earn 25 points per submission.',
+    description: 'Your voice matters! Write reviews, record voice or video feedback, upload photos — in any language. Earn points for every submission.',
     role: 'consumer',
     position: 'right',
     icon: '✍️',
@@ -126,7 +194,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-my-feedback"]',
     title: '📋 My Feedback History',
-    description: 'Track everything you\'ve submitted — see ratings, sentiment analysis, and whether brands have reviewed your feedback.',
+    description: 'Track everything you\'ve submitted — see AI sentiment analysis of your reviews and whether brands have responded.',
     role: 'consumer',
     position: 'right',
     icon: '📋',
@@ -134,7 +202,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-rankings"]',
     title: '🏆 Weekly Top 10',
-    description: 'See this week\'s highest-rated products, voted by consumers like you. You can give feedback directly from any ranked product!',
+    description: 'See this week\'s highest-rated products, voted by real consumers like you. Give feedback directly from any ranked product.',
     role: 'consumer',
     position: 'right',
     icon: '🏆',
@@ -142,15 +210,31 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-surveys"]',
     title: '📋 Take Surveys',
-    description: 'Complete brand surveys to share your opinions. Each survey you complete earns you points and rewards.',
+    description: 'Complete brand surveys and share your opinions. Each completed survey earns you points — the more you share, the more you earn.',
     role: 'consumer',
     position: 'right',
     icon: '📋',
   },
   {
+    target: '[data-tour="nav-recommendations"]',
+    title: '✨ For You',
+    description: 'Personalized product recommendations based on your interests and feedback history. The more you engage, the smarter it gets.',
+    role: 'consumer',
+    position: 'right',
+    icon: '✨',
+  },
+  {
+    target: '[data-tour="nav-watchlist"]',
+    title: '🔖 My Watchlist',
+    description: 'Follow products you love. Get notified when new reviews come in or their ranking changes — stay ahead of what\'s trending.',
+    role: 'consumer',
+    position: 'right',
+    icon: '🔖',
+  },
+  {
     target: '[data-tour="nav-rewards"]',
     title: '🎁 Your Rewards',
-    description: 'Track your earnings from surveys, reviews, and feedback. Redeem points for real rewards and payouts!',
+    description: 'Track all your earned points from surveys, reviews, and feedback. Redeem for real rewards and cash payouts.',
     role: 'consumer',
     position: 'right',
     icon: '🎁',
@@ -158,13 +242,70 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-payouts"]',
     title: '💰 Payouts',
-    description: 'Cash out your earned rewards. We support multiple payout methods so you get paid for your insights.',
+    description: 'Cash out your earnings. Multiple payout methods supported — you get paid for your time and insights.',
     role: 'consumer',
     position: 'right',
     icon: '💰',
   },
+  {
+    target: '[data-tour="nav-privacy"]',
+    title: '🛡️ Privacy & Consent',
+    description: 'You control your data. Toggle each category independently — behavioral, demographic, sensitive data. Revoke any consent instantly. GDPR and India DPDP Act compliant.',
+    role: 'consumer',
+    position: 'right',
+    icon: '🛡️',
+  },
+  {
+    target: '[data-tour="nav-my-signals"]',
+    title: '📡 My Signals',
+    description: 'See exactly what the platform knows about you — behavioral patterns, interests, demographics — with a full history of every update. No hidden data.',
+    role: 'consumer',
+    position: 'right',
+    icon: '📡',
+  },
+  {
+    target: '[data-tour="nav-my-data"]',
+    title: '📥 My Data Export',
+    description: 'Download everything we hold about you as a single JSON file. Your right under GDPR Article 15 and India\'s DPDP Act. One click, instant export.',
+    role: 'consumer',
+    position: 'right',
+    icon: '📥',
+  },
 
-  // ── Common steps (all users) ──
+  // ── Influencer sub-section (still role:'consumer') ──────────────
+  // These steps introduce the Influencers Adda feature to all consumers.
+  // Consumers who have registered as influencers will see these as their workflow.
+  // Others see them as a prompt to explore the influencer path.
+
+  {
+    target: '[data-tour="nav-influencer-profile"]',
+    title: '🌟 Influencer Profile',
+    description: 'You can become an influencer right here — no separate account needed! Set your niche, platforms, base rate, and portfolio. Brands will discover and invite you to paid campaigns.',
+    role: 'consumer',
+    position: 'right',
+    icon: '🌟',
+  },
+  {
+    target: '[data-tour="nav-influencer-campaigns"]',
+    title: '📣 My Campaigns',
+    description: 'Receive campaign invitations from brands. Review the brief, accept or reject, submit deliverables milestone by milestone — everything managed in one place.',
+    role: 'consumer',
+    position: 'right',
+    icon: '📣',
+  },
+  {
+    target: '[data-tour="nav-influencer-content"]',
+    title: '🎬 My Content',
+    description: 'Manage all your content posts across platforms. Link posts to campaigns, track cross-posting, and build a portfolio that makes brands want to work with you again.',
+    role: 'consumer',
+    position: 'right',
+    icon: '🎬',
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // SHARED — shown to both roles after role-specific steps
+  // ═══════════════════════════════════════════════════════════════
+
   {
     target: '[data-tour="nav-social"]',
     title: '🌐 Social Hub',
@@ -175,40 +316,28 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-community"]',
     title: '👥 Community',
-    description: 'Join discussions, ask questions, and connect with other users. Your voice matters in shaping products!',
+    description: 'Join discussions, ask questions, and connect with other users. Your voice shapes the platform.',
     position: 'right',
     icon: '👥',
   },
   {
-    target: '[data-tour="nav-rewards"]',
-    title: '🎁 Rewards',
-    description: 'View your earned rewards from engagement, surveys, and feedback. Active participation means more rewards!',
-    role: 'brand',
-    position: 'right',
-    icon: '🎁',
-  },
-
-  // ── Header area ──
-  {
     target: '[data-tour="notifications"]',
     title: '🔔 Notifications',
-    description: 'Stay updated! You\'ll get notified about new survey responses, feedback, ranking changes, and reward milestones.',
+    description: 'Stay on top of everything — new feedback, ranking changes, campaign updates, reward milestones, and more.',
     position: 'bottom',
     icon: '🔔',
   },
   {
     target: '[data-tour="user-menu"]',
     title: '👤 Your Profile',
-    description: 'Access your account settings, privacy preferences, and sign-out option from here.',
+    description: 'Access account settings, privacy preferences, and sign-out from here. You can also restart this tour from your profile menu anytime.',
     position: 'bottom',
     icon: '👤',
   },
-
-  // ── Settings ──
   {
     target: '[data-tour="nav-settings"]',
-    title: '⚙️ Settings & Privacy',
-    description: 'Control your data, manage consent, update your profile, and customize your experience. Your privacy is always in your hands.',
+    title: '⚙️ Settings',
+    description: 'Update your profile, manage notification preferences, and control your account — all in one place.',
     position: 'right',
     icon: '⚙️',
   },
@@ -217,7 +346,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="welcome"]',
     title: '🎉 You\'re All Set!',
-    description: 'You now know your way around Earn4Insights! Start exploring — and remember, you can restart this tour anytime from your profile menu.',
+    description: 'You know your way around Earn4Insights! Start exploring — and you can restart this tour anytime from your profile menu.',
     position: 'bottom',
     icon: '🎉',
   },
@@ -225,22 +354,28 @@ const TOUR_STEPS: TourStep[] = [
 
 // ─── Tour Storage ────────────────────────────────────────────────
 
-function getTourStorageKey(userId?: string): string {
-  return userId ? `e4i_product_tour_${userId}` : 'e4i_product_tour'
+/**
+ * Storage key is role-scoped so that:
+ * - A consumer who later registers as influencer gets a fresh tour (new steps).
+ * - A brand switching back doesn't inherit the consumer tour state.
+ */
+function getTourStorageKey(userId?: string, role?: string): string {
+  const roleSlug = role ?? 'guest'
+  return userId ? `e4i_product_tour_${userId}_${roleSlug}` : `e4i_product_tour_${roleSlug}`
 }
 
-function getTourState(userId?: string): { completed: boolean; dismissed: boolean } {
+function getTourState(userId?: string, role?: string): { completed: boolean; dismissed: boolean } {
   if (typeof window === 'undefined') return { completed: false, dismissed: false }
   try {
-    const raw = localStorage.getItem(getTourStorageKey(userId))
+    const raw = localStorage.getItem(getTourStorageKey(userId, role))
     if (raw) return JSON.parse(raw)
   } catch { }
   return { completed: false, dismissed: false }
 }
 
-function setTourState(state: { completed: boolean; dismissed: boolean }, userId?: string) {
+function setTourState(state: { completed: boolean; dismissed: boolean }, userId?: string, role?: string) {
   try {
-    localStorage.setItem(getTourStorageKey(userId), JSON.stringify(state))
+    localStorage.setItem(getTourStorageKey(userId, role), JSON.stringify(state))
   } catch { }
 }
 
@@ -458,9 +593,10 @@ const { data: session, status } = useSession()
   }, [])
 
   // Auto-start tour for first-time users (after small delay for DOM to settle)
+  // Storage key is role-scoped — consumers who become influencers get a fresh tour.
   useEffect(() => {
     if (!mounted || status === 'loading') return
-    const state = getTourState(userId)
+    const state = getTourState(userId, userRole)
     if (!state.completed && !state.dismissed && pathname.startsWith('/dashboard')) {
       const timer = setTimeout(() => {
         setIsActive(true)
@@ -468,17 +604,17 @@ const { data: session, status } = useSession()
       }, 1500)
       return () => clearTimeout(timer)
     }
-  }, [mounted, pathname, status, userId])
+  }, [mounted, pathname, status, userId, userRole])
 
   // Expose global function to restart tour
   useEffect(() => {
     (window as any).__startProductTour = () => {
-      setTourState({ completed: false, dismissed: false }, userId)
+      setTourState({ completed: false, dismissed: false }, userId, userRole)
       setCurrentStep(0)
       setIsActive(true)
     }
     return () => { delete (window as any).__startProductTour }
-  }, [userId])
+  }, [userId, userRole])
 
   // Position the spotlight on the target element
   const updateTargetRect = useCallback(() => {
@@ -512,13 +648,12 @@ const { data: session, status } = useSession()
 
   const handleNext = useCallback(() => {
     if (currentStep >= filteredSteps.length - 1) {
-      // Tour complete
       setIsActive(false)
-      setTourState({ completed: true, dismissed: false }, userId)
+      setTourState({ completed: true, dismissed: false }, userId, userRole)
       return
     }
     setCurrentStep(prev => prev + 1)
-  }, [currentStep, filteredSteps.length, userId])
+  }, [currentStep, filteredSteps.length, userId, userRole])
 
   const handlePrev = useCallback(() => {
     if (currentStep > 0) {
@@ -528,8 +663,8 @@ const { data: session, status } = useSession()
 
   const handleSkip = useCallback(() => {
     setIsActive(false)
-    setTourState({ completed: false, dismissed: true }, userId)
-  }, [userId])
+    setTourState({ completed: false, dismissed: true }, userId, userRole)
+  }, [userId, userRole])
 
   // Keyboard navigation
   useEffect(() => {
