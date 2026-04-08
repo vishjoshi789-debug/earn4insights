@@ -21,6 +21,14 @@ import {
   Trophy,
   Brain,
   HandCoins,
+  Target,
+  Megaphone,
+  UserCheck,
+  ShieldCheck,
+  Download,
+  Star,
+  CheckSquare,
+  Zap,
 } from 'lucide-react'
 
 export default function HomePage() {
@@ -253,6 +261,51 @@ export default function HomePage() {
                 </Link>
               </CardContent>
             </Card>
+
+            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+                  <Target className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">ICP Builder</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Define your Ideal Consumer Profile with weighted criteria — age, interests, behavior, psychographics. Platform auto-scores every consumer against it daily.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
+                  Book a Demo <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+                  <Megaphone className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Influencer Campaigns</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Create campaigns, set budgets, define deliverables, and manage milestone-based payments — all in one dashboard. Escrow-backed for trust on both sides.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
+                  Book a Demo <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+                  <UserCheck className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Discover Influencers</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Search verified influencers by niche, platform, location, and follower count. Invite them directly to your campaigns from inside the platform.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
+                  Book a Demo <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
@@ -401,6 +454,66 @@ export default function HomePage() {
                 </Link>
               </CardContent>
             </Card>
+
+            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
+                  <ShieldCheck className="h-5 w-5 text-accent" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Privacy & Consent</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Full control over what data you share — toggle each category independently. GDPR and India DPDP Act compliant. Revoke any consent in one tap.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
+                  Learn More <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
+                  <Activity className="h-5 w-5 text-accent" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">My Signals</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  See exactly what the platform knows about you — behavioral patterns, interests, demographics — with full history of every update.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
+                  Learn More <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
+                  <Download className="h-5 w-5 text-accent" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">My Data Export</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Download everything we hold about you as a single JSON file — your right under GDPR Art. 15 and India's DPDP Act. One click, instant export.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
+                  Learn More <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
+                  <UserCheck className="h-5 w-5 text-accent" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Become an Influencer</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Already a consumer? Register as an influencer in one step — same account, extended profile. Set your niche, rates, and handles to get discovered by brands.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
+                  Learn More <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
@@ -411,6 +524,124 @@ export default function HomePage() {
               </Link>
             </Button>
             <p className="text-xs text-muted-foreground">No credit card required — just sign up</p>
+          </div>
+        </div>
+      </section>
+
+      {/* For Influencers */}
+      <section className="border-t border-border/40 bg-muted/30 px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/5 px-4 py-1.5 text-sm mb-4">
+              <Star className="h-4 w-4 text-violet-600" />
+              <span className="text-violet-600 font-medium">For Influencers</span>
+            </div>
+            <h2 className="text-foreground">Turn Your Audience Into a Career</h2>
+            <p className="mt-4 text-lg text-muted-foreground">
+              Get discovered by brands, manage campaigns end-to-end, and receive milestone-based payments — all from one platform.
+            </p>
+          </div>
+
+          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
+                  <UserCheck className="h-5 w-5 text-violet-600" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Influencer Profile</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Create a verified public profile — set your niche, platforms, base rate, and portfolio. Brands discover you through search. No cold outreach needed.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
+                  Get Started <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
+                  <Megaphone className="h-5 w-5 text-violet-600" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Campaign Invitations</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Receive campaign invitations from brands, review the brief, negotiate terms, and accept or decline — on your schedule.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
+                  Get Started <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
+                  <HandCoins className="h-5 w-5 text-violet-600" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Milestone Payments</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Payments are escrowed before work begins. Complete a milestone, submit for approval — funds release instantly. No chasing invoices.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
+                  Get Started <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
+                  <FileText className="h-5 w-5 text-violet-600" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Content Management</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Manage all your content posts in one place — link posts to campaigns, track which platforms you've cross-posted to, and keep your portfolio updated.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
+                  Get Started <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
+                  <Zap className="h-5 w-5 text-violet-600" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Performance Analytics</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Track views, likes, reach, and engagement per campaign and platform. Show brands real numbers to build credibility and command better rates.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
+                  Get Started <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
+                  <Star className="h-5 w-5 text-violet-600" />
+                </div>
+                <h3 className="mt-3 font-semibold text-foreground text-base">Reviews & Reputation</h3>
+                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+                  Brands leave verified reviews after each campaign. Build a star-rated reputation that makes future brands trust you faster and offer better deals.
+                </p>
+                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
+                  Get Started <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="mt-10 flex flex-col items-center gap-3">
+            <Button size="lg" asChild className="bg-violet-600 hover:bg-violet-700 gap-2 text-white">
+              <Link href="/signup?role=consumer">
+                Join as Influencer
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <p className="text-xs text-muted-foreground">Sign up as a consumer — register as an influencer from your dashboard</p>
           </div>
         </div>
       </section>
