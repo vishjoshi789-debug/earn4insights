@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, boolean, integer, real, uuid, serial, date, decimal } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, jsonb, boolean, integer, real, uuid, serial, date, decimal, index } from 'drizzle-orm/pg-core'
 
 // ════════════════════════════════════════════════════════════════
 // SECTION 1: USERS & AUTHENTICATION
@@ -1455,6 +1455,113 @@ export const campaignDisputes = pgTable('campaign_disputes', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
+
+// ════════════════════════════════════════════════════════════════
+// SECTION: REAL-TIME CONNECTION LAYER (Feature 3 — April 2026)
+// ════════════════════════════════════════════════════════════════
+
+// Audit log of all platform events
+export const realtimeEvents = pgTable('realtime_events', {
+  id:                uuid('id').defaultRandom().primaryKey(),
+  eventType:         text('event_type').notNull(),
+  actorId:           text('actor_id'),                           // → users.id (nullable — system events have no actor)
+  actorRole:         text('actor_role'),
+  targetEntityType:  text('target_entity_type'),
+  targetEntityId:    text('target_entity_id'),
+  payload:           jsonb('payload'),
+  icpFilterApplied:  boolean('icp_filter_applied').notNull().default(false),
+  processedAt:       timestamp('processed_at'),
+  createdAt:         timestamp('created_at').defaultNow().notNull(),
+})
+
+// Per-user notification store (source of truth for notification inbox)
+export const notificationInbox = pgTable('notification_inbox', {
+  id:        uuid('id').defaultRandom().primaryKey(),
+  userId:    text('user_id').notNull(),                          // → users.id
+  eventId:   uuid('event_id'),                                   // → realtime_events.id (nullable)
+  title:     text('title').notNull(),
+  body:      text('body').notNull(),
+  ctaUrl:    text('cta_url'),
+  type:      text('type').notNull(),
+  isRead:    boolean('is_read').notNull().default(false),
+  readAt:    timestamp('read_at'),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// Per-user, per-event-type notification controls
+// Works alongside the existing notificationPreferences JSONB (which controls channels + quiet hours)
+// This table controls WHAT events to receive; the JSONB controls HOW/WHEN to deliver them
+export const notificationPreferences = pgTable('notification_preferences', {
+  id:             uuid('id').defaultRandom().primaryKey(),
+  userId:         text('user_id').notNull(),                     // → users.id
+  eventType:      text('event_type').notNull(),
+  inAppEnabled:   boolean('in_app_enabled').notNull().default(true),
+  emailEnabled:   boolean('email_enabled').notNull().default(true),
+  smsEnabled:     boolean('sms_enabled').notNull().default(false),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+  updatedAt:      timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Persistent activity stream per user
+export const activityFeedItems = pgTable('activity_feed_items', {
+  id:          uuid('id').defaultRandom().primaryKey(),
+  userId:      text('user_id').notNull(),                        // → users.id
+  eventType:   text('event_type').notNull(),
+  actorId:     text('actor_id'),
+  actorRole:   text('actor_role'),
+  title:       text('title').notNull(),
+  description: text('description'),
+  entityType:  text('entity_type'),
+  entityId:    text('entity_id'),
+  metadata:    jsonb('metadata'),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+})
+
+// External social mention tracking (populated by webhook + cron)
+export const socialMentions = pgTable('social_mentions', {
+  id:                  uuid('id').defaultRandom().primaryKey(),
+  platform:            text('platform').notNull(),
+  mentionUrl:          text('mention_url'),
+  mentionText:         text('mention_text').notNull(),
+  mentionedEntityType: text('mentioned_entity_type').notNull(),
+  mentionedEntityId:   text('mentioned_entity_id').notNull(),
+  authorHandle:        text('author_handle'),
+  authorFollowerCount: integer('author_follower_count'),
+  sentimentScore:      decimal('sentiment_score', { precision: 5, scale: 4 }),
+  relevanceScore:      decimal('relevance_score', { precision: 5, scale: 4 }),
+  detectedAt:          timestamp('detected_at').defaultNow().notNull(),
+  processedAt:         timestamp('processed_at'),
+  notificationsSent:   boolean('notifications_sent').notNull().default(false),
+})
+
+// What keywords/platforms each entity wants monitored
+export const socialListeningRules = pgTable('social_listening_rules', {
+  id:          uuid('id').defaultRandom().primaryKey(),
+  entityType:  text('entity_type').notNull(),
+  entityId:    text('entity_id').notNull(),
+  keywords:    text('keywords').array().notNull().default([]),
+  platforms:   text('platforms').array().notNull().default([]),
+  isActive:    boolean('is_active').notNull().default(true),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Real-time Connection Layer types
+export type RealtimeEvent = typeof realtimeEvents.$inferSelect
+export type NewRealtimeEvent = typeof realtimeEvents.$inferInsert
+export type NotificationInboxItem = typeof notificationInbox.$inferSelect
+export type NewNotificationInboxItem = typeof notificationInbox.$inferInsert
+export type NotificationPreference = typeof notificationPreferences.$inferSelect
+export type NewNotificationPreference = typeof notificationPreferences.$inferInsert
+export type ActivityFeedItem = typeof activityFeedItems.$inferSelect
+export type NewActivityFeedItem = typeof activityFeedItems.$inferInsert
+export type SocialMention = typeof socialMentions.$inferSelect
+export type NewSocialMention = typeof socialMentions.$inferInsert
+export type SocialListeningRule = typeof socialListeningRules.$inferSelect
+export type NewSocialListeningRule = typeof socialListeningRules.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
 
 // Influencers Adda types
 export type InfluencerProfile = typeof influencerProfiles.$inferSelect
