@@ -17,7 +17,8 @@
  *   ICP-gated alert fired.
  *
  * Alerts are written to brand_alerts (in-app) and optionally queued
- * to notificationService (email channel). No WebSocket yet — dashboard
+ * to notificationService (email channel). Real-time delivery via Pusher
+ * is handled by emitting BRAND_ALERT_FIRED to the event bus after write.
  * polls brand_alerts for unread count.
  */
 
@@ -32,6 +33,7 @@ import { getMatchScore, getIcpById } from '@/db/repositories/icpRepository'
 import { scoreConsumerForIcp } from '@/server/icpMatchScoringService'
 import type { IcpMatchBreakdown } from '@/db/repositories/icpRepository'
 import type { BrandAlert } from '@/db/schema'
+import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -319,6 +321,17 @@ export async function fireAlert(input: FireAlertInput): Promise<BrandAlert | nul
       console.error(`[BrandAlert] Failed to send WhatsApp notification for ${brandId}:`, err)
     }
   }
+
+  // Emit to event bus (fire-and-forget — Pusher real-time delivery)
+  emit(PLATFORM_EVENTS.BRAND_ALERT_FIRED, {
+    brandId,
+    alertId:   alert.id,
+    alertType,
+    productId: productId ?? undefined,
+    consumerId: consumerId ?? undefined,
+    title,
+    body,
+  }).catch(() => {}) // never throw — alert is already written
 
   return alert
 }

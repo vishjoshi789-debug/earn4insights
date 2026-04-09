@@ -13,6 +13,7 @@ import { productExists } from '@/lib/entity-checks'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
 import { recordContribution } from '@/server/contributionPipeline'
 import { notifyPointsEarned, notifyWatchlistUpdate } from '@/server/consumerNotifications'
+import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 // ── Anti-fraud constants ──────────────────────────────────────
 const MAX_TEXT_LENGTH = 5000
@@ -372,6 +373,15 @@ export async function POST(request: Request) {
     } catch (err) {
       console.error('[Feedback] Contribution pipeline failed (non-blocking):', err)
     }
+
+    // ── 13. Emit real-time event ───────────────────────────────
+    emit(PLATFORM_EVENTS.CONSUMER_FEEDBACK_SUBMITTED, {
+      actorId:     session.user.id,
+      productId,
+      productName: productName,
+      feedbackId:  created.id,
+      sentiment:   sentimentResult ?? undefined,
+    }).catch(() => {}) // fire-and-forget
 
     return NextResponse.json({
       success: true,

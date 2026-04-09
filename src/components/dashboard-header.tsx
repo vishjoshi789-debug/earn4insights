@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/tooltip';
 import { signOut, useSession } from 'next-auth/react';
 import { formatDistanceToNow } from 'date-fns';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -320,7 +321,7 @@ export function DashboardHeader() {
           </TooltipTrigger>
           <TooltipContent>Search pages &amp; products</TooltipContent>
         </Tooltip>
-        <NotificationDropdown userRole={userRole} />
+        <NotificationBell />
 
         <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
           <Tooltip>

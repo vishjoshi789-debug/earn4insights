@@ -50,6 +50,8 @@ import { DashboardHeader } from '@/components/dashboard-header'
 import { ProductTour } from '@/components/ProductTour'
 import { CommandPalette } from '@/components/command-palette'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { usePresenceChannel } from '@/hooks/usePusher'
+import { PRESENCE_DASHBOARD } from '@/lib/pusher-client'
 
 type MenuItem = {
   href: string
@@ -71,6 +73,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/my-feedback', label: 'My Feedback', icon: ClipboardList, tourId: 'nav-my-feedback', role: 'consumer' },
   { href: '/dashboard/recommendations', label: 'For You', icon: Sparkles, tourId: 'nav-recommendations', role: 'consumer' },
   { href: '/dashboard/watchlist', label: 'My Watchlist', icon: Bell, tourId: 'nav-watchlist', role: 'consumer' },
+  { href: '/dashboard/notifications', label: 'Notifications', icon: Bell, tourId: 'nav-notifications' },
   { href: '/dashboard/social', label: 'Social', icon: Users, tourId: 'nav-social' },
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys', role: 'brand' },
@@ -195,8 +198,12 @@ export default function DashboardShell({
 }) {
   const { data: session, status } = useSession()
   const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | undefined
+  const userId = (session?.user as any)?.id as string | undefined
   const [unreadAlerts, setUnreadAlerts] = useState(0)
   const isVisible = useRef(true)
+
+  // Subscribe to the presence channel so this user appears as "online"
+  usePresenceChannel(PRESENCE_DASHBOARD, !!userId)
 
   // Track document visibility to pause polling when tab is hidden
   useEffect(() => {

@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (Session: Landing page + ProductTour update, docs refresh)
+> Last updated: April 2026 (Session: Real-Time Connection Layer complete)
 > Read this file at the start of every session. It is the authoritative source of truth for this project.
 
 ## Phase Status Summary
@@ -26,6 +26,7 @@
 | Cron Hardening | 3 new cron routes added, stale path fixed, extract-themes registered (10→13 total) | ✅ COMPLETE |
 | Landing Page Update | Added Influencers section (violet theme), 13 new feature cards for all 3 roles | ✅ COMPLETE |
 | ProductTour Update | Rewrote tour for Brand (6 new steps), Consumer (5 new steps), Influencer sub-section (3 steps); role-scoped localStorage | ✅ COMPLETE |
+| Real-Time Connection Layer | Pusher WebSocket (ap2), 6 DB tables, event bus (16 events), notification inbox, activity feed, presence indicators, social listening, 2 new cron jobs (13→15 total) | ✅ COMPLETE |
 
 ---
 
@@ -34,8 +35,9 @@
 2. `POST /api/admin/migrate-consent-records` — backfill legacy JSONB consent → `consent_records`
 3. `POST /api/admin/run-migration-003` — add FK constraints + partial UNIQUE index
 4. `POST /api/admin/run-migration-004` — Influencers Adda (11 new tables, ALTER users)
+5. `POST /api/admin/run-migration-005` — Real-Time Connection Layer (6 new tables)
 
-All 4 routes are idempotent (safe to re-run). Require `x-api-key: <ADMIN_API_KEY>` header.
+All 5 routes are idempotent (safe to re-run). Require `x-api-key: <ADMIN_API_KEY>` header.
 
 ---
 
@@ -434,6 +436,15 @@ LINKEDIN_CLIENT_ID=                    # LinkedIn App client ID
 LINKEDIN_CLIENT_SECRET=                # LinkedIn App client secret
 SOCIAL_OAUTH_REDIRECT_URI=             # e.g. https://yourdomain.com/api/consumer/social/callback
 NEXT_PUBLIC_LINKEDIN_CLIENT_ID=        # Same as LINKEDIN_CLIENT_ID — exposed to client for OAuth URL construction
+
+# ── Pusher (Real-Time Connection Layer) ──────────────────────
+PUSHER_APP_ID=                         # Pusher app ID (from dashboard)
+PUSHER_KEY=                            # Pusher app key
+PUSHER_SECRET=                         # Pusher app secret
+PUSHER_CLUSTER=ap2                     # Cluster: ap2 (Mumbai/Asia)
+NEXT_PUBLIC_PUSHER_KEY=                # Same as PUSHER_KEY — exposed to client
+NEXT_PUBLIC_PUSHER_CLUSTER=ap2         # Same as PUSHER_CLUSTER — exposed to client
+SOCIAL_MENTION_WEBHOOK_SECRET=         # HMAC secret for POST /api/webhooks/social-mention
 ```
 
 **All other required env vars** (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are documented in `ARCHITECTURE.md` and should already be set.
@@ -610,6 +621,73 @@ src/
 │   └── page.tsx                                   # MODIFIED — added Influencers section (violet), 13 new feature cards
 └── components/
     └── ProductTour.tsx                            # MODIFIED — Brand (6 new steps), Consumer (5+3 steps), role-scoped localStorage
+```
+
+### Real-Time Connection Layer (April 2026)
+
+```
+src/
+├── lib/
+│   ├── pusher.ts                                  # NEW — server SDK singleton, triggerPusherEvent, PUSHER_EVENTS, channel helpers
+│   └── pusher-client.ts                           # NEW — client SDK singleton (channelAuthorization), channel helpers
+│
+├── db/
+│   ├── migrations/
+│   │   └── 005_realtime_connection_layer.sql      # NEW — 6 tables: realtime_events, notification_inbox, notification_preferences, activity_feed_items, social_mentions, social_listening_rules
+│   └── repositories/
+│       ├── realtimeEventRepository.ts             # NEW
+│       ├── notificationInboxRepository.ts         # NEW — cursor pagination, 90-day TTL, unread count
+│       ├── notificationPreferenceRepository.ts    # NEW — 16 event types, per-type inApp/email/sms toggles
+│       ├── activityFeedRepository.ts              # NEW — cursor pagination, 90-day retention
+│       ├── socialMentionRepository.ts             # NEW
+│       └── socialListeningRuleRepository.ts       # NEW — textMatchesRule() keyword matching
+│
+├── server/
+│   ├── realtimeNotificationService.ts             # NEW — consent-gated dispatch: inbox + feed + Pusher + email/SMS
+│   └── eventBus.ts                                # NEW — emit() + PLATFORM_EVENTS (16 events) + routeEvent() + ICP targeting
+│
+├── hooks/
+│   ├── usePusher.ts                               # NEW — usePusher (subscribe/bind), usePresenceChannel
+│   └── useRealtimeNotifications.ts                # NEW — unreadCount, latestNotification, clearLatest
+│
+├── components/
+│   └── notifications/
+│       ├── NotificationBell.tsx                   # NEW — Popover bell with badge, bounce animation, real-time updates
+│       ├── NotificationDropdown.tsx               # NEW — latest 10 items, mark-read on click
+│       ├── NotificationInbox.tsx                  # NEW — full inbox page: filter, unread-only, infinite scroll, dismiss
+│       ├── ActivityFeed.tsx                       # NEW — live activity stream with Pusher updates
+│       └── OnlinePresenceIndicator.tsx            # NEW — OnlineDot, ActiveUsersCount, BrandActiveBadge
+│
+└── app/
+    ├── dashboard/
+    │   ├── DashboardShell.tsx                     # MODIFIED — presence channel subscription on mount, Notifications nav item
+    │   └── notifications/
+    │       └── page.tsx                           # NEW — /dashboard/notifications wrapping NotificationInbox
+    └── api/
+        ├── admin/
+        │   └── run-migration-005/route.ts         # NEW — apply Feature 3 schema migration
+        ├── pusher/
+        │   └── auth/route.ts                      # NEW — private + presence channel authorization
+        ├── notifications/
+        │   ├── inbox/route.ts                     # NEW — GET (paginated) + POST (mark-all-read)
+        │   ├── inbox/[id]/route.ts                # NEW — PATCH (read/unread) + DELETE (dismiss)
+        │   ├── mark-all-read/route.ts             # NEW — POST mark all read
+        │   └── preferences/route.ts               # NEW — GET/POST per-event notification preferences
+        ├── activity-feed/route.ts                 # NEW — GET cursor-paginated activity feed
+        ├── webhooks/
+        │   └── social-mention/route.ts            # NEW — POST HMAC-verified webhook, matches rules, emits event
+        ├── brand/
+        │   └── social-listening/rules/route.ts    # NEW — GET/POST/PATCH social listening rules
+        └── cron/
+            ├── process-social-mentions/route.ts   # NEW — 05:30 UTC daily: poll YouTube + notify on pending mentions
+            └── cleanup-notifications/route.ts     # NEW — 00:30 UTC daily: expire notification_inbox + activity_feed_items
+
+components/dashboard-header.tsx                    # MODIFIED — replaced legacy NotificationDropdown with NotificationBell
+server/brandAlertService.ts                        # MODIFIED — emit BRAND_ALERT_FIRED after writing alert
+app/api/feedback/submit/route.ts                   # MODIFIED — emit CONSUMER_FEEDBACK_SUBMITTED after contribution record
+app/api/influencer/content/route.ts                # MODIFIED — emit INFLUENCER_POST_PUBLISHED after createPost
+app/api/brand/campaigns/route.ts                   # MODIFIED — emit BRAND_CAMPAIGN_LAUNCHED after createNewCampaign
+vercel.json                                        # MODIFIED — 15 cron entries (was 13)
 ```
 
 ---

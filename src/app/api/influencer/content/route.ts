@@ -13,6 +13,7 @@ import {
   createPost,
   getPostsByInfluencer,
 } from '@/db/repositories/influencerContentPostRepository'
+import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 async function getInfluencerUser(): Promise<{ userId: string } | NextResponse> {
   const session = await auth()
@@ -69,6 +70,15 @@ export async function POST(req: NextRequest) {
       tags: tags ?? [],
       status: 'draft',
     })
+
+    // Emit real-time event (fire-and-forget)
+    emit(PLATFORM_EVENTS.INFLUENCER_POST_PUBLISHED, {
+      actorId:    authResult.userId,
+      postId:     post.id,
+      brandId:    brandId ?? undefined,
+      campaignId: campaignId ?? undefined,
+      title,
+    }).catch(() => {})
 
     return NextResponse.json({ post }, { status: 201 })
   } catch (error) {

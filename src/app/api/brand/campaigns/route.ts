@@ -13,6 +13,7 @@ import {
   createNewCampaign,
   getCampaignsByBrand,
 } from '@/server/campaignManagementService'
+import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 async function getBrandUser(): Promise<{ userId: string } | NextResponse> {
   const session = await auth()
@@ -65,6 +66,13 @@ export async function POST(req: NextRequest) {
       title, brief, requirements, deliverables, targetGeography, targetPlatforms,
       budgetTotal, budgetCurrency, paymentType, startDate, endDate, productId, icpId,
     })
+
+    // Emit real-time event (fire-and-forget)
+    emit(PLATFORM_EVENTS.BRAND_CAMPAIGN_LAUNCHED, {
+      brandId:    authResult.userId,
+      campaignId: campaign.id,
+      title:      campaign.title,
+    }).catch(() => {})
 
     return NextResponse.json({ campaign }, { status: 201 })
   } catch (error: any) {
