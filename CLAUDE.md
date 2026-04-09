@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (Session: Production hardening, cron fixes, TypeScript build fixes)
+> Last updated: April 2026 (Session: Landing page + ProductTour update, docs refresh)
 > Read this file at the start of every session. It is the authoritative source of truth for this project.
 
 ## Phase Status Summary
@@ -24,6 +24,8 @@
 | TypeScript Build Fixes | 12 type errors resolved — missing UI components, DialogTrigger asChild, type safety | ✅ COMPLETE |
 | Migration Route Fix | Inlined SQL in all 3 migration routes — fs.readFileSync fails on Vercel serverless | ✅ COMPLETE |
 | Cron Hardening | 3 new cron routes added, stale path fixed, extract-themes registered (10→13 total) | ✅ COMPLETE |
+| Landing Page Update | Added Influencers section (violet theme), 13 new feature cards for all 3 roles | ✅ COMPLETE |
+| ProductTour Update | Rewrote tour for Brand (6 new steps), Consumer (5 new steps), Influencer sub-section (3 steps); role-scoped localStorage | ✅ COMPLETE |
 
 ---
 
@@ -596,6 +598,16 @@ src/
 │       │       └── disputes/route.ts              # NEW — GET/POST/PATCH disputes (influencer + admin)
 │       └── consumer/
 │           └── follows/[influencerId]/route.ts    # NEW — GET/POST/DELETE follow/unfollow
+```
+
+### Landing page + ProductTour (April 2026)
+
+```
+src/
+├── app/
+│   └── page.tsx                                   # MODIFIED — added Influencers section (violet), 13 new feature cards
+└── components/
+    └── ProductTour.tsx                            # MODIFIED — Brand (6 new steps), Consumer (5+3 steps), role-scoped localStorage
 ```
 
 ---
