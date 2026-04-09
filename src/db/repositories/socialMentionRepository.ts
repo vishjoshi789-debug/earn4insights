@@ -14,7 +14,7 @@ import { eq, and, desc, isNull } from 'drizzle-orm'
  * Insert a new social mention.
  */
 export async function createMention(
-  data: Omit<NewSocialMention, 'id' | 'detectedAt' | 'notificationsSent'>
+  data: Omit<NewSocialMention, 'id' | 'notificationsSent'>
 ): Promise<SocialMention> {
   const [row] = await db
     .insert(socialMentions)
