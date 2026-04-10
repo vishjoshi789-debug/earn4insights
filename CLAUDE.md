@@ -174,8 +174,8 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | Item | Notes |
 |------|-------|
 | **Instagram OAuth** | Table + plumbing exist; needs Facebook App Review |
-| **Social interest inference** | `inferredInterests` empty on connect; needs future `POST /api/consumer/social/sync` |
-| **`icp_match_scores` orphan cleanup** | Orphaned rows when consumer deleted via admin (no FK on consumerId — denormalised cache) |
+| **Social interest inference** | `POST /api/consumer/social/sync` built — merges `inferredInterests` into `userProfiles.socialSignals`; real provider API calls pending App Review / OAuth setup |
+| **`icp_match_scores` orphan cleanup** | Fixed — `process-deletions` cron now deletes orphaned rows on account deletion |
 | **DSAR flow** | Full decrypted sensitive data export requires identity verification; out of scope |
 | **Signal snapshots in process-deletions cron** | Admin-deleted profiles may leave orphaned snapshots |
 
