@@ -339,6 +339,22 @@ async function routeEvent(
           entityType: 'campaign',
           entityId:   payload.campaignId,
         })
+
+        // Also notify ICP-matched consumers so they discover relevant influencer content
+        const consumerTargets = await getConsumersForBrandViaIcps(payload.brandId, 60)
+        if (consumerTargets.length > 0) {
+          await dispatchToUsers(consumerTargets, {
+            eventType,
+            eventId,
+            title:  'New content from an influencer you may like',
+            body:   `An influencer published content related to ${payload.brandName ?? 'a brand you follow'}.`,
+            ctaUrl: payload.campaignId ? `/dashboard/brand/campaigns/${payload.campaignId}` : '/discover',
+            type:   'influencer_content',
+            entityType: 'campaign',
+            entityId:   payload.campaignId,
+            metadata:   { brandId: payload.brandId, influencerId: payload.influencerId },
+          })
+        }
       }
       break
     }

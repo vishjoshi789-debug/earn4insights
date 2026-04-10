@@ -33,22 +33,25 @@ export async function POST(request: NextRequest) {
 
   // ── Verify HMAC signature ────────────────────────────────────────────────
   const secret = process.env.SOCIAL_MENTION_WEBHOOK_SECRET
-  if (secret) {
-    const signatureHeader = request.headers.get('x-webhook-signature') ?? ''
-    const [algo, receivedHex] = signatureHeader.split('=')
+  if (!secret) {
+    console.error('[social-mention webhook] SOCIAL_MENTION_WEBHOOK_SECRET is not set — rejecting request')
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 })
+  }
 
-    if (algo !== 'sha256' || !receivedHex) {
-      return NextResponse.json({ error: 'Invalid signature format' }, { status: 401 })
-    }
+  const signatureHeader = request.headers.get('x-webhook-signature') ?? ''
+  const [algo, receivedHex] = signatureHeader.split('=')
 
-    const expectedHmac = createHmac('sha256', secret).update(rawBody).digest('hex')
-    const expected = Buffer.from(expectedHmac, 'hex')
-    const received = Buffer.from(receivedHex, 'hex')
+  if (algo !== 'sha256' || !receivedHex) {
+    return NextResponse.json({ error: 'Invalid signature format' }, { status: 401 })
+  }
 
-    // Constant-time comparison prevents timing attacks
-    if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-    }
+  const expectedHmac = createHmac('sha256', secret).update(rawBody).digest('hex')
+  const expected = Buffer.from(expectedHmac, 'hex')
+  const received = Buffer.from(receivedHex, 'hex')
+
+  // Constant-time comparison prevents timing attacks
+  if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
   let body: Record<string, unknown>

@@ -1,7 +1,7 @@
 import React from "react";
 
-export default function SlugPage({ params }: { params: any }) {
-  const { slug } = params as { slug: string };
+export default async function SlugPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
 
   return (
     <main>
