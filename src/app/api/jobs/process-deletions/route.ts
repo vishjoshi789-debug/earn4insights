@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { userProfiles, users, userEvents, surveyResponses, feedback, notificationQueue } from '@/db/schema'
+import { userProfiles, users, userEvents, surveyResponses, feedback, notificationQueue, icpMatchScores } from '@/db/schema'
 import { eq, and, lt, sql } from 'drizzle-orm'
 
 // Verify the request is from Vercel Cron or authorized
@@ -103,6 +103,10 @@ async function processAccountDeletions(request: NextRequest) {
         // 4. Delete user events
         await db.delete(userEvents).where(eq(userEvents.userId, profile.id))
         console.log(`[CRON]   ✓ Deleted user events`)
+
+        // 4b. Delete ICP match score cache rows (consumerId has no FK — denormalised cache)
+        await db.delete(icpMatchScores).where(eq(icpMatchScores.consumerId, profile.id))
+        console.log(`[CRON]   ✓ Deleted ICP match scores`)
 
         // 5. Delete user profile
         await db.delete(userProfiles).where(eq(userProfiles.id, profile.id))
