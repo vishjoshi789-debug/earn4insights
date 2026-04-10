@@ -43,6 +43,7 @@ import {
   Download,
   Megaphone,
   UserCheck,
+  Wallet,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -94,6 +95,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/influencer/profile', label: 'Influencer Profile', icon: UserCheck, tourId: 'nav-influencer-profile', role: 'consumer' },
   { href: '/dashboard/influencer/campaigns', label: 'My Campaigns', icon: Megaphone, tourId: 'nav-influencer-campaigns', role: 'consumer' },
   { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: 'consumer' },
+  { href: '/dashboard/influencer/earnings', label: 'Earnings', icon: Wallet, tourId: 'nav-influencer-earnings', role: 'consumer' },
   {
     href: '/dashboard/detailed-analytics',
     label: 'Product Deep Dive',
