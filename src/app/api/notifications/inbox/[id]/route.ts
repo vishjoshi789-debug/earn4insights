@@ -17,13 +17,14 @@ import {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
     if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const userId = (session.user as any).id as string
 
+    const { id } = await params
     const body = await request.json()
     const { isRead } = body
 
@@ -32,8 +33,8 @@ export async function PATCH(
     }
 
     const success = isRead
-      ? await markItemRead(params.id, userId)
-      : await markItemUnread(params.id, userId)
+      ? await markItemRead(id, userId)
+      : await markItemUnread(id, userId)
 
     if (!success) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -48,14 +49,15 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
     if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const userId = (session.user as any).id as string
 
-    const success = await deleteInboxItem(params.id, userId)
+    const { id } = await params
+    const success = await deleteInboxItem(id, userId)
 
     if (!success) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
