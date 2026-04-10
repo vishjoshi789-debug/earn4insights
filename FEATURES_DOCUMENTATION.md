@@ -1,6 +1,6 @@
 # Earn4Insights — Feature Documentation
 
-> **Last updated:** April 2026 (authoritative — reflects all phases through Influencers Adda + landing page + ProductTour)
+> **Last updated:** April 2026 (authoritative — reflects all phases through Real-Time Connection Layer)
 > **Platform:** Next.js 15 + Drizzle ORM + Neon PostgreSQL + Vercel
 > **Domain:** earn4insights.com
 
@@ -157,6 +157,8 @@ All consumers see influencer steps (conversion funnel):
 
 `src/app/dashboard/DashboardShell.tsx` — Client-side shell with sidebar navigation. Renders role-appropriate nav items.
 
+Also subscribes to `presence-dashboard` Pusher channel on mount so the user appears as online to other platform users.
+
 ### Brand navigation
 
 - Dashboard (overview)
@@ -170,6 +172,7 @@ All consumers see influencer steps (conversion funnel):
 - **ICP Builder** *(Apr 2026)*
 - **Influencer Campaigns** *(Apr 2026)*
 - **Discover Influencers** *(Apr 2026)*
+- **Notifications** *(Apr 2026)*
 - Settings
 
 ### Consumer navigation
@@ -185,6 +188,7 @@ All consumers see influencer steps (conversion funnel):
 - **My Data** *(Apr 2026)*
 - Rewards
 - Community
+- **Notifications** *(Apr 2026)*
 - Settings
 
 ### Influencer navigation (consumers with is_influencer=true)
@@ -575,29 +579,80 @@ See [Section 9 — Influencer Features](#9-influencer-features) and [Section 7.8
 
 ---
 
-## 16. Notification System
+## 16. Notification System (Real-Time Connection Layer)
+
+### Pusher WebSocket delivery
+
+All in-app notifications delivered via Pusher (cluster `ap2` — Mumbai). Channels:
+- `private-user-{userId}` — personal notifications (requires auth via `/api/pusher/auth`)
+- `presence-dashboard` — online presence tracking
+- `public-product-{productId}` — product page live activity
+
+### Notification inbox
+
+`/dashboard/notifications` — full inbox page wrapping `NotificationInbox` component.
+- 90-day history with cursor-based infinite scroll
+- Filter by type (unread-only toggle)
+- Mark read / unread / dismiss per item
+- "Mark all read" action
+
+### NotificationBell (navbar)
+
+`NotificationBell` component in `dashboard-header.tsx`:
+- Real-time unread badge (bounce animation)
+- Popover dropdown with latest 10 items
+- Badge count updated via Pusher `unread-count-update` event
+- Links to `/dashboard/notifications`
+
+### Notification preferences
+
+`GET/POST /api/notifications/preferences` — per-user, per-event-type toggles:
+- `inAppEnabled` (default: true)
+- `emailEnabled` (default: true)
+- `smsEnabled` (default: false)
+
+16 event types each independently configurable. Preference checked before any dispatch — if all 3 channels disabled, notification is silently skipped.
 
 ### Channels
 
-| Channel | Use case |
-|---------|---------|
-| **Email** (Resend) | Survey completion, alert fires, reward credited, welcome |
-| **SMS** (Twilio) | OTP, critical alerts |
-| **WhatsApp** (Twilio) | Real-time brand alerts |
-| **Slack** | Brand workspace notifications |
-| **In-app bell** | Real-time badge count (DB polling) |
+| Channel | Provider | Trigger |
+|---------|----------|---------|
+| **In-app real-time** | Pusher WebSocket | Instant on event — `new-notification` event |
+| **In-app inbox** | `notification_inbox` DB | 90-day persistent history |
+| **Email** | Resend | `emailEnabled` per event type |
+| **SMS** | Twilio | `smsEnabled` per event type |
+| **WhatsApp** | Twilio | Real-time brand alerts (legacy) |
+| **Slack** | Slack API | Brand workspace notifications (legacy) |
+
+### Online presence indicators
+
+`OnlinePresenceIndicator` component family:
+- `OnlineDot` — green dot for active users
+- `ActiveUsersCount` — "X users viewing" counter on product pages
+- `BrandActiveBadge` — shows consumers when a brand is currently online
+
+Powered by `presence-dashboard` Pusher channel + `lastActiveAt` column on `userProfiles`.
 
 ### Send-time optimization
 
-GPT-4o analyzes per-user engagement patterns to determine the optimal time to send notifications. Results applied when scheduling the next notification for each user.
+GPT-4o analyzes per-user engagement patterns to determine the optimal time to send notifications. Results applied when scheduling the next notification for each user. Cron: `/api/cron/send-time-analysis` (04:00 UTC).
 
 ---
 
 ## 17. Social Listening
 
-See [ARCHITECTURE.md § 15 — Social Listening System](#15-social-listening-system).
+See [ARCHITECTURE.md § 15 — Social Listening System](#15-social-listening-system) for full technical details.
 
-Brands monitor mentions on Twitter/X, YouTube, Google Reviews, Reddit. AI relevance filter classifies mentions. Dashboard shows:
+### Real-Time Connection Layer additions (Apr 2026)
+
+Brands now configure keyword monitoring rules:
+- `GET/POST/PATCH /api/brand/social-listening/rules` — define keywords + platforms to watch
+- `POST /api/webhooks/social-mention` — receive push mentions from Brand24/Mention.com (HMAC verified, rejects if secret unset)
+- Cron `process-social-mentions` (05:30 UTC) — polls YouTube + processes all pending mention notifications
+
+### Legacy social listening dashboard
+
+Brands monitor mentions on Twitter/X, YouTube, Google Reviews, Reddit. AI relevance filter classifies mentions. Dashboard at `/dashboard/social` shows:
 - Mention volume over time
 - Sentiment breakdown of mentions
 - Competitor mentions
@@ -640,6 +695,14 @@ Brands monitor mentions on Twitter/X, YouTube, Google Reviews, Reddit. AI releva
 ---
 
 ## 20. Known Gaps & Future Work
+
+### Real-Time Connection Layer
+
+| Item | Notes |
+|------|-------|
+| **`ACTIVITY_FEED_UPDATE` Pusher event never triggered** | Defined in `PUSHER_EVENTS` but `realtimeNotificationService` never fires it. `ActivityFeed` component relies on polling/refresh until wired. |
+| **`brand.member.active` / `brand.discount.created` emitters missing** | Handlers exist in `eventBus.ts` + correctly target ICP-matched consumers, but no API route calls `emit()` for these events yet. |
+| **`dispatchToUsers` N+1 at scale** | 2 DB writes + 2 Pusher calls per target. Works to ~200 targets; bulk insert + Pusher batch API needed beyond that. |
 
 ### Influencers Adda
 

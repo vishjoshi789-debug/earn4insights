@@ -1,7 +1,7 @@
 # Earn4Insights — Technical Architecture Document
 
-> **Version:** April 2026 (authoritative — reflects all phases through Influencers Adda)
-> **Stack:** Next.js 15 · TypeScript (strict) · Drizzle ORM · Neon PostgreSQL · NextAuth v5 · OpenAI · Resend · Twilio · Vercel Blob · Vercel
+> **Version:** April 2026 (authoritative — reflects all phases through Real-Time Connection Layer)
+> **Stack:** Next.js 15 · TypeScript (strict) · Drizzle ORM · Neon PostgreSQL · NextAuth v5 · Pusher · OpenAI · Resend · Twilio · Vercel Blob · Vercel
 
 ---
 
@@ -86,6 +86,7 @@ Campaign performance tracked per post/platform
 | Hosting | Vercel (Edge + Serverless) | 60s function timeout on Pro plan |
 | Dev port | `9002` (`npm run dev`) | |
 | AI SDK | Genkit (`@genkit-ai/googleai`) | Flows for AI pipeline steps |
+| Real-Time | Pusher (cluster `ap2` — Mumbai) | WebSocket push; private + presence channels |
 
 ---
 
@@ -217,6 +218,20 @@ Middleware excludes `/api` routes entirely — cron routes handle their own auth
 
 **Modified (migration 004):**
 - `users`: added `is_influencer` (boolean, default false)
+
+### Real-Time Connection Layer tables (migration 005 — April 2026)
+
+| Table | Purpose |
+|-------|---------|
+| `realtime_events` | Immutable audit log of all platform events. Written before any dispatch. |
+| `notification_inbox` | Per-user notifications. 90-day TTL (`expiresAt`). Indexes on `(userId, isRead)` + `(expiresAt)`. |
+| `notification_preferences` | Per-user, per-event-type toggles: `inAppEnabled`, `emailEnabled`, `smsEnabled`. UNIQUE(userId, eventType). |
+| `activity_feed_items` | Live activity stream per user. 90-day retention. Index on `(userId, createdAt DESC)`. |
+| `social_mentions` | External social mentions ingested via webhook or YouTube polling cron. |
+| `social_listening_rules` | Brand keyword + platform monitoring rules. `textMatchesRule()` for keyword matching. |
+
+**Modified (migration 005):**
+- `userProfiles`: added `lastActiveAt TIMESTAMP` — stamped on every Pusher presence channel auth
 
 ---
 
@@ -556,15 +571,74 @@ Rankings visible publicly at `/rankings`. Consumers can discover top-ranked prod
 
 ## 14. Notification & Alert System
 
-### Notification channels
+### Real-Time Connection Layer (Pusher WebSocket)
+
+All real-time notifications flow through a central event bus (`src/server/eventBus.ts`).
+
+#### Channel design
+
+| Channel | Type | Purpose |
+|---------|------|---------|
+| `private-user-{userId}` | Private | Personal notifications + unread count updates |
+| `presence-dashboard` | Presence | Active user tracking — powers online indicators |
+| `public-product-{productId}` | Public | Product page live activity |
+
+Auth: `POST /api/pusher/auth` — validates NextAuth session; enforces users can only subscribe to their own private channel.
+
+#### 16 Platform Events
+
+| Event | Who triggers | Who receives |
+|-------|-------------|-------------|
+| `brand.product.launched` | Brand API | ICP-matched consumers (score ≥ 60) |
+| `brand.survey.created` | Brand API | ICP-matched consumers (score ≥ 50) |
+| `brand.campaign.launched` | Brand API | All active influencers |
+| `brand.alert.fired` | Alert service | Brand owner |
+| `brand.member.active` | Brand API | ICP-matched consumers (score ≥ 50) |
+| `brand.discount.created` | Brand API | ICP-matched consumers (score ≥ 50) |
+| `consumer.feedback.submitted` | Feedback API | Product brand |
+| `consumer.survey.completed` | Survey API | Survey brand |
+| `consumer.product.browsed` | Consumer API | Product brand |
+| `consumer.product.searched` | Consumer API | Product brand |
+| `consumer.community.posted` | Community API | Product brand |
+| `consumer.reward.withdrawn` | Rewards API | Product brand (loyalty signal) |
+| `influencer.post.published` | Influencer API | Campaign brand + ICP-matched consumers (score ≥ 60) |
+| `influencer.campaign.accepted` | Influencer API | Brand |
+| `influencer.milestone.completed` | Influencer API | Brand |
+| `social.mention.detected` | Webhook / cron | Brand owning entity |
+
+#### Dispatch flow (inbox-first)
+
+```
+emit(eventType, payload)
+        ↓
+1. Write realtime_events (audit)
+2. Resolve targets (ICP scores + consent check)
+3. For each target:
+   a. Check notification_preferences — skip if all channels disabled
+   b. Check consent ('personalization') — skip consumers who revoked
+   c. Write notification_inbox (source of truth — always written first)
+   d. Write activity_feed_items
+   e. Pusher push → private-user-{userId} (best-effort, never throws)
+   f. Queue email/SMS via existing notificationService
+4. Mark realtime_events.processedAt
+```
+
+Pusher failure never propagates — notification is always in inbox regardless.
+
+#### Presence tracking
+
+`lastActiveAt` on `userProfiles` stamped (fire-and-forget) on every Pusher presence channel auth. Powers `OnlinePresenceIndicator` component.
+
+### Notification channels (full list)
 
 | Channel | Provider | Trigger |
 |---------|----------|---------|
-| Email | Resend | Survey completion, alert fires, reward credited |
-| SMS | Twilio | OTP, critical alerts |
-| WhatsApp | Twilio | Real-time brand alerts |
-| Slack | Slack API | Brand workspace notifications |
-| In-app (bell icon) | DB polling | Real-time badge count |
+| In-app bell (real-time) | Pusher WebSocket | Instant on event dispatch |
+| In-app inbox | `notification_inbox` DB | 90-day history, cursor pagination |
+| Email | Resend | emailEnabled preference per event type |
+| SMS | Twilio | smsEnabled preference per event type |
+| WhatsApp | Twilio | Real-time brand alerts (legacy) |
+| Slack | Slack API | Brand workspace notifications (legacy) |
 
 ### Send-time optimization
 
@@ -577,27 +651,35 @@ Brands configure `brandAlertRules` with:
 - `icpId` — optional ICP filter (only alert if consumer matches ICP)
 - `minMatchScore` — minimum ICP score required to fire alert
 - `matchScoreSnapshot` stored at alert fire time for audit
+- `BRAND_ALERT_FIRED` event emitted to event bus after every alert write
 
 ---
 
 ## 15. Social Listening System
 
-Monitors external platforms for brand mentions:
+### Real-Time Connection Layer foundation (April 2026)
+
+The Feature 3 social listening foundation uses:
+
+- `social_listening_rules` — brands define keywords + platforms to monitor (CRUD at `GET/POST/PATCH /api/brand/social-listening/rules`)
+- `social_mentions` — all ingested mentions stored here with sentiment + relevance scores
+- `textMatchesRule()` — keyword matching function in `socialListeningRuleRepository`
+- `POST /api/webhooks/social-mention` — HMAC-verified (sha256) webhook for Brand24/Mention.com push. **Rejects with 503 if `SOCIAL_MENTION_WEBHOOK_SECRET` is unset** (never accepts unsigned payloads)
+- `GET /api/cron/process-social-mentions` (05:30 UTC) — polls YouTube API for new mentions + notifies brands on all pending `social_mentions` rows
+
+### Legacy social listening (pre-Feature 3)
+
+Monitors external platforms via ingestion services:
 
 | Platform | Status | Notes |
 |----------|--------|-------|
 | Twitter/X | Active | API v2 search |
-| YouTube | Active | Data API v3 comment search |
+| YouTube | Active | Data API v3 — also polled by new cron |
 | Google Reviews | Active | Places API |
 | Reddit | Active | Public search |
 | Instagram | Stub | Basic Display API deprecated; Graph API pending App Review |
 
-### Relevance filtering
-
-AI-powered relevance filter (`src/server/socialRelevanceFilter.ts`) classifies mentions as:
-- `relevant` — directly about the brand/product
-- `noise` — false positive mentions
-- `competitor` — mentions competing products (valuable signal)
+AI-powered relevance filter (`src/server/socialRelevanceFilter.ts`) classifies mentions as `relevant`, `noise`, or `competitor`.
 
 ---
 
@@ -672,9 +754,10 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | 04:00 | `/api/cron/send-time-analysis` | Analyse optimal send times per user |
 | 04:30 | `/api/cron/sync-social-stats` | Validate influencer social stats |
 | 05:00 | `/api/cron/cleanup-analytics-events` | Purge old analytics events |
+| 05:30 | `/api/cron/process-social-mentions` | Poll YouTube for new mentions + notify brands on pending social_mentions |
 | 06:00 | `/api/cron/process-notifications` | Process queued notifications |
 
-**vercel.json** defines all 13 cron entries with exact schedules.
+**vercel.json** defines all **15 cron entries** with exact schedules.
 
 ---
 
@@ -738,7 +821,37 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | POST | `/run-migration-003` | FK constraints + partial UNIQUE index |
 | POST | `/run-migration-004` | Influencers Adda schema |
 
+| POST | `/run-migration-005` | Real-Time Connection Layer schema (6 tables + userProfiles.lastActiveAt) |
+
 All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
+
+### Notification APIs (`/api/notifications/`)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET/POST | `/inbox` | Paginated inbox / mark-all-read |
+| PATCH/DELETE | `/inbox/[id]` | Mark single item read/unread / dismiss |
+| POST | `/mark-all-read` | Mark all notifications read |
+| GET/POST | `/preferences` | Per-event-type preference toggles |
+
+### Activity Feed API
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/api/activity-feed` | Cursor-paginated activity feed |
+
+### Pusher API
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/api/pusher/auth` | Authorize private + presence channel subscriptions |
+
+### Social Listening APIs
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET/POST/PATCH | `/api/brand/social-listening/rules` | Brand keyword monitoring rules |
+| POST | `/api/webhooks/social-mention` | HMAC-verified inbound mention webhook |
 
 ### Public campaign APIs
 
@@ -763,6 +876,16 @@ All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
 | 6 | MEDIUM | Table-level UNIQUE on `consumer_sensitive_attributes` blocked re-insert after soft-delete | Partial unique index `WHERE deleted_at IS NULL` (migration 003) |
 | 7 | MEDIUM | Versioned encryption used scrypt KDF — unnecessary CPU overhead | Replaced with `deriveKeyFast()` using SHA-256(salt ‖ keyMaterial) |
 | 8 | MEDIUM | `isEncrypted()` regex heuristic — false positives on base64 image data | Replaced with base64 roundtrip check + structural length validation |
+
+### Post-launch review fixes (April 2026 — Sonnet review)
+
+| # | Severity | Finding | Fix |
+|---|----------|---------|-----|
+| 9 | WARNING | `influencer.post.published` only notified brand — spec required ICP-matched consumers too | Added `getConsumersForBrandViaIcps()` call in `INFLUENCER_POST_PUBLISHED` handler |
+| 10 | WARNING | `/api/webhooks/social-mention` accepted all requests when `SOCIAL_MENTION_WEBHOOK_SECRET` unset | Now returns 503 immediately if env var missing — webhook never runs unauthenticated |
+| 11 | WARNING | `community-features/c/[slug]` pages used old Next.js 14 sync params type | Updated to `params: Promise<T>` + `await params` (Next.js 15 requirement) |
+| 12 | MINOR | `ACTIVITY_FEED_UPDATE` Pusher event defined but never triggered in service | Documented as known gap — ActivityFeed relies on polling until wired |
+| 13 | MINOR | `brand.member.active` / `brand.discount.created` handlers exist but no API route emits them | Documented as known gap — handlers ready, emitters needed |
 
 ---
 
@@ -795,6 +918,9 @@ All type errors must be resolved before Vercel accepts the build. Key issues res
 | `src/components/ui/slider.tsx` | Created from scratch (was empty) |
 | `src/components/ui/accordion.tsx` | Created from scratch (was empty) |
 | `src/app/dashboard/my-data/page.tsx` | `{data.profile.interests && ...}` → `{!!data.profile.interests && ...}` |
+| `src/app/api/notifications/inbox/[id]/route.ts` | `{ params: { id: string } }` → `{ params: Promise<{ id: string }> }` + `await params` (Next.js 15) |
+| `src/app/community-features/c/[slug]/page.tsx` | Same Next.js 15 async params fix |
+| `src/app/community-features/c/[slug]/[postId]/page.tsx` | Same Next.js 15 async params fix |
 
 ---
 
@@ -857,6 +983,15 @@ BLOB_READ_WRITE_TOKEN=                # Vercel Blob
 # ── Payments ──────────────────────────────────────────────────
 RAZORPAY_KEY_ID=                      # Influencers Adda payments (stub)
 RAZORPAY_KEY_SECRET=
+
+# ── Pusher (Real-Time Connection Layer) ──────────────────────
+PUSHER_APP_ID=                        # Pusher app ID
+PUSHER_KEY=                           # Pusher app key
+PUSHER_SECRET=                        # Pusher app secret
+PUSHER_CLUSTER=ap2                    # ap2 = Mumbai/Asia
+NEXT_PUBLIC_PUSHER_KEY=               # Same as PUSHER_KEY — client-side
+NEXT_PUBLIC_PUSHER_CLUSTER=ap2        # Same as PUSHER_CLUSTER — client-side
+SOCIAL_MENTION_WEBHOOK_SECRET=        # HMAC secret for POST /api/webhooks/social-mention
 
 # ── Slack ─────────────────────────────────────────────────────
 SLACK_BOT_TOKEN=                      # Brand Slack notifications

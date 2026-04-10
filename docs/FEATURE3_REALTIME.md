@@ -1,6 +1,10 @@
 # Feature 3 — Real-Time Connection Layer
 
-Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables, event bus (16 events), notification inbox, activity feed, presence indicators, social listening.
+Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus (16 events), notification inbox, activity feed, presence indicators, social listening.
+
+**Status: ✅ COMPLETE + reviewed (April 2026)**
+
+---
 
 ## Architecture
 
@@ -9,21 +13,91 @@ Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables, event bus (16 event
 - **`src/server/eventBus.ts`** — `emit()` + `PLATFORM_EVENTS` (16 events) + `routeEvent()` + ICP targeting
 - **`src/server/realtimeNotificationService.ts`** — consent-gated dispatch: inbox + feed + Pusher + email/SMS
 
-## 16 Platform Events (PLATFORM_EVENTS)
+## Pusher Channel Design
 
-Defined in `src/server/eventBus.ts`. Routed to notification inbox, activity feed, and Pusher channels based on event type and ICP targeting rules.
+| Channel | Type | Purpose |
+|---------|------|---------|
+| `private-user-{userId}` | Private | Personal notifications (auth required) |
+| `presence-dashboard` | Presence | Active user tracking for online indicators |
+| `public-product-{productId}` | Public | Product page live activity |
+
+Auth endpoint: `POST /api/pusher/auth` — validates NextAuth session; enforces users can only subscribe to their own private channel. On presence auth, stamps `lastActiveAt` on `userProfiles` (fire-and-forget).
+
+## 16 Platform Events
+
+All defined in `PLATFORM_EVENTS` const in `src/server/eventBus.ts`. All 16 have `routeEvent()` case handlers.
+
+| Event | Targets |
+|-------|---------|
+| `brand.product.launched` | ICP-matched consumers (score ≥ 60) |
+| `brand.survey.created` | ICP-matched consumers (score ≥ 50) |
+| `brand.campaign.launched` | All active influencers |
+| `brand.alert.fired` | Brand owner |
+| `brand.member.active` | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* |
+| `brand.discount.created` | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* |
+| `consumer.feedback.submitted` | Product brand |
+| `consumer.survey.completed` | Survey brand |
+| `consumer.product.browsed` | Product brand |
+| `consumer.product.searched` | Product brand |
+| `consumer.community.posted` | Product brand |
+| `consumer.reward.withdrawn` | Product brand (loyalty signal) |
+| `influencer.post.published` | Campaign brand + ICP-matched consumers (score ≥ 60) |
+| `influencer.campaign.accepted` | Brand |
+| `influencer.milestone.completed` | Brand |
+| `social.mention.detected` | Brand owning the mentioned entity |
+
+## Dispatch Flow (inbox-first)
+
+```
+emit(eventType, payload)
+  1. Write realtime_events (audit)
+  2. Resolve targets (ICP scores, consent, preferences)
+  3. Per target:
+     a. Check notification_preferences — skip if all disabled
+     b. Check consent ('personalization') for consumers
+     c. Write notification_inbox ← source of truth, always first
+     d. Write activity_feed_items
+     e. Pusher push → private-user-{userId} (best-effort, never throws)
+     f. Queue email/SMS via queueNotification()
+  4. markEventProcessed()
+```
 
 ## Notification Preferences
 
-Per-user, per-event-type toggles: `inApp`, `email`, `sms`. Stored in `notification_preferences` (16 event types). GET/POST via `/api/notifications/preferences`.
+GET/POST `/api/notifications/preferences` — 16 event types, per-type `inApp`/`email`/`sms` toggles.
+Defaults: `inApp=true`, `email=true`, `sms=false`.
 
-## Pusher Channel Auth
+## Online Presence
 
-`POST /api/pusher/auth` — handles both private and presence channel authorization. Presence channels expose online user counts to brands (for `BrandActiveBadge`, `ActiveUsersCount` components).
+`lastActiveAt` on `userProfiles` stamped on every presence channel auth. Powers:
+- `OnlineDot` — green dot for active users
+- `ActiveUsersCount` — "X users viewing" on product pages
+- `BrandActiveBadge` — visible to consumers
 
 ## Social Listening
 
-Brands define keyword rules via `POST /api/brand/social-listening/rules`. Incoming mentions matched against rules via `textMatchesRule()` in `socialListeningRuleRepository`. YouTube polled daily at 05:30 UTC; webhook at `POST /api/webhooks/social-mention` for push-based sources (HMAC verified via `SOCIAL_MENTION_WEBHOOK_SECRET`).
+Brands define keyword rules via `GET/POST/PATCH /api/brand/social-listening/rules`.
+Mentions ingested via:
+- `POST /api/webhooks/social-mention` — HMAC-verified (sha256). **503 if `SOCIAL_MENTION_WEBHOOK_SECRET` unset** — never accepts unsigned payloads.
+- `GET /api/cron/process-social-mentions` (05:30 UTC) — polls YouTube + notifies brands on all pending `social_mentions`.
+
+Keyword matching via `textMatchesRule()` in `socialListeningRuleRepository`.
+
+## Security Hardening Applied
+
+| Issue | Fix |
+|-------|-----|
+| Webhook accepted requests when secret unset | Now returns 503 immediately if `SOCIAL_MENTION_WEBHOOK_SECRET` missing |
+| `influencer.post.published` only notified brand | Added `getConsumersForBrandViaIcps()` — ICP-matched consumers now also notified |
+| Community pages using old Next.js 14 sync params | `[slug]` and `[slug]/[postId]` updated to `Promise<T>` + `await params` |
+
+## Known Gaps (Minor)
+
+| Item | Notes |
+|------|-------|
+| `ACTIVITY_FEED_UPDATE` Pusher event unused | Defined but never triggered — `ActivityFeed` uses polling |
+| `brand.member.active` / `brand.discount.created` emitters | Handlers + targeting correct; no API route calls `emit()` for these yet |
+| `dispatchToUsers` N+1 at scale | 2 DB writes + 2 Pusher calls per target; CONCURRENCY=50 cap limits pressure today |
 
 ---
 
@@ -32,56 +106,57 @@ Brands define keyword rules via `POST /api/brand/social-listening/rules`. Incomi
 ```
 src/
 ├── lib/
-│   ├── pusher.ts                                  # NEW — server SDK singleton, triggerPusherEvent, PUSHER_EVENTS, channel helpers
-│   └── pusher-client.ts                           # NEW — client SDK singleton (channelAuthorization), channel helpers
+│   ├── pusher.ts                                  # server SDK singleton, triggerPusherEvent, PUSHER_EVENTS, channel helpers
+│   └── pusher-client.ts                           # client SDK singleton (channelAuthorization), channel helpers
 │
 ├── db/
 │   ├── migrations/
-│   │   └── 005_realtime_connection_layer.sql      # NEW — 6 tables
+│   │   └── 005_realtime_connection_layer.sql      # 6 tables + ALTER user_profiles ADD last_active_at
 │   └── repositories/
-│       ├── realtimeEventRepository.ts             # NEW
-│       ├── notificationInboxRepository.ts         # NEW — cursor pagination, 90-day TTL, unread count
-│       ├── notificationPreferenceRepository.ts    # NEW — 16 event types, per-type inApp/email/sms toggles
-│       ├── activityFeedRepository.ts              # NEW — cursor pagination, 90-day retention
-│       ├── socialMentionRepository.ts             # NEW
-│       └── socialListeningRuleRepository.ts       # NEW — textMatchesRule() keyword matching
+│       ├── realtimeEventRepository.ts
+│       ├── notificationInboxRepository.ts         # cursor pagination, 90-day TTL, unread count
+│       ├── notificationPreferenceRepository.ts    # 16 event types, inApp/email/sms toggles
+│       ├── activityFeedRepository.ts              # cursor pagination, 90-day retention
+│       ├── socialMentionRepository.ts
+│       └── socialListeningRuleRepository.ts       # textMatchesRule() keyword matching
 │
 ├── server/
-│   ├── realtimeNotificationService.ts             # NEW — consent-gated dispatch: inbox + feed + Pusher + email/SMS
-│   └── eventBus.ts                                # NEW — emit() + PLATFORM_EVENTS (16 events) + routeEvent() + ICP targeting
+│   ├── realtimeNotificationService.ts             # consent-gated dispatch: inbox + feed + Pusher + email/SMS
+│   └── eventBus.ts                                # emit() + PLATFORM_EVENTS (16 events) + routeEvent() + ICP targeting
 │
 ├── hooks/
-│   ├── usePusher.ts                               # NEW — usePusher (subscribe/bind), usePresenceChannel
-│   └── useRealtimeNotifications.ts                # NEW — unreadCount, latestNotification, clearLatest
+│   ├── usePusher.ts                               # usePusher (subscribe/bind), usePresenceChannel
+│   └── useRealtimeNotifications.ts                # unreadCount, latestNotification, clearLatest
 │
 ├── components/
 │   └── notifications/
-│       ├── NotificationBell.tsx                   # NEW — Popover bell with badge, bounce animation, real-time updates
-│       ├── NotificationDropdown.tsx               # NEW — latest 10 items, mark-read on click
-│       ├── NotificationInbox.tsx                  # NEW — full inbox: filter, unread-only, infinite scroll, dismiss
-│       ├── ActivityFeed.tsx                       # NEW — live activity stream with Pusher updates
-│       └── OnlinePresenceIndicator.tsx            # NEW — OnlineDot, ActiveUsersCount, BrandActiveBadge
+│       ├── NotificationBell.tsx                   # Popover bell, badge, bounce animation, real-time updates
+│       ├── NotificationDropdown.tsx               # Latest 10 items, mark-read on click
+│       ├── NotificationInbox.tsx                  # Full inbox: filter, unread-only, infinite scroll, dismiss
+│       ├── ActivityFeed.tsx                       # Live activity stream with Pusher updates
+│       └── OnlinePresenceIndicator.tsx            # OnlineDot, ActiveUsersCount, BrandActiveBadge
 │
 └── app/
     ├── dashboard/
-    │   ├── DashboardShell.tsx                     # MODIFIED — presence channel subscription on mount, Notifications nav item
-    │   └── notifications/page.tsx                 # NEW — /dashboard/notifications wrapping NotificationInbox
+    │   ├── DashboardShell.tsx                     # MODIFIED — presence channel subscription, Notifications nav
+    │   └── notifications/page.tsx                 # /dashboard/notifications wrapping NotificationInbox
     └── api/
-        ├── admin/run-migration-005/route.ts       # NEW — apply Feature 3 schema migration
-        ├── pusher/auth/route.ts                   # NEW — private + presence channel authorization
+        ├── admin/run-migration-005/route.ts       # Apply Feature 3 schema + ALTER userProfiles
+        ├── pusher/auth/route.ts                   # Private + presence channel auth; stamps lastActiveAt
         ├── notifications/
-        │   ├── inbox/route.ts                     # NEW — GET (paginated) + POST (mark-all-read)
-        │   ├── inbox/[id]/route.ts                # NEW — PATCH (read/unread) + DELETE (dismiss)
-        │   ├── mark-all-read/route.ts             # NEW — POST mark all read
-        │   └── preferences/route.ts               # NEW — GET/POST per-event notification preferences
-        ├── activity-feed/route.ts                 # NEW — GET cursor-paginated activity feed
-        ├── webhooks/social-mention/route.ts       # NEW — POST HMAC-verified webhook, matches rules, emits event
-        └── brand/social-listening/rules/route.ts  # NEW — GET/POST/PATCH social listening rules
+        │   ├── inbox/route.ts                     # GET (paginated) + POST (mark-all-read)
+        │   ├── inbox/[id]/route.ts                # PATCH (read/unread) + DELETE (dismiss)
+        │   ├── mark-all-read/route.ts             # POST mark all read
+        │   └── preferences/route.ts               # GET/POST per-event notification preferences
+        ├── activity-feed/route.ts                 # GET cursor-paginated activity feed
+        ├── webhooks/social-mention/route.ts       # POST HMAC-verified webhook (503 if secret unset)
+        └── brand/social-listening/rules/route.ts  # GET/POST/PATCH social listening rules
 
 # Files modified to emit events:
-components/dashboard-header.tsx                    # MODIFIED — replaced legacy NotificationDropdown with NotificationBell
-server/brandAlertService.ts                        # MODIFIED — emit BRAND_ALERT_FIRED after writing alert
-app/api/feedback/submit/route.ts                   # MODIFIED — emit CONSUMER_FEEDBACK_SUBMITTED after contribution record
-app/api/influencer/content/route.ts                # MODIFIED — emit INFLUENCER_POST_PUBLISHED after createPost
-app/api/brand/campaigns/route.ts                   # MODIFIED — emit BRAND_CAMPAIGN_LAUNCHED after createNewCampaign
+components/dashboard-header.tsx                    # Replaced legacy NotificationDropdown with NotificationBell
+server/brandAlertService.ts                        # emit BRAND_ALERT_FIRED after writing alert
+app/api/feedback/submit/route.ts                   # emit CONSUMER_FEEDBACK_SUBMITTED
+app/api/influencer/content/route.ts                # emit INFLUENCER_POST_PUBLISHED
+app/api/brand/campaigns/route.ts                   # emit BRAND_CAMPAIGN_LAUNCHED
+vercel.json                                        # 15 cron entries (was 13)
 ```

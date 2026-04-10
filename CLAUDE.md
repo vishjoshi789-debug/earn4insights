@@ -154,6 +154,14 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 
 ## Known Gaps & Future Work
 
+### Real-Time (Minor — non-blocking)
+| Item | Notes |
+|------|-------|
+| **`ACTIVITY_FEED_UPDATE` Pusher event unused** | Defined but never triggered — `ActivityFeed` component uses polling until wired |
+| **`brand.member.active` / `brand.discount.created` emitters missing** | Handlers + ICP targeting correct in `eventBus.ts`; no API route calls `emit()` for these yet |
+| **`dispatchToUsers` N+1 at scale** | 2 DB writes + 2 Pusher calls per target; CONCURRENCY=50 cap limits DB pressure today |
+
+### Influencers Adda
 | Item | Notes |
 |------|-------|
 | **Influencer earnings dashboard** | UI at `/dashboard/influencer/earnings` — data exists in `campaign_payments` |
@@ -161,6 +169,10 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Campaign content approval flow** | No brand-side review before influencer content publishes |
 | **Social stats API verification** | Stats are self-declared; no platform API verification yet |
 | **Campaign marketplace for influencers** | Influencers only see invited campaigns; no public browse |
+
+### Privacy & Compliance
+| Item | Notes |
+|------|-------|
 | **Instagram OAuth** | Table + plumbing exist; needs Facebook App Review |
 | **Social interest inference** | `inferredInterests` empty on connect; needs future `POST /api/consumer/social/sync` |
 | **`icp_match_scores` orphan cleanup** | Orphaned rows when consumer deleted via admin (no FK on consumerId — denormalised cache) |

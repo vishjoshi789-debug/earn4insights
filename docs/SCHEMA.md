@@ -59,16 +59,19 @@ LinkedIn implemented; Instagram pending App Review.
 
 ---
 
-## Migration 005 — Real-Time Connection Layer (6 new tables)
+## Migration 005 — Real-Time Connection Layer (6 new tables + 1 ALTER)
 
 | Table | Purpose |
 |-------|---------|
-| `realtime_events` | Persistent event log |
-| `notification_inbox` | Per-user notification items, 90-day TTL |
-| `notification_preferences` | Per-user, per-event-type inApp/email/sms toggles (16 event types) |
-| `activity_feed_items` | Live activity stream items, 90-day retention |
-| `social_mentions` | Brand social mention records |
-| `social_listening_rules` | Brand keyword monitoring rules |
+| `realtime_events` | Persistent event log. Written before any dispatch. Indexes on actor, (type, createdAt), (entityType, entityId). |
+| `notification_inbox` | Per-user notifications. 90-day TTL (`expiresAt`). Indexes on `(userId, isRead)`, `(expiresAt)`, `(userId, createdAt DESC)`. |
+| `notification_preferences` | Per-user, per-event-type inApp/email/sms toggles (16 event types). UNIQUE(userId, eventType). |
+| `activity_feed_items` | Live activity stream per user. 90-day retention. Index on `(userId, createdAt DESC)`. |
+| `social_mentions` | Brand social mention records. Index on pending (notificationsSent=false) for cron processing. |
+| `social_listening_rules` | Brand keyword + platform monitoring rules. Partial index on `isActive=true`. |
+
+**Modified (migration 005):**
+- `user_profiles`: `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP` — stamped on every Pusher presence channel auth via `POST /api/pusher/auth`.
 
 ---
 
