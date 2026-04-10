@@ -414,6 +414,64 @@ async function routeEvent(
       break
     }
 
+    // ── Brand: member active → notify community members via ICP
+    case PLATFORM_EVENTS.BRAND_MEMBER_ACTIVE: {
+      if (!payload.brandId) break
+      const targets = await getConsumersForBrandViaIcps(payload.brandId, 50)
+      if (targets.length === 0) break
+      await dispatchToUsers(targets, {
+        eventType,
+        eventId,
+        title:  `${payload.brandName ?? 'A brand'} is active now`,
+        body:   'A brand you follow is currently active. Check out their latest updates.',
+        ctaUrl: payload.brandId ? `/brands/${payload.brandId}` : '/discover',
+        type:   'brand_active',
+        entityType: 'brand',
+        entityId:   payload.brandId,
+        metadata:   { brandId: payload.brandId },
+      })
+      break
+    }
+
+    // ── Brand: discount created → notify interested consumers via ICP
+    case PLATFORM_EVENTS.BRAND_DISCOUNT_CREATED: {
+      if (!payload.brandId) break
+      const targets = await getConsumersForBrandViaIcps(payload.brandId, 50)
+      if (targets.length === 0) break
+      await dispatchToUsers(targets, {
+        eventType,
+        eventId,
+        title:  `New discount from ${payload.brandName ?? 'a brand you follow'}`,
+        body:   payload.productName
+          ? `A discount is available on ${payload.productName}. Claim it before it expires.`
+          : 'A new discount is available from a brand you follow.',
+        ctaUrl: payload.productId ? `/products/${payload.productId}` : '/discover',
+        type:   'discount_available',
+        entityType: payload.productId ? 'product' : 'brand',
+        entityId:   payload.productId ?? payload.brandId,
+        metadata:   { brandId: payload.brandId },
+      })
+      break
+    }
+
+    // ── Consumer: reward withdrawn → notify brand (loyalty signal)
+    case PLATFORM_EVENTS.CONSUMER_REWARD_WITHDRAWN: {
+      if (!payload.brandId) break
+      const brandTarget: NotificationTarget = { userId: payload.brandId, role: 'brand' }
+      await dispatchToUsers([brandTarget], {
+        eventType,
+        eventId,
+        title:  'Consumer redeemed a reward',
+        body:   `A consumer redeemed a reward linked to ${payload.productName ?? 'your product'} — strong loyalty signal.`,
+        ctaUrl: '/dashboard/analytics',
+        type:   'reward_redeemed',
+        actorId:    payload.actorId,
+        entityType: payload.productId ? 'product' : 'brand',
+        entityId:   payload.productId ?? payload.brandId,
+      })
+      break
+    }
+
     default:
       console.warn(`[EventBus] No handler for event type: ${eventType}`)
   }

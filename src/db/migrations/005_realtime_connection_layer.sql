@@ -107,3 +107,6 @@ CREATE TABLE IF NOT EXISTS social_listening_rules (
 
 CREATE INDEX IF NOT EXISTS idx_social_listening_rules_entity ON social_listening_rules(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_social_listening_rules_active ON social_listening_rules(is_active) WHERE is_active = true;
+
+-- ── 7. ALTER user_profiles — presence tracking ────────────────────────────
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP;

@@ -365,6 +365,8 @@ export const userProfiles = pgTable('user_profiles', {
   // Schema version for forward-compat signal reading
   lastSignalComputedAt: timestamp('last_signal_computed_at'),
   // When signals were last aggregated and persisted to consumer_signal_snapshots
+  lastActiveAt: timestamp('last_active_at'),
+  // Updated when user connects to Pusher presence channel — used by OnlinePresenceIndicator
 })
 
 // User events table (for behavior tracking)

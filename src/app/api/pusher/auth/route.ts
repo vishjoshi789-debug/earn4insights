@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { getPusherServer } from '@/lib/pusher'
+import { db } from '@/db'
+import { userProfiles } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 
 /**
  * POST /api/pusher/auth
@@ -57,6 +60,13 @@ export async function POST(request: NextRequest) {
         user_info: { name, role },
       }
       const authResponse = pusher.authorizeChannel(socketId, channelName, presenceData)
+
+      // Update last_active_at — fire-and-forget, never block the auth response
+      db.update(userProfiles)
+        .set({ lastActiveAt: new Date() })
+        .where(eq(userProfiles.id, userId))
+        .catch(err => console.error('[Pusher auth] Failed to update lastActiveAt:', err))
+
       return NextResponse.json(authResponse)
     }
 

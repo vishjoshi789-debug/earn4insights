@@ -131,6 +131,16 @@ CREATE TABLE IF NOT EXISTS social_listening_rules (
     await pgClient.unsafe(`CREATE INDEX IF NOT EXISTS idx_social_listening_rules_active ON social_listening_rules(is_active) WHERE is_active = true`)
     results.push({ name: 'social_listening_rules', status: 'ok' })
 
+    // ── 7. ALTER user_profiles — add last_active_at ───────────────────────
+    try {
+      await pgClient.unsafe(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP`)
+      results.push({ name: 'user_profiles.last_active_at', status: 'ok' })
+    } catch (e: any) {
+      if (e?.code === '42701') {
+        results.push({ name: 'user_profiles.last_active_at', status: 'already exists' })
+      } else throw e
+    }
+
     return NextResponse.json({
       success: true,
       migration: '005_realtime_connection_layer',
