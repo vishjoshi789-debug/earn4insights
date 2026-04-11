@@ -1317,9 +1317,16 @@ export const influencerContentPosts = pgTable('influencer_content_posts', {
   campaignId: uuid('campaign_id'),                      // → influencer_campaigns.id (nullable, FK deferred)
   tags: text('tags').array().default([]),
   status: text('status').notNull().default('draft')
-    .$type<'draft' | 'pending_review' | 'published' | 'archived' | 'removed'>(),
+    .$type<'draft' | 'pending_review' | 'approved' | 'rejected' | 'published' | 'archived' | 'removed'>(),
   publishedAt: timestamp('published_at'),
   externalPostUrls: jsonb('external_post_urls').$type<Record<string, string>>().default({}),
+  // Content approval fields (migration 006)
+  reviewSubmittedAt: timestamp('review_submitted_at'),
+  reviewedAt: timestamp('reviewed_at'),
+  reviewedBy: text('reviewed_by'),                       // → users.id (brand or admin who reviewed)
+  rejectionReason: text('rejection_reason'),
+  resubmissionCount: integer('resubmission_count').default(0),
+  previousPostId: uuid('previous_post_id'),              // → influencer_content_posts.id (self-ref)
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -1344,6 +1351,9 @@ export const influencerCampaigns = pgTable('influencer_campaigns', {
   startDate: date('start_date'),
   endDate: date('end_date'),
   platformFeePct: decimal('platform_fee_pct', { precision: 4, scale: 2 }).notNull().default('10.00'),
+  // Content approval SLA (migration 006)
+  reviewSlaHours: integer('review_sla_hours'),           // e.g. 24, 48, 72. NULL = no SLA
+  autoApproveEnabled: boolean('auto_approve_enabled').default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -1588,3 +1598,20 @@ export type InfluencerReview = typeof influencerReviews.$inferSelect
 export type NewInfluencerReview = typeof influencerReviews.$inferInsert
 export type CampaignDispute = typeof campaignDisputes.$inferSelect
 export type NewCampaignDispute = typeof campaignDisputes.$inferInsert
+
+// ── Content Review Reminders (migration 006) ────────────────────────
+export const contentReviewReminders = pgTable('content_review_reminders', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  postId: uuid('post_id').notNull(),                     // → influencer_content_posts.id
+  campaignId: uuid('campaign_id').notNull(),             // → influencer_campaigns.id
+  brandId: text('brand_id').notNull(),                   // → users.id
+  reminderType: text('reminder_type').notNull()
+    .$type<'75_pct' | '90_pct' | 'sla_expired' | 'daily'>(),
+  scheduledAt: timestamp('scheduled_at').notNull(),
+  sentAt: timestamp('sent_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  // UNIQUE (post_id, reminder_type) enforced in migration
+})
+
+export type ContentReviewReminder = typeof contentReviewReminders.$inferSelect
+export type NewContentReviewReminder = typeof contentReviewReminders.$inferInsert

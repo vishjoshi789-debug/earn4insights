@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
 import { Loader2, Megaphone, Plus, IndianRupee, Calendar, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -36,6 +37,7 @@ export default function BrandCampaignsPage() {
   const [form, setForm] = useState({
     title: '', brief: '', budgetTotal: '', deliverables: '', targetPlatforms: '',
     startDate: '', endDate: '', paymentType: 'escrow',
+    reviewSlaHours: '' as string, autoApproveEnabled: false,
   })
 
   useEffect(() => {
@@ -67,13 +69,15 @@ export default function BrandCampaignsPage() {
           startDate: form.startDate || undefined,
           endDate: form.endDate || undefined,
           paymentType: form.paymentType,
+          reviewSlaHours: form.reviewSlaHours ? parseInt(form.reviewSlaHours) : undefined,
+          autoApproveEnabled: form.autoApproveEnabled,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'Failed')
       const data = await res.json()
       setCampaigns(prev => [data.campaign, ...prev])
       setDialogOpen(false)
-      setForm({ title: '', brief: '', budgetTotal: '', deliverables: '', targetPlatforms: '', startDate: '', endDate: '', paymentType: 'escrow' })
+      setForm({ title: '', brief: '', budgetTotal: '', deliverables: '', targetPlatforms: '', startDate: '', endDate: '', paymentType: 'escrow', reviewSlaHours: '', autoApproveEnabled: false })
       toast.success('Campaign created as draft')
     } catch (err: any) {
       toast.error(err.message)
@@ -149,6 +153,49 @@ export default function BrandCampaignsPage() {
                 <div className="space-y-1.5">
                   <Label>End Date</Label>
                   <Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
+                </div>
+              </div>
+              <div className="border-t pt-3 space-y-3">
+                <p className="text-sm font-medium">Content Review SLA</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Review SLA</Label>
+                    <select
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      value={form.reviewSlaHours}
+                      onChange={e => setForm(f => ({ ...f, reviewSlaHours: e.target.value }))}
+                    >
+                      <option value="">None</option>
+                      <option value="24">24 hours</option>
+                      <option value="48">48 hours</option>
+                      <option value="72">72 hours</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+                  {form.reviewSlaHours === 'custom' && (
+                    <div className="space-y-1.5">
+                      <Label>Custom Hours</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="e.g. 96"
+                        value={form.reviewSlaHours === 'custom' ? '' : form.reviewSlaHours}
+                        onChange={e => setForm(f => ({ ...f, reviewSlaHours: e.target.value }))}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm">Auto-approve on SLA expiry</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Automatically approve content if you don&apos;t review before the SLA expires.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.autoApproveEnabled}
+                    onCheckedChange={checked => setForm(f => ({ ...f, autoApproveEnabled: checked }))}
+                  />
                 </div>
               </div>
               <Button onClick={handleCreate} disabled={creating} className="w-full">

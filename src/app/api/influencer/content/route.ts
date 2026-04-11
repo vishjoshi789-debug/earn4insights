@@ -13,7 +13,6 @@ import {
   createPost,
   getPostsByInfluencer,
 } from '@/db/repositories/influencerContentPostRepository'
-import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 async function getInfluencerUser(): Promise<{ userId: string } | NextResponse> {
   const session = await auth()
@@ -71,14 +70,9 @@ export async function POST(req: NextRequest) {
       status: 'draft',
     })
 
-    // Emit real-time event (fire-and-forget)
-    emit(PLATFORM_EVENTS.INFLUENCER_POST_PUBLISHED, {
-      actorId:    authResult.userId,
-      postId:     post.id,
-      brandId:    brandId ?? undefined,
-      campaignId: campaignId ?? undefined,
-      title,
-    }).catch(() => {})
+    // NOTE: INFLUENCER_POST_PUBLISHED is NOT emitted here.
+    // Drafts should never trigger notifications. The event is emitted
+    // in contentApprovalService.approveContent() after brand approval.
 
     return NextResponse.json({ post }, { status: 201 })
   } catch (error) {

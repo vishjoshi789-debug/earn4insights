@@ -29,6 +29,11 @@ export const PLATFORM_EVENTS = {
   INFLUENCER_POST_PUBLISHED:     'influencer.post.published',
   INFLUENCER_CAMPAIGN_ACCEPTED:  'influencer.campaign.accepted',
   INFLUENCER_MILESTONE_COMPLETED:'influencer.milestone.completed',
+  // Content approval
+  BRAND_CONTENT_PENDING_REVIEW:  'brand.content.pending_review',
+  INFLUENCER_CONTENT_APPROVED:   'influencer.content.approved',
+  INFLUENCER_CONTENT_REJECTED:   'influencer.content.rejected',
+  BRAND_CONTENT_AUTO_APPROVED:   'brand.content.auto_approved',
   // Social
   SOCIAL_MENTION_DETECTED:       'social.mention.detected',
 } as const
@@ -484,6 +489,78 @@ async function routeEvent(
         actorId:    payload.actorId,
         entityType: payload.productId ? 'product' : 'brand',
         entityId:   payload.productId ?? payload.brandId,
+      })
+      break
+    }
+
+    // ── Content approval: pending review → notify brand
+    case PLATFORM_EVENTS.BRAND_CONTENT_PENDING_REVIEW: {
+      if (!payload.brandId) break
+      const brandTarget: NotificationTarget = { userId: payload.brandId, role: 'brand' }
+      await dispatchToUsers([brandTarget], {
+        eventType,
+        eventId,
+        title:  'New content awaiting review',
+        body:   `${payload.influencerName ?? 'An influencer'} submitted content for "${payload.campaignTitle ?? 'your campaign'}". Review and approve to publish.`,
+        ctaUrl: '/dashboard/brand/content-review',
+        type:   'content_pending_review',
+        entityType: 'content_post',
+        entityId:   payload.postId as string,
+        metadata:   { campaignId: payload.campaignId, influencerId: payload.influencerId },
+      })
+      break
+    }
+
+    // ── Content approval: approved → notify influencer
+    case PLATFORM_EVENTS.INFLUENCER_CONTENT_APPROVED: {
+      if (!payload.influencerId) break
+      const influencerTarget: NotificationTarget = { userId: payload.influencerId, role: 'consumer' }
+      await dispatchToUsers([influencerTarget], {
+        eventType,
+        eventId,
+        title:  'Your content was approved!',
+        body:   `Your content for "${payload.campaignTitle ?? 'a campaign'}" by ${payload.brandName ?? 'a brand'} has been approved and published.`,
+        ctaUrl: '/dashboard/influencer/content',
+        type:   'content_approved',
+        entityType: 'content_post',
+        entityId:   payload.postId as string,
+        metadata:   { campaignId: payload.campaignId, brandId: payload.brandId },
+      })
+      break
+    }
+
+    // ── Content approval: rejected → notify influencer
+    case PLATFORM_EVENTS.INFLUENCER_CONTENT_REJECTED: {
+      if (!payload.influencerId) break
+      const influencerTarget: NotificationTarget = { userId: payload.influencerId, role: 'consumer' }
+      await dispatchToUsers([influencerTarget], {
+        eventType,
+        eventId,
+        title:  'Your content needs revision',
+        body:   `Your content for "${payload.campaignTitle ?? 'a campaign'}" was not approved. Reason: ${payload.rejectionReason ?? 'See details'}`,
+        ctaUrl: '/dashboard/influencer/content',
+        type:   'content_rejected',
+        entityType: 'content_post',
+        entityId:   payload.postId as string,
+        metadata:   { campaignId: payload.campaignId, brandId: payload.brandId, reason: payload.rejectionReason },
+      })
+      break
+    }
+
+    // ── Content approval: auto-approved → notify brand
+    case PLATFORM_EVENTS.BRAND_CONTENT_AUTO_APPROVED: {
+      if (!payload.brandId) break
+      const brandTarget: NotificationTarget = { userId: payload.brandId, role: 'brand' }
+      await dispatchToUsers([brandTarget], {
+        eventType,
+        eventId,
+        title:  'Content auto-approved per SLA',
+        body:   `Content for "${payload.campaignTitle ?? 'your campaign'}" was auto-approved after ${payload.slaHours ?? ''}hr SLA expired.`,
+        ctaUrl: '/dashboard/brand/content-review',
+        type:   'content_auto_approved',
+        entityType: 'content_post',
+        entityId:   payload.postId as string,
+        metadata:   { campaignId: payload.campaignId, slaHours: payload.slaHours },
       })
       break
     }
