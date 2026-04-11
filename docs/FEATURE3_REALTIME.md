@@ -1,6 +1,6 @@
 # Feature 3 — Real-Time Connection Layer
 
-Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus (16 events), notification inbox, activity feed, presence indicators, social listening.
+Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus (20 events), notification inbox, activity feed, presence indicators, social listening.
 
 **Status: ✅ COMPLETE + reviewed (April 2026)**
 
@@ -10,7 +10,7 @@ Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus
 
 - **`src/lib/pusher.ts`** — server SDK singleton, `triggerPusherEvent()`, `PUSHER_EVENTS`, channel helpers
 - **`src/lib/pusher-client.ts`** — client SDK singleton (`channelAuthorization`), channel helpers
-- **`src/server/eventBus.ts`** — `emit()` + `PLATFORM_EVENTS` (16 events) + `routeEvent()` + ICP targeting
+- **`src/server/eventBus.ts`** — `emit()` + `PLATFORM_EVENTS` (20 events) + `routeEvent()` + ICP targeting
 - **`src/server/realtimeNotificationService.ts`** — consent-gated dispatch: inbox + feed + Pusher + email/SMS
 
 ## Pusher Channel Design
@@ -23,28 +23,32 @@ Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus
 
 Auth endpoint: `POST /api/pusher/auth` — validates NextAuth session; enforces users can only subscribe to their own private channel. On presence auth, stamps `lastActiveAt` on `userProfiles` (fire-and-forget).
 
-## 16 Platform Events
+## 20 Platform Events
 
-All defined in `PLATFORM_EVENTS` const in `src/server/eventBus.ts`. All 16 have `routeEvent()` case handlers.
+All defined in `PLATFORM_EVENTS` const in `src/server/eventBus.ts`. All 20 have `routeEvent()` case handlers.
 
-| Event | Targets |
-|-------|---------|
-| `brand.product.launched` | ICP-matched consumers (score ≥ 60) |
-| `brand.survey.created` | ICP-matched consumers (score ≥ 50) |
-| `brand.campaign.launched` | All active influencers |
-| `brand.alert.fired` | Brand owner |
-| `brand.member.active` | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* |
-| `brand.discount.created` | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* |
-| `consumer.feedback.submitted` | Product brand |
-| `consumer.survey.completed` | Survey brand |
-| `consumer.product.browsed` | Product brand |
-| `consumer.product.searched` | Product brand |
-| `consumer.community.posted` | Product brand |
-| `consumer.reward.withdrawn` | Product brand (loyalty signal) |
-| `influencer.post.published` | Campaign brand + ICP-matched consumers (score ≥ 60) |
-| `influencer.campaign.accepted` | Brand |
-| `influencer.milestone.completed` | Brand |
-| `social.mention.detected` | Brand owning the mentioned entity |
+| Event | Targets | Emitted by |
+|-------|---------|------------|
+| `brand.product.launched` | ICP-matched consumers (score ≥ 60) | product launch route |
+| `brand.survey.created` | ICP-matched consumers (score ≥ 50) | survey route |
+| `brand.campaign.launched` | All active influencers | brand campaigns route |
+| `brand.alert.fired` | Brand owner | `brandAlertService` |
+| `brand.member.active` | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* | — |
+| `brand.discount.created` | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* | — |
+| `brand.content.pending_review` | Campaign brand owner | `contentApprovalService.submitForReview()` + `resubmitContent()` |
+| `consumer.feedback.submitted` | Product brand | feedback submit route |
+| `consumer.survey.completed` | Survey brand | survey route |
+| `consumer.product.browsed` | Product brand | browse route |
+| `consumer.product.searched` | Product brand | search route |
+| `consumer.community.posted` | Product brand | community route |
+| `consumer.reward.withdrawn` | Product brand (loyalty signal) | rewards route |
+| `influencer.post.published` | Campaign brand + ICP-matched consumers (score ≥ 60) | `contentApprovalService.approveContent()` |
+| `influencer.campaign.accepted` | Brand | influencer campaign route |
+| `influencer.milestone.completed` | Brand | milestone route |
+| `influencer.content.approved` | Influencer who submitted the post | `contentApprovalService.approveContent()` |
+| `influencer.content.rejected` | Influencer who submitted the post | `contentApprovalService.rejectContent()` |
+| `brand.content.auto_approved` | Campaign brand owner | `contentApprovalService.approveContentAsSystem()` (cron) |
+| `social.mention.detected` | Brand owning the mentioned entity | social mention webhook / cron |
 
 ## Dispatch Flow (inbox-first)
 
@@ -64,7 +68,7 @@ emit(eventType, payload)
 
 ## Notification Preferences
 
-GET/POST `/api/notifications/preferences` — 16 event types, per-type `inApp`/`email`/`sms` toggles.
+GET/POST `/api/notifications/preferences` — 20 event types, per-type `inApp`/`email`/`sms` toggles.
 Defaults: `inApp=true`, `email=true`, `sms=false`.
 
 ## Online Presence
@@ -122,7 +126,7 @@ src/
 │
 ├── server/
 │   ├── realtimeNotificationService.ts             # consent-gated dispatch: inbox + feed + Pusher + email/SMS
-│   └── eventBus.ts                                # emit() + PLATFORM_EVENTS (16 events) + routeEvent() + ICP targeting
+│   └── eventBus.ts                                # emit() + PLATFORM_EVENTS (20 events) + routeEvent() + ICP targeting
 │
 ├── hooks/
 │   ├── usePusher.ts                               # usePusher (subscribe/bind), usePresenceChannel
@@ -152,11 +156,15 @@ src/
         ├── webhooks/social-mention/route.ts       # POST HMAC-verified webhook (503 if secret unset)
         └── brand/social-listening/rules/route.ts  # GET/POST/PATCH social listening rules
 
-# Files modified to emit events:
+# Files that emit events:
 components/dashboard-header.tsx                    # Replaced legacy NotificationDropdown with NotificationBell
 server/brandAlertService.ts                        # emit BRAND_ALERT_FIRED after writing alert
+server/contentApprovalService.ts                   # emit BRAND_CONTENT_PENDING_REVIEW, INFLUENCER_CONTENT_APPROVED,
+                                                   #      INFLUENCER_CONTENT_REJECTED, BRAND_CONTENT_AUTO_APPROVED,
+                                                   #      INFLUENCER_POST_PUBLISHED (on approve)
 app/api/feedback/submit/route.ts                   # emit CONSUMER_FEEDBACK_SUBMITTED
-app/api/influencer/content/route.ts                # emit INFLUENCER_POST_PUBLISHED
+app/api/influencer/content/route.ts                # NOTE: INFLUENCER_POST_PUBLISHED removed from here (was premature —
+                                                   #       posts were drafts). Now emitted in contentApprovalService.
 app/api/brand/campaigns/route.ts                   # emit BRAND_CAMPAIGN_LAUNCHED
-vercel.json                                        # 15 cron entries (was 13)
+vercel.json                                        # 16 cron entries (was 15)
 ```

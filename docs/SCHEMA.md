@@ -75,6 +75,27 @@ LinkedIn implemented; Instagram pending App Review.
 
 ---
 
+## Migration 006 — Campaign Content Approval (2 ALTERs + 1 new table)
+
+### Modified existing tables
+
+| Table | Added columns |
+|-------|--------------|
+| `influencer_content_posts` | `reviewSubmittedAt` (timestamp), `reviewedAt` (timestamp), `reviewedBy` (UUID), `rejectionReason` (text), `resubmissionCount` (int default 0), `previousPostId` (UUID self-ref) |
+| `influencer_content_posts` | Status enum expanded: added `'approved'` and `'rejected'` to existing statuses |
+| `influencer_campaigns` | `reviewSlaHours` (INTEGER NULL — hours brand has to review), `autoApproveEnabled` (BOOLEAN DEFAULT false) |
+
+### `content_review_reminders`
+Deduplication table for SLA reminder notifications. Prevents double-firing reminders on successive cron runs.
+
+Columns: `id`, `postId`, `campaignId`, `brandId`, `reminderType` (`'75_pct'|'90_pct'|'sla_expired'|'daily'`), `scheduledAt`, `sentAt`, `createdAt`
+
+Indexes:
+- UNIQUE on `(post_id, reminder_type)` — hard constraint preventing duplicate reminders
+- Partial index on `(scheduled_at) WHERE sent_at IS NULL` — fast unsent reminder lookup for cron
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`

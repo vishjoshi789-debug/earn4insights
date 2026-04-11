@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026. Read at the start of every session.
+> Last updated: April 2026 (v2 — Influencer Earnings + Content Approval). Read at the start of every session.
 
 ## Project Overview
 
@@ -83,6 +83,8 @@ await pgClient.unsafe(sql)
 | Cron Hardening (15 total cron entries) | ✅ COMPLETE |
 | Landing Page + ProductTour update | ✅ COMPLETE |
 | Real-Time Connection Layer (Pusher, 6 tables, 16 events) | ✅ COMPLETE |
+| Influencer Earnings Dashboard (multi-currency, audience analytics) | ✅ COMPLETE |
+| Campaign Content Approval System (SLA, auto-approve, audit log) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -90,6 +92,7 @@ await pgClient.unsafe(sql)
 3. `POST /api/admin/run-migration-003` — FK constraints + partial UNIQUE index
 4. `POST /api/admin/run-migration-004` — Influencers Adda (11 tables)
 5. `POST /api/admin/run-migration-005` — Real-Time layer (6 tables)
+6. `POST /api/admin/run-migration-006` — Content Approval (2 ALTERs + `content_review_reminders` table)
 
 ---
 
@@ -149,6 +152,10 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **`confirm: true` on DELETE /api/consumer/account** | Prevents accidental erasure from stray DELETE calls. |
 | **Min cohort size 5 in analytics** | Prevents re-identification by brands querying small audience segments. |
 | **LinkedIn implemented, Instagram deferred** | Instagram Basic Display API deprecated 2025; Graph API requires App Review (4–6 weeks). |
+| **Content approval role validation at two layers** | Route checks role ('brand'/'admin'), service checks campaign ownership for brands. Admin always bypasses ownership. Other roles → 403. |
+| **Content review reminder deduplication** | UNIQUE index on `(post_id, reminder_type)` + pre-insert `hasReminder()` check + 23505 catch. Belt-and-suspenders to prevent double-notifying brands. |
+| **Earnings aggregated per currency, not summed** | Campaigns may use different currencies. Summing across currencies is meaningless; each currency shown separately with `formatCurrency()`. |
+| **Min cohort 5 in audience intelligence** | Same re-identification floor as brand analytics. Audience demographics panel shows privacy notice below threshold. |
 
 ---
 
@@ -164,9 +171,9 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 ### Influencers Adda
 | Item | Notes |
 |------|-------|
-| **Influencer earnings dashboard** | UI at `/dashboard/influencer/earnings` — data exists in `campaign_payments` |
+| **Influencer earnings dashboard** | ✅ DONE — `/dashboard/influencer/earnings`, multi-currency, audience intelligence (consent-gated, cohort ≥ 5) |
+| **Campaign content approval flow** | ✅ DONE — SLA-based review, 75%/90%/100% reminders, auto-approve, audit log, real-time notifications |
 | **Razorpay integration** | Records store IDs but order creation + webhooks not implemented |
-| **Campaign content approval flow** | No brand-side review before influencer content publishes |
 | **Social stats API verification** | Stats are self-declared; no platform API verification yet |
 | **Campaign marketplace for influencers** | Influencers only see invited campaigns; no public browse |
 
@@ -183,8 +190,8 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 
 ## Reference Docs
 
-- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–005)
+- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–006)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
-- **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, file map
-- **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus, notification/presence architecture, file map
-- **`docs/CRON_JOBS.md`** — Full cron schedule, auth pattern, batch size notes
+- **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, file map
+- **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (20 events), notification/presence architecture, file map
+- **`docs/CRON_JOBS.md`** — Full cron schedule (16 entries), auth pattern, batch size notes

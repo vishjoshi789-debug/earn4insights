@@ -1,6 +1,6 @@
 # Cron Jobs — Earn4Insights
 
-**15 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
+**16 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
 
 ## Schedule
 
@@ -21,6 +21,7 @@
 | 05:00 | `/api/cron/cleanup-analytics-events` | Purge old analytics events |
 | 05:30 | `/api/cron/process-social-mentions` | Poll YouTube for new mentions + notify brands on pending social_mentions |
 | 06:00 | `/api/cron/process-notifications` | Process queued notifications |
+| Every 2h | `/api/cron/process-content-reviews` | SLA reminders (75%/90%) + auto-approve or escalation at 100% SLA |
 
 ## Auth Pattern (used by ALL cron routes)
 
@@ -37,6 +38,6 @@ If `CRON_SECRET` is unset, check is skipped (routes run unauthenticated). **Alwa
 ## Notes
 
 - Middleware does NOT intercept cron routes. The `middleware.ts` matcher `/((?!api|_next/static|_next/image|favicon.ico).*)` excludes `/api/*`. Cron routes handle their own auth.
-- **Stale route:** `/api/jobs/update-behavioral/route.ts` still exists on disk but is no longer registered in `vercel.json`. Replaced by `/api/cron/update-behavioral/route.ts`. Safe to delete.
 - `SIGNAL_CRON_BATCH_SIZE` — max users per signal cron run (default: all)
 - `ICP_SCORE_CRON_BATCH_SIZE=200` — max stale scores per ICP cron run. Bulk score is intentionally sequential: 200 × ~100ms ≈ 20s, safe within Vercel's 60s Pro function limit.
+- **`process-content-reviews`** runs every 2 hours (`0 */2 * * *`). Duplicate prevention: `content_review_reminders` table with UNIQUE index on `(post_id, reminder_type)`. Reminder types: `75_pct`, `90_pct`, `sla_expired`. At 100% SLA: auto-approves if `autoApproveEnabled=true`, otherwise sends escalation notification. Returns stats: `{ autoApproved, reminders75, reminders90, escalations }`.
