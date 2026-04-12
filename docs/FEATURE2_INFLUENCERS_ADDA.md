@@ -1,6 +1,6 @@
 # Feature 2 — Influencers Adda
 
-Influencer marketing marketplace. 11 DB tables, full campaign lifecycle, milestone-based payments, dispute resolution.
+Influencer marketing marketplace. 11 DB tables, full campaign lifecycle, milestone-based payments, dispute resolution. Extended with Content Approval (migration 006), Influencer Earnings Dashboard, and @ Mention Tags.
 
 ## Campaign Lifecycle
 
@@ -88,6 +88,45 @@ draft → pending_review → approved → published
 | **Audit log on every approval/rejection** | Writes to `audit_log` with action, postId, actorId, metadata. Admin actions included. |
 | **Rejection reason min 10 chars** | Enforced in service layer (not just UI). Ensures actionable feedback to influencer. |
 | **Resubmission increments counter** | `resubmissionCount` lets brand see revision history context in review UI. |
+
+---
+
+## @ Mention Tags (Influencer Content Creation)
+
+Influencer content posts support `@mention` tags for discoverability across 4 entity types.
+
+### API: `GET /api/search/mentions?q=searchTerm`
+
+- Auth required
+- Returns max 3 results per type (12 total): `categories[]`, `brands[]`, `products[]`, `influencers[]`
+- Categories from static platform taxonomy (no DB query)
+- Brands: `users` table WHERE `role='brand'` AND `name ILIKE %q%`
+- Products: `products` table WHERE `name ILIKE %q%`
+- Influencers: `influencer_profiles` table WHERE `displayName ILIKE %q%`
+
+### `TagMentionInput` component (inside `influencer/content/page.tsx`)
+
+| Behaviour | Detail |
+|-----------|--------|
+| Type `@` | Popover opens immediately |
+| Type letters | 300ms debounced API call |
+| Keyboard nav | ↑↓ navigate, Enter select, Escape close |
+| Click result | Inserts `@Label` as pill, clears input |
+| Plain text + Enter | Adds as plain tag (no @) |
+| Pill colors | @ tags = blue; plain tags = grey |
+| Remove tag | × button on each pill |
+| Max results | 12 shown (3 per type) |
+
+Tags stored as `string[]` in `influencerContentPosts.tags` (existing JSONB column — no schema change needed).
+
+---
+
+## UI Fixes
+
+| Fix | File | Detail |
+|-----|------|--------|
+| Media type select invisible | `influencer/content/page.tsx` | Added `bg-background text-foreground border-input` to native `<select>` — options now visible in all themes |
+| Campaign dialog SLA section hidden | `brand/campaigns/page.tsx` + `components/ui/dialog.tsx` | Dialog backdrop now uses `overflow-y-auto` + inner box `my-auto`; tall forms fully scrollable |
 
 ---
 

@@ -1,6 +1,6 @@
 # Earn4Insights — Technical Architecture Document
 
-> **Version:** April 2026 (authoritative — reflects all phases through Real-Time Connection Layer)
+> **Version:** April 2026 v2 (authoritative — reflects all phases through Content Approval + Earnings Dashboard + @ Mention Tags + Dialog scroll fix)
 > **Stack:** Next.js 15 · TypeScript (strict) · Drizzle ORM · Neon PostgreSQL · NextAuth v5 · Pusher · OpenAI · Resend · Twilio · Vercel Blob · Vercel
 
 ---
@@ -57,13 +57,17 @@ Consumers discover ranked products → more feedback
 ```
 
 ```
-Brand creates influencer campaign → invites influencers
+Brand creates influencer campaign (with optional Review SLA) → invites influencers
         ↓
-Influencer accepts → completes milestones → submits deliverables
+Influencer accepts → creates content (draft) → submits for review
         ↓
-Brand approves → funds released from escrow
+Brand reviews within SLA window (75%/90%/100% reminders via cron)
         ↓
+Brand approves → content published → Pusher notifies influencer
+        ↓ (or SLA expires + autoApproveEnabled) → auto-approved by system
 Campaign performance tracked per post/platform
+        ↓
+Influencer views earnings dashboard with multi-currency breakdown + audience intelligence
 ```
 
 ---
@@ -546,15 +550,53 @@ draft → proposed → negotiating → active → completed
 - `/api/cron/update-campaign-performance` (03:30 UTC) — fetches active campaigns, records analytics
 - `/api/cron/sync-social-stats` (04:30 UTC) — validates social stats, counts self-declared vs verified
 
+### Content Approval Flow (migration 006)
+
+SLA-based review workflow added to Influencers Adda:
+
+```
+draft → pending_review → approved → published
+              ↘ rejected → (edit) → pending_review (resubmit, increments resubmissionCount)
+```
+
+| Service | File | Responsibility |
+|---------|------|---------------|
+| `contentApprovalService` | `src/server/contentApprovalService.ts` | submitForReview, approve, reject, resubmit, processAutoApprovals |
+
+**SLA cron** (`/api/cron/process-content-reviews`, daily 02:00 UTC / externally every 2h):
+- 75% elapsed → brand reminder notification
+- 90% elapsed → urgent reminder
+- 100% + `autoApproveEnabled=true` → system auto-approves
+- 100% + `autoApproveEnabled=false` → escalation notification
+
+Duplicate reminders prevented by UNIQUE index on `(post_id, reminder_type)` in `content_review_reminders` + 23505 catch.
+
+All approval/rejection actions audit-logged to `audit_log` table.
+
+Role validation: brand → `isBrandCampaignOwner()` check; admin → bypass.
+
+### Influencer Earnings Dashboard
+
+Full multi-currency earnings dashboard at `/dashboard/influencer/earnings`:
+- 3 API routes: `GET /api/influencer/earnings`, `/analytics`, `/[campaignId]`
+- 6 components: `EarningsOverviewCards`, `PaymentBreakdown`, `EarningsTable` (CSV export), `AudienceIntelligencePanel` (consent-gated, cohort ≥ 5), `PerformanceCharts`, `CampaignDeepDive`
+- Currency utility: `src/lib/currency.ts` — 10 currencies, `formatCurrency()`, `convertToMajor/Minor()`
+
+### @ Mention Tags (Influencer Content)
+
+Content posts support `@mention` tags for categories, brands, products, influencers:
+- API: `GET /api/search/mentions?q=` — auth required, 3 results per type (12 max)
+- `TagMentionInput` component with 300ms debounce, keyboard nav (↑↓ Enter Esc), colored pills
+
 ### Known gaps (future work)
 
 | Item | Notes |
 |------|-------|
-| Razorpay integration | Records store IDs but actual payment gateway not wired |
-| Campaign content approval | No brand-side review workflow before publishing |
-| Social stats verification | Stats are self-declared; need platform API verification |
+| Razorpay integration | Schema built (IDs stored); order creation + webhook handler not yet built |
+| Social stats verification | Stats self-declared; platform API verification not wired |
 | Campaign marketplace | Influencers only see invited campaigns; no public browse |
-| Influencer earnings dashboard | Data exists in `campaign_payments`; needs `/dashboard/influencer/earnings` |
+| Instagram OAuth | Blocked on Facebook App Review |
+| Signal snapshot orphan cleanup | Admin-deleted profiles may leave orphaned snapshots |
 
 ---
 
@@ -585,7 +627,7 @@ All real-time notifications flow through a central event bus (`src/server/eventB
 
 Auth: `POST /api/pusher/auth` — validates NextAuth session; enforces users can only subscribe to their own private channel.
 
-#### 16 Platform Events
+#### 20 Platform Events
 
 | Event | Who triggers | Who receives |
 |-------|-------------|-------------|
@@ -593,18 +635,24 @@ Auth: `POST /api/pusher/auth` — validates NextAuth session; enforces users can
 | `brand.survey.created` | Brand API | ICP-matched consumers (score ≥ 50) |
 | `brand.campaign.launched` | Brand API | All active influencers |
 | `brand.alert.fired` | Alert service | Brand owner |
-| `brand.member.active` | Brand API | ICP-matched consumers (score ≥ 50) |
-| `brand.discount.created` | Brand API | ICP-matched consumers (score ≥ 50) |
+| `brand.member.active` | Brand API | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* |
+| `brand.discount.created` | Brand API | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* |
+| `brand.content.pending_review` | `contentApprovalService` | Campaign brand owner |
+| `brand.content.auto_approved` | `contentApprovalService` (cron) | Campaign brand owner |
 | `consumer.feedback.submitted` | Feedback API | Product brand |
 | `consumer.survey.completed` | Survey API | Survey brand |
 | `consumer.product.browsed` | Consumer API | Product brand |
 | `consumer.product.searched` | Consumer API | Product brand |
 | `consumer.community.posted` | Community API | Product brand |
 | `consumer.reward.withdrawn` | Rewards API | Product brand (loyalty signal) |
-| `influencer.post.published` | Influencer API | Campaign brand + ICP-matched consumers (score ≥ 60) |
+| `influencer.post.published` | `contentApprovalService.approveContent()` | Campaign brand + ICP-matched consumers (score ≥ 60) |
 | `influencer.campaign.accepted` | Influencer API | Brand |
 | `influencer.milestone.completed` | Influencer API | Brand |
+| `influencer.content.approved` | `contentApprovalService` | Influencer who submitted post |
+| `influencer.content.rejected` | `contentApprovalService` | Influencer who submitted post |
 | `social.mention.detected` | Webhook / cron | Brand owning entity |
+
+**Note:** `influencer.post.published` was previously (incorrectly) emitted in `POST /api/influencer/content` when creating a draft. Fixed — now only emitted in `contentApprovalService.approveContent()`.
 
 #### Dispatch flow (inbox-first)
 
@@ -754,10 +802,12 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | 04:00 | `/api/cron/send-time-analysis` | Analyse optimal send times per user |
 | 04:30 | `/api/cron/sync-social-stats` | Validate influencer social stats |
 | 05:00 | `/api/cron/cleanup-analytics-events` | Purge old analytics events |
+| 00:30 | `/api/cron/cleanup-notifications` | Purge expired notification_inbox rows + old activity_feed_items (90-day TTL) |
 | 05:30 | `/api/cron/process-social-mentions` | Poll YouTube for new mentions + notify brands on pending social_mentions |
 | 06:00 | `/api/cron/process-notifications` | Process queued notifications |
+| 02:00 | `/api/cron/process-content-reviews` | SLA reminders (75%/90%) + auto-approve or escalate at 100% SLA. Externally triggered every 2h via cron-job.org |
 
-**vercel.json** defines all **15 cron entries** with exact schedules.
+**vercel.json** defines all **16 cron entries** with exact schedules. `process-content-reviews` and `process-deletions` both run at 02:00 UTC (no conflict — different routes).
 
 ---
 
@@ -801,8 +851,13 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | GET/POST/PATCH | `/profile` | Own profile CRUD |
 | GET | `/discover` | Search / browse influencers |
 | GET/POST | `/social-stats` | Platform stats |
-| GET/POST | `/content` | Content posts |
+| GET/POST | `/content` | Content posts (draft creation) |
 | GET/PATCH/DELETE | `/content/[postId]` | Single post |
+| POST | `/posts/[id]/submit-review` | Submit draft for brand review |
+| POST | `/posts/[id]/resubmit` | Resubmit rejected post with edits |
+| GET | `/earnings` | Earnings summary (multi-currency) |
+| GET | `/earnings/analytics` | Audience analytics (consent-gated, cohort ≥ 5) |
+| GET | `/earnings/[campaignId]` | Per-campaign deep-dive |
 | GET | `/campaigns` | Influencer's campaign list |
 | GET/PATCH | `/campaigns/[id]` | Campaign detail + accept/reject/submit |
 
@@ -822,8 +877,26 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | POST | `/run-migration-004` | Influencers Adda schema |
 
 | POST | `/run-migration-005` | Real-Time Connection Layer schema (6 tables + userProfiles.lastActiveAt) |
+| POST | `/run-migration-006` | Content Approval (2 ALTERs + content_review_reminders table) |
+| GET | `/content/pending` | All pending posts (admin view) |
+| POST | `/content/[id]/approve` | Admin approve (bypasses brand ownership check) |
+| POST | `/content/[id]/reject` | Admin reject with reason (min 10 chars) |
 
 All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
+
+### Brand Content Review APIs (`/api/brand/content/`)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/pending` | Brand's pending posts with computed SLA status |
+| POST | `/[id]/approve` | Approve post (ownership-checked) |
+| POST | `/[id]/reject` | Reject with reason (min 10 chars, ownership-checked) |
+
+### Search APIs
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/api/search/mentions?q=` | @ mention search: categories, brands, products, influencers. Auth required. Max 3 per type |
 
 ### Notification APIs (`/api/notifications/`)
 
@@ -921,6 +994,11 @@ All type errors must be resolved before Vercel accepts the build. Key issues res
 | `src/app/api/notifications/inbox/[id]/route.ts` | `{ params: { id: string } }` → `{ params: Promise<{ id: string }> }` + `await params` (Next.js 15) |
 | `src/app/community-features/c/[slug]/page.tsx` | Same Next.js 15 async params fix |
 | `src/app/community-features/c/[slug]/[postId]/page.tsx` | Same Next.js 15 async params fix |
+| `src/db/repositories/contentApprovalRepository.ts` | `PendingPostRow.mediaUrls` typed as `string[] \| null` (not `string[]`) |
+
+### Dialog scrolling fix
+
+`src/components/ui/dialog.tsx` custom `DialogContent` backdrop changed from `flex items-center justify-center` to `flex justify-center overflow-y-auto p-4`. Inner dialog div gets `my-auto` for vertical centering on short dialogs. This enables tall forms (e.g. campaign creation with SLA fields, influencer content creation) to be fully scrollable — previously the bottom of forms was cut off with no way to reach it.
 
 ---
 

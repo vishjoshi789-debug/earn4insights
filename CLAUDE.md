@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (v2 — Influencer Earnings + Content Approval). Read at the start of every session.
+> Last updated: April 2026 (v3 — Earnings + Content Approval + @ Mention Tags + Dialog Scroll + UI Fixes). Read at the start of every session.
 
 ## Project Overview
 
@@ -85,6 +85,8 @@ await pgClient.unsafe(sql)
 | Real-Time Connection Layer (Pusher, 6 tables, 16 events) | ✅ COMPLETE |
 | Influencer Earnings Dashboard (multi-currency, audience analytics) | ✅ COMPLETE |
 | Campaign Content Approval System (SLA, auto-approve, audit log) | ✅ COMPLETE |
+| @ Mention Tag System (influencer content — brands, products, categories, influencers) | ✅ COMPLETE |
+| Media type select visibility fix + dialog scroll fix | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -156,6 +158,9 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Content review reminder deduplication** | UNIQUE index on `(post_id, reminder_type)` + pre-insert `hasReminder()` check + 23505 catch. Belt-and-suspenders to prevent double-notifying brands. |
 | **Earnings aggregated per currency, not summed** | Campaigns may use different currencies. Summing across currencies is meaningless; each currency shown separately with `formatCurrency()`. |
 | **Min cohort 5 in audience intelligence** | Same re-identification floor as brand analytics. Audience demographics panel shows privacy notice below threshold. |
+| **Dialog backdrop scrolls, not inner div** | Custom `DialogContent` uses `overflow-y-auto` on the backdrop + `my-auto` on inner box. Flex child `min-height: auto` prevents inner-div scroll from firing; backdrop scroll is reliable across browsers. |
+| **`influencer.post.published` emitted only on approval** | Previously emitted on draft creation (bug). Now only in `contentApprovalService.approveContent()`. Draft creation emits nothing. |
+| **@ tag type stored in string, not metadata** | Tags stored as `["@Beauty", "@Nike"]`. Type color derived from @ prefix (all blue). Type metadata not persisted — avoids schema change for tag storage. |
 
 ---
 
@@ -190,8 +195,9 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 
 ## Reference Docs
 
+- **`ARCHITECTURE.md`** — Full technical architecture (authoritative, 1000 lines)
 - **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–006)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
-- **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, file map
+- **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, @ tags, file map
 - **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (20 events), notification/presence architecture, file map
 - **`docs/CRON_JOBS.md`** — Full cron schedule (16 entries), auth pattern, batch size notes
