@@ -112,9 +112,9 @@ export default function BrandCampaignsPage() {
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-3.5 w-3.5 mr-1" /> New Campaign</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg flex flex-col max-h-[90vh]">
+          <DialogContent className="max-w-lg">
             <DialogHeader><DialogTitle>Create Campaign</DialogTitle></DialogHeader>
-            <div className="space-y-3 pt-2 flex-1 min-h-0 overflow-y-auto pr-1">
+            <div className="space-y-3 pt-2">
               <div className="space-y-1.5">
                 <Label>Title *</Label>
                 <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Summer Beauty Collab" />

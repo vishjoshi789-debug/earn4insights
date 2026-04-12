@@ -91,10 +91,10 @@ export function DialogContent({ children, className, ...rest }: DialogContentPro
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/50 p-4"
       {...rest}
     >
-      <div className={`w-full rounded-lg bg-card text-card-foreground border border-border p-6 shadow-lg ${className ?? 'max-w-lg'}`}>
+      <div className={`w-full rounded-lg bg-card text-card-foreground border border-border p-6 shadow-lg my-auto ${className ?? 'max-w-lg'}`}>
         {children}
       </div>
     </div>
