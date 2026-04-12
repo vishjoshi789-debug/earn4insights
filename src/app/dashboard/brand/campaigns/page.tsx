@@ -112,7 +112,7 @@ export default function BrandCampaignsPage() {
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-3.5 w-3.5 mr-1" /> New Campaign</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Create Campaign</DialogTitle></DialogHeader>
             <div className="space-y-3 pt-2">
               <div className="space-y-1.5">
