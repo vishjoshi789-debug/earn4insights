@@ -10,9 +10,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Loader2, Megaphone, Users, Target, IndianRupee, CheckCircle, XCircle,
-  Plus, Play, Ban, Trophy, AlertTriangle, BarChart3,
+  Plus, Play, Ban, Trophy, AlertTriangle, BarChart3, FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -34,6 +36,13 @@ export default function BrandCampaignDetailPage() {
   const [msOpen, setMsOpen] = useState(false)
   const [msForm, setMsForm] = useState({ title: '', paymentAmount: '', dueDate: '' })
 
+  // Applications
+  const [applications, setApplications] = useState<any[]>([])
+  const [appsLoading, setAppsLoading] = useState(false)
+  const [respondingId, setRespondingId] = useState<string | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [activeSection, setActiveSection] = useState('overview')
+
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/auth/signin')
   }, [status, router])
@@ -46,9 +55,22 @@ export default function BrandCampaignDetailPage() {
       .finally(() => setLoading(false))
   }
 
+  const loadApplications = () => {
+    setAppsLoading(true)
+    fetch(`/api/brand/campaigns/${campaignId}/applications`)
+      .then(r => r.json())
+      .then(d => setApplications(d.applications ?? []))
+      .catch(() => {})
+      .finally(() => setAppsLoading(false))
+  }
+
   useEffect(() => {
     if (status === 'authenticated' && campaignId) loadData()
   }, [status, campaignId])
+
+  useEffect(() => {
+    if (activeSection === 'applications' && campaignId && status === 'authenticated') loadApplications()
+  }, [activeSection, campaignId, status])
 
   const changeStatus = async (newStatus: string) => {
     setActing(true)
@@ -120,6 +142,23 @@ export default function BrandCampaignDetailPage() {
     finally { setActing(false) }
   }
 
+  const respondToApp = async (appId: string, respondStatus: 'accepted' | 'rejected') => {
+    setActing(true)
+    try {
+      const res = await fetch(`/api/brand/applications/${appId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: respondStatus, response: respondStatus === 'rejected' ? rejectReason : null }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      toast.success(`Application ${respondStatus}`)
+      setRespondingId(null)
+      setRejectReason('')
+      loadApplications()
+    } catch (err: any) { toast.error(err.message) }
+    finally { setActing(false) }
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center min-h-[40vh]"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
   }
@@ -173,6 +212,15 @@ export default function BrandCampaignDetailPage() {
           <CardContent><p className="text-sm text-muted-foreground">{campaign.brief}</p></CardContent>
         </Card>
       )}
+
+      <Tabs value={activeSection} onValueChange={setActiveSection}>
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="milestones">Milestones ({milestones?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="applications">Applications</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-4">
 
       {/* Influencers */}
       <Card>
@@ -308,6 +356,154 @@ export default function BrandCampaignDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+        </TabsContent>
+
+        <TabsContent value="milestones" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-1.5"><Target className="h-4 w-4" /> Milestones</CardTitle>
+                <Dialog open={msOpen} onOpenChange={setMsOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader><DialogTitle>Add Milestone</DialogTitle></DialogHeader>
+                    <div className="space-y-3 pt-2">
+                      <div className="space-y-1.5">
+                        <Label>Title *</Label>
+                        <Input value={msForm.title} onChange={e => setMsForm(f => ({ ...f, title: e.target.value }))} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Payment Amount (INR) *</Label>
+                        <Input type="number" value={msForm.paymentAmount} onChange={e => setMsForm(f => ({ ...f, paymentAmount: e.target.value }))} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Due Date</Label>
+                        <Input type="date" value={msForm.dueDate} onChange={e => setMsForm(f => ({ ...f, dueDate: e.target.value }))} />
+                      </div>
+                      <Button onClick={addMilestone} disabled={acting} className="w-full">Add Milestone</Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {(!milestones || milestones.length === 0) ? (
+                <p className="text-xs text-muted-foreground italic">No milestones defined.</p>
+              ) : (
+                <div className="space-y-2">
+                  {milestones.map((ms: any) => (
+                    <div key={ms.id} className="flex items-center justify-between border rounded-lg p-2.5">
+                      <div>
+                        <p className="text-sm font-medium">{ms.title}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                          <Badge variant="outline" className="text-[10px]">{ms.status}</Badge>
+                          <span>{(ms.paymentAmount / 100).toLocaleString()} INR</span>
+                          {ms.dueDate && <span>Due: {ms.dueDate}</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        {ms.status === 'submitted' && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => milestoneAction(ms.id, 'approve')} disabled={acting}>
+                              <CheckCircle className="h-3 w-3" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => milestoneAction(ms.id, 'reject')} disabled={acting}>
+                              <XCircle className="h-3 w-3" />
+                            </Button>
+                          </>
+                        )}
+                        {ms.status === 'pending' && (
+                          <Button size="sm" variant="outline" onClick={() => milestoneAction(ms.id, 'escrow')} disabled={acting}>
+                            Escrow
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="applications" className="space-y-4 mt-4">
+          {appsLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : applications.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                <FileText className="h-7 w-7 text-muted-foreground" />
+                <p className="text-sm font-medium">No applications yet</p>
+                <p className="text-xs text-muted-foreground">
+                  {campaign.isPublic ? 'Applications will appear here when influencers apply.' : 'Make this campaign public to receive applications from the marketplace.'}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {applications.map((app: any) => (
+                <Card key={app.id}>
+                  <CardContent className="pt-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold">{app.displayName || app.influencerName || 'Unknown'}</p>
+                          {app.niche && <Badge variant="outline" className="text-[10px]">{app.niche}</Badge>}
+                          <Badge className={
+                            app.status === 'accepted' ? 'bg-green-100 text-green-800' :
+                            app.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                            app.status === 'withdrawn' ? 'bg-gray-100 text-gray-800' :
+                            'bg-blue-100 text-blue-800'
+                          }>{app.status}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Rate: {(app.proposedRate / 100).toLocaleString()} {app.proposedCurrency} | Applied: {new Date(app.appliedAt).toLocaleDateString()}
+                        </p>
+                        <p className="text-sm mt-2 text-muted-foreground">{app.proposalText}</p>
+                      </div>
+                    </div>
+                    {app.status === 'pending' && (
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+                        {respondingId === app.id ? (
+                          <div className="flex-1 space-y-2">
+                            <Textarea
+                              placeholder="Reason for rejection (optional)"
+                              value={rejectReason}
+                              onChange={e => setRejectReason(e.target.value)}
+                              rows={2}
+                            />
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="destructive" onClick={() => respondToApp(app.id, 'rejected')} disabled={acting}>Confirm Reject</Button>
+                              <Button size="sm" variant="outline" onClick={() => { setRespondingId(null); setRejectReason('') }}>Cancel</Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <Button size="sm" onClick={() => respondToApp(app.id, 'accepted')} disabled={acting}>
+                              <CheckCircle className="h-3 w-3 mr-1" /> Accept
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setRespondingId(app.id)} disabled={acting}>
+                              <XCircle className="h-3 w-3 mr-1" /> Reject
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {app.brandResponse && (
+                      <div className="mt-2 p-2 bg-muted rounded text-xs">
+                        <span className="font-medium">Your response:</span> {app.brandResponse}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

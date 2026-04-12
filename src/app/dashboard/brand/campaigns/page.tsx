@@ -38,6 +38,7 @@ export default function BrandCampaignsPage() {
     title: '', brief: '', budgetTotal: '', deliverables: '', targetPlatforms: '',
     startDate: '', endDate: '', paymentType: 'escrow',
     reviewSlaHours: '' as string, autoApproveEnabled: false,
+    isPublic: false, maxInfluencers: '', applicationDeadline: '',
   })
 
   useEffect(() => {
@@ -71,13 +72,16 @@ export default function BrandCampaignsPage() {
           paymentType: form.paymentType,
           reviewSlaHours: form.reviewSlaHours ? parseInt(form.reviewSlaHours) : undefined,
           autoApproveEnabled: form.autoApproveEnabled,
+          isPublic: form.isPublic,
+          maxInfluencers: form.maxInfluencers ? parseInt(form.maxInfluencers) : undefined,
+          applicationDeadline: form.applicationDeadline || undefined,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'Failed')
       const data = await res.json()
       setCampaigns(prev => [data.campaign, ...prev])
       setDialogOpen(false)
-      setForm({ title: '', brief: '', budgetTotal: '', deliverables: '', targetPlatforms: '', startDate: '', endDate: '', paymentType: 'escrow', reviewSlaHours: '', autoApproveEnabled: false })
+      setForm({ title: '', brief: '', budgetTotal: '', deliverables: '', targetPlatforms: '', startDate: '', endDate: '', paymentType: 'escrow', reviewSlaHours: '', autoApproveEnabled: false, isPublic: false, maxInfluencers: '', applicationDeadline: '' })
       toast.success('Campaign created as draft')
     } catch (err: any) {
       toast.error(err.message)
@@ -154,6 +158,33 @@ export default function BrandCampaignsPage() {
                   <Label>End Date</Label>
                   <Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
                 </div>
+              </div>
+              <div className="border-t pt-3 space-y-3">
+                <p className="text-sm font-medium">Marketplace Settings</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm">Make Public</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Allow influencers to discover and apply to this campaign from the marketplace.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.isPublic}
+                    onCheckedChange={checked => setForm(f => ({ ...f, isPublic: checked }))}
+                  />
+                </div>
+                {form.isPublic && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Max Influencers</Label>
+                      <Input type="number" min="1" placeholder="Unlimited" value={form.maxInfluencers} onChange={e => setForm(f => ({ ...f, maxInfluencers: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Application Deadline</Label>
+                      <Input type="date" value={form.applicationDeadline} onChange={e => setForm(f => ({ ...f, applicationDeadline: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="border-t pt-3 space-y-3">
                 <p className="text-sm font-medium">Content Review SLA</p>

@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null)
     if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
 
-    const { title, brief, requirements, deliverables, targetGeography, targetPlatforms, budgetTotal, budgetCurrency, paymentType, startDate, endDate, productId, icpId } = body
+    const { title, brief, requirements, deliverables, targetGeography, targetPlatforms, budgetTotal, budgetCurrency, paymentType, startDate, endDate, productId, icpId, isPublic, maxInfluencers, applicationDeadline, reviewSlaHours, autoApproveEnabled } = body
 
     if (!title || typeof title !== 'string') {
       return NextResponse.json({ error: 'title is required' }, { status: 400 })
@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
     const campaign = await createNewCampaign(authResult.userId, {
       title, brief, requirements, deliverables, targetGeography, targetPlatforms,
       budgetTotal, budgetCurrency, paymentType, startDate, endDate, productId, icpId,
+      isPublic, maxInfluencers, applicationDeadline, reviewSlaHours, autoApproveEnabled,
     })
 
     // Emit real-time event (fire-and-forget)

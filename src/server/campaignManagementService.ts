@@ -84,6 +84,13 @@ export async function createNewCampaign(
     endDate?: string
     productId?: string
     icpId?: string
+    // Marketplace (migration 007)
+    isPublic?: boolean
+    maxInfluencers?: number
+    applicationDeadline?: string
+    // Content approval SLA (migration 006)
+    reviewSlaHours?: number
+    autoApproveEnabled?: boolean
   }
 ): Promise<InfluencerCampaign> {
   if (data.budgetTotal <= 0) {
@@ -106,6 +113,11 @@ export async function createNewCampaign(
     productId: data.productId ?? null,
     icpId: data.icpId ?? null,
     status: 'draft',
+    isPublic: data.isPublic ?? false,
+    maxInfluencers: data.maxInfluencers ?? null,
+    applicationDeadline: data.applicationDeadline ?? null,
+    reviewSlaHours: data.reviewSlaHours ?? null,
+    autoApproveEnabled: data.autoApproveEnabled ?? false,
   })
 }
 

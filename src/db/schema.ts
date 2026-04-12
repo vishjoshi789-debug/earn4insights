@@ -1354,6 +1354,10 @@ export const influencerCampaigns = pgTable('influencer_campaigns', {
   // Content approval SLA (migration 006)
   reviewSlaHours: integer('review_sla_hours'),           // e.g. 24, 48, 72. NULL = no SLA
   autoApproveEnabled: boolean('auto_approve_enabled').default(false),
+  // Marketplace (migration 007)
+  isPublic: boolean('is_public').notNull().default(false),       // true = visible in marketplace
+  maxInfluencers: integer('max_influencers'),                     // NULL = unlimited
+  applicationDeadline: date('application_deadline'),              // NULL = no deadline
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -1615,3 +1619,22 @@ export const contentReviewReminders = pgTable('content_review_reminders', {
 
 export type ContentReviewReminder = typeof contentReviewReminders.$inferSelect
 export type NewContentReviewReminder = typeof contentReviewReminders.$inferInsert
+
+// ── Campaign Applications (migration 007) ─────────────────────────
+export const campaignApplications = pgTable('campaign_applications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').notNull(),              // → influencer_campaigns.id
+  influencerId: text('influencer_id').notNull(),          // → users.id
+  proposalText: text('proposal_text').notNull(),
+  proposedRate: integer('proposed_rate').notNull(),        // smallest currency unit (paise)
+  proposedCurrency: text('proposed_currency').notNull().default('INR'),
+  status: text('status').notNull().default('pending')
+    .$type<'pending' | 'reviewing' | 'accepted' | 'rejected' | 'withdrawn'>(),
+  brandResponse: text('brand_response'),
+  appliedAt: timestamp('applied_at').defaultNow().notNull(),
+  respondedAt: timestamp('responded_at'),
+  // UNIQUE (campaign_id, influencer_id) enforced in migration
+})
+
+export type CampaignApplication = typeof campaignApplications.$inferSelect
+export type NewCampaignApplication = typeof campaignApplications.$inferInsert

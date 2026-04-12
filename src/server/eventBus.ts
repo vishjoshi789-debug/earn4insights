@@ -34,6 +34,10 @@ export const PLATFORM_EVENTS = {
   INFLUENCER_CONTENT_APPROVED:   'influencer.content.approved',
   INFLUENCER_CONTENT_REJECTED:   'influencer.content.rejected',
   BRAND_CONTENT_AUTO_APPROVED:   'brand.content.auto_approved',
+  // Marketplace applications
+  INFLUENCER_CAMPAIGN_APPLIED:   'influencer.campaign.applied',
+  BRAND_APPLICATION_ACCEPTED:    'brand.application.accepted',
+  BRAND_APPLICATION_REJECTED:    'brand.application.rejected',
   // Social
   SOCIAL_MENTION_DETECTED:       'social.mention.detected',
 } as const
@@ -561,6 +565,62 @@ async function routeEvent(
         entityType: 'content_post',
         entityId:   payload.postId as string,
         metadata:   { campaignId: payload.campaignId, slaHours: payload.slaHours },
+      })
+      break
+    }
+
+    // ── Marketplace: influencer applied → notify brand
+    case PLATFORM_EVENTS.INFLUENCER_CAMPAIGN_APPLIED: {
+      if (!payload.brandId) break
+      const brandTarget: NotificationTarget = { userId: payload.brandId, role: 'brand' }
+      await dispatchToUsers([brandTarget], {
+        eventType,
+        eventId,
+        title:  'New campaign application',
+        body:   `${payload.influencerName ?? 'An influencer'} applied to "${payload.campaignTitle ?? 'your campaign'}" with a rate of ${payload.proposedRate ? `${payload.proposedRate}` : 'N/A'}.`,
+        ctaUrl: payload.campaignId ? `/dashboard/brand/campaigns/${payload.campaignId}` : '/dashboard/brand/campaigns',
+        type:   'campaign_application',
+        entityType: 'campaign',
+        entityId:   payload.campaignId,
+        metadata:   { influencerId: payload.influencerId, proposalPreview: payload.proposalPreview },
+      })
+      break
+    }
+
+    // ── Marketplace: brand accepted application → notify influencer
+    case PLATFORM_EVENTS.BRAND_APPLICATION_ACCEPTED: {
+      if (!payload.influencerId) break
+      const influencerTarget: NotificationTarget = { userId: payload.influencerId, role: 'consumer' }
+      await dispatchToUsers([influencerTarget], {
+        eventType,
+        eventId,
+        title:  'Application accepted!',
+        body:   `Your application to "${payload.campaignTitle ?? 'a campaign'}" has been accepted. Check the campaign details for next steps.`,
+        ctaUrl: payload.campaignId ? `/dashboard/influencer/campaigns/${payload.campaignId}` : '/dashboard/influencer/marketplace',
+        type:   'application_accepted',
+        entityType: 'campaign',
+        entityId:   payload.campaignId,
+        metadata:   { brandId: payload.brandId },
+      })
+      break
+    }
+
+    // ── Marketplace: brand rejected application → notify influencer
+    case PLATFORM_EVENTS.BRAND_APPLICATION_REJECTED: {
+      if (!payload.influencerId) break
+      const influencerTarget: NotificationTarget = { userId: payload.influencerId, role: 'consumer' }
+      await dispatchToUsers([influencerTarget], {
+        eventType,
+        eventId,
+        title:  'Application update',
+        body:   payload.brandResponse
+          ? `Your application to "${payload.campaignTitle ?? 'a campaign'}" was not accepted. Response: ${(payload.brandResponse as string).slice(0, 120)}`
+          : `Your application to "${payload.campaignTitle ?? 'a campaign'}" was not accepted.`,
+        ctaUrl: '/dashboard/influencer/marketplace',
+        type:   'application_rejected',
+        entityType: 'campaign',
+        entityId:   payload.campaignId,
+        metadata:   { brandId: payload.brandId, brandResponse: payload.brandResponse },
       })
       break
     }
