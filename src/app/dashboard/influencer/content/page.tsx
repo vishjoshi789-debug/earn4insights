@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,8 +10,31 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Loader2, FileText, Plus, Image, Video, BookOpen, Send, AlertTriangle, RotateCcw } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Loader2, FileText, Plus, Image, Video, BookOpen, Send,
+  AlertTriangle, RotateCcw, X, Tag, Building2, Package, User,
+} from 'lucide-react'
 import { toast } from 'sonner'
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type MentionType = 'category' | 'brand' | 'product' | 'influencer'
+
+type MentionResult = {
+  id: string
+  label: string
+  type: MentionType
+}
+
+type MentionResults = {
+  categories: { id: string; name: string; slug: string }[]
+  brands: { id: string; name: string }[]
+  products: { id: string; name: string }[]
+  influencers: { id: string; displayName: string }[]
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const MEDIA_ICONS: Record<string, any> = {
   image: Image,
@@ -30,6 +53,212 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   removed: { label: 'Removed', className: 'bg-gray-200 text-gray-700' },
 }
 
+const TAG_PILL: Record<MentionType, string> = {
+  category: 'bg-blue-100 text-blue-800',
+  brand: 'bg-purple-100 text-purple-800',
+  product: 'bg-green-100 text-green-800',
+  influencer: 'bg-orange-100 text-orange-800',
+}
+
+const TYPE_ICON: Record<MentionType, any> = {
+  category: Tag,
+  brand: Building2,
+  product: Package,
+  influencer: User,
+}
+
+const TYPE_LABEL: Record<MentionType, string> = {
+  category: 'Category',
+  brand: 'Brand',
+  product: 'Product',
+  influencer: 'Influencer',
+}
+
+// ─── Tag mention input component ──────────────────────────────────────────────
+
+function TagMentionInput({
+  tags,
+  onTagsChange,
+}: {
+  tags: string[]
+  onTagsChange: (tags: string[]) => void
+}) {
+  const [inputValue, setInputValue] = useState('')
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [results, setResults] = useState<MentionResult[]>([])
+  const [loading, setLoading] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Detect @ trigger and extract query after @
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setInputValue(val)
+
+    const atIdx = val.lastIndexOf('@')
+    if (atIdx !== -1) {
+      const query = val.slice(atIdx + 1)
+      setMentionQuery(query)
+      setOpen(true)
+      setActiveIndex(0)
+
+      // Debounce API call
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(async () => {
+        if (!query) { setResults([]); setLoading(false); return }
+        setLoading(true)
+        try {
+          const res = await fetch(`/api/search/mentions?q=${encodeURIComponent(query)}`)
+          if (!res.ok) return
+          const data: MentionResults = await res.json()
+          const flat: MentionResult[] = [
+            ...data.categories.map(c => ({ id: c.id, label: c.name, type: 'category' as MentionType })),
+            ...data.brands.map(b => ({ id: b.id, label: b.name, type: 'brand' as MentionType })),
+            ...data.products.map(p => ({ id: p.id, label: p.name, type: 'product' as MentionType })),
+            ...data.influencers.map(i => ({ id: i.id, label: i.displayName, type: 'influencer' as MentionType })),
+          ]
+          setResults(flat)
+        } catch {
+          // silent
+        } finally {
+          setLoading(false)
+        }
+      }, 300)
+    } else {
+      setMentionQuery(null)
+      setOpen(false)
+      setResults([])
+    }
+  }
+
+  const selectMention = (item: MentionResult) => {
+    const tag = `@${item.label}`
+    if (!tags.includes(tag)) {
+      onTagsChange([...tags, tag])
+    }
+    // Clear the @ portion from the input
+    const atIdx = inputValue.lastIndexOf('@')
+    setInputValue(atIdx !== -1 ? inputValue.slice(0, atIdx) : '')
+    setOpen(false)
+    setMentionQuery(null)
+    setResults([])
+    inputRef.current?.focus()
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open || results.length === 0) {
+      // Enter on plain text (no @) → add as plain tag
+      if (e.key === 'Enter' && inputValue.trim() && !inputValue.includes('@')) {
+        e.preventDefault()
+        const tag = inputValue.trim()
+        if (!tags.includes(tag)) onTagsChange([...tags, tag])
+        setInputValue('')
+      }
+      return
+    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex(i => Math.min(i + 1, results.length - 1)) }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex(i => Math.max(i - 1, 0)) }
+    if (e.key === 'Enter') { e.preventDefault(); selectMention(results[activeIndex]) }
+    if (e.key === 'Escape') { setOpen(false) }
+  }
+
+  const removeTag = (tag: string) => onTagsChange(tags.filter(t => t !== tag))
+
+  const getTagType = (tag: string): MentionType => {
+    // We don't store type metadata, so derive from color by convention
+    // plain tags default to 'category' styling
+    return 'category'
+  }
+
+  // Resolve pill color: tags added via mention get type, plain tags get category color
+  const getPillClass = (tag: string) => {
+    // All @ tags default to category blue; specific type info not stored in string
+    // Could extend by storing type|label but keep it simple for now
+    return tag.startsWith('@') ? TAG_PILL.category : 'bg-gray-100 text-gray-700'
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Existing tags as pills */}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map(tag => (
+            <span
+              key={tag}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${getPillClass(tag)}`}
+            >
+              {tag}
+              <button
+                type="button"
+                onClick={() => removeTag(tag)}
+                className="ml-0.5 hover:opacity-70 rounded-full"
+                aria-label={`Remove ${tag}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Mention input with popover */}
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          value={inputValue}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Press @ to tag brands, categories, products or influencers"
+          className="text-sm"
+        />
+
+        {open && (
+          <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-md">
+            {loading ? (
+              <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Searching...
+              </div>
+            ) : results.length === 0 && mentionQuery ? (
+              <p className="p-3 text-sm text-muted-foreground">
+                No results for &quot;{mentionQuery}&quot;
+              </p>
+            ) : (
+              <ul className="max-h-60 overflow-y-auto py-1">
+                {results.map((item, idx) => {
+                  const Icon = TYPE_ICON[item.type]
+                  return (
+                    <li key={`${item.type}-${item.id}`}>
+                      <button
+                        type="button"
+                        className={`flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent ${idx === activeIndex ? 'bg-accent' : ''}`}
+                        onMouseDown={e => { e.preventDefault(); selectMention(item) }}
+                        onMouseEnter={() => setActiveIndex(idx)}
+                      >
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="flex-1 text-left truncate">@{item.label}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{TYPE_LABEL[item.type]}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        Type @ to mention categories, brands, products or influencers. Press Enter for plain tags.
+      </p>
+    </div>
+  )
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function InfluencerContentPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -41,7 +270,12 @@ export default function InfluencerContentPage() {
   const [resubmitId, setResubmitId] = useState<string | null>(null)
   const [resubmitForm, setResubmitForm] = useState({ title: '', body: '' })
   const [resubmitting, setResubmitting] = useState(false)
-  const [form, setForm] = useState({ title: '', body: '', mediaType: 'image', tags: '' })
+  const [form, setForm] = useState({
+    title: '',
+    body: '',
+    mediaType: 'image',
+    tags: [] as string[],
+  })
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/auth/signin')
@@ -66,13 +300,13 @@ export default function InfluencerContentPage() {
           title: form.title,
           body: form.body || undefined,
           mediaType: form.mediaType,
-          tags: form.tags.split(',').map(s => s.trim()).filter(Boolean),
+          tags: form.tags,
         }),
       })
       if (!res.ok) throw new Error('Failed to create')
       const data = await res.json()
       setPosts(prev => [data.post, ...prev])
-      setForm({ title: '', body: '', mediaType: 'image', tags: '' })
+      setForm({ title: '', body: '', mediaType: 'image', tags: [] })
       setDialogOpen(false)
       toast.success('Post created as draft')
     } catch (err: any) {
@@ -151,6 +385,8 @@ export default function InfluencerContentPage() {
             Manage your content posts and deliverables.
           </p>
         </div>
+
+        {/* Create post dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-3.5 w-3.5 mr-1" /> New Post</Button>
@@ -160,17 +396,41 @@ export default function InfluencerContentPage() {
               <DialogTitle>Create Content Post</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
+
+              {/* Title */}
               <div className="space-y-2">
-                <Label>Title *</Label>
-                <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Post title" />
+                <Label htmlFor="post-title">Title *</Label>
+                <Input
+                  id="post-title"
+                  value={form.title}
+                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Post title"
+                  required
+                />
               </div>
+
+              {/* Description */}
               <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} rows={3} />
+                <Label htmlFor="post-body">Description</Label>
+                <Textarea
+                  id="post-body"
+                  value={form.body}
+                  onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+                  rows={3}
+                  placeholder="What is this post about?"
+                />
               </div>
+
+              {/* Media Type — FIX 1: explicit bg + text colors so options are visible */}
               <div className="space-y-2">
-                <Label>Media Type</Label>
-                <select className="w-full border rounded px-3 py-2 text-sm" value={form.mediaType} onChange={e => setForm(f => ({ ...f, mediaType: e.target.value }))}>
+                <Label htmlFor="post-media-type">Media Type *</Label>
+                <select
+                  id="post-media-type"
+                  required
+                  className="w-full rounded-md border border-input bg-background text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  value={form.mediaType}
+                  onChange={e => setForm(f => ({ ...f, mediaType: e.target.value }))}
+                >
                   <option value="image">Image</option>
                   <option value="video">Video</option>
                   <option value="reel">Reel</option>
@@ -179,10 +439,16 @@ export default function InfluencerContentPage() {
                   <option value="article">Article</option>
                 </select>
               </div>
+
+              {/* Tags — FIX 2 & 3: @ mention system */}
               <div className="space-y-2">
-                <Label>Tags (comma-separated)</Label>
-                <Input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="skincare, review, unboxing" />
+                <Label>Tags</Label>
+                <TagMentionInput
+                  tags={form.tags}
+                  onTagsChange={tags => setForm(f => ({ ...f, tags }))}
+                />
               </div>
+
               <Button onClick={handleCreate} disabled={creating} className="w-full">
                 {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Create Draft
@@ -192,11 +458,11 @@ export default function InfluencerContentPage() {
         </Dialog>
       </div>
 
-      {/* Resubmit Dialog */}
+      {/* Resubmit dialog */}
       <Dialog open={resubmitId !== null} onOpenChange={open => { if (!open) setResubmitId(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit & Resubmit</DialogTitle>
+            <DialogTitle>Edit &amp; Resubmit</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
@@ -215,6 +481,7 @@ export default function InfluencerContentPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Post grid */}
       {posts.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
@@ -265,11 +532,22 @@ export default function InfluencerContentPage() {
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {post.tags?.map((t: string) => (
-                      <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
-                    ))}
-                  </div>
+                  {/* Tags on card */}
+                  {post.tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {post.tags.map((t: string) => (
+                        <span
+                          key={t}
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            t.startsWith('@') ? TAG_PILL.category : 'bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   <p className="text-[10px] text-muted-foreground mt-2">
                     {new Date(post.createdAt).toLocaleDateString()}
                   </p>
@@ -295,7 +573,7 @@ export default function InfluencerContentPage() {
                       onClick={() => openResubmit(post)}
                     >
                       <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                      Edit & Resubmit
+                      Edit &amp; Resubmit
                     </Button>
                   )}
                 </CardContent>
