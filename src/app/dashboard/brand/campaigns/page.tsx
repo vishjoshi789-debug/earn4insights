@@ -192,7 +192,7 @@ export default function BrandCampaignsPage() {
                   <div className="space-y-1.5">
                     <Label>Review SLA</Label>
                     <select
-                      className="w-full border rounded px-3 py-2 text-sm"
+                      className="w-full border rounded px-3 py-2 text-sm bg-background text-foreground"
                       value={form.reviewSlaHours}
                       onChange={e => setForm(f => ({ ...f, reviewSlaHours: e.target.value }))}
                     >
