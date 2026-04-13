@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (v3 — Earnings + Content Approval + @ Mention Tags + Dialog Scroll + UI Fixes). Read at the start of every session.
+> Last updated: April 2026 (v4 — Campaign Marketplace + Earnings + Content Approval + @ Mention Tags). Read at the start of every session.
 
 ## Project Overview
 
@@ -82,11 +82,12 @@ await pgClient.unsafe(sql)
 | Migration Route Fix (SQL inlined) | ✅ COMPLETE |
 | Cron Hardening (15 total cron entries) | ✅ COMPLETE |
 | Landing Page + ProductTour update | ✅ COMPLETE |
-| Real-Time Connection Layer (Pusher, 6 tables, 16 events) | ✅ COMPLETE |
+| Real-Time Connection Layer (Pusher, 6 tables, 23 events) | ✅ COMPLETE |
 | Influencer Earnings Dashboard (multi-currency, audience analytics) | ✅ COMPLETE |
 | Campaign Content Approval System (SLA, auto-approve, audit log) | ✅ COMPLETE |
 | @ Mention Tag System (influencer content — brands, products, categories, influencers) | ✅ COMPLETE |
 | Media type select visibility fix + dialog scroll fix | ✅ COMPLETE |
+| Campaign Marketplace (influencer discovery, applications, brand review) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -95,6 +96,7 @@ await pgClient.unsafe(sql)
 4. `POST /api/admin/run-migration-004` — Influencers Adda (11 tables)
 5. `POST /api/admin/run-migration-005` — Real-Time layer (6 tables)
 6. `POST /api/admin/run-migration-006` — Content Approval (2 ALTERs + `content_review_reminders` table)
+7. `POST /api/admin/run-migration-007` — Campaign Marketplace (3 ALTERs on `influencer_campaigns` + `campaign_applications` table)
 
 ---
 
@@ -161,6 +163,11 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Dialog backdrop scrolls, not inner div** | Custom `DialogContent` uses `overflow-y-auto` on the backdrop + `my-auto` on inner box. Flex child `min-height: auto` prevents inner-div scroll from firing; backdrop scroll is reliable across browsers. |
 | **`influencer.post.published` emitted only on approval** | Previously emitted on draft creation (bug). Now only in `contentApprovalService.approveContent()`. Draft creation emits nothing. |
 | **@ tag type stored in string, not metadata** | Tags stored as `["@Beauty", "@Nike"]`. Type color derived from @ prefix (all blue). Type metadata not persisted — avoids schema change for tag storage. |
+| **ICP match badge only when score exists** | Marketplace cards show Great/Good/Fair Match badge only when campaign has `icpId` AND `icp_match_scores` row exists for that influencer. No badge otherwise — avoids misleading "Unknown Match" labels. |
+| **Marketplace is_public default false** | Existing campaigns remain invite-only. Brand explicitly opts in to marketplace visibility. No retroactive exposure. |
+| **Application UNIQUE(campaign_id, influencer_id)** | DB constraint + 23505 catch in service. Belt-and-suspenders prevents duplicate applications. |
+| **Recommended campaigns: niche-match in JS** | DB fetches 3x limit, JS filters by niche overlap. Avoids complex SQL text-matching on arrays; niche is the reliable proxy since ICP scores map consumer→brand, not influencer→campaign. |
+| **Applications tab inside campaign detail** | Not a standalone page. Brand stays in campaign context while reviewing. Consistent with existing Milestones/Payments tab pattern. |
 
 ---
 
@@ -180,7 +187,7 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Campaign content approval flow** | ✅ DONE — SLA-based review, 75%/90%/100% reminders, auto-approve, audit log, real-time notifications |
 | **Razorpay integration** | Records store IDs but order creation + webhooks not implemented |
 | **Social stats API verification** | Stats are self-declared; no platform API verification yet |
-| **Campaign marketplace for influencers** | Influencers only see invited campaigns; no public browse |
+| **Campaign marketplace for influencers** | ✅ DONE — `/dashboard/influencer/marketplace`, public browse, filters, recommended, apply/withdraw, brand accept/reject |
 
 ### Privacy & Compliance
 | Item | Notes |
@@ -196,8 +203,8 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 ## Reference Docs
 
 - **`ARCHITECTURE.md`** — Full technical architecture (authoritative, 1000 lines)
-- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–006)
+- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–007)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
 - **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, @ tags, file map
-- **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (20 events), notification/presence architecture, file map
+- **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (23 events), notification/presence architecture, file map
 - **`docs/CRON_JOBS.md`** — Full cron schedule (16 entries), auth pattern, batch size notes

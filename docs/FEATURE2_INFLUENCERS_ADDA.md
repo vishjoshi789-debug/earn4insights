@@ -1,6 +1,6 @@
 # Feature 2 — Influencers Adda
 
-Influencer marketing marketplace. 11 DB tables, full campaign lifecycle, milestone-based payments, dispute resolution. Extended with Content Approval (migration 006), Influencer Earnings Dashboard, and @ Mention Tags.
+Influencer marketing marketplace. 12 DB tables, full campaign lifecycle, milestone-based payments, dispute resolution. Extended with Content Approval (migration 006), Influencer Earnings Dashboard, @ Mention Tags, and Campaign Marketplace (migration 007).
 
 ## Campaign Lifecycle
 
@@ -41,7 +41,7 @@ Platform fee calculated at escrow time: `Math.round(amount * platformFeePct / 10
 | **Campaign content approval flow** | ✅ DONE — SLA-based review, 75%/90%/100% cron reminders, auto-approve, audit log. See Content Approval section below. |
 | **Razorpay integration** | Records store Razorpay IDs but order creation + webhook handling not implemented. |
 | **Social stats API verification** | Stats are self-declared. Need platform API integrations to verify. |
-| **Campaign search for influencers** | No public campaign marketplace/browse — only invited campaigns visible. |
+| **Campaign search for influencers** | ✅ DONE — `/dashboard/influencer/marketplace`. Public browse, filters, recommended, apply/withdraw, brand accept/reject. See Campaign Marketplace section below. |
 
 ---
 
@@ -121,6 +121,59 @@ Tags stored as `string[]` in `influencerContentPosts.tags` (existing JSONB colum
 
 ---
 
+## Campaign Marketplace
+
+Public marketplace where influencers discover and apply to brand campaigns.
+
+### Schema (Migration 007)
+
+ALTER `influencer_campaigns`: add `is_public` (BOOLEAN), `max_influencers` (INTEGER), `application_deadline` (DATE).
+
+New table `campaign_applications`: id, campaign_id, influencer_id, proposal_text, proposed_rate, proposed_currency, status (`pending|reviewing|accepted|rejected|withdrawn`), brand_response, applied_at, responded_at. UNIQUE(campaign_id, influencer_id) + 4 indexes.
+
+### Application Flow
+
+```
+Influencer browses marketplace → Views campaign detail → Submits proposal (min 50 chars + rate)
+  → Brand receives real-time notification
+  → Brand accepts or rejects (with optional response)
+  → Influencer receives real-time notification
+```
+
+### Recommended Campaigns
+
+- Fetches influencer's `niche[]` from `influencer_profiles`
+- Queries 3x limit of public campaigns, filters by niche overlap in JS
+- Excludes already-applied and already-invited campaigns
+- Returns top 6
+
+### ICP Match Badge
+
+- Only shown when campaign has `icpId` AND `icp_match_scores` row exists for the influencer
+- Score thresholds: ≥80 = "Great Match" (green), 60-79 = "Good Match" (yellow), <60 = "Fair Match" (grey)
+- Hidden entirely when no ICP or no score — no misleading labels
+
+### Key Design Decisions
+
+| Decision | Why |
+|----------|-----|
+| **is_public default false** | Existing campaigns remain invite-only. Brand explicitly opts in. |
+| **UNIQUE(campaign_id, influencer_id) + 23505 catch** | Belt-and-suspenders duplicate prevention. |
+| **Niche match in JS, not SQL** | Array-to-text overlap matching is cleaner in JS than SQL. Fetch 3x, filter, slice. |
+| **Applications tab inside campaign detail** | Brand stays in campaign context. Consistent with Milestones/Payments pattern. |
+| **Application deadline checked in service** | Not just UI — service validates `new Date() > deadline` before creating. |
+| **Max influencers checked against non-withdrawn count** | Withdrawn applications don't count toward the cap. |
+
+### Real-Time Events (3 new)
+
+| Event | Target | Trigger |
+|-------|--------|---------|
+| `influencer.campaign.applied` | Brand | Influencer submits application |
+| `brand.application.accepted` | Influencer | Brand accepts application |
+| `brand.application.rejected` | Influencer | Brand rejects application |
+
+---
+
 ## UI Fixes
 
 | Fix | File | Detail |
@@ -135,7 +188,7 @@ Tags stored as `string[]` in `influencerContentPosts.tags` (existing JSONB colum
 ```
 src/
 ├── db/
-│   ├── schema.ts                                  # MODIFIED — 11 new tables + is_influencer flag on users
+│   ├── schema.ts                                  # MODIFIED — 12 tables + is_influencer flag on users
 │   ├── migrations/
 │   │   └── 004_influencer_adda.sql                # NEW — 11 tables, 15 indexes, ALTER users
 │   └── repositories/
@@ -151,7 +204,8 @@ src/
 │       ├── campaignPerformanceRepository.ts       # NEW — metrics recording, aggregation
 │       ├── influencerFollowRepository.ts          # NEW — follow/unfollow, counts
 │       ├── influencerReviewRepository.ts          # NEW — reviews, average rating
-│       └── campaignDisputeRepository.ts           # NEW — dispute CRUD, resolution
+│       ├── campaignDisputeRepository.ts           # NEW — dispute CRUD, resolution
+│       └── campaignMarketplaceRepository.ts      # NEW — public listings, recommended, applications, ICP match
 │
 ├── lib/
 │   └── currency.ts                                # NEW — 10-currency support, formatCurrency(), convertToMajor/Minor()
@@ -164,6 +218,11 @@ src/
 │   ├── PerformanceCharts.tsx                      # NEW — 5 chart wrappers + PlaceholderChart
 │   └── CampaignDeepDive.tsx                       # NEW — lazy-loaded, self-fetching per campaign
 │
+├── components/influencer/marketplace/
+│   ├── CampaignCard.tsx                          # NEW — campaign card with match badge, platform pills, apply CTA
+│   ├── CampaignDetailPanel.tsx                   # NEW — slide-out panel with full brief + apply form
+│   └── ApplicationsTracker.tsx                   # NEW — "My Applications" tab with status filters
+│
 ├── server/
 │   ├── influencerProfileService.ts                # NEW — registration, discovery, public profiles
 │   ├── campaignManagementService.ts               # NEW — campaign lifecycle, invitations, status transitions
@@ -171,26 +230,29 @@ src/
 │   ├── campaignPerformanceService.ts              # NEW — metrics recording, campaign analytics
 │   ├── disputeResolutionService.ts                # NEW — dispute lifecycle, admin resolution
 │   ├── contentApprovalService.ts                  # NEW — submitForReview, approve, reject, resubmit, processAutoApprovals
-│   └── influencerEarningsService.ts               # NEW — getEarningsSummary, getAudienceAnalytics, getCampaignDeepDiveData
+│   ├── influencerEarningsService.ts               # NEW — getEarningsSummary, getAudienceAnalytics, getCampaignDeepDiveData
+│   └── campaignMarketplaceService.ts             # NEW — marketplace browse, apply, respond, ICP enrichment
 │
 └── app/
     ├── dashboard/
-    │   ├── DashboardShell.tsx                     # MODIFIED — influencer + brand campaign nav + Content Review entry
+    │   ├── DashboardShell.tsx                     # MODIFIED — influencer + brand campaign nav + Content Review + Marketplace
     │   ├── influencer/
     │   │   ├── profile/page.tsx                   # NEW — register/edit influencer profile
     │   │   ├── campaigns/page.tsx                 # NEW — list campaign invitations
     │   │   ├── campaigns/[campaignId]/page.tsx    # NEW — campaign detail, accept/reject, submit milestones
     │   │   ├── content/page.tsx                   # MODIFIED — status badges, Submit for Review, Edit & Resubmit
-    │   │   └── earnings/page.tsx                  # NEW — earnings dashboard (summary, charts, audience, CSV)
+    │   │   ├── earnings/page.tsx                  # NEW — earnings dashboard (summary, charts, audience, CSV)
+    │   │   └── marketplace/page.tsx               # NEW — browse campaigns, recommended, filters, apply
     │   └── brand/
-    │       ├── campaigns/page.tsx                 # MODIFIED — added Content Review SLA + auto-approve fields
-    │       ├── campaigns/[campaignId]/page.tsx    # NEW — campaign detail, milestones, payments, influencers
+    │       ├── campaigns/page.tsx                 # MODIFIED — SLA + auto-approve + marketplace fields (isPublic, maxInfluencers, deadline)
+    │       ├── campaigns/[campaignId]/page.tsx    # MODIFIED — campaign detail with Applications tab (accept/reject inline)
     │       ├── content-review/page.tsx            # NEW — pending review queue, SLA badges, approve/reject UI
     │       └── influencers/page.tsx               # NEW — discover/search influencer profiles
     └── api/
         ├── admin/
         │   ├── run-migration-004/route.ts         # NEW — apply Influencers Adda migration
         │   ├── run-migration-006/route.ts         # NEW — apply Content Approval migration (2 ALTERs + 1 table)
+        │   └── run-migration-007/route.ts         # NEW — apply Campaign Marketplace migration (3 ALTERs + 1 table)
         │   └── content/
         │       ├── pending/route.ts               # NEW — GET all pending posts (admin)
         │       ├── [id]/approve/route.ts          # NEW — POST admin approve (bypasses ownership)
@@ -206,6 +268,7 @@ src/
         │   ├── earnings/route.ts                  # NEW — GET earnings summary
         │   ├── earnings/analytics/route.ts        # NEW — GET audience analytics (consent-gated, cohort≥5)
         │   ├── earnings/[campaignId]/route.ts     # NEW — GET per-campaign deep-dive
+        │   ├── applications/route.ts              # NEW — GET influencer's marketplace applications
         │   └── campaigns/
         │       ├── route.ts                       # NEW — GET influencer's campaigns
         │       └── [campaignId]/route.ts          # NEW — GET detail, PATCH accept/reject/submit
@@ -219,13 +282,22 @@ src/
         │   │       ├── milestones/[milestoneId]/route.ts # NEW — PATCH approve/reject/escrow, DELETE
         │   │       ├── payments/route.ts          # NEW — GET payment summary
         │   │       ├── performance/route.ts       # NEW — GET analytics, POST record metrics
-        │   │       └── disputes/route.ts          # NEW — GET/POST brand disputes
+        │   │       ├── disputes/route.ts          # NEW — GET/POST brand disputes
+        │   │       └── applications/route.ts     # NEW — GET applications for campaign (brand)
+        │   ├── applications/
+        │   │   └── [id]/respond/route.ts          # NEW — POST brand accept/reject application
         │   └── content/
         │       ├── pending/route.ts               # NEW — GET brand's pending posts with SLA status
         │       ├── [id]/approve/route.ts          # NEW — POST brand approve (ownership-checked)
         │       └── [id]/reject/route.ts           # NEW — POST brand reject with reason (min 10 chars)
         ├── cron/
         │   └── process-content-reviews/route.ts   # NEW — every 2h: SLA reminders + auto-approve/escalate
+        ├── marketplace/campaigns/
+        │   ├── route.ts                           # NEW — GET public campaign listings with filters
+        │   ├── recommended/route.ts               # NEW — GET top-6 recommended for influencer
+        │   └── [campaignId]/
+        │       ├── route.ts                       # NEW — GET campaign detail for marketplace
+        │       └── apply/route.ts                 # NEW — POST apply + DELETE withdraw
         ├── campaigns/[campaignId]/
         │   ├── reviews/route.ts                   # NEW — GET/POST campaign reviews
         │   └── disputes/route.ts                  # NEW — GET/POST/PATCH disputes (influencer + admin)

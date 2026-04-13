@@ -96,6 +96,31 @@ Indexes:
 
 ---
 
+## Migration 007 — Campaign Marketplace (3 ALTERs + 1 new table)
+
+### ALTER `influencer_campaigns`
+
+New columns:
+- `is_public` BOOLEAN NOT NULL DEFAULT false — true = visible in marketplace
+- `max_influencers` INTEGER NULL — max applications accepted, NULL = unlimited
+- `application_deadline` DATE NULL — when applications close, NULL = no deadline
+
+Index: partial index on `(is_public, status) WHERE is_public = true` for marketplace queries.
+
+### `campaign_applications`
+
+Influencer applications to public campaigns. Tracks proposal, rate, and brand response.
+
+Columns: `id` (UUID PK), `campaignId`, `influencerId`, `proposalText`, `proposedRate` (paise), `proposedCurrency` (default 'INR'), `status` (`'pending'|'reviewing'|'accepted'|'rejected'|'withdrawn'`), `brandResponse`, `appliedAt`, `respondedAt`
+
+Indexes:
+- UNIQUE on `(campaign_id, influencer_id)` — one application per influencer per campaign
+- `(campaign_id, status)` — brand view: filter applications by status
+- `(influencer_id, status)` — influencer view: my applications by status
+- `(applied_at DESC)` — newest-first ordering
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`

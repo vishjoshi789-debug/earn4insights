@@ -1,6 +1,6 @@
 # Feature 3 — Real-Time Connection Layer
 
-Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus (20 events), notification inbox, activity feed, presence indicators, social listening.
+Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus (23 events), notification inbox, activity feed, presence indicators, social listening.
 
 **Status: ✅ COMPLETE + reviewed (April 2026)**
 
@@ -49,6 +49,9 @@ All defined in `PLATFORM_EVENTS` const in `src/server/eventBus.ts`. All 20 have 
 | `influencer.content.rejected` | Influencer who submitted the post | `contentApprovalService.rejectContent()` |
 | `brand.content.auto_approved` | Campaign brand owner | `contentApprovalService.approveContentAsSystem()` (cron) |
 | `social.mention.detected` | Brand owning the mentioned entity | social mention webhook / cron |
+| `influencer.campaign.applied` | Campaign brand owner | `campaignMarketplaceService.applyToCampaign()` |
+| `brand.application.accepted` | Influencer who applied | `campaignMarketplaceService.respondToApplication()` |
+| `brand.application.rejected` | Influencer who applied | `campaignMarketplaceService.respondToApplication()` |
 
 ## Dispatch Flow (inbox-first)
 
@@ -162,6 +165,8 @@ server/brandAlertService.ts                        # emit BRAND_ALERT_FIRED afte
 server/contentApprovalService.ts                   # emit BRAND_CONTENT_PENDING_REVIEW, INFLUENCER_CONTENT_APPROVED,
                                                    #      INFLUENCER_CONTENT_REJECTED, BRAND_CONTENT_AUTO_APPROVED,
                                                    #      INFLUENCER_POST_PUBLISHED (on approve)
+server/campaignMarketplaceService.ts               # emit INFLUENCER_CAMPAIGN_APPLIED, BRAND_APPLICATION_ACCEPTED,
+                                                   #      BRAND_APPLICATION_REJECTED
 app/api/feedback/submit/route.ts                   # emit CONSUMER_FEEDBACK_SUBMITTED
 app/api/influencer/content/route.ts                # NOTE: INFLUENCER_POST_PUBLISHED removed from here (was premature —
                                                    #       posts were drafts). Now emitted in contentApprovalService.
