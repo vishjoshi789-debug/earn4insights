@@ -134,7 +134,7 @@ export default function BrandCampaignsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Payment Type</Label>
-                  <select className="w-full border rounded px-3 py-2 text-sm" value={form.paymentType} onChange={e => setForm(f => ({ ...f, paymentType: e.target.value }))}>
+                  <select className="w-full border rounded px-3 py-2 text-sm bg-background text-foreground" value={form.paymentType} onChange={e => setForm(f => ({ ...f, paymentType: e.target.value }))}>
                     <option value="escrow">Escrow</option>
                     <option value="milestone">Milestone</option>
                     <option value="direct">Direct</option>
