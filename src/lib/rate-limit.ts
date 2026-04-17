@@ -87,4 +87,7 @@ export const RATE_LIMITS = {
   signup: { maxRequests: 3, windowSeconds: 60 } as RateLimitConfig,
   // Bulk ICP scoring is CPU+DB intensive (sequential per-consumer). 2 req/min per IP.
   bulkScore: { maxRequests: 2, windowSeconds: 60 } as RateLimitConfig,
+  // Payment endpoints — brand-facing
+  paymentCreateOrder: { maxRequests: 10, windowSeconds: 60 } as RateLimitConfig,
+  paymentVerify: { maxRequests: 20, windowSeconds: 60 } as RateLimitConfig,
 } as const

@@ -40,6 +40,15 @@ export const PLATFORM_EVENTS = {
   BRAND_APPLICATION_REJECTED:    'brand.application.rejected',
   // Social
   SOCIAL_MENTION_DETECTED:       'social.mention.detected',
+  // Payment lifecycle
+  PAYMENT_ORDER_CREATED:         'payment.order.created',
+  PAYMENT_ESCROWED:              'payment.escrowed',
+  PAYMENT_RELEASED:              'payment.released',
+  PAYMENT_FAILED:                'payment.failed',
+  PAYMENT_PAYOUT_INITIATED:      'payment.payout.initiated',
+  PAYMENT_PAYOUT_COMPLETED:      'payment.payout.completed',
+  PAYMENT_PAYOUT_FAILED:         'payment.payout.failed',
+  CONSUMER_REWARD_REDEEMED:      'consumer.reward.redeemed',
 } as const
 
 export type PlatformEventType = typeof PLATFORM_EVENTS[keyof typeof PLATFORM_EVENTS]
@@ -625,6 +634,194 @@ async function routeEvent(
       break
     }
 
+    // ── Payment: order created → notify brand
+    case PLATFORM_EVENTS.PAYMENT_ORDER_CREATED: {
+      if (!payload.brandId) break
+      const brandTarget: NotificationTarget = { userId: payload.brandId, role: 'brand' }
+      await dispatchToUsers([brandTarget], {
+        eventType,
+        eventId,
+        title:  'Payment order created',
+        body:   `Payment order created for "${payload.campaignTitle ?? 'your campaign'}".`,
+        ctaUrl: payload.campaignId ? `/dashboard/brand/campaigns/${payload.campaignId}` : '/dashboard/brand/campaigns',
+        type:   'payment_order_created',
+        entityType: 'campaign',
+        entityId:   payload.campaignId,
+      })
+      break
+    }
+
+    // ── Payment: escrowed → notify brand + influencer
+    case PLATFORM_EVENTS.PAYMENT_ESCROWED: {
+      const targets: NotificationTarget[] = []
+      if (payload.brandId) {
+        targets.push({ userId: payload.brandId, role: 'brand' })
+      }
+      if (payload.influencerId) {
+        targets.push({ userId: payload.influencerId, role: 'consumer' })
+      }
+      if (targets.length === 0) break
+      // Notify brand
+      if (payload.brandId) {
+        await dispatchToUsers(
+          [{ userId: payload.brandId, role: 'brand' }],
+          {
+            eventType,
+            eventId,
+            title:  'Payment confirmed',
+            body:   `Payment secured in escrow for "${payload.campaignTitle ?? 'your campaign'}".`,
+            ctaUrl: payload.campaignId ? `/dashboard/brand/campaigns/${payload.campaignId}` : '/dashboard/brand/campaigns',
+            type:   'payment_escrowed',
+            entityType: 'campaign',
+            entityId:   payload.campaignId,
+          }
+        )
+      }
+      // Notify influencer
+      if (payload.influencerId) {
+        await dispatchToUsers(
+          [{ userId: payload.influencerId, role: 'consumer' }],
+          {
+            eventType,
+            eventId,
+            title:  'Payment secured in escrow!',
+            body:   `Payment held in escrow for "${payload.campaignTitle ?? 'a campaign'}". Complete milestones to unlock.`,
+            ctaUrl: '/dashboard/influencer/campaigns',
+            type:   'payment_escrowed',
+            entityType: 'campaign',
+            entityId:   payload.campaignId,
+          }
+        )
+      }
+      break
+    }
+
+    // ── Payment: released → notify influencer
+    case PLATFORM_EVENTS.PAYMENT_RELEASED: {
+      if (!payload.influencerId) break
+      const influencerTarget: NotificationTarget = { userId: payload.influencerId, role: 'consumer' }
+      await dispatchToUsers([influencerTarget], {
+        eventType,
+        eventId,
+        title:  'Payment released!',
+        body:   `Payment released for "${payload.milestoneName ?? 'a milestone'}". Payout initiated to your account.`,
+        ctaUrl: '/dashboard/influencer/payouts',
+        type:   'payment_released',
+        entityType: 'campaign',
+        entityId:   payload.campaignId,
+        metadata:   { milestoneName: payload.milestoneName },
+      })
+      break
+    }
+
+    // ── Payment: failed → notify brand
+    case PLATFORM_EVENTS.PAYMENT_FAILED: {
+      if (!payload.brandId) break
+      const brandTarget: NotificationTarget = { userId: payload.brandId, role: 'brand' }
+      await dispatchToUsers([brandTarget], {
+        eventType,
+        eventId,
+        title:  'Payment failed',
+        body:   `Payment failed for "${payload.campaignTitle ?? 'your campaign'}". Please retry.`,
+        ctaUrl: payload.campaignId ? `/dashboard/brand/campaigns/${payload.campaignId}` : '/dashboard/brand/campaigns',
+        type:   'payment_failed',
+        entityType: 'campaign',
+        entityId:   payload.campaignId,
+      })
+      break
+    }
+
+    // ── Payout: initiated → notify recipient
+    case PLATFORM_EVENTS.PAYMENT_PAYOUT_INITIATED: {
+      if (!payload.recipientId) break
+      const target: NotificationTarget = {
+        userId: payload.recipientId as string,
+        role: (payload.recipientType as string) === 'consumer' ? 'consumer' : 'consumer',
+      }
+      await dispatchToUsers([target], {
+        eventType,
+        eventId,
+        title:  'Payout processing',
+        body:   `Your payout is being processed. Expected 1–3 business days.`,
+        ctaUrl: '/dashboard/influencer/payouts',
+        type:   'payout_initiated',
+        entityType: 'payout',
+        entityId:   payload.payoutId as string,
+      })
+      break
+    }
+
+    // ── Payout: completed → notify recipient
+    case PLATFORM_EVENTS.PAYMENT_PAYOUT_COMPLETED: {
+      if (!payload.recipientId) break
+      const target: NotificationTarget = {
+        userId: payload.recipientId as string,
+        role: 'consumer',
+      }
+      await dispatchToUsers([target], {
+        eventType,
+        eventId,
+        title:  'Payment received!',
+        body:   `Your payout has been credited to your account.`,
+        ctaUrl: '/dashboard/influencer/payouts',
+        type:   'payout_completed',
+        entityType: 'payout',
+        entityId:   payload.payoutId as string,
+      })
+      break
+    }
+
+    // ── Payout: failed → notify recipient
+    case PLATFORM_EVENTS.PAYMENT_PAYOUT_FAILED: {
+      if (!payload.recipientId) break
+      const target: NotificationTarget = {
+        userId: payload.recipientId as string,
+        role: 'consumer',
+      }
+      await dispatchToUsers([target], {
+        eventType,
+        eventId,
+        title:  'Payout failed',
+        body:   `Your payout could not be processed. Please contact support.`,
+        ctaUrl: '/dashboard/influencer/payouts',
+        type:   'payout_failed',
+        entityType: 'payout',
+        entityId:   payload.payoutId as string,
+        metadata:   { failureReason: payload.failureReason },
+      })
+      break
+    }
+
+    // ── Consumer: reward redeemed → notify consumer (+ brand if voucher)
+    case PLATFORM_EVENTS.CONSUMER_REWARD_REDEEMED: {
+      if (!payload.actorId) break
+      const consumerTarget: NotificationTarget = { userId: payload.actorId, role: 'consumer' }
+      await dispatchToUsers([consumerTarget], {
+        eventType,
+        eventId,
+        title:  'Redemption confirmed!',
+        body:   `You redeemed ${payload.points ?? ''} points for ${payload.redemptionType ?? 'a reward'}.`,
+        ctaUrl: '/dashboard/rewards',
+        type:   'reward_redeemed',
+        entityType: 'reward',
+      })
+      // If voucher and linked to a brand, notify the brand too
+      if (payload.redemptionType === 'voucher' && payload.brandId) {
+        const brandTarget: NotificationTarget = { userId: payload.brandId, role: 'brand' }
+        await dispatchToUsers([brandTarget], {
+          eventType,
+          eventId,
+          title:  'Consumer redeemed a voucher',
+          body:   `A consumer redeemed a discount voucher — strong engagement signal.`,
+          ctaUrl: '/dashboard/analytics',
+          type:   'reward_redeemed',
+          entityType: 'brand',
+          entityId:   payload.brandId,
+        })
+      }
+      break
+    }
+
     default:
       console.warn(`[EventBus] No handler for event type: ${eventType}`)
   }
@@ -633,19 +830,25 @@ async function routeEvent(
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function resolveEntityType(eventType: string, payload: EventPayload): string | null {
-  if (eventType.includes('product'))  return 'product'
-  if (eventType.includes('survey'))   return 'survey'
-  if (eventType.includes('campaign')) return 'campaign'
-  if (eventType.includes('mention'))  return 'brand'
-  if (eventType.includes('feedback')) return 'product'
+  if (eventType.startsWith('payment.payout')) return 'payout'
+  if (eventType.startsWith('payment.'))      return 'campaign'
+  if (eventType.includes('reward'))          return 'reward'
+  if (eventType.includes('product'))         return 'product'
+  if (eventType.includes('survey'))          return 'survey'
+  if (eventType.includes('campaign'))        return 'campaign'
+  if (eventType.includes('mention'))         return 'brand'
+  if (eventType.includes('feedback'))        return 'product'
   return null
 }
 
 function resolveEntityId(eventType: string, payload: EventPayload): string | null {
-  if (eventType.includes('product'))  return payload.productId ?? null
-  if (eventType.includes('survey'))   return payload.surveyId  ?? null
-  if (eventType.includes('campaign')) return payload.campaignId ?? null
-  if (eventType.includes('mention'))  return payload.brandId  ?? null
-  if (eventType.includes('feedback')) return payload.productId ?? null
+  if (eventType.startsWith('payment.payout')) return (payload.payoutId as string) ?? null
+  if (eventType.startsWith('payment.'))      return payload.campaignId ?? null
+  if (eventType.includes('reward'))          return payload.actorId ?? null
+  if (eventType.includes('product'))         return payload.productId ?? null
+  if (eventType.includes('survey'))          return payload.surveyId  ?? null
+  if (eventType.includes('campaign'))        return payload.campaignId ?? null
+  if (eventType.includes('mention'))         return payload.brandId  ?? null
+  if (eventType.includes('feedback'))        return payload.productId ?? null
   return null
 }

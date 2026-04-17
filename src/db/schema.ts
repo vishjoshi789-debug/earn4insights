@@ -1409,6 +1409,9 @@ export const campaignPayments = pgTable('campaign_payments', {
   razorpayPaymentId: text('razorpay_payment_id'),
   razorpayTransferId: text('razorpay_transfer_id'),
   platformFee: integer('platform_fee').notNull().default(0),
+  platformFeePercent: decimal('platform_fee_percent', { precision: 4, scale: 2 }),
+  influencerAmount: integer('influencer_amount'),
+  international: boolean('international').default(false),
   escrowedAt: timestamp('escrowed_at'),
   releasedAt: timestamp('released_at'),
   refundedAt: timestamp('refunded_at'),
@@ -1638,3 +1641,134 @@ export const campaignApplications = pgTable('campaign_applications', {
 
 export type CampaignApplication = typeof campaignApplications.$inferSelect
 export type NewCampaignApplication = typeof campaignApplications.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION: PAYMENT SYSTEM (migration 008)
+// ════════════════════════════════════════════════════════════════
+
+// ── Payout Accounts (influencers + consumers) ───────────────────
+export const payoutAccounts = pgTable('influencer_payout_accounts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),                    // → users.id
+  userRole: text('user_role').notNull().default('influencer')
+    .$type<'influencer' | 'consumer'>(),
+  accountType: text('account_type').notNull()
+    .$type<'bank_account' | 'upi' | 'paypal' | 'wise' | 'swift'>(),
+
+  // India fields
+  accountHolderName: text('account_holder_name'),
+  accountNumber: text('account_number'),                // AES-256-GCM encrypted
+  ifscCode: text('ifsc_code'),
+  upiId: text('upi_id'),
+
+  // International fields
+  paypalEmail: text('paypal_email'),
+  wiseEmail: text('wise_email'),
+  swiftCode: text('swift_code'),
+  iban: text('iban'),                                   // AES-256-GCM encrypted
+  bankName: text('bank_name'),
+  bankCountry: text('bank_country'),
+
+  // Common fields
+  currency: text('currency').notNull().default('INR'),
+  isPrimary: boolean('is_primary').notNull().default(false),
+  isVerified: boolean('is_verified').notNull().default(false),
+  verifiedAt: timestamp('verified_at'),
+  encryptionKeyId: text('encryption_key_id'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // UNIQUE(user_id, account_type, currency) WHERE is_active = true — enforced in migration
+  // INDEX: (user_id, is_primary) — enforced in migration
+  // INDEX: (user_id, is_active) — enforced in migration
+})
+
+export type PayoutAccount = typeof payoutAccounts.$inferSelect
+export type NewPayoutAccount = typeof payoutAccounts.$inferInsert
+
+// ── Razorpay Orders ─────────────────────────────────────────────
+export const razorpayOrders = pgTable('razorpay_orders', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').notNull(),            // → influencer_campaigns.id
+  milestoneId: uuid('milestone_id'),                    // → campaign_milestones.id (nullable)
+  brandId: text('brand_id').notNull(),                  // → users.id
+  razorpayOrderId: text('razorpay_order_id').notNull().unique(),
+  amount: integer('amount').notNull(),                  // paise/cents
+  currency: text('currency').notNull().default('INR'),
+  platformFee: integer('platform_fee').notNull().default(0),
+  influencerAmount: integer('influencer_amount').notNull().default(0),
+  status: text('status').notNull().default('created')
+    .$type<'created' | 'attempted' | 'paid' | 'failed' | 'refunded'>(),
+  razorpayPaymentId: text('razorpay_payment_id'),
+  razorpaySignature: text('razorpay_signature'),
+  paymentMethod: text('payment_method'),
+  international: boolean('international').notNull().default(false),
+  refundAmount: integer('refund_amount').default(0),
+  refundId: text('refund_id'),
+  refundedAt: timestamp('refunded_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // INDEX: (campaign_id) — enforced in migration
+  // INDEX: (brand_id, status) — enforced in migration
+})
+
+export type RazorpayOrder = typeof razorpayOrders.$inferSelect
+export type NewRazorpayOrder = typeof razorpayOrders.$inferInsert
+
+// ── Influencer/Consumer Payouts ─────────────────────────────────
+export const influencerPayouts = pgTable('influencer_payouts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id'),                      // → influencer_campaigns.id (nullable for reward payouts)
+  recipientId: text('recipient_id').notNull(),          // → users.id
+  recipientType: text('recipient_type').notNull().default('influencer')
+    .$type<'influencer' | 'consumer'>(),
+  payoutAccountId: uuid('payout_account_id').notNull(), // → influencer_payout_accounts.id
+  amount: integer('amount').notNull(),                  // smallest currency unit
+  currency: text('currency').notNull(),
+  payoutMethod: text('payout_method').notNull()
+    .$type<'razorpay_payout' | 'wise_manual' | 'paypal_manual' | 'bank_manual'>(),
+  status: text('status').notNull().default('pending')
+    .$type<'pending' | 'processing' | 'completed' | 'failed'>(),
+  razorpayPayoutId: text('razorpay_payout_id'),
+  wiseTransferId: text('wise_transfer_id'),
+  failureReason: text('failure_reason'),
+  retryCount: integer('retry_count').notNull().default(0),
+  initiatedAt: timestamp('initiated_at'),
+  completedAt: timestamp('completed_at'),
+  adminNote: text('admin_note'),
+  processedBy: text('processed_by'),                    // → users.id (admin)
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // INDEX: (recipient_id, status) — enforced in migration
+  // INDEX: (status) WHERE status = 'pending' — enforced in migration
+  // INDEX: (campaign_id) — enforced in migration
+})
+
+export type InfluencerPayout = typeof influencerPayouts.$inferSelect
+export type NewInfluencerPayout = typeof influencerPayouts.$inferInsert
+
+// ── Payment Reward Redemptions (consumer points → cash/voucher/credits) ──
+export const paymentRedemptions = pgTable('payment_redemptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  consumerId: text('consumer_id').notNull(),            // → users.id
+  points: integer('points').notNull(),
+  value: integer('value').notNull(),                    // paise equivalent
+  currency: text('currency').notNull().default('INR'),
+  redemptionType: text('redemption_type').notNull()
+    .$type<'platform_credits' | 'voucher' | 'cash_payout'>(),
+  status: text('status').notNull().default('pending')
+    .$type<'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'>(),
+  payoutId: uuid('payout_id'),                          // → influencer_payouts.id (for cash payouts)
+  voucherCode: text('voucher_code'),
+  brandId: text('brand_id'),                            // → users.id (brand funding voucher)
+  failureReason: text('failure_reason'),
+  processedAt: timestamp('processed_at'),
+  adminNote: text('admin_note'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // INDEX: (consumer_id, status) — enforced in migration
+  // INDEX: (status) WHERE status = 'pending' — enforced in migration
+})
+
+export type PaymentRedemption = typeof paymentRedemptions.$inferSelect
+export type NewPaymentRedemption = typeof paymentRedemptions.$inferInsert

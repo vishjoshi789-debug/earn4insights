@@ -88,6 +88,7 @@ await pgClient.unsafe(sql)
 | @ Mention Tag System (influencer content — brands, products, categories, influencers) | ✅ COMPLETE |
 | Media type select visibility fix + dialog scroll fix | ✅ COMPLETE |
 | Campaign Marketplace (influencer discovery, applications, brand review) | ✅ COMPLETE |
+| Razorpay Payment Integration (escrow, payouts, consumer rewards, admin queue) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -97,6 +98,7 @@ await pgClient.unsafe(sql)
 5. `POST /api/admin/run-migration-005` — Real-Time layer (6 tables)
 6. `POST /api/admin/run-migration-006` — Content Approval (2 ALTERs + `content_review_reminders` table)
 7. `POST /api/admin/run-migration-007` — Campaign Marketplace (3 ALTERs on `influencer_campaigns` + `campaign_applications` table)
+8. `POST /api/admin/run-migration-008` — Razorpay Payment (4 tables: `razorpay_orders`, `campaign_payments`, `payout_accounts`, `reward_redemptions`)
 
 ---
 
@@ -134,6 +136,12 @@ PUSHER_CLUSTER=ap2
 NEXT_PUBLIC_PUSHER_KEY=
 NEXT_PUBLIC_PUSHER_CLUSTER=ap2
 SOCIAL_MENTION_WEBHOOK_SECRET=         # HMAC secret for POST /api/webhooks/social-mention
+
+# Razorpay (Payments)
+RAZORPAY_KEY_ID=                       # Razorpay dashboard → Settings → API Keys
+RAZORPAY_KEY_SECRET=                   # Keep secret — never expose client-side
+RAZORPAY_WEBHOOK_SECRET=               # Dashboard → Webhooks → Secret
+NEXT_PUBLIC_RAZORPAY_KEY_ID=           # Same as RAZORPAY_KEY_ID — safe for client
 ```
 
 Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITECTURE.md`.
@@ -168,6 +176,12 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Application UNIQUE(campaign_id, influencer_id)** | DB constraint + 23505 catch in service. Belt-and-suspenders prevents duplicate applications. |
 | **Recommended campaigns: niche-match in JS** | DB fetches 3x limit, JS filters by niche overlap. Avoids complex SQL text-matching on arrays; niche is the reliable proxy since ICP scores map consumer→brand, not influencer→campaign. |
 | **Applications tab inside campaign detail** | Not a standalone page. Brand stays in campaign context while reviewing. Consistent with existing Milestones/Payments tab pattern. |
+| **`RAZORPAYX_ENABLED = false` (launch)** | All payouts go to admin manual queue. When RazorpayX Payouts API is activated, set to `true` for automatic India INR payouts. International remain manual. |
+| **Points rate: 10 pts = ₹1** | `POINTS_PER_INR = 10` in API, `POINTS_TO_INR = 0.10` in UI. Both aligned — ₹0.10 per point. |
+| **Encrypted account masking: decrypt then slice** | `accountNumber` and `iban` are AES-256-GCM ciphertext. Must `decryptFromStorage()` before `slice(-4)` — raw ciphertext `slice(-4)` leaks encrypted data. |
+| **Webhook processed synchronously** | Razorpay webhook handler `await`s DB writes before returning 200. Fire-and-forget dies on Vercel serverless. |
+| **Platform fee schedule** | milestone → 8%, direct → 12%, escrow/standard → 10%. Calculated in `razorpayService.createOrder()`. |
+| **Refund blocked after release** | Cannot refund a paid order if the linked `campaign_payments` has been released to influencer. Prevents double-spend. |
 
 ---
 
@@ -185,7 +199,9 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 |------|-------|
 | **Influencer earnings dashboard** | ✅ DONE — `/dashboard/influencer/earnings`, multi-currency, audience intelligence (consent-gated, cohort ≥ 5) |
 | **Campaign content approval flow** | ✅ DONE — SLA-based review, 75%/90%/100% reminders, auto-approve, audit log, real-time notifications |
-| **Razorpay integration** | Records store IDs but order creation + webhooks not implemented |
+| **Razorpay integration** | ✅ DONE — Full escrow flow, brand checkout, payment verification, refunds, webhook handler, influencer payouts, consumer rewards redemption, admin payout queue, 8 payment events, 2 cron jobs (18 cron entries total) |
+| **RazorpayX Payouts API** | `RAZORPAYX_ENABLED = false` — all payouts manual. Activate when RazorpayX account approved |
+| **Wise API integration** | `wiseService.ts` is a stub. Needs API key + profile ID to create real transfers |
 | **Social stats API verification** | Stats are self-declared; no platform API verification yet |
 | **Campaign marketplace for influencers** | ✅ DONE — `/dashboard/influencer/marketplace`, public browse, filters, recommended, apply/withdraw, brand accept/reject |
 
@@ -206,5 +222,5 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 - **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–007)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
 - **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, @ tags, file map
-- **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (23 events), notification/presence architecture, file map
-- **`docs/CRON_JOBS.md`** — Full cron schedule (16 entries), auth pattern, batch size notes
+- **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (31 events), notification/presence architecture, file map
+- **`docs/CRON_JOBS.md`** — Full cron schedule (18 entries), auth pattern, batch size notes

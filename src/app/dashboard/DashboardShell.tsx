@@ -100,6 +100,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/influencer/campaigns', label: 'My Campaigns', icon: Megaphone, tourId: 'nav-influencer-campaigns', role: 'consumer' },
   { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: 'consumer' },
   { href: '/dashboard/influencer/earnings', label: 'Earnings', icon: Wallet, tourId: 'nav-influencer-earnings', role: 'consumer' },
+  { href: '/dashboard/influencer/payouts', label: 'Payouts', icon: Wallet, tourId: 'nav-influencer-payouts', role: 'consumer' },
   {
     href: '/dashboard/detailed-analytics',
     label: 'Product Deep Dive',

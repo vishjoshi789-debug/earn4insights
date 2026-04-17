@@ -15,8 +15,12 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Loader2, Megaphone, Users, Target, IndianRupee, CheckCircle, XCircle,
   Plus, Play, Ban, Trophy, AlertTriangle, BarChart3, FileText,
+  CreditCard, ShieldCheck, ArrowDownToLine, ChevronDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { RazorpayCheckout } from '@/components/payments/RazorpayCheckout'
+import { formatCurrency } from '@/lib/currency'
 
 export default function BrandCampaignDetailPage() {
   const { data: session, status } = useSession()
@@ -42,6 +46,21 @@ export default function BrandCampaignDetailPage() {
   const [respondingId, setRespondingId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [activeSection, setActiveSection] = useState('overview')
+
+  // Payment tab state
+  const [paymentSummary, setPaymentSummary] = useState<any>(null)
+  const [razorpayOrder, setRazorpayOrder] = useState<any>(null)
+  const [paymentTabLoaded, setPaymentTabLoaded] = useState(false)
+  const [creatingOrder, setCreatingOrder] = useState(false)
+  // Release payment state
+  const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false)
+  const [releaseMilestone, setReleaseMilestone] = useState<any>(null)
+  const [releaseInfluencerId, setReleaseInfluencerId] = useState('')
+  const [releasing, setReleasing] = useState(false)
+  // Refund state
+  const [refundOpen, setRefundOpen] = useState(false)
+  const [refundReason, setRefundReason] = useState('')
+  const [refunding, setRefunding] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/auth/signin')
@@ -71,6 +90,98 @@ export default function BrandCampaignDetailPage() {
   useEffect(() => {
     if (activeSection === 'applications' && campaignId && status === 'authenticated') loadApplications()
   }, [activeSection, campaignId, status])
+
+  useEffect(() => {
+    if (activeSection === 'payment' && campaignId && status === 'authenticated' && !paymentTabLoaded) {
+      loadPaymentTab()
+    }
+  }, [activeSection, campaignId, status])
+
+  const loadPaymentTab = async () => {
+    setPaymentTabLoaded(true)
+    try {
+      const [summaryRes, orderRes] = await Promise.all([
+        fetch(`/api/brand/campaigns/${campaignId}/payments`),
+        fetch(`/api/brand/campaigns/${campaignId}/razorpay-order`),
+      ])
+      if (summaryRes.ok) setPaymentSummary(await summaryRes.json())
+      if (orderRes.ok) {
+        const { order } = await orderRes.json()
+        setRazorpayOrder(order)
+      }
+    } catch {
+      toast.error('Failed to load payment data')
+    }
+  }
+
+  const createPaymentOrder = async () => {
+    if (!data?.campaign) return
+    setCreatingOrder(true)
+    try {
+      const res = await fetch('/api/payments/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignId,
+          currency: data.campaign.budgetCurrency ?? 'INR',
+          paymentType: data.campaign.paymentType ?? 'escrow',
+          amount: data.campaign.budgetTotal,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error)
+      setRazorpayOrder(result)
+    } catch (err: any) {
+      toast.error(err.message ?? 'Failed to create payment order')
+    } finally {
+      setCreatingOrder(false)
+    }
+  }
+
+  const releasePayment = async () => {
+    if (!releaseMilestone || !releaseInfluencerId) return
+    setReleasing(true)
+    try {
+      const res = await fetch(`/api/payments/release/${campaignId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ milestoneId: releaseMilestone.id, influencerId: releaseInfluencerId }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      toast.success('Payment released! Payout queued for admin processing.')
+      setReleaseConfirmOpen(false)
+      setReleaseMilestone(null)
+      setReleaseInfluencerId('')
+      loadPaymentTab()
+      loadData()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setReleasing(false)
+    }
+  }
+
+  const requestRefund = async () => {
+    if (!refundReason.trim()) { toast.error('Please provide a reason for the refund'); return }
+    if (!razorpayOrder?.razorpayOrderId) return
+    setRefunding(true)
+    try {
+      const res = await fetch(`/api/payments/refund/${razorpayOrder.razorpayOrderId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: refundReason }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      toast.success('Refund requested successfully')
+      setRefundOpen(false)
+      setRefundReason('')
+      loadPaymentTab()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setRefunding(false)
+    }
+  }
 
   const changeStatus = async (newStatus: string) => {
     setActing(true)
@@ -218,6 +329,9 @@ export default function BrandCampaignDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="milestones">Milestones ({milestones?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="applications">Applications</TabsTrigger>
+          <TabsTrigger value="payment" className="flex items-center gap-1.5">
+            <CreditCard className="h-3.5 w-3.5" /> Payment
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
@@ -502,6 +616,328 @@ export default function BrandCampaignDetailPage() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        {/* ── PAYMENT TAB ──────────────────────────────────────────── */}
+        <TabsContent value="payment" className="space-y-4 mt-4">
+          {!paymentTabLoaded ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (() => {
+            const campaign = data?.campaign
+            const acceptedInfluencers = (data?.influencers ?? []).filter((i: any) => i.status === 'accepted')
+            const payments: any[] = paymentSummary?.payments ?? []
+            const escrowedPayment = payments.find((p: any) => p.status === 'escrowed')
+            const releasedPayments = payments.filter((p: any) => p.status === 'released')
+            const hasAnyPayment = payments.length > 0
+            const isEscrowed = !!escrowedPayment
+            const allReleased = payments.length > 0 && payments.every((p: any) => p.status === 'released')
+
+            return (
+              <>
+                {/* ── Section 1: Payment Status Card ─────────────────── */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4" /> Payment Status
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {allReleased ? (
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 text-sm">
+                        <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                        <div>
+                          <p className="font-medium">All payments released</p>
+                          <p className="text-xs mt-0.5 opacity-80">
+                            {formatCurrency(paymentSummary?.totalPaid ?? 0, campaign?.budgetCurrency ?? 'INR')} paid out — payouts queued for admin processing
+                          </p>
+                        </div>
+                      </div>
+                    ) : isEscrowed ? (
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 text-sm">
+                        <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+                        <div>
+                          <p className="font-medium">Payment Secured in Escrow</p>
+                          <p className="text-xs mt-0.5 opacity-80">
+                            {formatCurrency(escrowedPayment.amount, escrowedPayment.currency)} held securely · Released when milestones are approved
+                          </p>
+                        </div>
+                      </div>
+                    ) : razorpayOrder && razorpayOrder.status === 'created' ? (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          Payment order created. Complete your payment below to secure funds in escrow.
+                        </p>
+                        <RazorpayCheckout
+                          orderId={razorpayOrder.id}
+                          razorpayOrderId={razorpayOrder.razorpayOrderId}
+                          amount={razorpayOrder.amount}
+                          currency={razorpayOrder.currency}
+                          campaignTitle={campaign?.title ?? ''}
+                          platformFee={razorpayOrder.platformFee}
+                          influencerAmount={razorpayOrder.influencerAmount}
+                          feePercent={Number(campaign?.platformFeePct ?? 10)}
+                          brandName={(session?.user as any)?.name ?? ''}
+                          brandEmail={(session?.user as any)?.email ?? ''}
+                          onSuccess={() => { toast.success('Payment confirmed! Refreshing…'); loadPaymentTab(); loadData() }}
+                          onFailure={(err) => toast.error(err)}
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          Secure your campaign budget in escrow. Payment is released to the influencer only when milestones are approved.
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={createPaymentOrder}
+                          disabled={creatingOrder || campaign?.status !== 'active'}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                        >
+                          {creatingOrder ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <CreditCard className="h-3.5 w-3.5 mr-2" />}
+                          Create Payment Order
+                        </Button>
+                        {campaign?.status !== 'active' && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">Campaign must be active to accept payments.</p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* ── Section 2: Milestone Release ───────────────────── */}
+                {isEscrowed && milestones && milestones.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <ArrowDownToLine className="h-4 w-4" /> Release Payments
+                      </CardTitle>
+                      <CardDescription className="text-xs">Release payment to influencer after approving each milestone.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {milestones.map((ms: any) => {
+                        const msPayment = payments.find((p: any) => p.milestoneId === ms.id)
+                        const isReleased = msPayment?.status === 'released'
+                        const canRelease = ms.status === 'approved' && msPayment?.status === 'escrowed'
+                        return (
+                          <div key={ms.id} className="flex items-center justify-between border rounded-lg p-3 text-sm">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{ms.title}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <Badge variant="outline" className="text-[10px]">{ms.status}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {formatCurrency(ms.paymentAmount, campaign?.budgetCurrency ?? 'INR')}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="ml-3 flex-shrink-0">
+                              {isReleased && (
+                                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 text-[10px]">
+                                  Released
+                                </Badge>
+                              )}
+                              {canRelease && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs h-7"
+                                  onClick={() => {
+                                    setReleaseMilestone(ms)
+                                    setReleaseInfluencerId(
+                                      acceptedInfluencers.length === 1 ? acceptedInfluencers[0].influencerId : ''
+                                    )
+                                    setReleaseConfirmOpen(true)
+                                  }}
+                                >
+                                  Release Payment
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ── Section 3: Payment History ─────────────────────── */}
+                {hasAnyPayment && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm">Payment History</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b text-muted-foreground">
+                              <th className="text-left pb-2 pr-3 font-medium">Date</th>
+                              <th className="text-left pb-2 pr-3 font-medium">Type</th>
+                              <th className="text-right pb-2 pr-3 font-medium">Amount</th>
+                              <th className="text-left pb-2 font-medium">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {payments.map((p: any) => (
+                              <tr key={p.id}>
+                                <td className="py-2 pr-3 text-muted-foreground">
+                                  {new Date(p.createdAt).toLocaleDateString()}
+                                </td>
+                                <td className="py-2 pr-3 capitalize">{p.paymentType}</td>
+                                <td className="py-2 pr-3 text-right font-medium">
+                                  {formatCurrency(p.amount, p.currency)}
+                                </td>
+                                <td className="py-2">
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] ${
+                                      p.status === 'released' ? 'border-green-500 text-green-700' :
+                                      p.status === 'escrowed' ? 'border-blue-500 text-blue-700' :
+                                      p.status === 'failed'   ? 'border-red-500 text-red-700' :
+                                      p.status === 'refunded' ? 'border-amber-500 text-amber-700' :
+                                      ''
+                                    }`}
+                                  >
+                                    {p.status}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ── Section 4: Refund ──────────────────────────────── */}
+                {razorpayOrder && razorpayOrder.status === 'paid' && (
+                  <Card className="border-red-100 dark:border-red-900">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-red-700 dark:text-red-400">Request Refund</CardTitle>
+                      <CardDescription className="text-xs">Refunds are processed via Razorpay and may take 5–7 business days.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-300 text-red-700 hover:bg-red-50"
+                        onClick={() => setRefundOpen(true)}
+                      >
+                        Request Refund
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ── Release Confirmation Dialog ─────────────────────── */}
+                <Dialog open={releaseConfirmOpen} onOpenChange={setReleaseConfirmOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Release Payment</DialogTitle>
+                    </DialogHeader>
+                    {releaseMilestone && (
+                      <div className="space-y-4 pt-1">
+                        <p className="text-sm text-muted-foreground">
+                          You are releasing{' '}
+                          <span className="font-semibold text-foreground">
+                            {formatCurrency(
+                              (releaseMilestone.paymentAmount ?? 0) -
+                              Math.round((releaseMilestone.paymentAmount ?? 0) * (Number(campaign?.platformFeePct ?? 10) / 100)),
+                              campaign?.budgetCurrency ?? 'INR'
+                            )}
+                          </span>{' '}
+                          for milestone:{' '}
+                          <span className="font-semibold text-foreground">&ldquo;{releaseMilestone.title}&rdquo;</span>
+                        </p>
+
+                        {acceptedInfluencers.length > 1 ? (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Select influencer to pay *</Label>
+                            <Select value={releaseInfluencerId} onValueChange={setReleaseInfluencerId}>
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue placeholder="Choose influencer…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {acceptedInfluencers.map((inf: any) => (
+                                  <SelectItem key={inf.influencerId} value={inf.influencerId}>
+                                    {inf.influencerId}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : acceptedInfluencers.length === 1 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Paying to: <span className="font-medium text-foreground">{acceptedInfluencers[0].influencerId}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            No accepted influencers found on this campaign.
+                          </p>
+                        )}
+
+                        <div className="flex gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            onClick={releasePayment}
+                            disabled={releasing || !releaseInfluencerId || acceptedInfluencers.length === 0}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                          >
+                            {releasing ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : null}
+                            Confirm Release
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => { setReleaseConfirmOpen(false); setReleaseMilestone(null); setReleaseInfluencerId('') }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </DialogContent>
+                </Dialog>
+
+                {/* ── Refund Dialog ───────────────────────────────────── */}
+                <Dialog open={refundOpen} onOpenChange={setRefundOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Request Refund</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Please provide a reason. Refunds take 5–7 business days to process.
+                      </p>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Reason *</Label>
+                        <Textarea
+                          value={refundReason}
+                          onChange={(e) => setRefundReason(e.target.value)}
+                          placeholder="Describe the reason for refund…"
+                          rows={3}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={requestRefund}
+                          disabled={refunding || !refundReason.trim()}
+                        >
+                          {refunding ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : null}
+                          Submit Refund Request
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setRefundOpen(false)}>Cancel</Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )
+          })()}
         </TabsContent>
       </Tabs>
     </div>

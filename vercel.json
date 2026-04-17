@@ -63,6 +63,14 @@
     {
       "path": "/api/cron/process-content-reviews",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/process-payouts",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/sync-razorpay-status",
+      "schedule": "0 7 * * *"
     }
   ]
 }
