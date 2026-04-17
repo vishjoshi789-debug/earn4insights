@@ -73,7 +73,7 @@ export function NotificationDropdown({ onMarkAllRead, onClose }: Props) {
   const unread = items.filter(n => !n.isRead)
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col bg-background text-foreground">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
@@ -172,10 +172,10 @@ function NotificationRow({
 
       {/* Content */}
       <div className="min-w-0 flex-1">
-        <p className={cn('text-sm leading-snug', !item.isRead && 'font-medium')}>
+        <p className={cn('text-sm leading-snug text-foreground', !item.isRead && 'font-medium')}>
           {item.title}
         </p>
-        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2 text-foreground/70">
           {item.body}
         </p>
         <p className="mt-1 text-[11px] text-muted-foreground/70">
