@@ -37,9 +37,13 @@ export async function GET(request: Request) {
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
+    console.error('CRON ERROR [cleanup-analytics-events]:', error)
     logger.cronResult('cleanup-analytics-events', false, { error: error instanceof Error ? error.message : String(error) })
     return NextResponse.json(
-      { error: 'Cleanup failed', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
       { status: 500 }
     )
   }

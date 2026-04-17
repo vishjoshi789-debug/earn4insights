@@ -18,9 +18,13 @@ export async function GET(request: Request) {
     logger.cronResult('process-notifications', true)
     return NextResponse.json({ success: true, message: 'Processed pending notifications' })
   } catch (error) {
+    console.error('CRON ERROR [process-notifications]:', error)
     logger.cronResult('process-notifications', false, { error: error instanceof Error ? error.message : String(error) })
     return NextResponse.json(
-      { error: 'Failed to process notifications', details: String(error) },
+      {
+        error: String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
       { status: 500 }
     )
   }
