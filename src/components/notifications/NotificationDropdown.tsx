@@ -161,7 +161,7 @@ function NotificationRow({
     <div
       className={cn(
         'flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50 cursor-pointer',
-        !item.isRead && 'bg-blue-50/50 dark:bg-blue-950/20'
+        !item.isRead && 'bg-muted/40'
       )}
       onClick={() => { if (!item.isRead) onRead(item.id); onNavigate() }}
     >
@@ -172,10 +172,10 @@ function NotificationRow({
 
       {/* Content */}
       <div className="min-w-0 flex-1">
-        <p className={cn('text-sm leading-snug text-foreground', !item.isRead && 'font-medium')}>
+        <p className={cn('text-sm leading-snug !text-foreground', !item.isRead && 'font-medium')}>
           {item.title}
         </p>
-        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2 text-foreground/70">
+        <p className="mt-0.5 text-xs !text-muted-foreground line-clamp-2">
           {item.body}
         </p>
         <p className="mt-1 text-[11px] text-muted-foreground/70">
