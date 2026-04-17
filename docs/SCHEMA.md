@@ -121,6 +121,44 @@ Indexes:
 
 ---
 
+## Migration 008 — Razorpay Payment Integration (4 new tables)
+
+Applied via `POST /api/admin/run-migration-008` (inline SQL, idempotent `IF NOT EXISTS`).
+
+### `razorpay_orders`
+
+Razorpay payment orders created when brands escrow campaign milestone funds.
+
+Columns: `id` (UUID PK), `campaignId` (UUID → influencer_campaigns), `brandId` (UUID → users), `milestoneId` (UUID → campaign_milestones), `razorpayOrderId` (TEXT UNIQUE), `razorpayPaymentId` (TEXT), `amount` (INTEGER — paise), `currency` (TEXT default 'INR'), `status` (`'created'|'paid'|'failed'|'refunded'`), `platformFee` (INTEGER), `influencerAmount` (INTEGER), `receipt` (TEXT), `notes` (JSONB), `paidAt`, `refundedAt`, `createdAt`, `updatedAt`
+
+Indexes: `razorpay_order_id` (UNIQUE), `(campaign_id, status)`, `(brand_id, created_at DESC)`
+
+### `payout_accounts`
+
+Influencer and consumer payout destinations. AES-256-GCM encrypted sensitive fields.
+
+Columns: `id` (UUID PK), `userId` (UUID → users), `accountType` (`'bank_account'|'upi'|'wise'|'paypal'`), `currency` (TEXT), `isPrimary` (BOOLEAN default false), `isActive` (BOOLEAN default true), `accountHolderName` (TEXT), `accountNumber` (TEXT ENCRYPTED), `ifscCode` (TEXT ENCRYPTED), `upiId` (TEXT ENCRYPTED), `wiseEmail` (TEXT ENCRYPTED), `paypalEmail` (TEXT ENCRYPTED), `encryptionKeyId` (TEXT), `createdAt`, `updatedAt`
+
+Constraints: PARTIAL UNIQUE on `(user_id, currency) WHERE is_primary=true AND is_active=true` — only one primary account per user per currency.
+
+### `influencer_payouts`
+
+Outgoing platform payments to influencers and consumers. All payouts start as `pending` (admin manual queue) until `RAZORPAYX_ENABLED=true`.
+
+Columns: `id` (UUID PK), `campaignId` (UUID nullable → influencer_campaigns), `recipientId` (UUID → users), `recipientType` (`'influencer'|'consumer'`), `payoutAccountId` (UUID → payout_accounts), `amount` (INTEGER), `currency` (TEXT), `payoutMethod` (`'razorpay_payout'|'wise_manual'|'paypal_manual'|'bank_manual'`), `status` (`'pending'|'processing'|'completed'|'failed'`), `razorpayPayoutId` (TEXT nullable), `wiseTransferId` (TEXT nullable), `retryCount` (INTEGER default 0), `failureReason` (TEXT), `initiatedAt`, `processedBy` (TEXT — admin userId or 'system'), `adminNote` (TEXT), `completedAt`, `createdAt`, `updatedAt`
+
+Indexes: `(recipient_id, status)`, `(campaign_id)`, `(status, updated_at)` — used by cron retry query, `(razorpay_payout_id)` — sync cron lookup
+
+### `reward_redemptions`
+
+Consumer reward point redemptions (platform credits, vouchers, cash payout).
+
+Columns: `id` (UUID PK), `consumerId` (UUID → users), `points` (INTEGER), `value` (INTEGER — paise), `currency` (TEXT default 'INR'), `redemptionType` (`'platform_credits'|'voucher'|'cash_payout'`), `status` (`'pending'|'processing'|'completed'|'failed'`), `payoutId` (UUID nullable → influencer_payouts), `voucherCode` (TEXT), `brandId` (UUID nullable — for branded vouchers), `failureReason` (TEXT), `processedAt`, `adminNote` (TEXT), `createdAt`, `updatedAt`
+
+Index: `(consumer_id, status)`, `(status, created_at DESC)` — admin queue
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`

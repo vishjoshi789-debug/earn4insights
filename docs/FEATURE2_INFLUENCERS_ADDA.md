@@ -39,7 +39,7 @@ Platform fee calculated at escrow time: `Math.round(amount * platformFeePct / 10
 |------|-------|
 | **Influencer earnings dashboard** | ✅ DONE — `/dashboard/influencer/earnings`. Multi-currency, audience intelligence panel, CSV export. |
 | **Campaign content approval flow** | ✅ DONE — SLA-based review, 75%/90%/100% cron reminders, auto-approve, audit log. See Content Approval section below. |
-| **Razorpay integration** | Records store Razorpay IDs but order creation + webhook handling not implemented. |
+| **Razorpay integration** | ✅ DONE — Order creation, HMAC verification, escrow, release, refund, webhooks, payout accounts, influencer payouts page, admin queue. See Razorpay Payment Integration section below. |
 | **Social stats API verification** | Stats are self-declared. Need platform API integrations to verify. |
 | **Campaign search for influencers** | ✅ DONE — `/dashboard/influencer/marketplace`. Public browse, filters, recommended, apply/withdraw, brand accept/reject. See Campaign Marketplace section below. |
 
@@ -171,6 +171,121 @@ Influencer browses marketplace → Views campaign detail → Submits proposal (m
 | `influencer.campaign.applied` | Brand | Influencer submits application |
 | `brand.application.accepted` | Influencer | Brand accepts application |
 | `brand.application.rejected` | Influencer | Brand rejects application |
+
+---
+
+## Razorpay Payment Integration
+
+Full escrow-based payment flow for milestone campaigns. Migration 008 adds 4 tables: `razorpay_orders`, `payout_accounts`, `influencer_payouts`, `reward_redemptions`.
+
+### Escrow & Release Flow
+
+```
+Brand escrows milestone funds:
+  POST /api/payments/create-order  →  Razorpay creates order (status: 'created')
+  Brand pays in browser (Razorpay checkout)
+  POST /api/payments/verify        →  HMAC-SHA256 signature verified → order status: 'paid'
+                                       campaign_payments record: 'escrowed'
+
+Brand releases payment after milestone approval:
+  POST /api/payments/release/[campaignId]  →  campaign_payments: 'released'
+                                               influencer_payouts record: 'pending' (admin queue)
+
+Admin processes payout manually at /admin/payouts:
+  POST /api/admin/payouts/[id]/process     →  status: 'processing'
+  POST /api/admin/payouts/[id]/complete    →  status: 'completed' (includes transfer reference)
+  POST /api/admin/payouts/[id]/fail        →  status: 'failed'
+```
+
+### Refund Flow
+
+```
+POST /api/payments/refund/[orderId]
+  Guards: order must be 'paid', not 'refunded', and milestone payment not already 'released'
+  Calls Razorpay Refund API → order status: 'refunded'
+  campaign_payments: status reverted to 'escrowed' → admin handles reversal
+```
+
+### Webhook (`POST /api/webhooks/razorpay`)
+
+- HMAC-SHA256 signature verified with `crypto.timingSafeEqual()` (constant-time, no timing attack)
+- **Awaited synchronously** (not fire-and-forget) — Vercel serverless would terminate before async processing completes
+- Handles: `payment.captured` → escrow, `order.paid`, `refund.created` → refund lookup by `razorpayPaymentId`
+- Idempotent: already-paid orders return 200 without double-processing
+
+### Payout Accounts
+
+Influencers and consumers register payout destinations at `/dashboard/influencer/payouts`.
+
+- Account types: `bank_account` (IFSC), `upi`, `wise`, `paypal`
+- Sensitive fields AES-256-GCM encrypted (`accountNumber`, `ifscCode`, `upiId`, `wiseEmail`, `paypalEmail`)
+- Admin view: decrypts then masks to last-4 digits (`••••1234`) — never exposes full plaintext
+- Primary account: PARTIAL UNIQUE constraint (one primary per user per currency), swap wrapped in `db.transaction()` to prevent race condition
+
+### Payout Method Resolution
+
+```ts
+currency === 'INR' + accountType === 'bank_account'|'upi'  → 'razorpay_payout'  (manual now, auto when RAZORPAYX_ENABLED=true)
+accountType === 'wise'    → 'wise_manual'
+accountType === 'paypal'  → 'paypal_manual'
+else                      → 'bank_manual'
+```
+
+### Platform Fee Schedule
+
+| Context | Fee |
+|---------|-----|
+| Milestone escrow | 8% |
+| Direct escrow | 10% |
+| Order-level | 12% |
+
+`influencerAmount = amount - platformFee` stored alongside `amount` on both `razorpay_orders` and `campaign_payments`.
+
+### Consumer Reward Redemptions
+
+Consumers redeem points at `POST /api/consumer/rewards/redeem`:
+- Minimum 500 points per redemption; `POINTS_PER_INR = 10` (10 pts = ₹1 = ₹0.10/pt)
+- Types: `platform_credits` (instant), `voucher` (pending), `cash_payout` (pending, requires payout account)
+- Race condition prevention: duplicate-pending check runs BEFORE balance deduction; `deductPoints()` has atomic internal guard as final layer
+
+### Security Hardening
+
+| Issue | Fix |
+|-------|-----|
+| Timing attack on HMAC | `crypto.timingSafeEqual()` with constant-time buffer comparison |
+| Webhook fire-and-forget | `await processWebhookAsync()` before returning 200 |
+| Double-refund | Guard checks `order.status !== 'paid'` before calling Razorpay |
+| Refund after release | Guard checks `campaign_payments.status !== 'released'` before refunding |
+| Payment verification ownership | `existingOrder.brandId !== brandId` check on idempotent re-verify path |
+| Primary account deletion | Blocked — must set another account as primary first |
+| Decrypt before masking | `decryptFromStorage()` → then slice(-4), not `encryptedValue.slice(-4)` |
+| Mark-failed on completed payout | Guard: `if (payout.status === 'completed') throw` |
+| setPrimaryAccount race | Wrapped unset+set in `db.transaction()` |
+
+### Admin Queue (`/admin/payouts`)
+
+`GET /api/admin/payouts/pending` — returns `pending`, `processing`, `failed` payouts with masked account details.
+
+### Key API Routes
+
+| Route | Auth | Purpose |
+|-------|------|---------|
+| `POST /api/payments/create-order` | brand | Create Razorpay order for milestone escrow |
+| `POST /api/payments/verify` | brand | Verify HMAC signature, record escrow |
+| `POST /api/payments/release/[campaignId]` | brand | Release escrowed payment after milestone approval |
+| `POST /api/payments/refund/[orderId]` | brand | Refund a paid order |
+| `POST /api/webhooks/razorpay` | HMAC | Handle Razorpay payment/refund webhooks |
+| `GET /api/payouts/accounts` | influencer/consumer | List own payout accounts |
+| `POST /api/payouts/accounts` | influencer/consumer | Add payout account |
+| `PATCH /api/payouts/accounts/[id]/primary` | influencer/consumer | Set primary account |
+| `DELETE /api/payouts/accounts/[id]` | influencer/consumer | Delete non-primary account |
+| `GET /api/admin/payouts/pending` | admin | View admin payout queue (masked accounts) |
+| `POST /api/admin/payouts/[id]/process` | admin | Mark payout as processing |
+| `POST /api/admin/payouts/[id]/complete` | admin | Mark payout completed (add transfer ref) |
+| `POST /api/admin/payouts/[id]/fail` | admin | Mark payout failed with reason |
+| `POST /api/admin/payouts/[id]/retry` | admin | Retry failed payout (max 3) |
+| `GET /api/cron/process-payouts` | CRON_SECRET | Daily: create missing payouts, retry failed |
+| `GET /api/cron/sync-razorpay-status` | CRON_SECRET | Daily: sync RazorpayX payout status (placeholder) |
 
 ---
 

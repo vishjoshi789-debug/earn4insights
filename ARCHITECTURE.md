@@ -1,6 +1,6 @@
 # Earn4Insights — Technical Architecture Document
 
-> **Version:** April 2026 v2 (authoritative — reflects all phases through Content Approval + Earnings Dashboard + @ Mention Tags + Dialog scroll fix)
+> **Version:** April 2026 v3 (authoritative — reflects all phases through Razorpay Payment Integration + Payout Service + Campaign Marketplace + Security Hardening)
 > **Stack:** Next.js 15 · TypeScript (strict) · Drizzle ORM · Neon PostgreSQL · NextAuth v5 · Pusher · OpenAI · Resend · Twilio · Vercel Blob · Vercel
 
 ---
@@ -592,11 +592,87 @@ Content posts support `@mention` tags for categories, brands, products, influenc
 
 | Item | Notes |
 |------|-------|
-| Razorpay integration | Schema built (IDs stored); order creation + webhook handler not yet built |
+| Razorpay integration | ✅ DONE — Full payment flow (order, verify, escrow, release, refund, webhooks, payout accounts, admin queue). See Section 12a. |
 | Social stats verification | Stats self-declared; platform API verification not wired |
-| Campaign marketplace | Influencers only see invited campaigns; no public browse |
+| Campaign marketplace | ✅ DONE — Public browse, filters, apply/withdraw, brand accept/reject, ICP match badge |
 | Instagram OAuth | Blocked on Facebook App Review |
 | Signal snapshot orphan cleanup | Admin-deleted profiles may leave orphaned snapshots |
+
+---
+
+## 12a. Razorpay Payment Integration
+
+Full escrow payment system for influencer campaigns. 4 new tables (Migration 008): `razorpay_orders`, `payout_accounts`, `influencer_payouts`, `reward_redemptions`.
+
+### Payment State Machine
+
+```
+Brand creates Razorpay order (POST /api/payments/create-order)
+  → razorpay_orders.status: 'created'
+
+Brand pays via Razorpay checkout → Webhook: payment.captured
+  → razorpay_orders.status: 'paid'
+  → campaign_payments.status: 'escrowed'
+  → Emits: payment.escrowed
+
+Brand approves milestone → POST /api/payments/release/[campaignId]
+  → campaign_payments.status: 'released'
+  → influencer_payouts.status: 'pending'  (admin manual queue)
+  → Emits: payment.released
+
+Admin processes at /admin/payouts:
+  POST .../process   → 'processing'
+  POST .../complete  → 'completed' + transfer reference
+  POST .../fail      → 'failed'    → retry eligible (max 3)
+```
+
+### Core Files
+
+| File | Purpose |
+|------|---------|
+| `src/server/razorpayService.ts` | `createOrder()`, `capturePayment()`, `verifyPayment()`, `verifyWebhookSignature()`, `processRefund()` |
+| `src/server/payoutService.ts` | `initiateRecipientPayout()`, `markPayoutProcessing/Completed/Failed()`, `retryFailedPayout()` |
+| `src/app/api/payments/create-order/route.ts` | Brand creates escrow order |
+| `src/app/api/payments/verify/route.ts` | HMAC verification, escrow recording |
+| `src/app/api/payments/release/[campaignId]/route.ts` | Release escrowed payment |
+| `src/app/api/payments/refund/[orderId]/route.ts` | Refund paid order |
+| `src/app/api/webhooks/razorpay/route.ts` | Razorpay webhook handler (synced await) |
+| `src/app/api/payouts/accounts/route.ts` | List/add payout accounts |
+| `src/app/api/payouts/accounts/[id]/route.ts` | Delete account |
+| `src/app/api/payouts/accounts/[id]/primary/route.ts` | Set primary (transactional) |
+| `src/app/api/admin/payouts/pending/route.ts` | Admin payout queue |
+| `src/app/api/admin/payouts/[id]/*/route.ts` | Admin process/complete/fail/retry |
+| `src/app/api/cron/process-payouts/route.ts` | Daily: create missing payouts, retry failed |
+| `src/app/api/cron/sync-razorpay-status/route.ts` | Daily: sync RazorpayX status (placeholder) |
+| `src/db/repositories/razorpayRepository.ts` | Order + payout CRUD |
+| `src/db/repositories/payoutAccountRepository.ts` | Account CRUD + `setPrimaryAccount()` (transactional) |
+| `src/db/repositories/rewardRedemptionRepository.ts` | Redemption CRUD, pending lookup |
+| `src/app/dashboard/influencer/payouts/page.tsx` | Influencer payout accounts + history UI |
+
+### Security Properties
+
+- **HMAC verification:** `crypto.timingSafeEqual()` for constant-time comparison — no timing attack
+- **Webhook:** awaited synchronously — Vercel serverless is terminated before fire-and-forget completes
+- **Decrypt before mask:** `decryptFromStorage()` → plaintext → slice(-4), not ciphertext slice
+- **Primary account swap:** `db.transaction()` prevents race condition between unset + set
+- **Refund guards:** blocked if already refunded (`status !== 'paid'`) or payment released
+- **Payout completion guard:** `markPayoutFailed()` throws if status is already `'completed'`
+
+### RazorpayX Activation
+
+`RAZORPAYX_ENABLED = false` (constant in `payoutService.ts`). When set to `true`:
+- INR bank/UPI payouts route through Razorpay Payouts API automatically
+- `sync-razorpay-status` cron polls Razorpay for `processing` payout state changes
+- International payouts (Wise, PayPal, SWIFT) remain manual
+
+### Environment Variables
+
+```bash
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+NEXT_PUBLIC_RAZORPAY_KEY_ID=   # browser-safe
+```
 
 ---
 
@@ -805,9 +881,11 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | 00:30 | `/api/cron/cleanup-notifications` | Purge expired notification_inbox rows + old activity_feed_items (90-day TTL) |
 | 05:30 | `/api/cron/process-social-mentions` | Poll YouTube for new mentions + notify brands on pending social_mentions |
 | 06:00 | `/api/cron/process-notifications` | Process queued notifications |
+| 06:00 | `/api/cron/process-payouts` | Find released payments with no payout → create; retry failed payouts (max 3, 1h cool-down) |
+| 07:00 | `/api/cron/sync-razorpay-status` | Sync RazorpayX payout status for processing payouts (placeholder, activates with RAZORPAYX_ENABLED) |
 | 02:00 | `/api/cron/process-content-reviews` | SLA reminders (75%/90%) + auto-approve or escalate at 100% SLA. Externally triggered every 2h via cron-job.org |
 
-**vercel.json** defines all **16 cron entries** with exact schedules. `process-content-reviews` and `process-deletions` both run at 02:00 UTC (no conflict — different routes).
+**vercel.json** defines all **18 cron entries** with exact schedules. `process-content-reviews` and `process-deletions` both run at 02:00 UTC (no conflict — different routes).
 
 ---
 
@@ -1058,9 +1136,11 @@ NEXT_PUBLIC_LINKEDIN_CLIENT_ID=       # exposed to client for OAuth URL
 # ── File Storage ──────────────────────────────────────────────
 BLOB_READ_WRITE_TOKEN=                # Vercel Blob
 
-# ── Payments ──────────────────────────────────────────────────
-RAZORPAY_KEY_ID=                      # Influencers Adda payments (stub)
-RAZORPAY_KEY_SECRET=
+# ── Payments (Razorpay) ───────────────────────────────────────
+RAZORPAY_KEY_ID=                      # Razorpay API key (server-side)
+RAZORPAY_KEY_SECRET=                  # Razorpay API secret
+RAZORPAY_WEBHOOK_SECRET=              # HMAC-SHA256 webhook signature verification
+NEXT_PUBLIC_RAZORPAY_KEY_ID=          # Razorpay key for browser checkout
 
 # ── Pusher (Real-Time Connection Layer) ──────────────────────
 PUSHER_APP_ID=                        # Pusher app ID

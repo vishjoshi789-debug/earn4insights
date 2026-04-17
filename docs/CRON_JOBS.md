@@ -1,6 +1,6 @@
 # Cron Jobs — Earn4Insights
 
-**16 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
+**18 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
 
 ## Schedule
 
@@ -21,6 +21,8 @@
 | 05:00 | `/api/cron/cleanup-analytics-events` | Purge old analytics events |
 | 05:30 | `/api/cron/process-social-mentions` | Poll YouTube for new mentions + notify brands on pending social_mentions |
 | 06:00 | `/api/cron/process-notifications` | Process queued notifications |
+| 06:00 | `/api/cron/process-payouts` | Find released campaign_payments with no payout record → create payout; retry failed payouts (cool-down: >1h, max 3 retries) |
+| 07:00 | `/api/cron/sync-razorpay-status` | Poll Razorpay Payouts API for processing payouts (placeholder — activates when `RAZORPAYX_ENABLED=true`) |
 | Every 2h | `/api/cron/process-content-reviews` | SLA reminders (75%/90%) + auto-approve or escalation at 100% SLA |
 
 ## Auth Pattern (used by ALL cron routes)
@@ -41,3 +43,5 @@ If `CRON_SECRET` is unset, check is skipped (routes run unauthenticated). **Alwa
 - `SIGNAL_CRON_BATCH_SIZE` — max users per signal cron run (default: all)
 - `ICP_SCORE_CRON_BATCH_SIZE=200` — max stale scores per ICP cron run. Bulk score is intentionally sequential: 200 × ~100ms ≈ 20s, safe within Vercel's 60s Pro function limit.
 - **`process-content-reviews`** runs every 2 hours (`0 */2 * * *`). Duplicate prevention: `content_review_reminders` table with UNIQUE index on `(post_id, reminder_type)`. Reminder types: `75_pct`, `90_pct`, `sla_expired`. At 100% SLA: auto-approves if `autoApproveEnabled=true`, otherwise sends escalation notification. Returns stats: `{ autoApproved, reminders75, reminders90, escalations }`.
+- **`process-payouts`** runs daily at 06:00 UTC. Step 1: `NOT EXISTS` subquery finds `campaign_payments` with `status='released'` that have no `influencer_payouts` row → calls `initiateRecipientPayout()`. Step 2: Retries `failed` payouts where `retry_count < 3` AND `updated_at < 1 hour ago`. All payouts go to admin manual queue (`RAZORPAYX_ENABLED=false`). Returns: `{ processed, retried, failed, manual, duration, errors }`.
+- **`sync-razorpay-status`** runs daily at 07:00 UTC. Finds `processing` payouts with `razorpayPayoutId IS NOT NULL` older than 1 hour. Currently logs only — RazorpayX API polling activates when `RAZORPAYX_ENABLED=true`. Will emit `PAYMENT_PAYOUT_COMPLETED` or `PAYMENT_PAYOUT_FAILED` on status change. Returns: `{ checked, updated, errors, duration }`.
