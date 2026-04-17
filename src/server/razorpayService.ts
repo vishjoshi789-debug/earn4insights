@@ -136,6 +136,7 @@ export async function createOrder(params: {
   platformFee: number
   influencerAmount: number
   feePercent: number
+  status: string
 }> {
   const { campaignId, milestoneId, brandId, currency, paymentType, amount } = params
 
@@ -256,6 +257,7 @@ export async function createOrder(params: {
     platformFee,
     influencerAmount,
     feePercent,
+    status: 'created',
   }
 }
 
