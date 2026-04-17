@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
 
     const result = await db.execute(
-      sql`DELETE FROM analytics_events WHERE created_at < ${cutoff}`
+      sql`DELETE FROM analytics_events WHERE created_at < ${cutoff.toISOString()}`
     )
 
     const deletedCount = (result as any)?.rowCount ?? 0
