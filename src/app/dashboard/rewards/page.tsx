@@ -80,10 +80,10 @@ function accountLabel(acc: PayoutAccount): string {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    pending:    'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
-    processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-    completed:  'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-    failed:     'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+    pending:    'bg-amber-900/50 text-amber-300',
+    processing: 'bg-blue-900/50 text-blue-300',
+    completed:  'bg-green-900/50 text-green-300',
+    failed:     'bg-red-900/50 text-red-400',
   }
   return (
     <Badge className={map[status] ?? 'bg-muted text-muted-foreground'}>
@@ -144,7 +144,7 @@ function RedemptionCard({
               className="h-8 text-sm"
             />
             {rupeeValue && (
-              <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1">
+              <p className="text-xs text-indigo-400 font-medium flex items-center gap-1">
                 <IndianRupee className="h-3 w-3" />{rupeeValue.replace('₹', '')} value
               </p>
             )}
@@ -353,7 +353,7 @@ export default function RewardsPage() {
     <div className="space-y-8">
 
       {/* ── Section 1: Points Balance ── */}
-      <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border-indigo-100 dark:border-indigo-900">
+      <Card className="bg-gradient-to-br from-indigo-950/40 to-purple-950/40 border-indigo-900/50">
         <CardContent className="pt-6 pb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
@@ -362,7 +362,7 @@ export default function RewardsPage() {
               </p>
               <p className="text-5xl font-bold tracking-tight">{balance.toLocaleString()}</p>
               <p className="text-sm text-muted-foreground mt-1">pts</p>
-              <p className="text-lg font-semibold text-indigo-600 dark:text-indigo-400 mt-2 flex items-center gap-1">
+              <p className="text-lg font-semibold text-indigo-400 mt-2 flex items-center gap-1">
                 <IndianRupee className="h-4 w-4" />{(balance * POINTS_TO_INR).toFixed(2)} cash value
               </p>
             </div>
@@ -440,7 +440,7 @@ export default function RewardsPage() {
                 <Separator />
                 <div className="flex justify-between font-semibold">
                   <span>Value received</span>
-                  <span className="text-indigo-600 dark:text-indigo-400">
+                  <span className="text-indigo-400">
                     ₹{(confirmPayload.points * POINTS_TO_INR).toFixed(2)}
                   </span>
                 </div>
@@ -478,12 +478,12 @@ export default function RewardsPage() {
             {challenges.map(c => {
               const pct = Math.min(100, Math.round((c.currentCount / c.targetCount) * 100))
               return (
-                <Card key={c.id} className={c.completed ? 'border-green-200 dark:border-green-800' : ''}>
+                <Card key={c.id} className={c.completed ? 'border-green-800' : ''}>
                   <CardContent className="p-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-sm">{c.title}</h3>
                       {c.completed
-                        ? <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"><CheckCircle className="h-3 w-3 mr-1" />Done</Badge>
+                        ? <Badge className="bg-green-900/50 text-green-300"><CheckCircle className="h-3 w-3 mr-1" />Done</Badge>
                         : <Badge variant="outline">{c.pointsReward} pts</Badge>
                       }
                     </div>
@@ -601,7 +601,7 @@ export default function RewardsPage() {
                       <p className="text-sm">{t.description || t.source}</p>
                       <p className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleDateString('en-IN')}</p>
                     </div>
-                    <span className={`text-sm font-medium ${t.amount > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                    <span className={`text-sm font-medium ${t.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {t.amount > 0 ? '+' : ''}{t.amount} pts
                     </span>
                   </div>
