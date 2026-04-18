@@ -26,19 +26,19 @@ export function Dialog({ open, defaultOpen = false, onOpenChange, children }: Di
   const isControlled = open !== undefined;
   const actualOpen = isControlled ? open : internalOpen;
 
-  const setOpen = (next: boolean) => {
+  const setOpen = React.useCallback((next: boolean) => {
     if (!isControlled) {
       setInternalOpen(next);
     }
     onOpenChange?.(next);
-  };
+  }, [isControlled, onOpenChange]);
 
   const value = React.useMemo(
     () => ({
       open: Boolean(actualOpen),
       setOpen,
     }),
-    [actualOpen]
+    [actualOpen, setOpen]
   );
 
   return <DialogContext.Provider value={value}>{children}</DialogContext.Provider>;

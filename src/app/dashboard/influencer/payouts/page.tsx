@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -37,7 +38,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   Loader2, Plus, Star, Trash2, CreditCard, Smartphone,
-  Globe, CheckCircle, AlertCircle, Wallet, ArrowDownToLine,
+  Globe, CheckCircle, AlertCircle, Wallet, ArrowDownToLine, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency, getSupportedCurrencies } from '@/lib/currency'
@@ -355,8 +356,12 @@ export default function InfluencerPayoutsPage() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-md">
-                <DialogHeader>
+                <DialogHeader className="flex items-center justify-between mb-4">
                   <DialogTitle>Add Payout Account</DialogTitle>
+                  <DialogClose className="rounded-sm opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">Close</span>
+                  </DialogClose>
                 </DialogHeader>
                 <AddAccountForm
                   form={form}
@@ -516,7 +521,7 @@ export default function InfluencerPayoutsPage() {
               <SelectTrigger className="w-36 h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-background text-foreground">
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="processing">Processing</SelectItem>
@@ -683,7 +688,7 @@ function AddAccountForm({
           <SelectTrigger className="h-9 text-sm">
             <SelectValue placeholder="Select type…" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-background text-foreground">
             <SelectItem value="bank_account">🏦 Bank Account (India)</SelectItem>
             <SelectItem value="upi">📱 UPI</SelectItem>
             <SelectItem value="paypal">🅿️ PayPal</SelectItem>
@@ -700,7 +705,7 @@ function AddAccountForm({
           <SelectTrigger className="h-9 text-sm">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-background text-foreground">
             {currencies.map(c => (
               <SelectItem key={c.code} value={c.code}>
                 {c.symbol} {c.code} — {c.name}
@@ -822,7 +827,7 @@ function AddAccountForm({
               <SelectTrigger className="h-9 text-sm">
                 <SelectValue placeholder="Select country…" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-background text-foreground">
                 {COUNTRIES.map(c => (
                   <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
