@@ -155,12 +155,12 @@ export default function PayoutsPage() {
       {/* PAGE HEADER */}
       <div>
         <h1 className="text-2xl font-bold">
-          {isBrand ? 'Payout Requests' : 'My Payouts'}
+          {isBrand ? 'Payout Requests' : 'Cash Out Points'}
         </h1>
         <p className="text-muted-foreground">
           {isBrand
             ? 'Review and manage user payout requests'
-            : 'Request payouts for your earned points (100 points = $1)'}
+            : 'Redeem your earned survey points for cash (100 points = $1)'}
         </p>
       </div>
 
