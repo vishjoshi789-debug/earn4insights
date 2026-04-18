@@ -71,6 +71,14 @@
     {
       "path": "/api/cron/sync-razorpay-status",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/deals-expiry",
+      "schedule": "0 */1 * * *"
+    },
+    {
+      "path": "/api/cron/community-deals-moderation",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

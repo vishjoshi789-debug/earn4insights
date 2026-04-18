@@ -46,6 +46,8 @@ import {
   UserCheck,
   Wallet,
   Store,
+  Tags,
+  Flame,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -79,6 +81,8 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/notifications', label: 'Notifications', icon: Bell, tourId: 'nav-notifications' },
   { href: '/dashboard/social', label: 'Social', icon: Users, tourId: 'nav-social' },
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
+  { href: '/dashboard/deals', label: 'Deals & Offers', icon: Tags, tourId: 'nav-deals' },
+  { href: '/dashboard/community-deals', label: 'Community Deals', icon: Flame, tourId: 'nav-community-deals' },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys', role: 'brand' },
   { href: '/dashboard/analytics', label: 'Audience Analytics', icon: TrendingUp, tourId: 'nav-brand-analytics', role: 'brand' },
   { href: '/dashboard/analytics/feature-insights', label: 'Feature Insights', icon: Activity, tourId: 'nav-feature-insights', role: 'brand' },
@@ -90,6 +94,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/brand/campaigns', label: 'Influencer Campaigns', icon: Megaphone, tourId: 'nav-brand-campaigns', role: 'brand' },
   { href: '/dashboard/brand/influencers', label: 'Discover Influencers', icon: UserCheck, tourId: 'nav-discover-influencers', role: 'brand' },
   { href: '/dashboard/brand/content-review', label: 'Content Review', icon: ClipboardCheck, tourId: 'nav-content-review', role: 'brand' },
+  { href: '/dashboard/brand/deals', label: 'Manage Deals', icon: Tags, tourId: 'nav-brand-deals', role: 'brand' },
   { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards', role: 'consumer' },
   { href: '/dashboard/payouts', label: 'Cash Out Points', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer' },
   { href: '/dashboard/privacy', label: 'Privacy & Consent', icon: ShieldCheck, tourId: 'nav-privacy', role: 'consumer' },

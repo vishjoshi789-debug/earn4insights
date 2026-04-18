@@ -49,6 +49,11 @@ export const PLATFORM_EVENTS = {
   PAYMENT_PAYOUT_COMPLETED:      'payment.payout.completed',
   PAYMENT_PAYOUT_FAILED:         'payment.payout.failed',
   CONSUMER_REWARD_REDEEMED:      'consumer.reward.redeemed',
+  // Deals & Community
+  DEAL_EXPIRED:                  'deal.expired',
+  COMMUNITY_DEAL_FLAGGED:        'community.deal.flagged',
+  COMMUNITY_DEAL_APPROVED:       'community.deal.approved',
+  COMMUNITY_DEAL_REJECTED:       'community.deal.rejected',
 } as const
 
 export type PlatformEventType = typeof PLATFORM_EVENTS[keyof typeof PLATFORM_EVENTS]
@@ -822,6 +827,61 @@ async function routeEvent(
       break
     }
 
+    // ── Deal expired → notify consumers who saved it
+    case PLATFORM_EVENTS.DEAL_EXPIRED: {
+      // payload.dealSaverIds is an array of userIds who saved the deal
+      const saverIds = (payload.dealSaverIds as string[]) ?? []
+      if (saverIds.length > 0) {
+        const targets: NotificationTarget[] = saverIds.map(id => ({ userId: id, role: 'consumer' }))
+        await dispatchToUsers(targets, {
+          eventType,
+          eventId,
+          title: 'Deal expired',
+          body: `A deal you saved has expired: ${payload.dealTitle ?? 'Unknown deal'}`,
+          ctaUrl: '/dashboard/deals',
+          type: 'deal_expired',
+          entityType: 'deal',
+          entityId: payload.dealId as string,
+          metadata: { brandId: payload.brandId },
+        })
+      }
+      break
+    }
+
+    // ── Community deal post approved → notify author
+    case PLATFORM_EVENTS.COMMUNITY_DEAL_APPROVED: {
+      if (payload.actorId) {
+        await dispatchToUsers([{ userId: payload.actorId, role: 'consumer' }], {
+          eventType,
+          eventId,
+          title: 'Post approved!',
+          body: `Your community deal post "${payload.postTitle ?? ''}" has been approved and is now live.`,
+          ctaUrl: `/dashboard/community-deals/post/${payload.postId}`,
+          type: 'community_deal_approved',
+          entityType: 'community_deal_post',
+          entityId: payload.postId as string,
+        })
+      }
+      break
+    }
+
+    // ── Community deal post rejected → notify author
+    case PLATFORM_EVENTS.COMMUNITY_DEAL_REJECTED: {
+      if (payload.actorId) {
+        await dispatchToUsers([{ userId: payload.actorId, role: 'consumer' }], {
+          eventType,
+          eventId,
+          title: 'Post rejected',
+          body: `Your community deal post was rejected: ${payload.rejectionReason ?? 'See guidelines'}`,
+          ctaUrl: '/dashboard/community-deals',
+          type: 'community_deal_rejected',
+          entityType: 'community_deal_post',
+          entityId: payload.postId as string,
+        })
+      }
+      break
+    }
+
     default:
       console.warn(`[EventBus] No handler for event type: ${eventType}`)
   }
@@ -838,6 +898,8 @@ function resolveEntityType(eventType: string, payload: EventPayload): string | n
   if (eventType.includes('campaign'))        return 'campaign'
   if (eventType.includes('mention'))         return 'brand'
   if (eventType.includes('feedback'))        return 'product'
+  if (eventType.startsWith('deal.'))         return 'deal'
+  if (eventType.startsWith('community.deal')) return 'community_deal_post'
   return null
 }
 
@@ -850,5 +912,7 @@ function resolveEntityId(eventType: string, payload: EventPayload): string | nul
   if (eventType.includes('campaign'))        return payload.campaignId ?? null
   if (eventType.includes('mention'))         return payload.brandId  ?? null
   if (eventType.includes('feedback'))        return payload.productId ?? null
+  if (eventType.startsWith('deal.'))         return (payload.dealId as string) ?? null
+  if (eventType.startsWith('community.deal')) return (payload.postId as string) ?? null
   return null
 }

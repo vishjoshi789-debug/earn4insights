@@ -1772,3 +1772,163 @@ export const paymentRedemptions = pgTable('payment_redemptions', {
 
 export type PaymentRedemption = typeof paymentRedemptions.$inferSelect
 export type NewPaymentRedemption = typeof paymentRedemptions.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION: DEALS DISCOVERY + COMMUNITY (migration 009)
+// ════════════════════════════════════════════════════════════════
+
+// ── Deals ────────────────────────────────────────────────────────
+export const deals = pgTable('deals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  productId: text('product_id'),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  dealType: text('deal_type').notNull(),           // 'promo_code' | 'redirect' | 'percentage_off' | 'fixed_off' | 'bogo' | 'free_shipping'
+  discountValue: decimal('discount_value', { precision: 10, scale: 2 }),
+  discountCurrency: text('discount_currency').default('INR'),
+  promoCode: text('promo_code'),
+  redirectUrl: text('redirect_url'),
+  originalPrice: integer('original_price'),         // paise
+  discountedPrice: integer('discounted_price'),     // paise
+  maxRedemptions: integer('max_redemptions'),
+  redemptionCount: integer('redemption_count').notNull().default(0),
+  validFrom: timestamp('valid_from').defaultNow().notNull(),
+  validUntil: timestamp('valid_until'),
+  category: text('category'),
+  tags: text('tags').array().default([]),
+  icpTargetData: jsonb('icp_target_data'),
+  status: text('status').notNull().default('draft'),  // 'draft' | 'active' | 'paused' | 'expired'
+  isFeatured: boolean('is_featured').notNull().default(false),
+  isVerified: boolean('is_verified').notNull().default(true),
+  verificationNote: text('verification_note'),
+  viewCount: integer('view_count').notNull().default(0),
+  saveCount: integer('save_count').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // search_vector tsvector column managed by DB trigger, not in Drizzle
+})
+
+// ── Community Posts ──────────────────────────────────────────────
+export const communityDealsPost = pgTable('community_deals_posts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  authorId: text('author_id').notNull(),
+  authorRole: text('author_role').notNull(),        // 'consumer' | 'influencer' | 'brand'
+  postType: text('post_type').notNull().default('deal'), // 'deal' | 'review' | 'discussion' | 'alert'
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  imageUrls: text('image_urls').array().default([]),
+  productId: text('product_id'),
+  brandId: text('brand_id'),
+  dealId: uuid('deal_id'),
+  externalUrl: text('external_url'),
+  promoCode: text('promo_code'),
+  discountDetails: text('discount_details'),
+  category: text('category'),
+  tags: text('tags').array().default([]),
+  upvoteCount: integer('upvote_count').notNull().default(0),
+  downvoteCount: integer('downvote_count').notNull().default(0),
+  commentCount: integer('comment_count').notNull().default(0),
+  saveCount: integer('save_count').notNull().default(0),
+  isBrandVerified: boolean('is_brand_verified').notNull().default(false),
+  verifiedBy: text('verified_by'),
+  verifiedAt: timestamp('verified_at'),
+  isSponsored: boolean('is_sponsored').notNull().default(false),
+  sponsoredBy: text('sponsored_by'),
+  isFeatured: boolean('is_featured').notNull().default(false),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected' | 'removed' | 'needs_edit'
+  rejectionReason: text('rejection_reason'),
+  autoApprovedAt: timestamp('auto_approved_at'),
+  moderationNote: text('moderation_note'),
+  pointsAwarded: integer('points_awarded').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // search_vector tsvector column managed by DB trigger
+})
+
+// ── Community Post Votes ─────────────────────────────────────────
+export const communityDealsPostVotes = pgTable('community_deals_post_votes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  postId: uuid('post_id').notNull(),
+  userId: text('user_id').notNull(),
+  voteType: text('vote_type').notNull(),            // 'up' | 'down'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  // UNIQUE(post_id, user_id) enforced in migration
+})
+
+// ── Community Post Saves ─────────────────────────────────────────
+export const communityDealsPostSaves = pgTable('community_deals_post_saves', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  postId: uuid('post_id').notNull(),
+  userId: text('user_id').notNull(),
+  savedAt: timestamp('saved_at').defaultNow().notNull(),
+  // UNIQUE(post_id, user_id) enforced in migration
+})
+
+// ── Community Comments ───────────────────────────────────────────
+export const communityDealsComments = pgTable('community_deals_comments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  postId: uuid('post_id').notNull(),
+  authorId: text('author_id').notNull(),
+  authorRole: text('author_role').notNull(),
+  parentCommentId: uuid('parent_comment_id'),       // self-ref for threaded comments
+  body: text('body').notNull(),
+  isBrandVerified: boolean('is_brand_verified').notNull().default(false),
+  upvoteCount: integer('upvote_count').notNull().default(0),
+  status: text('status').notNull().default('active'), // 'active' | 'removed' | 'flagged'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Community Comment Votes ──────────────────────────────────────
+export const communityDealsCommentVotes = pgTable('community_deals_comment_votes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  commentId: uuid('comment_id').notNull(),
+  userId: text('user_id').notNull(),
+  voteType: text('vote_type').notNull(),            // 'up' | 'down'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  // UNIQUE(comment_id, user_id) enforced in migration
+})
+
+// ── Deal Saves ───────────────────────────────────────────────────
+export const dealSaves = pgTable('deal_saves', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  dealId: uuid('deal_id').notNull(),
+  userId: text('user_id').notNull(),
+  savedAt: timestamp('saved_at').defaultNow().notNull(),
+  // UNIQUE(deal_id, user_id) enforced in migration
+})
+
+// ── Deal Redemptions ─────────────────────────────────────────────
+export const dealRedemptions = pgTable('deal_redemptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  dealId: uuid('deal_id').notNull(),
+  consumerId: text('consumer_id').notNull(),
+  redemptionType: text('redemption_type').notNull(), // 'promo_code_copied' | 'redirect_clicked'
+  redeemedAt: timestamp('redeemed_at').defaultNow().notNull(),
+  pointsAwarded: integer('points_awarded').notNull().default(10),
+})
+
+// ── Community Flags ──────────────────────────────────────────────
+export const communityDealsFlags = pgTable('community_deals_flags', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  contentType: text('content_type').notNull(),      // 'post' | 'comment'
+  contentId: uuid('content_id').notNull(),
+  flaggedBy: text('flagged_by').notNull(),
+  reason: text('reason').notNull(),                 // 'spam' | 'fake_deal' | 'inappropriate' | 'duplicate' | 'other'
+  details: text('details'),
+  status: text('status').notNull().default('pending'), // 'pending' | 'reviewed' | 'dismissed'
+  reviewedBy: text('reviewed_by'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Deals + Community Type Exports ───────────────────────────────
+export type Deal = typeof deals.$inferSelect
+export type NewDeal = typeof deals.$inferInsert
+export type CommunityDealsPost = typeof communityDealsPost.$inferSelect
+export type NewCommunityDealsPost = typeof communityDealsPost.$inferInsert
+export type CommunityDealsComment = typeof communityDealsComments.$inferSelect
+export type NewCommunityDealsComment = typeof communityDealsComments.$inferInsert
+export type CommunityDealsFlag = typeof communityDealsFlags.$inferSelect
+export type DealRedemption = typeof dealRedemptions.$inferSelect
+export type NewDealRedemption = typeof dealRedemptions.$inferInsert
