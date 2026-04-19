@@ -74,11 +74,11 @@
     },
     {
       "path": "/api/cron/deals-expiry",
-      "schedule": "0 */1 * * *"
+      "schedule": "0 5 * * *"
     },
     {
       "path": "/api/cron/community-deals-moderation",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 4 * * *"
     }
   ]
 }
