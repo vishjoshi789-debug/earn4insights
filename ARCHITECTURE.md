@@ -1,6 +1,6 @@
 # Earn4Insights — Technical Architecture Document
 
-> **Version:** April 2026 v3 (authoritative — reflects all phases through Razorpay Payment Integration + Payout Service + Campaign Marketplace + Security Hardening)
+> **Version:** April 2026 v4 (authoritative — reflects all phases through Deals Discovery + Community Platform + Admin Role Fix + Admin Sidebar Nav)
 > **Stack:** Next.js 15 · TypeScript (strict) · Drizzle ORM · Neon PostgreSQL · NextAuth v5 · Pusher · OpenAI · Resend · Twilio · Vercel Blob · Vercel
 
 ---
@@ -237,6 +237,20 @@ Middleware excludes `/api` routes entirely — cron routes handle their own auth
 **Modified (migration 005):**
 - `userProfiles`: added `lastActiveAt TIMESTAMP` — stamped on every Pusher presence channel auth
 
+### Deals + Community tables (migration 009 — April 2026)
+
+| Table | Purpose |
+|-------|---------|
+| `deals` | Brand deals/offers. Types: `promo_code`, `redirect`, `percentage_off`, `fixed_off`, `bogo`, `free_shipping`. Full-text search via tsvector trigger. |
+| `community_deals_posts` | Reddit-style community posts. Types: `deal`, `review`, `discussion`, `alert`. Approval-gated. |
+| `community_deals_post_votes` | Per-user upvote/downvote on posts. UNIQUE `(post_id, user_id)`. |
+| `community_deals_post_saves` | Consumer bookmarked posts. UNIQUE `(post_id, user_id)`. |
+| `community_deals_comments` | Threaded comments with `parent_comment_id` self-ref for nesting. |
+| `community_deals_comment_votes` | Per-user votes on comments. UNIQUE `(comment_id, user_id)`. |
+| `deal_saves` | Consumer saved deals. UNIQUE `(deal_id, user_id)`. |
+| `deal_redemptions` | Deal redemption events. Awards 10 pts per redemption. |
+| `community_deals_flags` | Spam/fraud flags on posts and comments. Auto-hide at ≥ 5 flags. |
+
 ---
 
 ## 5. Authentication & Role System
@@ -259,7 +273,13 @@ Middleware excludes `/api` routes entirely — cron routes handle their own auth
 
 ### Onboarding guard
 
-After first login, consumers are redirected to `/onboarding` to complete demographics + interests. Brands go directly to `/dashboard`. Guard implemented in `OnboardingGuard` client component.
+After first login, consumers are redirected to `/onboarding` to complete demographics + interests. Brands and admins go directly to `/dashboard` — guard skips for both. Guard implemented in `OnboardingGuard` server component (`src/components/OnboardingGuard.tsx`).
+
+**Admin role caveat:** `UserRole` TypeScript type only includes `'brand' | 'consumer'`. At runtime the DB stores `'admin'`. The guard casts: `(session.user.role as string) === 'admin'` to bypass TypeScript's union narrowing.
+
+### Admin sidebar nav
+
+Admin users see 7 role-specific nav items pointing to `/admin/*` pages (Platform Analytics, Payout Queue, Community Deals, Campaign Schedule, Campaign Analytics, Send-Time Optimizer, Send-Time Analytics) plus 8 shared tabs. Consumer and brand nav items are hidden. Implemented via `MenuItem.role: 'admin'` in `DashboardShell.tsx`.
 
 ---
 
@@ -809,16 +829,35 @@ AI-powered relevance filter (`src/server/socialRelevanceFilter.ts`) classifies m
 
 ## 16. Community & Rewards Engine
 
-### Community features
-- Posts, comments, reactions (like/dislike/etc.)
-- Community posts linked to products
-- Moderation queue for flagged content
+### Deals Discovery (`/dashboard/deals`)
+- Consumer-facing feed of brand deals: promo codes, redirects, percentage/fixed discounts, BOGO, free shipping
+- Full-text search via `tsvector` DB trigger on `deals` table (GIN index)
+- Filters: category, deal type, featured, verified, text search
+- Save deals (`deal_saves`), redeem (`deal_redemptions`) — awards 10 pts per redemption
+- Brand manages deals at `/dashboard/brand/deals`: create, publish, pause, analytics
+
+### Community Deals Feed (`/dashboard/community-deals`)
+- Reddit-style user-generated posts: `deal | review | discussion | alert`
+- Upvote/downvote (UNIQUE per user), threaded comments, save posts
+- Flag system: `spam | fake_deal | inappropriate | duplicate | other` — auto-hide at ≥ 5 flags
+- Moderation: admin approves/rejects at `/admin/community-deals`; auto-approve cron fires daily
+- Posts default to `status: 'pending'` — require approval before public visibility
+- Brand-verified badge on posts/comments from brand accounts (`isBrandVerified`)
+
+### Services
+- `src/server/dealsService.ts` — deals CRUD, feed, redemption, save
+- `src/server/communityService.ts` — posts, comments, votes, saves, flagging
+- `src/server/dealsModerationService.ts` — admin approve/reject, auto-moderation, flag resolution
+
+### Repositories
+- `src/db/repositories/dealsRepository.ts` — 30+ functions covering deals feed, brand queries, analytics
+- `src/db/repositories/communityDealsRepository.ts` — 30+ functions covering posts, comments, votes, flags
 
 ### Rewards system
-- Points credited for: survey completion, feedback submission, onboarding steps, referrals
+- Points credited for: survey completion, feedback submission, onboarding steps, referrals, deal redemptions (10 pts)
 - `rewardTransactions` table tracks every credit/debit with reason
 - Points displayed in consumer dashboard
-- Future: payout integration (UPI / bank transfer)
+- Payout: Razorpay escrow + RazorpayX (when enabled); manual admin queue otherwise
 
 ---
 
@@ -884,8 +923,10 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | 06:00 | `/api/cron/process-payouts` | Find released payments with no payout → create; retry failed payouts (max 3, 1h cool-down) |
 | 07:00 | `/api/cron/sync-razorpay-status` | Sync RazorpayX payout status for processing payouts (placeholder, activates with RAZORPAYX_ENABLED) |
 | 02:00 | `/api/cron/process-content-reviews` | SLA reminders (75%/90%) + auto-approve or escalate at 100% SLA. Externally triggered every 2h via cron-job.org |
+| 04:00 | `/api/cron/community-deals-moderation` | Auto-approve pending community posts past time window; auto-hide posts with ≥ 5 flags |
+| 05:00 | `/api/cron/deals-expiry` | Mark active deals with `valid_until < NOW()` as `expired` |
 
-**vercel.json** defines all **18 cron entries** with exact schedules. `process-content-reviews` and `process-deletions` both run at 02:00 UTC (no conflict — different routes).
+**vercel.json** defines all **20 cron entries** with exact schedules.
 
 ---
 
@@ -945,6 +986,32 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 |--------|-------|---------|
 | GET | `/api/analytics/icp-audience` | Aggregate audience stats (min cohort 5) |
 
+### Deals APIs (`/api/deals/` + `/api/community-deals/`)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/api/deals/feed` | Consumer deals feed (filters: category, type, featured, search) |
+| GET | `/api/deals/[id]` | Single deal detail |
+| POST | `/api/deals/[id]/redeem` | Record redemption + award points |
+| POST | `/api/deals/[id]/save` | Save/unsave deal |
+| GET | `/api/deals/saved` | Consumer's saved deals |
+| GET | `/api/deals/redemptions` | Consumer's redemption history |
+| GET | `/api/deals/search` | Full-text tsvector search |
+| GET/POST | `/api/brand/deals` | Brand: list own deals / create deal |
+| GET/PATCH/DELETE | `/api/brand/deals/[id]` | Brand: manage deal |
+| POST | `/api/brand/deals/[id]/publish` | Publish draft deal |
+| POST | `/api/brand/deals/[id]/pause` | Pause active deal |
+| GET | `/api/brand/deals/[id]/analytics` | Deal view/save/redemption analytics |
+| GET | `/api/brand/community-deals` | Brand: own community posts |
+| GET/POST | `/api/community-deals/posts` | Feed (paginated) / create post |
+| GET | `/api/community-deals/posts/[id]` | Single post with comments |
+| POST | `/api/community-deals/posts/[id]/vote` | Upvote/downvote post |
+| POST | `/api/community-deals/posts/[id]/save` | Save/unsave post |
+| POST | `/api/community-deals/posts/[id]/flag` | Flag post |
+| GET/POST | `/api/community-deals/posts/[id]/comments` | List / add comment |
+| POST | `/api/community-deals/posts/[id]/comments/[commentId]/vote` | Vote on comment |
+| GET | `/api/community-deals/saved` | Consumer's saved posts |
+
 ### Admin APIs (`/api/admin/`)
 
 | Method | Route | Purpose |
@@ -953,12 +1020,17 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | POST | `/migrate-consent-records` | Backfill legacy JSONB consent |
 | POST | `/run-migration-003` | FK constraints + partial UNIQUE index |
 | POST | `/run-migration-004` | Influencers Adda schema |
-
 | POST | `/run-migration-005` | Real-Time Connection Layer schema (6 tables + userProfiles.lastActiveAt) |
 | POST | `/run-migration-006` | Content Approval (2 ALTERs + content_review_reminders table) |
+| POST | `/run-migration-007` | Campaign Marketplace (3 ALTERs + campaign_applications) |
+| POST | `/run-migration-008` | Razorpay Payment (4 tables) |
+| POST | `/run-migration-009` | Deals + Community (9 tables) |
 | GET | `/content/pending` | All pending posts (admin view) |
 | POST | `/content/[id]/approve` | Admin approve (bypasses brand ownership check) |
 | POST | `/content/[id]/reject` | Admin reject with reason (min 10 chars) |
+| GET | `/community-deals/pending` | Pending community posts queue |
+| GET | `/community-deals/flagged` | Flagged posts/comments queue |
+| POST | `/community-deals/moderate` | Approve/reject/remove community post |
 
 All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
 

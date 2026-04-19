@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (v4 — Campaign Marketplace + Earnings + Content Approval + @ Mention Tags). Read at the start of every session.
+> Last updated: April 2026 (v5 — Deals Discovery + Community Platform + Admin Sidebar Nav). Read at the start of every session.
 
 ## Project Overview
 
@@ -89,6 +89,8 @@ await pgClient.unsafe(sql)
 | Media type select visibility fix + dialog scroll fix | ✅ COMPLETE |
 | Campaign Marketplace (influencer discovery, applications, brand review) | ✅ COMPLETE |
 | Razorpay Payment Integration (escrow, payouts, consumer rewards, admin queue) | ✅ COMPLETE |
+| Deals Discovery + Community Platform (9 tables, Reddit-style feed, brand deals, moderation) | ✅ COMPLETE |
+| Admin Role Fix + Admin Sidebar Nav (OnboardingGuard bypass + 7 admin nav items) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -99,6 +101,7 @@ await pgClient.unsafe(sql)
 6. `POST /api/admin/run-migration-006` — Content Approval (2 ALTERs + `content_review_reminders` table)
 7. `POST /api/admin/run-migration-007` — Campaign Marketplace (3 ALTERs on `influencer_campaigns` + `campaign_applications` table)
 8. `POST /api/admin/run-migration-008` — Razorpay Payment (4 tables: `razorpay_orders`, `campaign_payments`, `payout_accounts`, `reward_redemptions`)
+9. `POST /api/admin/run-migration-009` — Deals + Community (9 tables: `deals`, `community_deals_posts`, `community_deals_post_votes`, `community_deals_post_saves`, `community_deals_comments`, `community_deals_comment_votes`, `deal_saves`, `deal_redemptions`, `community_deals_flags`)
 
 ---
 
@@ -183,6 +186,12 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Platform fee schedule** | milestone → 8%, direct → 12%, escrow/standard → 10%. Calculated in `razorpayService.createOrder()`. |
 | **Refund blocked after release** | Cannot refund a paid order if the linked `campaign_payments` has been released to influencer. Prevents double-spend. |
 | **No partial payouts at launch** | Admin process route accepts `body.amount` but ignores it — all payouts are full amount. Partial payout support deferred until RazorpayX activation. |
+| **Deals search via tsvector DB trigger** | `search_vector` column on `deals` and `community_deals_posts` is managed by a Postgres trigger (not Drizzle) — full-text search without adding a column to the ORM schema. |
+| **Community posts default to `pending`** | All posts require admin/moderator approval before public visibility. Auto-approve runs in moderation cron after configurable time window. |
+| **Flag auto-hide threshold** | Posts with ≥ 5 flags are auto-hidden (status → `removed`) by moderation cron without admin action. Prevents viral spread of flagged content. |
+| **Deal redemption points: 10 pts flat** | Every deal redemption (promo copy or redirect click) awards 10 points regardless of deal value. Simple and predictable for consumers. |
+| **Admin role skips OnboardingGuard** | `(session.user.role as string) === 'admin'` cast required — `UserRole` type only includes `'brand'|'consumer'`. Runtime DB value is `'admin'`. |
+| **Admin sidebar uses role-specific nav items** | `DashboardShell` `MenuItem.role` now supports `'admin'`. Admin sees 7 `/admin/*` links + 8 shared tabs; no consumer/brand noise. |
 
 ---
 
@@ -215,13 +224,21 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **DSAR flow** | Full decrypted sensitive data export requires identity verification; out of scope |
 | **Signal snapshots in process-deletions cron** | Admin-deleted profiles may leave orphaned snapshots |
 
+### Deals & Community
+| Item | Notes |
+|------|-------|
+| **Deal ICP targeting** | `icpTargetData` JSONB column on `deals` stored but not yet wired to ICP scoring — brands can store targeting criteria, consumer filtering not implemented |
+| **Community post points system** | `pointsAwarded` column exists; awarding logic is in moderation approval flow but not wired to the consumer points ledger yet |
+| **Brand deal analytics** | `/api/brand/deals/[id]/analytics` route exists; full analytics dashboard page not yet built |
+| **Wise / PayPal payout stubs** | `wiseService.ts` and paypal payout path are stubs pending API credentials |
+
 ---
 
 ## Reference Docs
 
 - **`ARCHITECTURE.md`** — Full technical architecture (authoritative, 1000 lines)
-- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–007)
+- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–009)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
 - **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, @ tags, file map
 - **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (31 events), notification/presence architecture, file map
-- **`docs/CRON_JOBS.md`** — Full cron schedule (18 entries), auth pattern, batch size notes
+- **`docs/CRON_JOBS.md`** — Full cron schedule (20 entries), auth pattern, batch size notes

@@ -159,6 +159,34 @@ Index: `(consumer_id, status)`, `(status, created_at DESC)` — admin queue
 
 ---
 
+## Migration 009 — Deals Discovery + Community Platform (9 new tables)
+
+Applied via `POST /api/admin/run-migration-009` (inline SQL, idempotent `IF NOT EXISTS`).
+
+| Table | Purpose |
+|-------|---------|
+| `deals` | Brand-created deals/offers. Types: `promo_code`, `redirect`, `percentage_off`, `fixed_off`, `bogo`, `free_shipping`. Full-text search via `search_vector` tsvector column (DB trigger, not in Drizzle). Status: `draft → active → paused → expired`. |
+| `community_deals_posts` | Reddit-style community posts. Types: `deal`, `review`, `discussion`, `alert`. Moderation status: `pending → approved / rejected / removed / needs_edit`. Tracks upvote/downvote/comment/save counts. Optional link to `deals` table. |
+| `community_deals_post_votes` | Per-user upvote/downvote on posts. UNIQUE `(post_id, user_id)`. Vote types: `'up' | 'down'`. |
+| `community_deals_post_saves` | Consumer saved/bookmarked posts. UNIQUE `(post_id, user_id)`. |
+| `community_deals_comments` | Threaded comments on community posts. Self-referential `parent_comment_id` for nesting. Status: `active | removed | flagged`. |
+| `community_deals_comment_votes` | Per-user upvote on comments. UNIQUE `(comment_id, user_id)`. |
+| `deal_saves` | Consumer saved deals (from the deals discovery feed). UNIQUE `(deal_id, user_id)`. |
+| `deal_redemptions` | Tracks each deal redemption event per consumer. Types: `promo_code_copied | redirect_clicked`. Awards `pointsAwarded` (default 10 pts). |
+| `community_deals_flags` | Spam/fraud/inappropriate flags on posts or comments. `content_type`: `'post' | 'comment'`. Reasons: `spam | fake_deal | inappropriate | duplicate | other`. Status: `pending | reviewed | dismissed`. Auto-hide fires at ≥ 5 flags on a post. |
+
+### Key indexes (Migration 009)
+
+| Table | Index |
+|-------|-------|
+| `deals` | `(brand_id, status)`, `(status, valid_until)` — expiry cron, `(is_featured, status)`, full-text `search_vector` GIN |
+| `community_deals_posts` | `(status, created_at DESC)`, `(author_id)`, `(deal_id)`, full-text `search_vector` GIN |
+| `community_deals_comments` | `(post_id, created_at)`, `(parent_comment_id)` |
+| `community_deals_flags` | `(content_type, content_id)`, `(status)` |
+| `deal_redemptions` | `(deal_id, consumer_id)`, `(consumer_id)` |
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`
