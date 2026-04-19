@@ -48,6 +48,11 @@ import {
   Store,
   Tags,
   Flame,
+  ShieldAlert,
+  BarChart2,
+  CalendarClock,
+  Timer,
+  Banknote,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -64,7 +69,7 @@ type MenuItem = {
   icon: any
   tourId: string
   /** If set, only show this item for the given role. Omit for all roles. */
-  role?: 'brand' | 'consumer'
+  role?: 'brand' | 'consumer' | 'admin'
 }
 
 const menuItems: MenuItem[] = [
@@ -134,6 +139,14 @@ const menuItems: MenuItem[] = [
     tourId: 'nav-pricing',
     role: 'brand',
   },
+  // Admin-only nav items — point to /admin/* routes
+  { href: '/admin/analytics', label: 'Platform Analytics', icon: BarChart2, tourId: 'nav-admin-analytics', role: 'admin' },
+  { href: '/admin/payouts', label: 'Payout Queue', icon: Banknote, tourId: 'nav-admin-payouts', role: 'admin' },
+  { href: '/admin/community-deals', label: 'Community Deals', icon: Flame, tourId: 'nav-admin-community-deals', role: 'admin' },
+  { href: '/admin/campaigns/schedule', label: 'Campaign Schedule', icon: CalendarClock, tourId: 'nav-admin-campaign-schedule', role: 'admin' },
+  { href: '/admin/campaigns/analytics', label: 'Campaign Analytics', icon: TrendingUp, tourId: 'nav-admin-campaign-analytics', role: 'admin' },
+  { href: '/admin/send-time-optimization', label: 'Send-Time Optimizer', icon: Timer, tourId: 'nav-admin-send-time', role: 'admin' },
+  { href: '/admin/send-time-analytics', label: 'Send-Time Analytics', icon: Activity, tourId: 'nav-admin-send-time-analytics', role: 'admin' },
 ]
 
 // Items whose sub-paths have their own sidebar entry — use exact match only
@@ -209,7 +222,7 @@ export default function DashboardShell({
   children: React.ReactNode
 }) {
   const { data: session, status } = useSession()
-  const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | undefined
+  const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | 'admin' | undefined
   const userId = (session?.user as any)?.id as string | undefined
   const [unreadAlerts, setUnreadAlerts] = useState(0)
   const isVisible = useRef(true)
@@ -244,7 +257,7 @@ export default function DashboardShell({
 
   // Memoize visible items — only recompute when role changes, not every render
   const visibleItems = useMemo(
-    () => menuItems.filter((item) => !item.role || item.role === userRole),
+    () => menuItems.filter((item) => !item.role || item.role === (userRole as string)),
     [userRole]
   )
 
