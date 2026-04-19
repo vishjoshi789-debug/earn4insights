@@ -27,7 +27,7 @@ export async function OnboardingGuard({
   const profile = await ensureUserProfile(session.user.id, session.user.email)
   
   // Brands and admins don't need consumer onboarding — skip entirely
-  const skipForRole = session.user.role === 'brand' || session.user.role === 'admin'
+  const skipForRole = session.user.role === 'brand' || (session.user.role as string) === 'admin'
 
   // Check if onboarding is complete (unless skipped or brand/admin user)
   // Use the profile directly rather than re-fetching by userId,
