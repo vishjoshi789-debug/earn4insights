@@ -1932,3 +1932,197 @@ export type NewCommunityDealsComment = typeof communityDealsComments.$inferInser
 export type CommunityDealsFlag = typeof communityDealsFlags.$inferSelect
 export type DealRedemption = typeof dealRedemptions.$inferSelect
 export type NewDealRedemption = typeof dealRedemptions.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION — COMPETITIVE INTELLIGENCE (Migration 010)
+// ════════════════════════════════════════════════════════════════
+
+// ── Competitor Profiles ──────────────────────────────────────────
+export const competitorProfiles = pgTable('competitor_profiles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),                                   // brand doing the tracking
+  competitorType: text('competitor_type').notNull(),                     // 'on_platform' | 'off_platform'
+  competitorBrandId: text('competitor_brand_id'),                        // users.id if on_platform
+  competitorName: text('competitor_name').notNull(),
+  competitorWebsite: text('competitor_website'),
+  competitorLogoUrl: text('competitor_logo_url'),
+  category: text('category').notNull(),
+  subCategories: text('sub_categories').array().default([]),
+  geographies: text('geographies').array().default([]),
+  isSystemSuggested: boolean('is_system_suggested').notNull().default(false),
+  isConfirmed: boolean('is_confirmed').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+  confirmedAt: timestamp('confirmed_at'),
+  dismissedAt: timestamp('dismissed_at'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // Partial UNIQUEs enforced in migration:
+  //   UNIQUE(brand_id, competitor_brand_id) WHERE competitor_brand_id IS NOT NULL
+  //   UNIQUE(brand_id, competitor_name) WHERE competitor_type = 'off_platform'
+})
+
+// ── Competitor Products ──────────────────────────────────────────
+export const competitorProducts = pgTable('competitor_products', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  competitorProfileId: uuid('competitor_profile_id').notNull(),
+  productName: text('product_name').notNull(),
+  productId: text('product_id'),                                         // products.id if on_platform
+  category: text('category').notNull(),
+  description: text('description'),
+  currentPrice: integer('current_price'),                                // paise
+  currency: text('currency').default('INR'),
+  priceUpdatedAt: timestamp('price_updated_at'),
+  features: jsonb('features').$type<{ name: string; value: string; category?: string }[]>().default([]),
+  positioning: text('positioning'),
+  targetSegment: text('target_segment'),
+  externalUrl: text('external_url'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Competitor Price History ─────────────────────────────────────
+export const competitorPriceHistory = pgTable('competitor_price_history', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  competitorProductId: uuid('competitor_product_id').notNull(),
+  price: integer('price').notNull(),                                     // paise
+  currency: text('currency').notNull().default('INR'),
+  source: text('source').notNull(),                                      // 'manual' | 'scraper' | 'community' | 'deal'
+  recordedAt: timestamp('recorded_at').defaultNow().notNull(),
+})
+
+// ── Competitive Insights (AI/system generated) ───────────────────
+export const competitiveInsights = pgTable('competitive_insights', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  insightType: text('insight_type').notNull(),
+  //   'sentiment_comparison' | 'segment_overlap' | 'pricing_gap' | 'feature_gap' |
+  //   'geographic_opportunity' | 'complaint_themes' | 'influencer_activity' |
+  //   'deal_comparison' | 'consumer_switching' | 'market_trend' | 'ai_recommendation'
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  details: jsonb('details').notNull(),
+  dataSources: jsonb('data_sources').$type<{
+    feedbackCount?: number
+    surveyCount?: number
+    communityPostCount?: number
+    dateRange?: { start: string; end: string }
+  }>().notNull(),
+  severity: text('severity').notNull().default('info'),                  // 'critical' | 'warning' | 'info' | 'opportunity'
+  isRead: boolean('is_read').notNull().default(false),
+  isActionable: boolean('is_actionable').notNull().default(false),
+  actionSuggestion: text('action_suggestion'),
+  expiresAt: timestamp('expires_at'),
+  generatedBy: text('generated_by').notNull().default('system'),         // 'system' | 'ai' | 'manual'
+  aiModel: text('ai_model'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Competitive Benchmarks (per-metric, time-bounded) ────────────
+export const competitiveBenchmarks = pgTable('competitive_benchmarks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  category: text('category').notNull(),
+  metricName: text('metric_name').notNull(),
+  //   'avg_sentiment' | 'avg_rating' | 'feedback_volume' | 'market_share' |
+  //   'influencer_reach' | 'deal_count' | 'engagement_rate' | 'consumer_loyalty' |
+  //   'complaint_rate' | 'nps_estimate'
+  brandValue: decimal('brand_value', { precision: 10, scale: 4 }).notNull(),
+  categoryAvg: decimal('category_avg', { precision: 10, scale: 4 }).notNull(),
+  categoryBest: decimal('category_best', { precision: 10, scale: 4 }),
+  categoryWorst: decimal('category_worst', { precision: 10, scale: 4 }),
+  percentile: integer('percentile'),                                      // 0-100
+  competitorValues: jsonb('competitor_values').$type<Record<string, number>>().default({}),
+  sampleSize: integer('sample_size').notNull().default(0),
+  periodStart: date('period_start').notNull(),
+  periodEnd: date('period_end').notNull(),
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+})
+
+// ── Competitive Scores (overall 0-100) ───────────────────────────
+export const competitiveScores = pgTable('competitive_scores', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  category: text('category').notNull(),
+  overallScore: integer('overall_score').notNull(),                      // 0-100
+  scoreBreakdown: jsonb('score_breakdown').$type<{
+    sentiment: { score: number; weight: number }
+    marketShare: { score: number; weight: number }
+    pricing: { score: number; weight: number }
+    featureCoverage: { score: number; weight: number }
+    influencerReach: { score: number; weight: number }
+    consumerLoyalty: { score: number; weight: number }
+  }>().notNull(),
+  rank: integer('rank').notNull(),
+  totalInCategory: integer('total_in_category').notNull(),
+  trend: text('trend').notNull().default('stable'),                      // 'improving' | 'stable' | 'declining'
+  previousScore: integer('previous_score'),
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+  // UNIQUE(brand_id, category) enforced in migration
+})
+
+// ── Competitor Alerts (real-time events) ─────────────────────────
+export const competitorAlerts = pgTable('competitor_alerts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  competitorProfileId: uuid('competitor_profile_id'),
+  alertType: text('alert_type').notNull(),
+  //   'new_product' | 'price_change' | 'new_deal' | 'influencer_campaign' |
+  //   'sentiment_spike' | 'sentiment_drop' | 'consumer_switch_to' |
+  //   'consumer_switch_from' | 'market_share_change' | 'new_community_post'
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  severity: text('severity').notNull().default('info'),                  // 'critical' | 'warning' | 'info'
+  data: jsonb('data').notNull(),
+  isRead: boolean('is_read').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Competitive Reports (digests) ────────────────────────────────
+export const competitiveReports = pgTable('competitive_reports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  reportType: text('report_type').notNull(),                             // 'daily_digest' | 'weekly_summary' | 'monthly_deep_dive' | 'custom'
+  title: text('title').notNull(),
+  content: jsonb('content').notNull(),
+  category: text('category'),
+  periodStart: date('period_start').notNull(),
+  periodEnd: date('period_end').notNull(),
+  emailSent: boolean('email_sent').notNull().default(false),
+  emailSentAt: timestamp('email_sent_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Competitor Digest Preferences ────────────────────────────────
+export const competitorDigestPreferences = pgTable('competitor_digest_preferences', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  brandId: text('brand_id').notNull().unique(),
+  digestFrequency: text('digest_frequency').notNull().default('weekly'), // 'daily' | 'weekly' | 'monthly' | 'none'
+  emailEnabled: boolean('email_enabled').notNull().default(true),
+  inAppEnabled: boolean('in_app_enabled').notNull().default(true),
+  categories: text('categories').array().default([]),
+  alertTypes: text('alert_types').array().default([]),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Competitive Intelligence Type Exports ────────────────────────
+export type CompetitorProfile = typeof competitorProfiles.$inferSelect
+export type NewCompetitorProfile = typeof competitorProfiles.$inferInsert
+export type CompetitorProduct = typeof competitorProducts.$inferSelect
+export type NewCompetitorProduct = typeof competitorProducts.$inferInsert
+export type CompetitorPriceHistory = typeof competitorPriceHistory.$inferSelect
+export type NewCompetitorPriceHistory = typeof competitorPriceHistory.$inferInsert
+export type CompetitiveInsight = typeof competitiveInsights.$inferSelect
+export type NewCompetitiveInsight = typeof competitiveInsights.$inferInsert
+export type CompetitiveBenchmark = typeof competitiveBenchmarks.$inferSelect
+export type NewCompetitiveBenchmark = typeof competitiveBenchmarks.$inferInsert
+export type CompetitiveScore = typeof competitiveScores.$inferSelect
+export type NewCompetitiveScore = typeof competitiveScores.$inferInsert
+export type CompetitorAlert = typeof competitorAlerts.$inferSelect
+export type NewCompetitorAlert = typeof competitorAlerts.$inferInsert
+export type CompetitiveReport = typeof competitiveReports.$inferSelect
+export type NewCompetitiveReport = typeof competitiveReports.$inferInsert
+export type CompetitorDigestPreferences = typeof competitorDigestPreferences.$inferSelect
+export type NewCompetitorDigestPreferences = typeof competitorDigestPreferences.$inferInsert

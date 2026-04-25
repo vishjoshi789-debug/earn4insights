@@ -79,6 +79,26 @@
     {
       "path": "/api/cron/community-deals-moderation",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/competitive/recompute-scores",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/competitive/daily-digest",
+      "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/competitive/detect-alerts",
+      "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/competitive/weekly-report",
+      "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/competitive/send-reports",
+      "schedule": "0 9 * * *"
     }
   ]
 }

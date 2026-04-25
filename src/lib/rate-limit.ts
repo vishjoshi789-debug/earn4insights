@@ -90,4 +90,8 @@ export const RATE_LIMITS = {
   // Payment endpoints — brand-facing
   paymentCreateOrder: { maxRequests: 10, windowSeconds: 60 } as RateLimitConfig,
   paymentVerify: { maxRequests: 20, windowSeconds: 60 } as RateLimitConfig,
+  // Competitive intelligence — brand-facing
+  competitiveRead: { maxRequests: 60, windowSeconds: 60 } as RateLimitConfig,
+  competitiveRecompute: { maxRequests: 5, windowSeconds: 60 } as RateLimitConfig,
+  competitiveAiGenerate: { maxRequests: 3, windowSeconds: 60 } as RateLimitConfig,
 } as const
