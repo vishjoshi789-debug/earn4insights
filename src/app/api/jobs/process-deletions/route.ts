@@ -55,7 +55,7 @@ async function processAccountDeletions(request: NextRequest) {
       .where(
         and(
           sql`${userProfiles.consent}->>'deletionRequested' = 'true'`,
-          sql`TO_TIMESTAMP(${userProfiles.consent}->>'deletionScheduledFor', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') <= ${now}`
+          sql`TO_TIMESTAMP(${userProfiles.consent}->>'deletionScheduledFor', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') <= ${now.toISOString()}`
         )
       )
 
