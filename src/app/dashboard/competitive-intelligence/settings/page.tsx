@@ -270,7 +270,7 @@ export default function CompetitiveSettingsPage() {
                     <label
                       key={cat}
                       className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-1.5 text-sm transition-colors ${
-                        checked ? 'border-indigo-500 bg-indigo-50 text-indigo-900' : 'border-slate-200 hover:bg-slate-50'
+                        checked ? 'border-indigo-500 bg-indigo-50 text-indigo-900' : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900'
                       }`}
                     >
                       <Checkbox
@@ -301,7 +301,11 @@ export default function CompetitiveSettingsPage() {
               return (
                 <label
                   key={t.value}
-                  className="flex cursor-pointer items-start gap-2 rounded border border-slate-200 p-2.5 text-sm hover:bg-slate-50"
+                  className={`flex cursor-pointer items-start gap-2 rounded border p-2.5 text-sm transition-colors ${
+                    checked
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                      : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900'
+                  }`}
                 >
                   <Checkbox
                     checked={checked}
