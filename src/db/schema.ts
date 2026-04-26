@@ -2126,3 +2126,31 @@ export type CompetitiveReport = typeof competitiveReports.$inferSelect
 export type NewCompetitiveReport = typeof competitiveReports.$inferInsert
 export type CompetitorDigestPreferences = typeof competitorDigestPreferences.$inferSelect
 export type NewCompetitorDigestPreferences = typeof competitorDigestPreferences.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION — DSAR (Data Subject Access Requests — GDPR Art. 15)
+// Migration 012
+// ════════════════════════════════════════════════════════════════
+
+export const dsarRequests = pgTable('dsar_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  consumerId: text('consumer_id').notNull(),        // → users.id
+  status: text('status').notNull().default('pending')
+    .$type<'pending' | 'otp_sent' | 'verified' | 'generating' | 'completed' | 'failed' | 'expired'>(),
+  otpHash: text('otp_hash'),                        // bcrypt hash — never store plain OTP
+  otpExpiresAt: timestamp('otp_expires_at'),
+  otpAttempts: integer('otp_attempts').notNull().default(0),
+  maxOtpAttempts: integer('max_otp_attempts').notNull().default(3),
+  pdfUrl: text('pdf_url'),                          // Vercel Blob URL
+  pdfGeneratedAt: timestamp('pdf_generated_at'),
+  emailSentAt: timestamp('email_sent_at'),
+  expiresAt: timestamp('expires_at'),               // PDF download link expires after 7 days
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // INDEX (consumer_id, created_at DESC) and (status, created_at) in migration
+})
+
+export type DsarRequest = typeof dsarRequests.$inferSelect
+export type NewDsarRequest = typeof dsarRequests.$inferInsert

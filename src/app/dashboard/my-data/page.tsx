@@ -26,8 +26,18 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
   Download, Loader2, AlertCircle, User, ShieldCheck, Activity,
-  Lock, Target, RefreshCw, CheckCircle2, XCircle,
+  Lock, Target, RefreshCw, CheckCircle2, XCircle, FileText, Clock,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -122,6 +132,34 @@ function SectionCard({
 
 // ── Component ─────────────────────────────────────────────────────
 
+// ── DSAR Types ────────────────────────────────────────────────────
+
+type DsarStatus = {
+  requestId: string | null
+  status: 'pending' | 'otp_sent' | 'verified' | 'generating' | 'completed' | 'failed' | 'expired' | null
+  createdAt: string | null
+  otpExpiresAt: string | null
+  expiresAt: string | null
+  downloadUrl: string | null
+  otpAttempts: number
+  maxOtpAttempts: number
+}
+
+function formatTimeRemaining(isoDate: string | null): string {
+  if (!isoDate) return ''
+  const ms = new Date(isoDate).getTime() - Date.now()
+  if (ms <= 0) return 'Expired'
+  const totalSec = Math.floor(ms / 1000)
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function daysUntil(isoDate: string | null): number {
+  if (!isoDate) return 0
+  return Math.max(0, Math.ceil((new Date(isoDate).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+}
+
 export default function MyDataPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -130,6 +168,15 @@ export default function MyDataPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // DSAR state
+  const [dsarStatus, setDsarStatus] = useState<DsarStatus | null>(null)
+  const [dsarLoading, setDsarLoading] = useState(false)
+  const [otpOpen, setOtpOpen] = useState(false)
+  const [otp, setOtp] = useState('')
+  const [verifying, setVerifying] = useState(false)
+  const [otpTimeLeft, setOtpTimeLeft] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   const userRole = (session?.user as any)?.role
 
@@ -159,8 +206,90 @@ export default function MyDataPage() {
   }, [])
 
   useEffect(() => {
-    if (status === 'authenticated' && userRole === 'consumer') fetchData()
+    if (status === 'authenticated' && userRole === 'consumer') {
+      fetchData()
+      fetchDsarStatus()
+    }
   }, [status, userRole, fetchData])
+
+  // ── DSAR helpers ─────────────────────────────────────────────────
+
+  const fetchDsarStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/consumer/dsar/status')
+      if (!res.ok) return
+      const json = await res.json()
+      setDsarStatus(json.status ? json : { ...json, status: null })
+    } catch {}
+  }, [])
+
+  // Poll while generating
+  useEffect(() => {
+    if (dsarStatus?.status !== 'generating') return
+    const t = setInterval(fetchDsarStatus, 4000)
+    return () => clearInterval(t)
+  }, [dsarStatus?.status, fetchDsarStatus])
+
+  // OTP countdown timer
+  useEffect(() => {
+    if (!dsarStatus?.otpExpiresAt || dsarStatus.status !== 'otp_sent') return
+    const t = setInterval(() => setOtpTimeLeft(formatTimeRemaining(dsarStatus.otpExpiresAt)), 1000)
+    setOtpTimeLeft(formatTimeRemaining(dsarStatus.otpExpiresAt))
+    return () => clearInterval(t)
+  }, [dsarStatus?.otpExpiresAt, dsarStatus?.status])
+
+  // Resend cooldown
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const t = setTimeout(() => setResendCooldown(c => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [resendCooldown])
+
+  async function handleDsarRequest() {
+    setDsarLoading(true)
+    try {
+      const res = await fetch('/api/consumer/dsar/request', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed to initiate request')
+      await fetchDsarStatus()
+      setOtp('')
+      setOtpOpen(true)
+      setResendCooldown(60)
+      toast.success('Verification code sent to your email.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Request failed')
+    } finally {
+      setDsarLoading(false)
+    }
+  }
+
+  async function handleVerify() {
+    if (otp.length !== 6) return
+    setVerifying(true)
+    try {
+      const res = await fetch('/api/consumer/dsar/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: dsarStatus?.requestId, otp }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Verification failed')
+      setOtpOpen(false)
+      setOtp('')
+      await fetchDsarStatus()
+      toast.success('Verified! Your data package is ready.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Verification failed')
+      await fetchDsarStatus()
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  async function handleResendOtp() {
+    if (resendCooldown > 0) return
+    await handleDsarRequest()
+  }
 
   function downloadJSON() {
     if (!data) return
@@ -396,10 +525,18 @@ export default function MyDataPage() {
           </div>
         )}
         <p className="text-xs text-muted-foreground mt-3">
-          To receive a decrypted copy, submit a formal Data Subject Access Request (DSAR) via{' '}
+          Sensitive values are stored encrypted (AES-256-GCM). Use the{' '}
+          <button
+            onClick={() => document.getElementById('dsar-section')?.scrollIntoView({ behavior: 'smooth' })}
+            className="underline underline-offset-2 cursor-pointer"
+          >
+            Download Your Data
+          </button>{' '}
+          section below to receive your full data report, or contact{' '}
           <a href="mailto:privacy@earn4insights.com" className="underline underline-offset-2">
             privacy@earn4insights.com
-          </a>.
+          </a>{' '}
+          for a manually decrypted copy.
         </p>
       </SectionCard>
 
@@ -450,6 +587,146 @@ export default function MyDataPage() {
           automatically. Brands never see your identity — only aggregate audience statistics.
         </p>
       </SectionCard>
+
+      {/* ── DSAR — Download Your Data (PDF) ── */}
+      <div id="dsar-section">
+      <SectionCard
+        icon={FileText}
+        title="Download Your Data (PDF Report)"
+        description="Receive a complete, human-readable PDF of all data we hold about you — GDPR Art. 15 / DPDP §11."
+      >
+        {/* No request yet */}
+        {(!dsarStatus?.status || dsarStatus.status === 'expired' || dsarStatus.status === 'failed') && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Your report will include account info, consents, feedback, surveys, points, community activity,
+              influencer activity, and your full rights under GDPR and the India DPDP Act 2023.
+              A 6-digit verification code will be sent to your registered email.
+            </p>
+            {dsarStatus?.status === 'expired' && (
+              <p className="text-xs text-amber-600">Your previous data package has expired.</p>
+            )}
+            {dsarStatus?.status === 'failed' && (
+              <p className="text-xs text-red-600">Previous generation failed. Please try again.</p>
+            )}
+            <Button onClick={handleDsarRequest} disabled={dsarLoading} size="sm">
+              {dsarLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-2 h-3.5 w-3.5" />}
+              Request My Data
+            </Button>
+            <p className="text-xs text-muted-foreground">Rate limited to 1 request per 30 days. Free of charge.</p>
+          </div>
+        )}
+
+        {/* OTP sent — awaiting verification */}
+        {dsarStatus?.status === 'otp_sent' && !otpOpen && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>Verification code sent. Check your email. Code expires in <strong>{otpTimeLeft || '…'}</strong>.</span>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => { setOtp(''); setOtpOpen(true) }}>
+              Enter Verification Code
+            </Button>
+          </div>
+        )}
+
+        {/* Generating */}
+        {dsarStatus?.status === 'generating' && (
+          <div className="flex items-center gap-3 text-sm text-slate-600 bg-slate-50 border rounded-md px-4 py-3">
+            <Loader2 className="h-4 w-4 animate-spin text-indigo-600 shrink-0" />
+            <span>Generating your data package… This may take up to 30 seconds.</span>
+          </div>
+        )}
+
+        {/* Completed */}
+        {dsarStatus?.status === 'completed' && dsarStatus.downloadUrl && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>Your data package is ready.</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button asChild size="sm">
+                <a href={dsarStatus.downloadUrl} download>
+                  <Download className="mr-2 h-3.5 w-3.5" />
+                  Download PDF
+                </a>
+              </Button>
+              {dsarStatus.expiresAt && (
+                <span className="text-xs text-muted-foreground">
+                  Link expires in <strong>{daysUntil(dsarStatus.expiresAt)} day{daysUntil(dsarStatus.expiresAt) === 1 ? '' : 's'}</strong>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A copy was also emailed to your registered address.
+            </p>
+          </div>
+        )}
+      </SectionCard>
+      </div>
+
+      {/* OTP Dialog */}
+      <Dialog open={otpOpen} onOpenChange={open => { if (!verifying) setOtpOpen(open) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Verify your identity</DialogTitle>
+            <DialogDescription>
+              Enter the 6-digit code sent to your registered email address.
+              {otpTimeLeft && otpTimeLeft !== 'Expired' && (
+                <span className="block mt-1 text-amber-600 font-medium">Expires in {otpTimeLeft}</span>
+              )}
+              {otpTimeLeft === 'Expired' && (
+                <span className="block mt-1 text-red-600 font-medium">Code has expired. Please request a new one.</span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <Label htmlFor="otp-input">Verification code</Label>
+            <Input
+              id="otp-input"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              placeholder="000000"
+              value={otp}
+              onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="text-center text-2xl tracking-[0.5em] font-mono h-12"
+              disabled={verifying}
+              onKeyDown={e => { if (e.key === 'Enter' && otp.length === 6) handleVerify() }}
+              autoFocus
+            />
+            {dsarStatus?.otpAttempts !== undefined && dsarStatus.otpAttempts > 0 && (
+              <p className="text-xs text-amber-600">
+                {dsarStatus.maxOtpAttempts - dsarStatus.otpAttempts} attempt{dsarStatus.maxOtpAttempts - dsarStatus.otpAttempts === 1 ? '' : 's'} remaining.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleResendOtp}
+              disabled={resendCooldown > 0 || dsarLoading}
+              className="text-xs"
+            >
+              {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+            </Button>
+            <Button
+              onClick={handleVerify}
+              disabled={otp.length !== 6 || verifying}
+              className="flex-1"
+            >
+              {verifying
+                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating your data…</>
+                : 'Verify & Generate PDF'
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Legal note */}
       <p className="text-xs text-muted-foreground text-center pb-4">
