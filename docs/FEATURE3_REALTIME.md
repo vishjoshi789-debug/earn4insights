@@ -137,7 +137,7 @@ src/
 │
 ├── server/
 │   ├── realtimeNotificationService.ts             # consent-gated dispatch: inbox + feed + Pusher + email/SMS
-│   └── eventBus.ts                                # emit() + PLATFORM_EVENTS (20 events) + routeEvent() + ICP targeting
+│   └── eventBus.ts                                # emit() + PLATFORM_EVENTS (31 events) + routeEvent() + ICP targeting
 │
 ├── hooks/
 │   ├── usePusher.ts                               # usePusher (subscribe/bind), usePresenceChannel
@@ -179,5 +179,5 @@ app/api/feedback/submit/route.ts                   # emit CONSUMER_FEEDBACK_SUBM
 app/api/influencer/content/route.ts                # NOTE: INFLUENCER_POST_PUBLISHED removed from here (was premature —
                                                    #       posts were drafts). Now emitted in contentApprovalService.
 app/api/brand/campaigns/route.ts                   # emit BRAND_CAMPAIGN_LAUNCHED
-vercel.json                                        # 16 cron entries (was 15)
+vercel.json                                        # 26 cron entries (20 pre-CI + 5 competitive + 1 dsar-cleanup)
 ```

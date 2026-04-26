@@ -187,6 +187,90 @@ Applied via `POST /api/admin/run-migration-009` (inline SQL, idempotent `IF NOT 
 
 ---
 
+---
+
+## Migration 010 — Competitive Intelligence Dashboard (9 new tables)
+
+Applied via `POST /api/admin/run-migration-010` (inline SQL, idempotent `IF NOT EXISTS`).
+
+| Table | Purpose |
+|-------|---------|
+| `competitor_profiles` | Brands track competitors (on-platform brand, or off-platform by name). Types: `'on_platform' \| 'off_platform'`. Partial UNIQUE: one on-platform competitor per brand (`brand_id, competitor_brand_id WHERE competitor_brand_id IS NOT NULL`); one off-platform per brand per name. Flags: `is_system_suggested`, `is_confirmed`, `is_active`. |
+| `competitor_products` | Competitor products with `current_price` (paise), `features` (JSONB array), `positioning`, `target_segment`. Linked to `competitor_profiles`. |
+| `competitor_price_history` | Append-only price log per competitor product. Tracks `price`, `currency`, `source`, `recorded_at`. Index on `(competitor_product_id, recorded_at DESC)`. |
+| `competitive_insights` | AI or system-generated insights per brand. `insight_type`, `severity` (`info \| warning \| critical`), `is_actionable`, `generated_by` (`'system' \| 'ai'`), `ai_model`. Index on `(brand_id, is_read, created_at DESC)`. Cap: 3 AI insights per brand per day. |
+| `competitive_benchmarks` | Per-metric brand vs category comparison. `brand_value`, `category_avg`, `category_best`, `category_worst`, `percentile`, `competitor_values` (JSONB), `sample_size`, `period_start/end`. |
+| `competitive_scores` | 0-100 composite score per `(brand_id, category)`. UNIQUE(brand_id, category). `score_breakdown` (JSONB — per-dimension scores), `rank`, `total_in_category`, `trend` (`improving \| stable \| declining`), `previous_score`. Score not written if effective weight < 40 (insufficient data). |
+| `competitor_alerts` | Real-time alerts about competitor events. `alert_type`, `severity`, `data` (JSONB), `is_read`. 24h dedup window prevents repeated alerts of the same type. Index on `(brand_id, is_read, created_at DESC)`. |
+| `competitive_reports` | Daily/weekly/monthly digest outputs. `report_type`, `content` (JSONB), `period_start/end`, `email_sent`, `email_sent_at`. |
+| `competitor_digest_preferences` | Per-brand digest settings. UNIQUE(brand_id). `digest_frequency` (`daily \| weekly \| monthly`), `email_enabled`, `in_app_enabled`, `categories` (TEXT[]), `alert_types` (TEXT[]). |
+
+### Scoring dimensions (6-dimension model)
+
+| Dimension | Weight | Source |
+|-----------|--------|--------|
+| `sentiment` | 25 | Category-relative avg rating / sentiment mix (cohort ≥ 5) |
+| `marketShare` | 20 | Share of feedback volume within category (cohort ≥ 5) |
+| `pricing` | 15 | Proximity to category median price |
+| `featureCoverage` | 15 | Distinct feedback categories covered vs category max |
+| `influencerReach` | 10 | Approved influencer posts tagging brand |
+| `consumerLoyalty` | 15 | Repeat-feedback ratio (proxy — real CRM data unavailable) |
+
+Privacy: dimensions with cohort < 5 return `null` and are excluded from denominator (normalise upward). If effective weight < 40, no score is persisted.
+
+---
+
+## Migration 011 — Deals/Community FK CASCADE Hardening (19 new FKs)
+
+Applied via `POST /api/admin/run-migration-011`. Prerequisite: migration 010.
+
+Migration 009 created deals/community tables with raw `TEXT` user/entity columns and no FK constraints, leaving rows orphaned on account deletion (GDPR Art. 17 violation). Migration 011:
+
+1. Cleans up pre-existing orphan rows (DELETE for required columns, NULL for optional columns).
+2. Adds `ON DELETE CASCADE` FKs on all user references (consumer content deleted with account).
+3. Adds `ON DELETE SET NULL` FKs on optional staff/admin references (audit history preserved).
+4. Adds `ON DELETE CASCADE` FKs on entity references so deleting a deal/post cascades votes/saves/comments.
+
+| Table | Column | FK type |
+|-------|--------|---------|
+| `deals` | `brand_id` | CASCADE → users |
+| `community_deals_posts` | `author_id` | CASCADE → users |
+| `community_deals_posts` | `reviewed_by` | SET NULL → users |
+| `community_deals_post_votes` | `user_id` | CASCADE → users |
+| `community_deals_post_votes` | `post_id` | CASCADE → community_deals_posts |
+| `community_deals_post_saves` | `user_id` | CASCADE → users |
+| `community_deals_post_saves` | `post_id` | CASCADE → community_deals_posts |
+| `community_deals_comments` | `author_id` | CASCADE → users |
+| `community_deals_comments` | `post_id` | CASCADE → community_deals_posts |
+| `community_deals_comment_votes` | `user_id` | CASCADE → users |
+| `community_deals_comment_votes` | `comment_id` | CASCADE → community_deals_comments |
+| `deal_saves` | `user_id` | CASCADE → users |
+| `deal_saves` | `deal_id` | CASCADE → deals |
+| `deal_redemptions` | `consumer_id` | CASCADE → users |
+| `deal_redemptions` | `deal_id` | CASCADE → deals |
+| `community_deals_flags` | `reporter_id` | CASCADE → users |
+| `community_deals_flags` | `reviewed_by` | SET NULL → users |
+| `community_deals_flags` | `post_id` | CASCADE (when content_type='post') |
+| `community_deals_flags` | `comment_id` | CASCADE (when content_type='comment') |
+
+---
+
+## Migration 012 — DSAR Requests (1 new table)
+
+Applied via `POST /api/admin/run-migration-012`. Prerequisite: migration 011.
+
+### `dsar_requests`
+
+Data Subject Access Request tracking. One row per consumer request. FK CASCADE → users (account deletion removes all DSAR records).
+
+Columns: `id` (UUID PK), `consumer_id` (TEXT → users CASCADE), `status` (`'otp_sent' \| 'generating' \| 'completed' \| 'expired' \| 'failed'`), `otp_hash` (TEXT — bcrypt hash of 6-digit OTP), `otp_expires_at` (TIMESTAMP), `otp_attempts` (INTEGER default 0), `max_otp_attempts` (INTEGER default 3), `pdf_url` (TEXT — Vercel Blob URL, set when completed), `pdf_generated_at` (TIMESTAMP), `email_sent_at` (TIMESTAMP), `expires_at` (TIMESTAMP — 7 days after generation), `ip_address` (TEXT), `user_agent` (TEXT), `created_at`, `updated_at`
+
+Indexes:
+- `(consumer_id, created_at DESC)` — fast lookup of latest request per consumer (rate limit check)
+- `(status, created_at)` — cleanup cron query
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`

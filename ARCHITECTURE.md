@@ -1,6 +1,6 @@
 # Earn4Insights — Technical Architecture Document
 
-> **Version:** April 2026 v4 (authoritative — reflects all phases through Deals Discovery + Community Platform + Admin Role Fix + Admin Sidebar Nav)
+> **Version:** April 2026 v6 (authoritative — reflects all phases through Competitive Intelligence Dashboard + DSAR System)
 > **Stack:** Next.js 15 · TypeScript (strict) · Drizzle ORM · Neon PostgreSQL · NextAuth v5 · Pusher · OpenAI · Resend · Twilio · Vercel Blob · Vercel
 
 ---
@@ -19,6 +19,8 @@
 10. [Personalization & Signal Engine](#10-personalization--signal-engine)
 11. [ICP Scoring System](#11-icp-scoring-system)
 12. [Influencers Adda](#12-influencers-adda)
+12a. [Razorpay Payment Integration](#12a-razorpay-payment-integration)
+12b. [Competitive Intelligence Dashboard](#12b-competitive-intelligence-dashboard)
 13. [Rankings System](#13-rankings-system)
 14. [Notification & Alert System](#14-notification--alert-system)
 15. [Social Listening System](#15-social-listening-system)
@@ -250,6 +252,35 @@ Middleware excludes `/api` routes entirely — cron routes handle their own auth
 | `deal_saves` | Consumer saved deals. UNIQUE `(deal_id, user_id)`. |
 | `deal_redemptions` | Deal redemption events. Awards 10 pts per redemption. |
 | `community_deals_flags` | Spam/fraud flags on posts and comments. Auto-hide at ≥ 5 flags. |
+
+### Deals/Community FK CASCADE hardening (migration 011 — April 2026)
+
+Migration 009 created tables with raw `TEXT` user/entity columns — no FK constraints, leaving rows orphaned on deletion (GDPR Art. 17 violation). Migration 011 adds 19 FKs:
+- `ON DELETE CASCADE` on all `user_id` / `author_id` / `consumer_id` / `reporter_id` columns → rows deleted with account
+- `ON DELETE SET NULL` on optional `reviewed_by` columns → audit history preserved
+- `ON DELETE CASCADE` on entity columns (`post_id`, `comment_id`, `deal_id`) → votes/saves/comments cascade with parent
+
+### Competitive Intelligence tables (migration 010 — April 2026)
+
+| Table | Purpose |
+|-------|---------|
+| `competitor_profiles` | Brands track competitors (on-platform or off-platform). Partial UNIQUE per brand. |
+| `competitor_products` | Competitor products with pricing, features JSONB, positioning. |
+| `competitor_price_history` | Append-only price log. Index `(competitor_product_id, recorded_at DESC)`. |
+| `competitive_insights` | AI/system insights per brand. 3 AI insights/brand/day cap. |
+| `competitive_benchmarks` | Per-metric brand vs category stats with percentile and competitor_values JSONB. |
+| `competitive_scores` | 0-100 composite score per `(brand_id, category)`. UNIQUE constraint. Not written if effective weight < 40. |
+| `competitor_alerts` | Real-time competitive event alerts. 24h dedup window before insert. |
+| `competitive_reports` | Daily/weekly digest outputs with `email_sent` tracking. |
+| `competitor_digest_preferences` | Per-brand digest settings (frequency, channels, alert filters). UNIQUE(brand_id). |
+
+### DSAR Requests table (migration 012 — April 2026)
+
+| Table | Purpose |
+|-------|---------|
+| `dsar_requests` | GDPR Art. 15 data access request tracking. OTP hash, PDF URL, TTL, status lifecycle. FK CASCADE → users. |
+
+Status lifecycle: `otp_sent → generating → completed → expired` (or `failed` on error).
 
 ---
 
@@ -696,6 +727,104 @@ NEXT_PUBLIC_RAZORPAY_KEY_ID=   # browser-safe
 
 ---
 
+## 12b. Competitive Intelligence Dashboard
+
+Brand-facing competitive monitoring system. 9 new tables (Migration 010). 6-dimension scoring engine, AI insight generation, alert detection, email digests. 5 cron jobs.
+
+### Architecture
+
+All routes under `/api/brand/competitive-intelligence/` share a common `_auth.ts` helper that validates session + brand role. Ownership failures return **404** (not 403) to prevent competitor existence leakage.
+
+### 6-Dimension Scoring Model
+
+```
+Dimension         Weight   Source
+──────────────────────────────────────────────────────────────────────
+sentiment           25     Category-relative avg rating (cohort ≥ 5)
+marketShare         20     Share of feedback volume in category (cohort ≥ 5)
+pricing             15     Proximity to category median price
+featureCoverage     15     Distinct feedback categories covered vs category max
+influencerReach     10     Approved influencer posts tagging brand
+consumerLoyalty     15     Repeat-feedback ratio (proxy metric)
+```
+
+**Privacy:** Dimensions with cohort < MIN_COHORT_SIZE (5) return `null` from repo; weight excluded from denominator (normalise upward pattern). If effective weight < 40 after exclusions, no score row written — returns `{ score: null, reason: 'insufficient_data' }`.
+
+**Trend:** `improving | stable | declining` based on delta vs previous score (threshold: ±3 pts).
+
+### Services
+
+| Service | File | Responsibility |
+|---------|------|---------------|
+| `competitiveScoringService` | `src/server/competitiveScoringService.ts` | 6-dimension scoring, benchmark writes, rank computation |
+| `competitiveAlertService` | `src/server/competitiveAlertService.ts` | 10 alert detectors, 24h dedup window |
+| `competitiveAIService` | `src/server/competitiveAIService.ts` | GPT-4o-mini (daily) / GPT-4o (weekly) insight generation; Zod-validated JSON; 3 insights/brand/day cap |
+| `competitiveEmailService` | `src/server/competitiveEmailService.ts` | Resend HTML email templates for daily digest + weekly summary |
+| `competitiveIntelligenceService` | `src/server/competitiveIntelligenceService.ts` | Orchestrator: dashboard, digest, weekly report, score enrichment |
+
+### Alert Detectors (10 types)
+
+Detected by `competitiveAlertService`. All fire at most once per 24h per brand+type:
+
+`price_drop`, `price_surge`, `sentiment_drop`, `sentiment_surge`, `new_competitor`, `market_share_loss`, `market_share_gain`, `feature_gap`, `influencer_surge`, `consumer_switching`
+
+`consumer_switching` requires 3 conditions AND cohort ≥ 5 — guards against false alerts from small samples.
+
+### Cron Schedule (5 routes)
+
+| Time (UTC) | Route | Purpose |
+|------------|-------|---------|
+| 06:30 | `/api/cron/competitive/daily-digest` | Build daily digest per brand → persist `competitive_reports` |
+| 07:30 | `/api/cron/competitive/detect-alerts` | Run all 10 detectors → write `competitor_alerts` (24h dedup) |
+| 08:00 | `/api/cron/competitive/recompute-scores` | Recompute 6-dimension scores + benchmarks for all brands |
+| Mon 06:00 | `/api/cron/competitive/weekly-report` | GPT-4o weekly strategic summary per brand |
+| 09:00 | `/api/cron/competitive/send-reports` | Send pending reports via Resend; sets `email_sent=true` |
+
+### Key API Routes
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/api/brand/competitive-intelligence/dashboard` | Full dashboard data (scores, insights, alerts, benchmarks) |
+| GET/POST | `/api/brand/competitive-intelligence/competitors` | List/add competitor profiles |
+| GET/PATCH/DELETE | `/api/brand/competitive-intelligence/competitors/[id]` | Manage competitor (404 on non-ownership) |
+| GET/POST | `/api/brand/competitive-intelligence/competitors/[id]/products` | Competitor products |
+| GET/PATCH/DELETE | `/api/brand/competitive-intelligence/competitors/[id]/products/[pid]` | Single product |
+| GET | `/api/brand/competitive-intelligence/competitors/[id]/products/[pid]/price-history` | Price history |
+| GET | `/api/brand/competitive-intelligence/competitors/suggested` | System-suggested competitors |
+| GET | `/api/brand/competitive-intelligence/insights` | List insights (unread first) |
+| POST | `/api/brand/competitive-intelligence/insights/generate` | On-demand AI insight generation (rate limited) |
+| GET/DELETE | `/api/brand/competitive-intelligence/insights/[id]` | Read/dismiss insight |
+| GET | `/api/brand/competitive-intelligence/alerts` | List unread alerts |
+| PATCH | `/api/brand/competitive-intelligence/alerts/[id]` | Mark alert as read |
+| GET | `/api/brand/competitive-intelligence/benchmarks` | Category benchmarks |
+| GET | `/api/brand/competitive-intelligence/scores` | Own competitive scores across categories |
+| POST | `/api/brand/competitive-intelligence/scores/recompute` | On-demand score recompute (rate limited) |
+| GET | `/api/brand/competitive-intelligence/rankings/[category]` | Category leaderboard |
+| GET/POST | `/api/brand/competitive-intelligence/reports` | Report history / manual report trigger |
+| POST | `/api/brand/competitive-intelligence/reports/weekly` | Force weekly report generation |
+| GET/PATCH | `/api/brand/competitive-intelligence/digest-preferences` | Get/update digest settings |
+
+### UI Pages + Components
+
+Pages at `/dashboard/competitive-intelligence/`:
+- `page.tsx` — Main dashboard: `ScoreCard` grid, `AlertFeed`, `InsightsFeed`, category tabs with `DimensionBreakdown`, `RankingsTable`, `BenchmarksPanel`
+- `competitors/page.tsx` — Competitor list + `AddCompetitorDialog`
+- `competitors/[id]/page.tsx` — Competitor detail + side-by-side comparison
+- `reports/page.tsx` — Report history with typed content viewer dialog
+- `settings/page.tsx` — Digest preferences (frequency, channels, categories, alert filters)
+
+7 shared components in `_components/`: `ScoreCard`, `AlertFeed`, `InsightsFeed`, `DimensionBreakdown`, `RankingsTable`, `BenchmarksPanel`, `AddCompetitorDialog`
+
+### Rate Limiting (in-memory LRU)
+
+| Limiter | Cap | Window |
+|---------|-----|--------|
+| `competitiveRead` | Dashboard + listing reads | per brand |
+| `competitiveRecompute` | `/scores/recompute` | per brand |
+| `competitiveAiGenerate` | `/insights/generate` | per brand |
+
+---
+
 ## 13. Rankings System
 
 Weekly product rankings computed from:
@@ -870,10 +999,40 @@ AI-powered relevance filter (`src/server/socialRelevanceFilter.ts`) classifies m
 | GDPR Art. 6 — lawful basis | `legalBasis` stored per consent record |
 | GDPR Art. 7 — proof of consent | IP, UA, policy version, timestamp stored |
 | GDPR Art. 9 — sensitive data | Separate encrypted table; explicit consent required |
-| GDPR Art. 15 — right of access | `/api/consumer/my-data` exports full data as JSON |
-| GDPR Art. 17 — right to erasure | `DELETE /api/consumer/account` — immediate signal deletion, 30-day grace for sensitive attributes |
+| GDPR Art. 15 — right of access (JSON) | `/api/consumer/my-data` — session-authenticated, instant JSON export |
+| GDPR Art. 15 — right of access (DSAR) | Full PDF report with OTP verification, Vercel Blob storage, 7-day TTL, 30-day rate limit |
+| GDPR Art. 17 — right to erasure | `DELETE /api/consumer/account` — immediate signal deletion, 30-day grace for sensitive attributes; migration 011 adds FK CASCADE on deals/community tables |
 | GDPR Art. 5(1)(e) — storage limitation | `anonymizeExpiredConsentMetadata()` nulls IP/UA after 3 years |
 | DPDP §6 — notice + consent | Granular consent UI; 12 categories across 3 tiers |
+
+### DSAR System (GDPR Art. 15)
+
+```
+Consumer submits DSAR request (POST /api/consumer/dsar/request)
+        ↓
+OTP generated (6-digit, bcrypt-hashed, 15-min TTL, max 3 attempts)
+OTP emailed via Resend
+dsar_requests row created (status: 'otp_sent')
+        ↓
+Consumer verifies OTP (POST /api/consumer/dsar/verify)
+        ↓
+status: 'generating' → collectAllData() gathers all tables
+buildPdf() via pdfkit (streamed in-memory, A4, 9 sections)
+PDF uploaded to Vercel Blob (dsar/{requestId}/data-report.pdf)
+status: 'completed', pdf_url set, expires_at = NOW() + 7 days
+Delivery email sent (PDF attached if < 10 MB, download link always included)
+        ↓
+Consumer downloads via GET /api/consumer/dsar/download/[requestId]
+  or checks status via GET /api/consumer/dsar/status
+        ↓
+Cron: /api/jobs/dsar-cleanup (03:00 UTC)
+  → Vercel Blob del() + status='expired' for requests past expires_at
+  → status='expired' for stale otp_sent rows (> 1h since created)
+```
+
+Rate limit: 1 completed/active request per 30 days per consumer. If an unexpired `otp_sent` request exists, returns the same `requestId` so the user can retry OTP without starting over.
+
+PDF sections: Account Info, Consent Records, Feedback, Surveys, Points & Rewards, Community Activity, Influencer Activity, Payment History, Legal Rights.
 
 ### Erasure flow
 
@@ -925,8 +1084,14 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | 02:00 | `/api/cron/process-content-reviews` | SLA reminders (75%/90%) + auto-approve or escalate at 100% SLA. Externally triggered every 2h via cron-job.org |
 | 04:00 | `/api/cron/community-deals-moderation` | Auto-approve pending community posts past time window; auto-hide posts with ≥ 5 flags |
 | 05:00 | `/api/cron/deals-expiry` | Mark active deals with `valid_until < NOW()` as `expired` |
+| 06:30 | `/api/cron/competitive/daily-digest` | Build daily competitive digest per brand; persist `competitive_reports` row |
+| 07:30 | `/api/cron/competitive/detect-alerts` | Run 10 alert detectors across all brands with 24h dedup |
+| 08:00 | `/api/cron/competitive/recompute-scores` | Recompute 6-dimension competitive scores + benchmarks for all brands |
+| Mon 06:00 | `/api/cron/competitive/weekly-report` | GPT-4o weekly strategic summary per brand; queue email |
+| 09:00 | `/api/cron/competitive/send-reports` | Send pending competitive reports via Resend; set `email_sent=true` |
+| 03:00 | `/api/jobs/dsar-cleanup` | Delete expired DSAR PDFs from Vercel Blob; expire stale OTP-sent requests |
 
-**vercel.json** defines all **20 cron entries** with exact schedules.
+**vercel.json** defines all **26 cron entries** with exact schedules.
 
 ---
 
@@ -1025,6 +1190,9 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | POST | `/run-migration-007` | Campaign Marketplace (3 ALTERs + campaign_applications) |
 | POST | `/run-migration-008` | Razorpay Payment (4 tables) |
 | POST | `/run-migration-009` | Deals + Community (9 tables) |
+| POST | `/run-migration-010` | Competitive Intelligence (9 tables) |
+| POST | `/run-migration-011` | Deals/Community FK CASCADE hardening (19 FKs, GDPR Art. 17) |
+| POST | `/run-migration-012` | DSAR Requests table (GDPR Art. 15) |
 | GET | `/content/pending` | All pending posts (admin view) |
 | POST | `/content/[id]/approve` | Admin approve (bypasses brand ownership check) |
 | POST | `/content/[id]/reject` | Admin reject with reason (min 10 chars) |
@@ -1033,6 +1201,39 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | POST | `/community-deals/moderate` | Approve/reject/remove community post |
 
 All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
+
+### Competitive Intelligence APIs (`/api/brand/competitive-intelligence/`)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/dashboard` | Full dashboard (scores, insights, alerts, benchmarks) |
+| GET/POST | `/competitors` | List/add competitor profiles |
+| GET/PATCH/DELETE | `/competitors/[id]` | Manage competitor (404 on non-ownership) |
+| GET/POST | `/competitors/[id]/products` | Competitor products |
+| GET/PATCH/DELETE | `/competitors/[id]/products/[pid]` | Single competitor product |
+| GET | `/competitors/[id]/products/[pid]/price-history` | Append-only price log |
+| GET | `/competitors/suggested` | System-suggested competitors |
+| GET | `/insights` | Insights list (unread first) |
+| POST | `/insights/generate` | On-demand AI insight (rate limited; 3/brand/day cap) |
+| GET/DELETE | `/insights/[id]` | Read/dismiss insight |
+| GET | `/alerts` | Unread competitor alerts |
+| PATCH | `/alerts/[id]` | Mark alert read |
+| GET | `/benchmarks` | Category benchmarks |
+| GET | `/scores` | Own scores across categories |
+| POST | `/scores/recompute` | On-demand score recompute (rate limited) |
+| GET | `/rankings/[category]` | Category leaderboard |
+| GET/POST | `/reports` | Report history / manual trigger |
+| POST | `/reports/weekly` | Force weekly report |
+| GET/PATCH | `/digest-preferences` | Get/update digest settings |
+
+### DSAR APIs (`/api/consumer/dsar/`)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/request` | Initiate DSAR — creates request, sends OTP email, returns `requestId` |
+| POST | `/verify` | Verify 6-digit OTP — generates PDF, uploads to Vercel Blob, emails consumer |
+| GET | `/status` | Check current DSAR request status (most recent active request) |
+| GET | `/download/[requestId]` | Stream PDF from Vercel Blob (auth + ownership checked, TTL checked) |
 
 ### Brand Content Review APIs (`/api/brand/content/`)
 

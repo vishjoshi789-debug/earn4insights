@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (v5 — Deals Discovery + Community Platform + Admin Sidebar Nav). Read at the start of every session.
+> Last updated: April 2026 (v6 — Competitive Intelligence Dashboard + DSAR System). Read at the start of every session.
 
 ## Project Overview
 
@@ -80,7 +80,7 @@ await pgClient.unsafe(sql)
 | Influencers Adda (11 tables, full marketplace) | ✅ COMPLETE |
 | TypeScript Build Fixes (12 errors resolved) | ✅ COMPLETE |
 | Migration Route Fix (SQL inlined) | ✅ COMPLETE |
-| Cron Hardening (15 total cron entries) | ✅ COMPLETE |
+| Cron Hardening (26 total cron entries) | ✅ COMPLETE |
 | Landing Page + ProductTour update | ✅ COMPLETE |
 | Real-Time Connection Layer (Pusher, 6 tables, 23 events) | ✅ COMPLETE |
 | Influencer Earnings Dashboard (multi-currency, audience analytics) | ✅ COMPLETE |
@@ -91,6 +91,8 @@ await pgClient.unsafe(sql)
 | Razorpay Payment Integration (escrow, payouts, consumer rewards, admin queue) | ✅ COMPLETE |
 | Deals Discovery + Community Platform (9 tables, Reddit-style feed, brand deals, moderation) | ✅ COMPLETE |
 | Admin Role Fix + Admin Sidebar Nav (OnboardingGuard bypass + 7 admin nav items) | ✅ COMPLETE |
+| Competitive Intelligence Dashboard (9 tables, 6-dimension scoring, AI insights, alert detection, 5 cron jobs) | ✅ COMPLETE |
+| DSAR System — GDPR Art. 15 (OTP verification, PDF generation via pdfkit + Vercel Blob, 30-day rate limit) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -102,8 +104,9 @@ await pgClient.unsafe(sql)
 7. `POST /api/admin/run-migration-007` — Campaign Marketplace (3 ALTERs on `influencer_campaigns` + `campaign_applications` table)
 8. `POST /api/admin/run-migration-008` — Razorpay Payment (4 tables: `razorpay_orders`, `campaign_payments`, `payout_accounts`, `reward_redemptions`)
 9. `POST /api/admin/run-migration-009` — Deals + Community (9 tables: `deals`, `community_deals_posts`, `community_deals_post_votes`, `community_deals_post_saves`, `community_deals_comments`, `community_deals_comment_votes`, `deal_saves`, `deal_redemptions`, `community_deals_flags`)
-10. `POST /api/admin/run-migration-011` — Deals/Community FK CASCADE hardening (GDPR Art. 17 — adds 19 FKs to migration 009 tables; cleans orphans first; CASCADE on user content, SET NULL on staff/audit refs)
-11. `POST /api/admin/run-migration-012` — DSAR Requests table (GDPR Art. 15 — `dsar_requests` with FK CASCADE → users)
+10. `POST /api/admin/run-migration-010` — Competitive Intelligence (9 tables: `competitor_profiles`, `competitor_products`, `competitor_price_history`, `competitive_insights`, `competitive_benchmarks`, `competitive_scores`, `competitor_alerts`, `competitive_reports`, `competitor_digest_preferences`)
+11. `POST /api/admin/run-migration-011` — Deals/Community FK CASCADE hardening (GDPR Art. 17 — adds 19 FKs to migration 009 tables; cleans orphans first; CASCADE on user content, SET NULL on staff/audit refs)
+12. `POST /api/admin/run-migration-012` — DSAR Requests table (GDPR Art. 15 — `dsar_requests` with FK CASCADE → users)
 
 ---
 
@@ -194,6 +197,18 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Deal redemption points: 10 pts flat** | Every deal redemption (promo copy or redirect click) awards 10 points regardless of deal value. Simple and predictable for consumers. |
 | **Admin role skips OnboardingGuard** | `(session.user.role as string) === 'admin'` cast required — `UserRole` type only includes `'brand'|'consumer'`. Runtime DB value is `'admin'`. |
 | **Admin sidebar uses role-specific nav items** | `DashboardShell` `MenuItem.role` now supports `'admin'`. Admin sees 7 `/admin/*` links + 8 shared tabs; no consumer/brand noise. |
+| **CI routes return 404 (not 403) on ownership failures** | Prevents competitor existence leakage — brands cannot infer whether a competitor profile exists for another brand. |
+| **MIN_COHORT_SIZE=5 enforced at CI repo level** | Same privacy floor as ICP scoring. Repo helpers return `null` (never 0) below the floor — callers must handle null explicitly. |
+| **CI dimension scores normalise upward** | Dimensions below cohort threshold are excluded from the denominator, not zeroed. Same pattern as ICP scoring — brands not penalised for sparse data. |
+| **Score not persisted if effective weight < 40** | Below 40% effective weight, the score is too driven by missing data to be meaningful. Returns `{ score: null, reason: 'insufficient_data' }` — no row written. |
+| **Competitive alert 24h dedup window** | Alert detector checks for existing alerts of the same type within 24h before firing. Prevents alert flood from recurring competitive conditions. |
+| **AI insights cap: 3 per brand per day** | Prevents runaway GPT-4o cost. `competitiveAIService` checks count before generating; 24h idempotency key per brand + insight type. |
+| **gpt-4o-mini for daily digest, gpt-4o for weekly report** | Cost optimisation. Daily summaries don't need full reasoning capacity; weekly strategic reports do. |
+| **DSAR requires OTP identity verification** | 6-digit OTP emailed via Resend, bcrypt-hashed in DB, 15-minute TTL, max 3 attempts. Prevents unauthenticated data dumps — `/api/consumer/my-data` (JSON) requires only session; DSAR PDF requires OTP. |
+| **DSAR PDF stored in Vercel Blob, not returned inline** | PDFs can be several MB. Blob storage with a 7-day TTL URL decouples generation from download and allows emailing the link. |
+| **DSAR PDF TTL: 7 days** | Balances access window with storage cost. `dsar-cleanup` cron deletes expired blobs from Vercel Blob and sets `status='expired'` in DB. |
+| **DSAR rate limit: 1 request per 30 days** | Prevents abuse of expensive PDF generation. If an active OTP-sent request exists and OTP is still valid, the existing `requestId` is returned so the user can retry without starting over. |
+| **DSAR PDF attached to delivery email if < 10 MB** | Convenience — user gets the PDF directly in their inbox. Falls back to download link only if PDF exceeds 10 MB. |
 
 ---
 
@@ -223,7 +238,7 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Instagram OAuth** | Table + plumbing exist; needs Facebook App Review |
 | **Social interest inference** | `POST /api/consumer/social/sync` built — merges `inferredInterests` into `userProfiles.socialSignals`; real provider API calls pending App Review / OAuth setup |
 | **`icp_match_scores` orphan cleanup** | Fixed — `process-deletions` cron now deletes orphaned rows on account deletion |
-| **DSAR flow** | Full decrypted sensitive data export requires identity verification; out of scope |
+| **DSAR system** | ✅ DONE — OTP verification, pdfkit PDF, Vercel Blob, 7-day TTL, 30-day rate limit, `dsar-cleanup` cron |
 | **Signal snapshots in process-deletions cron** | Admin-deleted profiles may leave orphaned snapshots |
 
 ### Deals & Community
@@ -234,13 +249,23 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Brand deal analytics** | `/api/brand/deals/[id]/analytics` route exists; full analytics dashboard page not yet built |
 | **Wise / PayPal payout stubs** | `wiseService.ts` and paypal payout path are stubs pending API credentials |
 
+### Competitive Intelligence
+| Item | Notes |
+|------|-------|
+| **Real competitor data ingestion** | `competitor_products` and `competitor_price_history` populated manually or via brand input; no automated scraping or third-party data feed connected |
+| **Market share dimension** | Computed from relative feedback volume within category — proxy metric only; actual GMV/unit-share not available |
+| **Consumer-switching alert cohort gate** | `consumer_switching` alert type uses 3-condition check + cohort ≥ 5; conditions without sufficient data silently skip the check (won't fire false alerts) |
+
 ---
 
 ## Reference Docs
 
-- **`ARCHITECTURE.md`** — Full technical architecture (authoritative, 1000 lines)
-- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–009)
+- **`ARCHITECTURE.md`** — Full technical architecture (authoritative)
+- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–012)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
 - **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, @ tags, file map
 - **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (31 events), notification/presence architecture, file map
-- **`docs/CRON_JOBS.md`** — Full cron schedule (20 entries), auth pattern, batch size notes
+- **`docs/FEATURE4_COMPETITIVE_INTELLIGENCE.md`** — 9 tables, 6-dimension scoring, AI insights, alert detection, email digests, 5 crons, file map
+- **`docs/FEATURE5_DEALS_COMMUNITY.md`** — 9 deals/community tables, FK CASCADE hardening (migration 011), moderation, file map
+- **`docs/FEATURE6_DSAR.md`** — DSAR table, OTP flow, PDF generation, Vercel Blob, cleanup cron, file map
+- **`docs/CRON_JOBS.md`** — Full cron schedule (26 entries), auth pattern, batch size notes
