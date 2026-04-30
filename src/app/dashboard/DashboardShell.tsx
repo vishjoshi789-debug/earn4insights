@@ -280,9 +280,6 @@ export default function DashboardShell({
                 Earn4Insights
               </span>
             </div>
-            <span className="text-[10px] text-muted-foreground leading-tight pl-1">
-              Real Voices. Measurable Intelligence.
-            </span>
           </div>
         </SidebarHeader>
 

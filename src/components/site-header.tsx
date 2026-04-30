@@ -57,9 +57,6 @@ export function SiteHeader() {
                     <Logo size={48} />
                     <span className="font-bold font-headline text-lg">Earn4Insights</span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-normal leading-tight pl-1">
-                    Real Voices. Measurable Intelligence.
-                  </span>
                 </div>
               </SheetTitle>
             </SheetHeader>
@@ -116,9 +113,6 @@ export function SiteHeader() {
           <div className="flex min-w-0 flex-col">
             <span className="truncate font-bold font-headline text-sm md:text-lg bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all leading-tight">
               Earn4Insights
-            </span>
-            <span className="hidden sm:block text-[9px] text-muted-foreground leading-tight">
-              Real Voices. Measurable Intelligence.
             </span>
           </div>
         </Link>

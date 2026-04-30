@@ -53,8 +53,8 @@ export default function ForgotPasswordPage() {
           <div className="flex flex-col items-center gap-1">
             <Logo size={56} />
             <span className="font-headline font-bold text-lg">Earn4Insights</span>
-            <span className="text-[10px] text-muted-foreground">
-              Real Voices. Measurable Intelligence.
+            <span className="text-[10px] text-muted-foreground text-center max-w-[16rem] leading-tight">
+              The Intelligence Operating System for Brands, Consumers and Influencers
             </span>
           </div>
           <CardTitle className="text-2xl font-bold text-center">Reset your password</CardTitle>

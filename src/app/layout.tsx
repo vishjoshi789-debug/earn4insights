@@ -22,15 +22,15 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Earn4Insights — Real Voices. Measurable Intelligence.',
-  description: 'Where consumer voice powers better products. Multimodal and multilingual feedback transformed into real-time product intelligence — helping brands build smarter and consumers shape the products they use.',
+  title: 'Earn4Insights — Intelligence OS for Brands, Consumers & Influencers',
+  description: 'The Intelligence Operating System for Brands, Consumers and Influencers.',
   icons: {
     icon: '/logo.png',
     apple: '/logo.png',
   },
   openGraph: {
-    title: 'Earn4Insights — Real Voices. Measurable Intelligence.',
-    description: 'Where consumer voice powers better products. Multimodal feedback, multilingual intelligence, real-time analytics and personalized recommendations.',
+    title: 'Earn4Insights — Intelligence OS for Brands, Consumers & Influencers',
+    description: 'The Intelligence Operating System for Brands, Consumers and Influencers.',
     images: [{ url: '/logo.png', width: 512, height: 512, alt: 'Earn4Insights' }],
   },
 }

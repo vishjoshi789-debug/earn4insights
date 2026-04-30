@@ -118,7 +118,7 @@ function buildResetEmailHTML(name: string, resetUrl: string): string {
         <div style="max-width: 600px; margin: 40px auto; padding: 0;">
           <div style="background: #18181b; color: white; padding: 24px 32px; border-radius: 12px 12px 0 0; text-align: center;">
             <h1 style="margin: 0; font-size: 22px; font-weight: 700;">Earn4Insights</h1>
-            <p style="margin: 4px 0 0; font-size: 12px; opacity: 0.7;">Real Voices. Measurable Intelligence.</p>
+            <p style="margin: 4px 0 0; font-size: 12px; opacity: 0.7;">The Intelligence Operating System for Brands, Consumers and Influencers</p>
           </div>
           <div style="background: #ffffff; padding: 32px; border-radius: 0 0 12px 12px; border: 1px solid #e4e4e7; border-top: none;">
             <h2 style="margin: 0 0 16px; font-size: 20px;">Password Reset</h2>
