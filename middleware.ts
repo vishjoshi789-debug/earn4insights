@@ -2,84 +2,102 @@ import { auth } from "@/lib/auth/auth.config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
+const PUBLIC_PATHS = new Set<string>([
+  '/',
+  '/login',
+  '/signup',
+  '/onboarding',
+  '/about-us',
+  '/privacy-policy',
+  '/terms-of-service',
+  '/refund-policy',
+  '/contact-us',
+  '/transparency',
+  '/rankings',
+  '/forgot-password',
+  '/favicon.ico',
+])
+
+const PUBLIC_PREFIXES: string[] = [
+  '/_next/',
+  '/images/',
+  '/fonts/',
+  '/api/auth/',
+  '/api/webhooks/',
+  '/api/cron/',
+  '/api/jobs/',
+]
+
+const PUBLIC_API_ADMIN_PREFIXES: string[] = [
+  '/api/admin/run-migration-',
+]
+
+function isPublic(pathname: string): boolean {
+  if (PUBLIC_PATHS.has(pathname)) return true
+  if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return true
+  if (PUBLIC_API_ADMIN_PREFIXES.some((p) => pathname.startsWith(p))) return true
+  return false
+}
+
+function isSafeCallbackUrl(value: string | null | undefined): value is string {
+  if (!value) return false
+  if (!value.startsWith('/')) return false
+  if (value.startsWith('//')) return false
+  if (value.startsWith('/login') || value.startsWith('/signup')) return false
+  return true
+}
+
 export default auth((req: NextRequest & { auth: any }) => {
   const { nextUrl } = req
+  const pathname = nextUrl.pathname
   const isLoggedIn = !!req.auth
+  const role = req.auth?.user?.role as string | undefined
 
-  // Define route patterns
-  const isAuthPage = nextUrl.pathname.startsWith('/login') || nextUrl.pathname.startsWith('/signup')
-  const isBrandRoute = nextUrl.pathname.startsWith('/dashboard')
-  const isAdminPage = nextUrl.pathname.startsWith('/admin')
-  const isConsumerRoute = nextUrl.pathname.startsWith('/surveys') || nextUrl.pathname.startsWith('/respond')
-  const isOnboardingRoute = nextUrl.pathname.startsWith('/onboarding')
-  const isSettingsRoute = nextUrl.pathname.startsWith('/settings')
-  const isPublicRoute = nextUrl.pathname.startsWith('/rankings') || 
-                        nextUrl.pathname.startsWith('/privacy-policy') ||
-                        nextUrl.pathname.startsWith('/terms-of-service') ||
-                        nextUrl.pathname === '/'
-
-  // Redirect logged-in users away from auth pages
-  if (isAuthPage && isLoggedIn) {
-    // First-time users will be redirected to onboarding by OnboardingGuard
-    const redirectUrl = '/dashboard'
-    return NextResponse.redirect(new URL(redirectUrl, nextUrl))
-  }
-
-  // Onboarding is consumer-only — redirect brands to their dashboard
-  if (isOnboardingRoute && isLoggedIn) {
-    if (req.auth?.user?.role === 'brand') {
-      return NextResponse.redirect(new URL('/dashboard', nextUrl))
+  if (pathname === '/login' || pathname === '/signup') {
+    if (isLoggedIn) {
+      const cb = nextUrl.searchParams.get('callbackUrl')
+      const target = isSafeCallbackUrl(cb) ? cb : '/dashboard'
+      return NextResponse.redirect(new URL(target, nextUrl))
     }
     return NextResponse.next()
   }
 
-  // Allow settings route for logged-in users
-  if (isSettingsRoute && isLoggedIn) {
-    return NextResponse.next()
-  }
-
-  // Protect admin pages — require login + admin role
-  if (isAdminPage) {
+  if (pathname.startsWith('/onboarding')) {
     if (!isLoggedIn) {
-      return NextResponse.redirect(new URL('/login', nextUrl))
+      const url = new URL('/login', nextUrl)
+      url.searchParams.set('callbackUrl', pathname + nextUrl.search)
+      return NextResponse.redirect(url)
     }
-    if (req.auth?.user?.role !== 'admin') {
+    if (role === 'brand') {
       return NextResponse.redirect(new URL('/dashboard', nextUrl))
     }
     return NextResponse.next()
   }
 
-  // Protect onboarding route from non-logged-in users
-  if (isOnboardingRoute && !isLoggedIn) {
-    return NextResponse.redirect(new URL('/login', nextUrl))
+  if (isPublic(pathname)) {
+    return NextResponse.next()
   }
 
-  // Protect brand routes
-  if (isBrandRoute && !isLoggedIn) {
-    return NextResponse.redirect(new URL('/login', nextUrl))
+  if (!isLoggedIn) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const url = new URL('/login', nextUrl)
+    url.searchParams.set('callbackUrl', pathname + nextUrl.search)
+    return NextResponse.redirect(url)
   }
 
-  // Both brands and consumers can access all /dashboard routes
-  // The dashboard page itself renders role-appropriate content
-
-  // Protect consumer routes (if any are protected)
-  if (isConsumerRoute && !isLoggedIn) {
-    return NextResponse.redirect(new URL('/login', nextUrl))
+  if (pathname.startsWith('/admin')) {
+    if (role !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', nextUrl))
+    }
   }
 
   return NextResponse.next()
 })
 
-// Configure which routes to run middleware on
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 }
