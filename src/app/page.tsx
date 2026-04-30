@@ -48,20 +48,31 @@ export default function HomePage() {
             <Image src="/logo.png" alt="Earn4Insights" width={96} height={96} className="rounded-2xl" priority />
           </div>
           <h1 className="text-balance text-foreground">
-            Where Consumer Voice Powers Better Products.
+            The Platform Where Brands, Consumers and Influencers Connect in Real Time
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed">
-            Multimodal and multilingual feedback transformed into real-time product intelligence — helping brands build smarter and consumers shape the products they use. Launch with confidence through personalized recommendations, live analytics, and structured rankings.
-          </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
-            <Button size="lg" asChild className="gap-2 bg-primary hover:bg-primary/90">
-              <Link href="/signup">
-                Get Started
+          <div className="mx-auto mt-6 max-w-2xl space-y-4 text-lg leading-relaxed text-muted-foreground">
+            <p>A hyper-personalized intelligence platform that connects all three — instantly.</p>
+            <p>Brands get real consumer intelligence tailored to their exact audience. Consumers earn rewards for their genuine voice and discover products made for them. Influencers monetize their authentic reach with campaigns matched to their profile.</p>
+            <p className="font-medium text-foreground">Everyone gets what they actually want — in real time, every time.</p>
+          </div>
+          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
+            <Button size="lg" asChild className="gap-2 bg-primary hover:bg-primary/90 w-full sm:w-auto">
+              <Link href="/signup?role=brand">
+                I&apos;m a Brand
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <Button size="lg" variant="outline" asChild className="border-primary/20 hover:bg-primary/5 hover:border-primary/40">
-              <Link href="/top-products">View Rankings</Link>
+            <Button size="lg" asChild className="gap-2 bg-accent hover:bg-accent/90 w-full sm:w-auto">
+              <Link href="/signup?role=consumer">
+                I&apos;m a Consumer
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button size="lg" asChild className="gap-2 bg-violet-600 hover:bg-violet-700 text-white w-full sm:w-auto">
+              <Link href="/signup?role=consumer">
+                I&apos;m an Influencer
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
           </div>
         </div>
