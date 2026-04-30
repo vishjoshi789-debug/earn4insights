@@ -204,16 +204,19 @@ export default function NotificationSettingsPage() {
     return '#'   // Instagram: pending App Review
   }
 
-  // Save WhatsApp preferences
-  async function saveWhatsApp() {
+  // Save WhatsApp preferences. Optional overrides let the toggle persist
+  // its new value immediately without waiting for state-update batching.
+  async function saveWhatsApp(opts?: { enabled?: boolean; phone?: string }) {
+    const enabledToSave = opts?.enabled ?? waEnabled
+    const phoneToSave = (opts?.phone ?? waPhone).trim() || null
     setSavingWa(true)
     try {
       const res = await fetch('/api/user/notification-settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          whatsappEnabled: waEnabled,
-          whatsappPhoneNumber: waPhone.trim() || null,
+          whatsappEnabled: enabledToSave,
+          whatsappPhoneNumber: phoneToSave,
         }),
       })
       if (!res.ok) {
@@ -374,8 +377,11 @@ export default function NotificationSettingsPage() {
             </div>
             <Switch
               checked={waEnabled}
-              disabled={!waPhone.trim() || phoneInvalid}
-              onCheckedChange={setWaEnabled}
+              disabled={!waPhone.trim() || phoneInvalid || savingWa}
+              onCheckedChange={(v) => {
+                setWaEnabled(v)
+                saveWhatsApp({ enabled: v })
+              }}
               aria-label="Enable WhatsApp notifications"
             />
           </div>
@@ -387,13 +393,15 @@ export default function NotificationSettingsPage() {
               <Input
                 id="wa-phone"
                 type="tel"
-                placeholder="+14155552671"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="+919876543210"
                 value={waPhone}
                 onChange={(e) => setWaPhone(e.target.value)}
                 className="font-mono text-sm"
               />
               <Button
-                onClick={saveWhatsApp}
+                onClick={() => saveWhatsApp()}
                 disabled={savingWa || phoneInvalid}
                 variant={waSaved ? 'default' : 'outline'}
                 className="shrink-0"
@@ -409,12 +417,21 @@ export default function NotificationSettingsPage() {
             </div>
             {phoneInvalid && (
               <p className="text-xs text-destructive">
-                Use international format, e.g. +14155552671
+                Use international format with your country code, no spaces or dashes.
+                Examples: <span className="font-mono">+91</span> India,
+                {' '}<span className="font-mono">+1</span> US/Canada,
+                {' '}<span className="font-mono">+44</span> UK,
+                {' '}<span className="font-mono">+971</span> UAE,
+                {' '}<span className="font-mono">+65</span> Singapore.
               </p>
             )}
             {!waPhone && (
               <p className="text-xs text-muted-foreground">
-                Enter your number in international format (include country code).
+                Start with <span className="font-mono">+</span> and your country code, then your number — e.g.
+                {' '}<span className="font-mono">+919876543210</span> (India),
+                {' '}<span className="font-mono">+14155552671</span> (US),
+                {' '}<span className="font-mono">+447911123456</span> (UK).
+                Save your number first — then the toggle above can be turned on.
               </p>
             )}
           </div>

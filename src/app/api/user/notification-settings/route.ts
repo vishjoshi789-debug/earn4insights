@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'Invalid phone number. Use international E.164 format, e.g. +14155552671',
+            'Invalid phone number. Use international E.164 format starting with + and your country code (e.g. +919876543210 for India, +14155552671 for US, +447911123456 for UK).',
         },
         { status: 400 },
       )
