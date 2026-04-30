@@ -82,7 +82,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   const progressSteps = [
     { id: 1, title: 'Welcome', description: 'Get started' },
     { id: 2, title: 'About You', description: 'Demographics' },
-    { id: 3, title: 'Preferences', description: 'Lifestyle & Goals' },
+    { id: 3, title: 'Goals & Lifestyle', description: 'Lifestyle & Goals' },
     { id: 4, title: 'Interests', description: 'Categories' }
   ]
 
@@ -212,7 +212,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
           <CardHeader className="text-center">
             <CardTitle className="text-3xl">Welcome to Earn4Insights! 🎉</CardTitle>
             <CardDescription className="text-lg mt-2">
-              Let's personalize your experience in just 2 quick steps
+              Tell us about yourself and we'll personalize everything for you
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
