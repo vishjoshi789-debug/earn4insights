@@ -218,7 +218,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-recommendations"]',
     title: '✨ For You',
-    description: 'Personalized product recommendations based on your interests and feedback history. The more you engage, the smarter it gets.',
+    description: 'Your hyper-personalized feed powered by your interests, behavior and feedback. Every deal and product shown here is specifically matched to your unique profile. No two feeds look the same.',
     role: 'consumer',
     position: 'right',
     icon: '✨',
@@ -226,7 +226,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-watchlist"]',
     title: '🔖 My Watchlist',
-    description: 'Follow products you love. Get notified when new reviews come in or their ranking changes — stay ahead of what\'s trending.',
+    description: 'Your personal tracker for products, deals and brands you care about. Save anything, then get instant alerts on price drops (coming soon), ranking changes and new reviews — always be first to know.',
     role: 'consumer',
     position: 'right',
     icon: '🔖',
@@ -309,14 +309,14 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-social"]',
     title: '🌐 Social Hub',
-    description: 'Connect with the community. Share your thoughts, follow trends, and see what others are saying about products.',
+    description: 'Connect your social accounts to supercharge your personalization. Link LinkedIn or YouTube — Instagram is rolling out soon — and we\'ll learn your real interests, making every recommendation, deal and insight more relevant to you.',
     position: 'right',
     icon: '🌐',
   },
   {
     target: '[data-tour="nav-community"]',
     title: '👥 Community',
-    description: 'Join discussions, ask questions, and connect with other users. Your voice shapes the platform.',
+    description: 'Discover and share real deals, offers and product insights with thousands of users. Post deals you find, upvote the best ones, get brand-verified offers — and earn points for every contribution.',
     position: 'right',
     icon: '👥',
   },
