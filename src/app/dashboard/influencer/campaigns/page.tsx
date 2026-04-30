@@ -62,7 +62,7 @@ export default function InfluencerCampaignsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto w-full justify-start gap-1 sm:flex-nowrap sm:w-auto sm:h-10">
           <TabsTrigger value="all">All ({campaigns.length})</TabsTrigger>
           <TabsTrigger value="invited">Invited</TabsTrigger>
           <TabsTrigger value="accepted">Accepted</TabsTrigger>
