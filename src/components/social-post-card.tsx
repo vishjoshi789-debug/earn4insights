@@ -93,50 +93,48 @@ export function SocialPostCard({ post, productName }: SocialPostCardProps) {
   const displayDate = post.postedAt || post.createdAt;
 
   return (
-    <Card className="flex h-full flex-col">
-      <CardHeader className="flex flex-row items-start gap-3 space-y-0 pb-2">
+    <Card className="flex h-full flex-col overflow-hidden">
+      <CardHeader className="flex flex-row items-start gap-3 space-y-0 pb-2 px-4 pt-4 sm:px-6 sm:pt-6">
         <Avatar className="h-9 w-9 shrink-0">
           {post.authorAvatar && <AvatarImage src={post.authorAvatar} />}
           <AvatarFallback>
             {(post.author || '?').charAt(0).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="font-semibold leading-tight truncate">{post.author || 'Anonymous'}</p>
-              {post.authorHandle && (
-                <p className="text-xs text-muted-foreground truncate">{post.authorHandle}</p>
-              )}
-            </div>
-            <div className="flex flex-col items-end gap-1 shrink-0">
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Icon className="h-3 w-3" />
-                <span className="text-[11px] whitespace-nowrap">{label}</span>
+        <div className="flex-1 min-w-0 space-y-2">
+          <div>
+            <p className="font-semibold leading-tight truncate">{post.author || 'Anonymous'}</p>
+            {post.authorHandle && (
+              <p className="text-xs text-muted-foreground truncate">{post.authorHandle}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className="flex items-center gap-1 max-w-full">
+              <Icon className="h-3 w-3 shrink-0" />
+              <span className="text-[11px] truncate">{label}</span>
+            </Badge>
+            {post.category && (
+              <Badge variant="secondary" className="text-[10px] capitalize max-w-full">
+                <span className="truncate">{post.category.replace(/_/g, ' ')}</span>
               </Badge>
-              {post.category && (
-                <Badge variant="secondary" className="text-[10px] whitespace-nowrap capitalize">
-                  {post.category.replace(/_/g, ' ')}
-                </Badge>
-              )}
-              {displayDate && (
-                <p className="text-[11px] text-muted-foreground whitespace-nowrap">
-                  {formatDistanceToNow(new Date(displayDate), { addSuffix: true })}
-                </p>
-              )}
-            </div>
+            )}
+            {displayDate && (
+              <p className="text-[11px] text-muted-foreground">
+                {formatDistanceToNow(new Date(displayDate), { addSuffix: true })}
+              </p>
+            )}
           </div>
           {productName && (
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground truncate">
               About: <span className="font-medium">{productName}</span>
             </p>
           )}
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 space-y-2 pt-0">
+      <CardContent className="flex-1 space-y-2 pt-0 px-4 pb-4 sm:px-6 sm:pb-6 min-w-0">
         {post.title && (
-          <p className="text-sm font-medium">{post.title}</p>
+          <p className="text-sm font-medium break-words">{post.title}</p>
         )}
         <p className="text-sm text-foreground/90 whitespace-pre-line break-words">
           {post.content}
@@ -181,7 +179,7 @@ export function SocialPostCard({ post, productName }: SocialPostCardProps) {
         </div>
       </CardContent>
 
-      <CardFooter className="flex flex-wrap justify-between gap-2 border-t bg-muted/30 py-2 text-[11px]">
+      <CardFooter className="flex flex-wrap justify-between gap-2 border-t bg-muted/30 py-2 px-4 sm:px-6 text-[11px]">
         {post.sentiment && (
           <span>
             Sentiment:{' '}
