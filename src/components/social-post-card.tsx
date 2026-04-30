@@ -112,10 +112,15 @@ export function SocialPostCard({ post, productName }: SocialPostCardProps) {
             <div className="flex flex-col items-end gap-1 shrink-0">
               <Badge variant="outline" className="flex items-center gap-1">
                 <Icon className="h-3 w-3" />
-                <span className="text-[11px]">{label}</span>
+                <span className="text-[11px] whitespace-nowrap">{label}</span>
               </Badge>
+              {post.category && (
+                <Badge variant="secondary" className="text-[10px] whitespace-nowrap capitalize">
+                  {post.category.replace(/_/g, ' ')}
+                </Badge>
+              )}
               {displayDate && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground whitespace-nowrap">
                   {formatDistanceToNow(new Date(displayDate), { addSuffix: true })}
                 </p>
               )}
@@ -133,7 +138,7 @@ export function SocialPostCard({ post, productName }: SocialPostCardProps) {
         {post.title && (
           <p className="text-sm font-medium">{post.title}</p>
         )}
-        <p className="text-sm text-foreground/90 whitespace-pre-line line-clamp-4">
+        <p className="text-sm text-foreground/90 whitespace-pre-line break-words">
           {post.content}
         </p>
 
@@ -187,11 +192,6 @@ export function SocialPostCard({ post, productName }: SocialPostCardProps) {
               <span className="ml-1">({(Math.abs(post.sentimentScore) * 100).toFixed(0)}%)</span>
             )}
           </span>
-        )}
-        {post.category && (
-          <Badge variant="secondary" className="text-[10px]">
-            {post.category.replace(/_/g, ' ')}
-          </Badge>
         )}
         {post.influenceScore != null && post.influenceScore > 0 && (
           <span>
