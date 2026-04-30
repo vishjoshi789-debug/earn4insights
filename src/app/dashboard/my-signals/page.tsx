@@ -202,7 +202,7 @@ export default function MySignalsPage() {
 
       {/* Category tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full sm:w-auto">
+        <TabsList className="flex flex-wrap h-auto w-full justify-start gap-1 sm:flex-nowrap sm:w-auto sm:h-10">
           {CATEGORIES.map((cat) => {
             const hist = history[cat.key]
             const hasData = hist?.snapshots && hist.snapshots.length > 0
