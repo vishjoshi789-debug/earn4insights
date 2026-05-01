@@ -58,7 +58,15 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-dashboard"]',
     title: '🏠 Your Dashboard',
+    description: 'Your command center — campaign performance, consumer insights, real-time alerts and quick actions. Everything you need at a single glance.',
+    role: 'brand',
+    position: 'right',
+  },
+  {
+    target: '[data-tour="nav-dashboard"]',
+    title: '🏠 Your Dashboard',
     description: 'Your home base. Personalized recommendations, stats, and quick actions — all at a glance.',
+    role: 'consumer',
     position: 'right',
   },
 
@@ -309,14 +317,32 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="nav-social"]',
     title: '🌐 Social Hub',
+    description: 'Monitor what the world says about your products across every major platform — Twitter/X, Instagram, Reddit, YouTube and more. Real-time sentiment analysis, trending keywords and KOL detection give you the complete social picture of your brand.',
+    role: 'brand',
+    position: 'right',
+    icon: '🌐',
+  },
+  {
+    target: '[data-tour="nav-social"]',
+    title: '🌐 Social Hub',
     description: 'Connect your social accounts to supercharge your personalization. Link LinkedIn or YouTube — Instagram is rolling out soon — and we\'ll learn your real interests, making every recommendation, deal and insight more relevant to you.',
+    role: 'consumer',
     position: 'right',
     icon: '🌐',
   },
   {
     target: '[data-tour="nav-community"]',
     title: '👥 Community',
+    description: 'See what the community says about your products and category. Post brand-verified deals that get a trust badge, respond to consumer posts, and monitor organic discussions — all in one place.',
+    role: 'brand',
+    position: 'right',
+    icon: '👥',
+  },
+  {
+    target: '[data-tour="nav-community"]',
+    title: '👥 Community',
     description: 'Discover and share real deals, offers and product insights with thousands of users. Post deals you find, upvote the best ones, get brand-verified offers — and earn points for every contribution.',
+    role: 'consumer',
     position: 'right',
     icon: '👥',
   },
