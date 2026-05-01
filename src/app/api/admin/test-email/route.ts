@@ -1,13 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendRankingNotification } from '@/server/emailNotifications'
-import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
+import { authenticateAdmin } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth.config'
 
 /**
  * Test email notification endpoint
  * POST /api/admin/test-email
+ *
+ * Auth: accepts either
+ *  - ADMIN_API_KEY via Authorization / x-admin-api-key header (ops/curl), or
+ *  - a logged-in session with role 'brand' or 'admin' (in-app UI at
+ *    /dashboard/rankings/test-email).
+ *
+ * Consumers cannot send test emails.
  */
 export async function POST(request: NextRequest) {
-  if (!authenticateAdmin(request)) return unauthorizedResponse()
+  const apiKeyOk = authenticateAdmin(request)
+  if (!apiKeyOk) {
+    const session = await auth()
+    const role = (session?.user as any)?.role
+    if (!session?.user?.email || (role !== 'brand' && role !== 'admin')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+  }
 
   try {
     const body = await request.json()
