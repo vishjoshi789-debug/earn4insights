@@ -140,32 +140,32 @@ export function ProductHealthCard({ productId }: { productId: string }) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {summary.topPraise && (
                 <InsightCard
-                  icon={<Star className="h-4 w-4 text-green-500" />}
+                  icon={<Star className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
                   label={summary.topPraise.label}
                   theme={summary.topPraise.theme}
                   count={summary.topPraise.mentionCount}
                   example={summary.topPraise.example}
-                  colorClass="border-green-500/30 bg-green-50 dark:bg-green-950/20"
+                  colorClass="border-emerald-500/60 bg-emerald-500/10 dark:border-emerald-400/50 dark:bg-emerald-400/10"
                 />
               )}
               {summary.topConcern && (
                 <InsightCard
-                  icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
+                  icon={<AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />}
                   label={summary.topConcern.label}
                   theme={summary.topConcern.theme}
                   count={summary.topConcern.mentionCount}
                   example={summary.topConcern.example}
-                  colorClass="border-red-500/30 bg-red-50 dark:bg-red-950/20"
+                  colorClass="border-red-500/60 bg-red-500/10 dark:border-red-400/50 dark:bg-red-400/10"
                 />
               )}
               {summary.emergingIssue && (
                 <InsightCard
-                  icon={<MessageSquare className="h-4 w-4 text-yellow-500" />}
+                  icon={<MessageSquare className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
                   label={summary.emergingIssue.label}
                   theme={summary.emergingIssue.theme}
                   count={summary.emergingIssue.mentionCount}
                   example={summary.emergingIssue.example}
-                  colorClass="border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950/20"
+                  colorClass="border-amber-500/60 bg-amber-500/10 dark:border-amber-400/50 dark:bg-amber-400/10"
                 />
               )}
             </div>
