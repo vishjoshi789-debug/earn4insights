@@ -86,7 +86,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/notifications', label: 'Notifications', icon: Bell, tourId: 'nav-notifications' },
   { href: '/dashboard/social', label: 'Social', icon: Users, tourId: 'nav-social' },
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
-  { href: '/dashboard/deals', label: 'Deals & Offers', icon: Tags, tourId: 'nav-deals' },
+  { href: '/dashboard/deals', label: 'Deals & Offers', icon: Tags, tourId: 'nav-deals', role: 'consumer' },
   { href: '/dashboard/community-deals', label: 'Community Deals', icon: Flame, tourId: 'nav-community-deals' },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys', role: 'brand' },
   { href: '/dashboard/analytics', label: 'Audience Analytics', icon: TrendingUp, tourId: 'nav-brand-analytics', role: 'brand' },

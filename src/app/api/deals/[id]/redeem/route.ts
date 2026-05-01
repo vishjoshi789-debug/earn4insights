@@ -19,6 +19,13 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const userId = (session.user as any).id
+    const role = (session.user as any).role
+    if (role !== 'consumer') {
+      return NextResponse.json(
+        { error: 'Only consumers can redeem deals.' },
+        { status: 403 },
+      )
+    }
 
     const { id } = await params
     const result = await redeemDeal(id, userId)
