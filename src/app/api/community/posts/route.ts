@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
 import { communityPosts, users, products } from '@/db/schema'
-import { desc, eq, ilike, and, or, sql } from 'drizzle-orm'
+import { desc, eq, ilike, inArray, and, or, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
 import { recordContribution } from '@/server/contributionPipeline'
@@ -23,11 +23,30 @@ export async function GET(req: NextRequest) {
     const postType = params.get('type') // 'discussion' | 'ama' | 'announcement' | etc.
     const productId = params.get('productId')
     const search = params.get('search')?.trim()
+    const mineOnly = params.get('mineOnly') === 'true'
 
     // Build where conditions
     const conditions = []
     if (postType) conditions.push(eq(communityPosts.postType, postType))
     if (productId) conditions.push(eq(communityPosts.productId, productId))
+
+    // Brand-only filter: posts about products this brand owns.
+    // Silently no-ops for non-brand users (avoids leaking that the flag exists).
+    const sessionRole = (session.user as any).role
+    if (mineOnly && sessionRole === 'brand') {
+      const owned = await db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.ownerId, session.user.id))
+      const ownedIds = owned.map((p) => p.id)
+      if (ownedIds.length === 0) {
+        return NextResponse.json({
+          posts: [],
+          pagination: { page, limit, total: 0, totalPages: 0 },
+        })
+      }
+      conditions.push(inArray(communityPosts.productId, ownedIds))
+    }
     if (search) {
       conditions.push(
         or(

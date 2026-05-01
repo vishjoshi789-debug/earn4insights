@@ -91,8 +91,10 @@ export default function CommunityPage() {
   const [newContent, setNewContent] = useState('')
   const [newType, setNewType] = useState('discussion')
   const [pollOptions, setPollOptions] = useState<string[]>(['', ''])
+  const [mineOnly, setMineOnly] = useState(false)
 
   const userRole = (session?.user as any)?.role
+  const isBrand = userRole === 'brand'
 
   const loadPosts = useCallback(async () => {
     setLoading(true)
@@ -102,6 +104,7 @@ export default function CommunityPage() {
       const params = new URLSearchParams({ page: String(page), limit: '20' })
       if (typeFilter !== 'all') params.set('type', typeFilter)
       if (searchQuery) params.set('search', searchQuery)
+      if (mineOnly && isBrand) params.set('mineOnly', 'true')
 
       const res = await fetch(`/api/community/posts?${params}`)
       const data = await res.json()
@@ -120,7 +123,7 @@ export default function CommunityPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, searchQuery, typeFilter])
+  }, [page, searchQuery, typeFilter, mineOnly, isBrand])
 
   useEffect(() => {
     void loadPosts()
@@ -136,6 +139,7 @@ export default function CommunityPage() {
     setQueryInput('')
     setSearchQuery('')
     setTypeFilter('all')
+    setMineOnly(false)
   }
 
   const handleCreate = async () => {
@@ -192,15 +196,19 @@ export default function CommunityPage() {
     }
   }
 
-  const hasActiveFilters = Boolean(searchQuery) || typeFilter !== 'all'
+  const hasActiveFilters = Boolean(searchQuery) || typeFilter !== 'all' || mineOnly
 
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Community</h1>
-          <p className="text-sm text-muted-foreground mt-1">Discuss, share tips, and connect with the community</p>
+          <h1 className="text-2xl font-bold">{isBrand ? 'Brand Community' : 'Community'}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isBrand
+              ? 'Listen to consumer discussions about your products and category. Make announcements, run AMAs, and respond to feedback in the open.'
+              : 'Discuss, share tips, and connect with the community'}
+          </p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger>
@@ -314,6 +322,15 @@ export default function CommunityPage() {
             <SelectItem value="poll">Polls</SelectItem>
           </SelectContent>
         </Select>
+        {isBrand && (
+          <Button
+            variant={mineOnly ? 'default' : 'outline'}
+            onClick={() => { setMineOnly(v => !v); setPage(1) }}
+            title="Filter to posts about products you own"
+          >
+            About my products
+          </Button>
+        )}
         {hasActiveFilters && (
           <Button variant="ghost" onClick={handleClearFilters}>
             <X className="h-4 w-4 mr-2" />
@@ -393,7 +410,11 @@ export default function CommunityPage() {
                           <span>
                             {post.authorName || 'Anonymous'}
                             {post.authorRole === 'brand' && (
-                              <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0">Brand</Badge>
+                              <Badge
+                                className="ml-1 text-[10px] px-1.5 py-0 bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40 hover:bg-blue-500/20"
+                              >
+                                ✓ Brand Verified
+                              </Badge>
                             )}
                           </span>
                           <span>{formatTimeAgo(post.createdAt)}</span>
