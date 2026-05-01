@@ -97,9 +97,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (attributes.totalWeight !== 100) {
+    // Empty-criteria drafts are allowed; once criteria exist, weights must sum to 100.
+    const criteriaCount = Object.keys(attributes.criteria).length
+    if (criteriaCount === 0) {
+      if (attributes.totalWeight !== 0) {
+        return NextResponse.json(
+          { error: 'attributes.totalWeight must be 0 when no criteria are set yet' },
+          { status: 400 }
+        )
+      }
+    } else if (attributes.totalWeight !== 100) {
       return NextResponse.json(
-        { error: 'attributes.totalWeight must be 100' },
+        { error: 'attributes.totalWeight must be 100 when criteria are set' },
         { status: 400 }
       )
     }

@@ -337,6 +337,21 @@ export async function markScoresStaleByIcp(icpId: string): Promise<number> {
  */
 function validateIcpWeights(attributes: IcpAttributes): void {
   const criteriaEntries = Object.values(attributes.criteria)
+
+  // Empty criteria = valid draft state. Brands create the ICP shell first,
+  // then add criteria on the edit page. An ICP with no criteria can be
+  // saved but cannot be used for scoring — the match-score logic guards
+  // against zero-criteria ICPs separately.
+  if (criteriaEntries.length === 0) {
+    if (attributes.totalWeight !== 0) {
+      throw new Error(
+        `ICP weight validation failed: empty criteria must have totalWeight=0, ` +
+        `got ${attributes.totalWeight}`
+      )
+    }
+    return
+  }
+
   const actualTotal = criteriaEntries.reduce((sum, c) => sum + c.weight, 0)
 
   if (actualTotal !== 100) {
