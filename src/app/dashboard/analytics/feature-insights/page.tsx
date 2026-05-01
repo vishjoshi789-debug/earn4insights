@@ -29,16 +29,31 @@ export default function FeatureInsightsPage() {
 
   const loadProducts = async () => {
     try {
-      const res = await fetch('/api/admin/check-products')
+      // Primary: brand-owned products from DB (session-scoped to ownerId).
+      // Same pattern as /dashboard/analytics/consumer-intelligence.
+      const res = await fetch('/api/dashboard/products/claim?action=my-products')
       if (res.ok) {
         const data = await res.json()
-        const uniqueProducts = data.productStats
-          ?.filter((p: any, i: number, arr: any[]) => arr.findIndex((t: any) => t.id === p.id) === i)
-          ?.map((p: any) => ({ id: p.id, name: p.name })) || []
-        setProducts(uniqueProducts)
-        if (uniqueProducts.length > 0 && !selectedProduct) {
-          setSelectedProduct(uniqueProducts[0].id)
+        const list = (data.products || [])
+          .filter((p: any, i: number, arr: any[]) => arr.findIndex((t: any) => t.id === p.id) === i)
+          .map((p: any) => ({ id: p.id, name: p.name }))
+        if (list.length > 0) {
+          setProducts(list)
+          if (!selectedProduct) setSelectedProduct(list[0].id)
+          return
         }
+      }
+      // Fallback: admin JSON endpoint (only succeeds in dev when ADMIN_API_KEY
+      // is unset). Lets the page work for ops users running locally without
+      // forcing them to claim products.
+      const fallback = await fetch('/api/admin/check-products')
+      if (fallback.ok) {
+        const data = await fallback.json()
+        const list = (data.productStats || [])
+          .filter((p: any, i: number, arr: any[]) => arr.findIndex((t: any) => t.id === p.id) === i)
+          .map((p: any) => ({ id: p.id, name: p.name }))
+        setProducts(list)
+        if (list.length > 0 && !selectedProduct) setSelectedProduct(list[0].id)
       }
     } catch (err) {
       console.error('Failed to load products:', err)
