@@ -5,6 +5,7 @@ import { getUserByEmail, createUser } from "@/lib/user/userStore"
 import { verifyPassword } from "@/lib/user/password"
 import type { UserRole } from "@/lib/user/types"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { ensureUserProfile } from "@/lib/auth/ensureUserProfile"
 
 // Extend NextAuth types
 declare module "next-auth" {
@@ -147,7 +148,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return false // Reject sign-in on unexpected errors
         }
       }
-      
+
+      // Ensure a user_profiles row exists for every authenticated user.
+      // Several tables (brand_icps, icp_match_scores, consent_records, etc.)
+      // have FKs to user_profiles.id; without a profile row, those inserts
+      // fail with a generic 500 in feature routes.
+      //
+      // ensureUserProfile is idempotent and handles its own duplicate-key
+      // race conditions. We swallow errors so a transient DB hiccup never
+      // blocks login — feature routes will surface any persistent issue
+      // when they try to write profile-dependent data.
+      if (user.id && user.email) {
+        try {
+          await ensureUserProfile(user.id, user.email)
+        } catch (err) {
+          console.error('[Auth] ensureUserProfile failed for', user.email, err)
+        }
+      }
+
       return true
     },
 

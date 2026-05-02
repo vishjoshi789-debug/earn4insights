@@ -28,6 +28,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { ensureUserProfile } from '@/lib/auth/ensureUserProfile'
 import {
   createIcp,
   getIcpsByBrand,
@@ -111,6 +112,19 @@ export async function POST(req: NextRequest) {
         { error: 'attributes.totalWeight must be 100 when criteria are set' },
         { status: 400 }
       )
+    }
+
+    // brand_icps.brand_id has an FK to user_profiles.id. Ensure the brand has
+    // a profile row before insert — idempotent for brands that already have
+    // one. Catches the legacy case where a brand signed up before the
+    // auth-callback fix was deployed.
+    const session = await auth()
+    if (session?.user?.email) {
+      try {
+        await ensureUserProfile(userId, session.user.email)
+      } catch (err) {
+        console.error('[BrandICPs POST] ensureUserProfile failed', err)
+      }
     }
 
     // createIcp does hard weight validation (throws if weights don't sum to 100)
