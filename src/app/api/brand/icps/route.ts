@@ -37,7 +37,7 @@ import {
 // ── Auth helper ───────────────────────────────────────────────────
 
 async function getBrandUserId(
-): Promise<{ userId: string } | NextResponse> {
+): Promise<{ userId: string; email: string } | NextResponse> {
   const session = await auth()
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -47,7 +47,7 @@ async function getBrandUserId(
   if (!userId || role !== 'brand') {
     return NextResponse.json({ error: 'Brand access only' }, { status: 403 })
   }
-  return { userId }
+  return { userId, email: session.user.email }
 }
 
 // ── GET — list ICPs ───────────────────────────────────────────────
@@ -72,9 +72,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await getBrandUserId()
-    if (auth instanceof NextResponse) return auth
-    const { userId } = auth
+    const authResult = await getBrandUserId()
+    if (authResult instanceof NextResponse) return authResult
+    const { userId, email } = authResult
 
     const body = await req.json().catch(() => null)
     if (!body) {
@@ -118,13 +118,10 @@ export async function POST(req: NextRequest) {
     // a profile row before insert — idempotent for brands that already have
     // one. Catches the legacy case where a brand signed up before the
     // auth-callback fix was deployed.
-    const session = await auth()
-    if (session?.user?.email) {
-      try {
-        await ensureUserProfile(userId, session.user.email)
-      } catch (err) {
-        console.error('[BrandICPs POST] ensureUserProfile failed', err)
-      }
+    try {
+      await ensureUserProfile(userId, email)
+    } catch (err) {
+      console.error('[BrandICPs POST] ensureUserProfile failed', err)
     }
 
     // createIcp does hard weight validation (throws if weights don't sum to 100)
