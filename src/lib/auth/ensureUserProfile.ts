@@ -1,28 +1,72 @@
+import { db } from '@/db'
+import { userProfiles } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 import { getUserProfile, getUserProfileByEmail, createUserProfile } from '@/db/repositories/userProfileRepository'
 
 /**
- * Ensures a user profile exists for the given user.
- * Creates one with defaults if it doesn't exist.
- * 
- * @param userId - The user's ID
+ * Ensures a user profile exists for the given user, with id matching the
+ * session userId. Reconciles legacy id mismatches by replacing orphan
+ * profiles whose email matches but whose id does not.
+ *
+ * @param userId - The user's ID (from the auth session — this is canonical)
  * @param email - The user's email
- * @returns The user profile (existing or newly created)
+ * @returns The user profile (existing, reconciled, or newly created)
  */
 export async function ensureUserProfile(userId: string, email: string) {
-  // Check if profile already exists by email first (unique constraint is on email)
+  // Check by email first (unique constraint is on email)
   let profile = await getUserProfileByEmail(email)
-  
-  // If found by email but different userId, return existing profile
+
   if (profile) {
-    console.log(`[ensureUserProfile] Profile already exists for email: ${email}`)
-    return profile
+    if (profile.id === userId) {
+      // Happy path — the profile is correctly keyed
+      return profile
+    }
+
+    // ID MISMATCH — orphan profile reconciliation.
+    //
+    // The profile exists for this email but with a different id than the
+    // current session. This happens when:
+    //   - An older signup created a profile, the user was deleted from
+    //     `users`, and a new signup created a different users.id with the
+    //     same email. The old user_profiles row is now orphaned because
+    //     no users row matches its id.
+    //   - Auth migrations changed the id generation format.
+    //
+    // The session's userId is canonical (it's what the user is currently
+    // logged in as, and it MUST exist in `users` for auth to have worked).
+    // We resolve the mismatch by deleting the orphan and creating a fresh
+    // profile keyed by the session userId. All FKs from other tables to
+    // user_profiles.id use ON DELETE CASCADE (migration 003), so any
+    // dependent rows referencing the orphan id get cleaned up automatically.
+    // Those dependent rows were already inaccessible (orphaned alongside
+    // the profile), so nothing reachable is lost.
+    console.warn(
+      `[ensureUserProfile] ID mismatch — orphan profile.id=${profile.id} ` +
+      `for email=${email}, session userId=${userId}. Reconciling…`
+    )
+
+    await db.transaction(async (tx) => {
+      await tx.delete(userProfiles).where(eq(userProfiles.id, profile!.id))
+      await tx.insert(userProfiles).values({
+        id: userId,
+        email,
+      })
+    })
+
+    const reconciled = await getUserProfile(userId)
+    if (!reconciled) {
+      throw new Error(
+        `Profile reconciliation failed: could not fetch new profile after replace for ${email}`
+      )
+    }
+    console.log(`[ensureUserProfile] Reconciled profile id=${userId} for email=${email}`)
+    return reconciled
   }
-  
-  // Double-check by userId
+
+  // No row by email — try by userId (covers race conditions)
   profile = await getUserProfile(userId)
-  
+
   if (!profile) {
-    // Create new profile with default settings
     console.log(`[ensureUserProfile] Creating new profile for user: ${userId}, email: ${email}`)
     try {
       profile = await createUserProfile({
@@ -32,27 +76,31 @@ export async function ensureUserProfile(userId: string, email: string) {
         interests: null
       })
     } catch (error: any) {
-      // Handle duplicate key constraint violations
-      if (error?.code === '23505' || 
-          error?.message?.includes('duplicate key') || 
+      // Handle duplicate-key race: another request created the profile
+      // between our email check and our insert.
+      if (error?.code === '23505' ||
+          error?.message?.includes('duplicate key') ||
           error?.message?.includes('unique constraint')) {
         console.log(`[ensureUserProfile] Profile already exists (duplicate key), fetching by email`)
-        // Race condition: profile was created between check and insert
-        // Fetch the profile by email
         profile = await getUserProfileByEmail(email)
-        
+
         if (!profile) {
-          // If still not found, something is wrong
           console.error(`[ensureUserProfile] Failed to fetch profile after duplicate key error for email: ${email}`)
           throw new Error('Failed to create or retrieve user profile')
         }
+
+        // Even in the race-recovery path, check id alignment. If the
+        // racing request created the profile with a different id (e.g.
+        // because it ran with a stale JWT), recurse to reconcile.
+        if (profile.id !== userId) {
+          return ensureUserProfile(userId, email)
+        }
       } else {
-        // Re-throw other errors
         throw error
       }
     }
   }
-  
+
   return profile
 }
 
