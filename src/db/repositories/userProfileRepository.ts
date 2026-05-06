@@ -28,7 +28,7 @@ export type NotificationPreferences = {
 }
 
 // Default notification preferences for new users
-const DEFAULT_NOTIFICATION_PREFS: NotificationPreferences = {
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPreferences = {
   schemaVersion: NOTIFICATION_PREFS_SCHEMA_VERSION,
   email: {
     enabled: true,
@@ -85,7 +85,7 @@ export function adaptNotificationPreferences(prefs: any): NotificationPreference
 }
 
 // Default consent settings (all opt-in required)
-const DEFAULT_CONSENT = {
+export const DEFAULT_CONSENT = {
   tracking: false,
   personalization: false,
   analytics: false,

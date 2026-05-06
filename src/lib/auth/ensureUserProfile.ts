@@ -1,7 +1,13 @@
 import { db } from '@/db'
 import { userProfiles } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { getUserProfile, getUserProfileByEmail, createUserProfile } from '@/db/repositories/userProfileRepository'
+import {
+  getUserProfile,
+  getUserProfileByEmail,
+  createUserProfile,
+  DEFAULT_NOTIFICATION_PREFS,
+  DEFAULT_CONSENT,
+} from '@/db/repositories/userProfileRepository'
 
 /**
  * Ensures a user profile exists for the given user, with id matching the
@@ -50,6 +56,12 @@ export async function ensureUserProfile(userId: string, email: string) {
       await tx.insert(userProfiles).values({
         id: userId,
         email,
+        demographics: null,
+        interests: null,
+        behavioral: null,
+        sensitiveData: null,
+        notificationPreferences: DEFAULT_NOTIFICATION_PREFS,
+        consent: DEFAULT_CONSENT,
       })
     })
 
