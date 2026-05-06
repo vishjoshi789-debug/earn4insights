@@ -118,10 +118,23 @@ export async function POST(req: NextRequest) {
     // a profile row before insert — idempotent for brands that already have
     // one. Catches the legacy case where a brand signed up before the
     // auth-callback fix was deployed.
+    //
+    // We let any error propagate to the outer catch so it can be surfaced
+    // in the response, instead of silently swallowing and then hitting the
+    // FK violation downstream.
     try {
       await ensureUserProfile(userId, email)
-    } catch (err) {
+    } catch (err: any) {
       console.error('[BrandICPs POST] ensureUserProfile failed', err)
+      return NextResponse.json(
+        {
+          error: 'Failed to ensure user profile',
+          stage: 'ensureUserProfile',
+          detail: err?.message ?? String(err),
+          code: err?.code,
+        },
+        { status: 500 }
+      )
     }
 
     // createIcp does hard weight validation (throws if weights don't sum to 100)
@@ -138,12 +151,29 @@ export async function POST(req: NextRequest) {
       if (err.message?.includes('ICP weight validation failed')) {
         return NextResponse.json({ error: err.message }, { status: 400 })
       }
-      throw err
+      console.error('[BrandICPs POST] createIcp failed', err)
+      return NextResponse.json(
+        {
+          error: 'Failed to create ICP',
+          stage: 'createIcp',
+          detail: err?.message ?? String(err),
+          code: err?.code,
+        },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({ icp }, { status: 201 })
-  } catch (error) {
+  } catch (error: any) {
     console.error('[BrandICPs POST] Error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        stage: 'unknown',
+        detail: error?.message ?? String(error),
+        code: error?.code,
+      },
+      { status: 500 }
+    )
   }
 }
