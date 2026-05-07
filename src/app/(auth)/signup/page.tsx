@@ -71,7 +71,7 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center px-4 py-12 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-950 dark:via-background dark:to-violet-950/30">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-3">
           <div className="flex flex-col items-center gap-1">
@@ -92,21 +92,37 @@ export default function SignupPage() {
             <div className="space-y-2">
               <Label>I am a...</Label>
               <RadioGroup value={role} onValueChange={(value) => setRole(value as 'brand' | 'consumer')}>
-                <div className="flex items-center space-x-2 rounded-lg border p-3">
-                  <RadioGroupItem value="brand" id="brand" />
+                <div className="flex items-start space-x-2 rounded-lg border p-3">
+                  <RadioGroupItem value="brand" id="brand" className="mt-1" />
                   <Label htmlFor="brand" className="flex-1 cursor-pointer">
                     <div className="font-medium">Brand</div>
-                    <div className="text-sm text-gray-500">Manage products & surveys</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                      Get real consumer intelligence, launch influencer campaigns, track competitor insights and grow with data-driven decisions.
+                    </div>
                   </Label>
                 </div>
-                <div className="flex items-center space-x-2 rounded-lg border p-3">
-                  <RadioGroupItem value="consumer" id="consumer" />
+                <div className="flex items-start space-x-2 rounded-lg border p-3">
+                  <RadioGroupItem value="consumer" id="consumer" className="mt-1" />
                   <Label htmlFor="consumer" className="flex-1 cursor-pointer">
                     <div className="font-medium">Consumer</div>
-                    <div className="text-sm text-gray-500">Respond to surveys & earn rewards</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                      Share feedback, earn rewards, discover exclusive deals and connect with brands that match your interests.
+                    </div>
                   </Label>
                 </div>
               </RadioGroup>
+
+              {/* Informational — not selectable. Influencers sign up as
+                  consumers, then complete an influencer profile post-onboarding. */}
+              <div className="rounded-lg border-2 border-dashed border-violet-500/30 bg-violet-500/5 p-3">
+                <div className="font-medium text-sm flex items-center gap-1.5">
+                  <span>🎯</span>
+                  <span>I&apos;m an Influencer</span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                  Sign up as a Consumer, then complete your Influencer profile to start monetizing your reach through brand campaigns.
+                </div>
+              </div>
             </div>
 
             {/* Name */}
@@ -203,10 +219,10 @@ export default function SignupPage() {
 
           <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
+              <span className="w-full border-t border-border" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-gray-500">Or continue with</span>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-card px-3 text-muted-foreground">or continue with</span>
             </div>
           </div>
 
