@@ -91,27 +91,39 @@ export async function sendWelcomeWhatsApp(params: {
   })
 }
 
-// ── Fire-and-forget wrapper (non-blocking) ───────────────────────
+// ── Awaited wrapper ──────────────────────────────────────────────
+//
+// Must be awaited by callers. Vercel serverless lambdas terminate as
+// soon as the response is sent; any unawaited Promise (e.g. the
+// previous fire-and-forget pattern) is killed mid-flight before the
+// underlying Resend / Twilio HTTP request completes, so neither the
+// success log nor the .catch handler ever runs and no email actually
+// goes out. Awaiting forces the lambda to stay alive until both
+// channel sends complete or fail.
 
-export function sendWelcomeNotifications(params: {
+export async function sendWelcomeNotifications(params: {
   email: string
   name: string
   role: 'brand' | 'consumer'
   phoneNumber?: string
-}) {
+}): Promise<void> {
   const { email, name, role, phoneNumber } = params
 
-  // Send email (fire-and-forget — don't block signup)
-  sendWelcomeEmail({ email, name, role }).catch((err) =>
-    console.error('[Welcome] Email failed silently:', err)
-  )
+  const tasks: Promise<unknown>[] = [
+    sendWelcomeEmail({ email, name, role }).catch((err) =>
+      console.error('[Welcome] Email failed silently:', err)
+    ),
+  ]
 
-  // Send WhatsApp if phone number provided
   if (phoneNumber) {
-    sendWelcomeWhatsApp({ phoneNumber, name, role }).catch((err) =>
-      console.error('[Welcome] WhatsApp failed silently:', err)
+    tasks.push(
+      sendWelcomeWhatsApp({ phoneNumber, name, role }).catch((err) =>
+        console.error('[Welcome] WhatsApp failed silently:', err)
+      )
     )
   }
+
+  await Promise.all(tasks)
 }
 
 // ── Email Templates ──────────────────────────────────────────────

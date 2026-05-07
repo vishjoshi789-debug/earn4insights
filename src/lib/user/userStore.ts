@@ -104,8 +104,11 @@ export async function createUser(input: CreateUserInput): Promise<User> {
 
   await db.insert(users).values(newUser)
 
-  // Send welcome email & WhatsApp (fire-and-forget, non-blocking)
-  sendWelcomeNotifications({
+  // Await welcome email + WhatsApp. On Vercel serverless, fire-and-forget
+  // promises are killed when the lambda response is sent — Resend never
+  // receives the API call. Adds ~500ms-1s to signup but ensures the email
+  // actually goes out.
+  await sendWelcomeNotifications({
     email: newUser.email,
     name: newUser.name,
     role: newUser.role as 'brand' | 'consumer',
