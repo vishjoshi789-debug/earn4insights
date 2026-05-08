@@ -3,10 +3,17 @@
 import 'server-only'
 
 /**
- * @deprecated This service only logs emails to console.
- * For production email delivery, use notificationService.ts (which uses Resend).
- * This file is kept for backward compatibility with responseService.ts and digestService.ts.
- * TODO: Migrate callers to notificationService.ts before next major release.
+ * @deprecated DO NOT IMPORT — pure console logger, no real email delivery.
+ *
+ * All callers were migrated off this file as of the production-readiness
+ * audit batch 1 (May 2026). New email work should use:
+ *   - src/server/welcomeNotifications.ts pattern for direct one-shot sends
+ *   - src/server/notificationService.ts queue for retries + scheduling
+ *   - src/server/emailNotifications.ts for ranking notifications
+ *   - src/server/surveys/responseNotificationEmail.ts (the migration target
+ *     for what used to live in this file)
+ *
+ * Slated for deletion once we confirm no external imports.
  */
 
 export type EmailNotification = {

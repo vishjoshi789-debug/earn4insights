@@ -17,6 +17,13 @@ export async function launchProduct(formData: FormData) {
   if (!session?.user?.id) {
     redirect('/login?callbackUrl=/dashboard/launch')
   }
+  // Defense in depth — middleware already gates the page, but server actions
+  // can be invoked via direct form POST. Refuse any non-brand session here
+  // so consumers / admins can't create products by tampering with the form.
+  const role = (session.user as any).role
+  if (role !== 'brand') {
+    throw new Error('Only brand accounts can launch products')
+  }
   const userId = session.user.id
   const userEmail = session.user.email
   const userName = session.user.name

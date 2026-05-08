@@ -3,7 +3,15 @@
 import 'server-only'
 import { getSurveyById, getResponsesBySurveyId } from '@/db/repositories/surveyRepository'
 import { calculateMultimodalAnalytics } from './analyticsService'
-import { sendEmail } from '@/server/emailService'
+import { Resend } from 'resend'
+
+let resend: Resend | null = null
+function getResendClient() {
+  if (!resend && process.env.RESEND_API_KEY) {
+    resend = new Resend(process.env.RESEND_API_KEY)
+  }
+  return resend
+}
 
 /**
  * Generate and send a weekly analytics digest email for a survey.
@@ -100,13 +108,25 @@ export async function sendSurveyDigestEmail(params: {
       </div>
     `
 
-    await sendEmail({
+    const client = getResendClient()
+    if (!client) {
+      console.warn('[SurveyDigest] Resend not configured — skipping send')
+      return { success: false, error: 'Resend not configured' }
+    }
+
+    const { error } = await client.emails.send({
+      from: process.env.EMAIL_FROM || 'Earn4Insights <notifications@earn4insights.com>',
       to: recipientEmail,
       subject,
       html,
-      text: `Weekly Feedback Digest for ${survey.title}\n\nTotal Responses: ${analytics.totalResponses}\n\nView full analytics at: ${process.env.NEXT_PUBLIC_BASE_URL}/dashboard/surveys/${surveyId}/analytics`,
     })
 
+    if (error) {
+      console.error('[SurveyDigest] Send failed:', error)
+      return { success: false, error: String(error) }
+    }
+
+    console.log(`[SurveyDigest] Email sent to ${recipientEmail} for survey ${surveyId}`)
     return { success: true }
   } catch (error) {
     console.error('Failed to send survey digest email:', error)

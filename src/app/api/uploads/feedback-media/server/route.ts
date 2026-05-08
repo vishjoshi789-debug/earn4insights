@@ -2,6 +2,8 @@ import { put } from '@vercel/blob'
 import { NextResponse } from 'next/server'
 import { getSurveyById, updateSurveyResponseById } from '@/db/repositories/surveyRepository'
 import { upsertFeedbackMedia } from '@/server/uploads/feedbackMediaRepo'
+import { auth } from '@/lib/auth/auth.config'
+import { checkRateLimit, getRateLimitKey } from '@/lib/rate-limit'
 
 const MAX_BYTES = 4 * 1024 * 1024 // stay safely under Vercel 4.5MB limit
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5MB for images
@@ -54,6 +56,36 @@ function asInt(value: FormDataEntryValue | null): number | null {
  */
 export async function POST(request: Request) {
   try {
+    // ── Auth: must be a logged-in consumer ─────────────────────────
+    // Storage abuse protection: previously this endpoint was open to
+    // anyone with the URL, allowing unbounded uploads to Vercel Blob.
+    const session = await auth()
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const role = (session.user as any).role
+    if (role !== 'consumer') {
+      return NextResponse.json(
+        { error: 'Only consumers can upload feedback media' },
+        { status: 403 }
+      )
+    }
+
+    // ── Rate limit: 30 uploads per IP per 5 minutes ────────────────
+    const rl = checkRateLimit(
+      getRateLimitKey(request, 'feedback-upload'),
+      { maxRequests: 30, windowSeconds: 300 }
+    )
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many uploads. Please wait before uploading more.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) },
+        }
+      )
+    }
+
     const form = await request.formData()
 
     const surveyId = asString(form.get('surveyId'))

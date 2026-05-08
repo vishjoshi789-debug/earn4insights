@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto'
 import { createSurveyResponse, getResponsesBySurveyId, updateSurveyResponseById } from '@/db/repositories/surveyRepository'
 import { getSurveyById } from '@/db/repositories/surveyRepository'
 import type { SurveyResponse } from '@/lib/survey-types'
-import { sendSurveyResponseNotification } from '@/server/emailService'
+import { sendSurveyResponseNotification } from '@/server/surveys/responseNotificationEmail'
 import { analyzeSentiment } from '@/server/sentimentService'
 import { normalizeTextForAnalytics } from '@/server/textNormalizationService'
 
