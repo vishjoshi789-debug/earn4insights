@@ -2,6 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { initiateRequest } from '@/server/dsarService'
+import { dsarRateLimit } from '@/lib/rate-limit-upstash'
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -12,6 +13,14 @@ export async function POST(request: NextRequest) {
   const role = (session.user as any).role as string
   if (role !== 'consumer') {
     return NextResponse.json({ error: 'Only consumers can request data exports.' }, { status: 403 })
+  }
+
+  const rl = await dsarRateLimit.limit(userId)
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: 'You have already requested a data export recently. Please try again later.' },
+      { status: 429 }
+    )
   }
 
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()

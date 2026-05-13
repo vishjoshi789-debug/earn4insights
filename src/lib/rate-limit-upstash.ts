@@ -217,6 +217,12 @@ export const emailClickRateLimit = createLimiter({
 // Search — IP-keyed.
 export const searchRateLimit = createLimiter({ name: 'search', tokens: 60, window: '1 m' })
 
+// DSAR — keyed by user ID. Belt-and-suspenders alongside the
+// DB-level 30-day rule enforced in dsarService. HTTP-layer block
+// prevents hammering the endpoint and exhausting OTP send quota
+// before the DB check runs.
+export const dsarRateLimit = createLimiter({ name: 'dsar', tokens: 1, window: '30 d' })
+
 // ── Helpers ───────────────────────────────────────────────────────
 /**
  * Extract the client IP from a request. Use as part of the limit key
