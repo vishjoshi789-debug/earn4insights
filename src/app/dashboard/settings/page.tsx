@@ -14,6 +14,7 @@ import {
   Link2, Link2Off, ExternalLink,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { apiPatch } from '@/lib/api-client'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -211,13 +212,9 @@ export default function NotificationSettingsPage() {
     const phoneToSave = (opts?.phone ?? waPhone).trim() || null
     setSavingWa(true)
     try {
-      const res = await fetch('/api/user/notification-settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          whatsappEnabled: enabledToSave,
-          whatsappPhoneNumber: phoneToSave,
-        }),
+      const res = await apiPatch('/api/user/notification-settings', {
+        whatsappEnabled: enabledToSave,
+        whatsappPhoneNumber: phoneToSave,
       })
       if (!res.ok) {
         const data = await res.json()

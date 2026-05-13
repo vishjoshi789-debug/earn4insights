@@ -15,6 +15,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import {
   markPayoutProcessing,
   markPayoutCompleted,
@@ -23,6 +24,7 @@ import {
 } from '@/server/payoutService'
 
 export async function POST(req: NextRequest) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const session = await auth()
     if (!session?.user?.email) {

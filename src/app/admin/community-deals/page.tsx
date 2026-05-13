@@ -17,6 +17,7 @@ import {
   MessageSquare, AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { apiPost } from '@/lib/api-client'
 
 type Post = {
   id: string; authorId: string; authorRole: string; postType: string
@@ -76,11 +77,7 @@ export default function AdminCommunityDealsPage() {
 
   const handleApprove = async (postId: string) => {
     setActing(postId)
-    const res = await fetch('/api/admin/community-deals/moderate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ postId, action: 'approve' }),
-    })
+    const res = await apiPost('/api/admin/community-deals/moderate', { postId, action: 'approve' })
     setActing(null)
     if (res.ok) { toast.success('Post approved'); loadPending() }
     else toast.error('Approve failed')
@@ -89,11 +86,7 @@ export default function AdminCommunityDealsPage() {
   const handleReject = async () => {
     if (!rejectId || !rejectReason.trim()) { toast.error('Reason required'); return }
     setActing(rejectId)
-    const res = await fetch('/api/admin/community-deals/moderate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ postId: rejectId, action: 'reject', reason: rejectReason }),
-    })
+    const res = await apiPost('/api/admin/community-deals/moderate', { postId: rejectId, action: 'reject', reason: rejectReason })
     setActing(null)
     setRejectId(null)
     setRejectReason('')
@@ -103,11 +96,7 @@ export default function AdminCommunityDealsPage() {
 
   const handleBulk = async (action: 'approve' | 'reject') => {
     if (selected.size === 0) return
-    const res = await fetch('/api/admin/community-deals/moderate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ postIds: Array.from(selected), action, reason: action === 'reject' ? 'Bulk rejected by admin' : undefined }),
-    })
+    const res = await apiPost('/api/admin/community-deals/moderate', { postIds: Array.from(selected), action, reason: action === 'reject' ? 'Bulk rejected by admin' : undefined })
     if (res.ok) {
       toast.success(`${selected.size} posts ${action}d`)
       setSelected(new Set())

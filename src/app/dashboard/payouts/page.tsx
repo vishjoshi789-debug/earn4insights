@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiPost, apiPatch } from '@/lib/api-client';
 
 type PayoutRow = {
   id: string;
@@ -81,11 +82,7 @@ export default function PayoutsPage() {
 
     setRequesting(true);
     try {
-      const res = await fetch('/api/payouts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ points: pts }),
-      });
+      const res = await apiPost('/api/payouts', { points: pts });
 
       const data = await res.json();
       if (res.ok) {
@@ -106,11 +103,7 @@ export default function PayoutsPage() {
   const handleProcess = async (payoutId: string, action: 'approved' | 'denied') => {
     setProcessing(payoutId);
     try {
-      const res = await fetch('/api/payouts', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payoutId, action }),
-      });
+      const res = await apiPatch('/api/payouts', { payoutId, action });
 
       const data = await res.json();
       if (!res.ok) {

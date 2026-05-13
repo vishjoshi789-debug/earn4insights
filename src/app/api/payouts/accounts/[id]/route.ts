@@ -9,6 +9,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { encryptForStorage } from '@/lib/encryption'
 import {
   getAccountById,
@@ -19,6 +20,7 @@ import {
 type RouteParams = { params: Promise<{ id: string }> }
 
 export async function PUT(req: NextRequest, { params }: RouteParams) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const session = await auth()
     if (!session?.user?.email) {
@@ -70,6 +72,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const session = await auth()
     if (!session?.user?.email) {

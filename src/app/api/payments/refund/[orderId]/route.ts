@@ -13,6 +13,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { getOrderByRazorpayId } from '@/db/repositories/razorpayRepository'
 import { updateOrderStatus } from '@/db/repositories/razorpayRepository'
 import { refundPayment } from '@/server/razorpayService'
@@ -20,6 +21,7 @@ import { refundPayment } from '@/server/razorpayService'
 type RouteParams = { params: Promise<{ orderId: string }> }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     // ── Auth ────────────────────────────────────────────────────────
     const session = await auth()

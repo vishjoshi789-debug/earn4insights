@@ -22,6 +22,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { apiPost } from '@/lib/api-client'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -97,11 +98,7 @@ function ProcessDialog({
     if (!payout) return
     setSubmitting(true)
     try {
-      const res = await fetch('/api/admin/payouts/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payoutId: payout.id, action: 'process', note: note || undefined }),
-      })
+      const res = await apiPost('/api/admin/payouts/process', { payoutId: payout.id, action: 'process', note: note || undefined })
       const data = await res.json()
       if (res.ok) { toast.success('Marked as processing'); onSuccess() }
       else throw new Error(data.error)
@@ -150,11 +147,7 @@ function CompleteDialog({
     if (!ref.trim()) { toast.error('Transfer reference is required'); return }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/admin/payouts/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payoutId: payout.id, action: 'complete', transferReference: ref, note: note || undefined }),
-      })
+      const res = await apiPost('/api/admin/payouts/process', { payoutId: payout.id, action: 'complete', transferReference: ref, note: note || undefined })
       const data = await res.json()
       if (res.ok) { toast.success('Marked as completed'); onSuccess() }
       else throw new Error(data.error)
@@ -205,11 +198,7 @@ function FailDialog({
     if (!reason.trim()) { toast.error('Failure reason is required'); return }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/admin/payouts/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payoutId: payout.id, action: 'fail', reason }),
-      })
+      const res = await apiPost('/api/admin/payouts/process', { payoutId: payout.id, action: 'fail', reason })
       const data = await res.json()
       if (res.ok) { toast.success('Marked as failed'); onSuccess() }
       else throw new Error(data.error)
@@ -297,11 +286,7 @@ export default function AdminPayoutsPage() {
   const handleRetry = async (payout: AdminPayout) => {
     setRetrying(payout.id)
     try {
-      const res = await fetch('/api/admin/payouts/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payoutId: payout.id, action: 'retry' }),
-      })
+      const res = await apiPost('/api/admin/payouts/process', { payoutId: payout.id, action: 'retry' })
       const data = await res.json()
       if (res.ok) {
         toast.success('Payout queued for retry')

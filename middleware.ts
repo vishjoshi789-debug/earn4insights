@@ -1,6 +1,12 @@
 import { auth } from "@/lib/auth/auth.config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import {
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
+  generateCsrfToken,
+  setCsrfCookie,
+} from "@/lib/csrf"
 
 const PUBLIC_PATHS = new Set<string>([
   '/',
@@ -47,7 +53,7 @@ function isSafeCallbackUrl(value: string | null | undefined): value is string {
   return true
 }
 
-export default auth((req: NextRequest & { auth: any }) => {
+function decideAuth(req: NextRequest & { auth: any }): NextResponse | null {
   const { nextUrl } = req
   const pathname = nextUrl.pathname
   const isLoggedIn = !!req.auth
@@ -59,7 +65,7 @@ export default auth((req: NextRequest & { auth: any }) => {
       const target = isSafeCallbackUrl(cb) ? cb : '/dashboard'
       return NextResponse.redirect(new URL(target, nextUrl))
     }
-    return NextResponse.next()
+    return null
   }
 
   if (pathname.startsWith('/onboarding')) {
@@ -71,11 +77,11 @@ export default auth((req: NextRequest & { auth: any }) => {
     if (role === 'brand') {
       return NextResponse.redirect(new URL('/dashboard', nextUrl))
     }
-    return NextResponse.next()
+    return null
   }
 
   if (isPublic(pathname)) {
-    return NextResponse.next()
+    return null
   }
 
   if (!isLoggedIn) {
@@ -93,7 +99,25 @@ export default auth((req: NextRequest & { auth: any }) => {
     }
   }
 
-  return NextResponse.next()
+  return null
+}
+
+export default auth((req: NextRequest & { auth: any }) => {
+  const decision = decideAuth(req)
+
+  const existing = req.cookies.get(CSRF_COOKIE_NAME)?.value
+  const token = existing ?? generateCsrfToken()
+
+  if (decision) {
+    if (!existing) setCsrfCookie(decision, token)
+    return decision
+  }
+
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set(CSRF_HEADER_NAME, token)
+  const response = NextResponse.next({ request: { headers: requestHeaders } })
+  if (!existing) setCsrfCookie(response, token)
+  return response
 })
 
 export const config = {

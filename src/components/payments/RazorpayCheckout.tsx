@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Loader2, Lock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
+import { apiPost } from '@/lib/api-client'
 
 // Extend Window for Razorpay SDK
 declare global {
@@ -169,14 +170,10 @@ export function RazorpayCheckout({
       }) => {
         // Razorpay reports success — verify signature server-side
         try {
-          const res = await fetch('/api/payments/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            }),
+          const res = await apiPost('/api/payments/verify', {
+            razorpayOrderId: response.razorpay_order_id,
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpaySignature: response.razorpay_signature,
           })
           const data = await res.json()
           if (res.ok && data.success) {

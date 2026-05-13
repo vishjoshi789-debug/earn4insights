@@ -1,12 +1,14 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import Script from 'next/script'
+import { headers } from 'next/headers'
 import './globals.css'
 
 import { SiteHeader } from '@/components/site-header'
 import { SessionProvider } from '@/components/session-provider'
 import { Toaster } from 'sonner'
 import AnalyticsTracker from '@/components/analytics-tracker'
+import { CSRF_HEADER_NAME } from '@/lib/csrf'
 
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID
 
@@ -35,13 +37,19 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const hdrs = await headers()
+  const csrfToken = hdrs.get(CSRF_HEADER_NAME) ?? ''
+
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        <meta name="csrf-token" content={csrfToken} />
+      </head>
       {GA_MEASUREMENT_ID && (
         <>
           <Script

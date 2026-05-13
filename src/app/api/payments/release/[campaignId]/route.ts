@@ -13,6 +13,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
 import { getInvitation } from '@/db/repositories/campaignInfluencerRepository'
 import { getMilestoneById } from '@/db/repositories/campaignMilestoneRepository'
@@ -23,6 +24,7 @@ import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 type RouteParams = { params: Promise<{ campaignId: string }> }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     // ── Auth ────────────────────────────────────────────────────────
     const session = await auth()

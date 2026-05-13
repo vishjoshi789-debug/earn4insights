@@ -11,11 +11,13 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { getAccountById, setPrimaryAccount } from '@/db/repositories/payoutAccountRepository'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const session = await auth()
     if (!session?.user?.email) {

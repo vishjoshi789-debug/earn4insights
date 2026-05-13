@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import {
   getUserProfile,
   updateNotificationPreferences,
@@ -42,6 +43,7 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const session = await auth()
     if (!session?.user?.email) {

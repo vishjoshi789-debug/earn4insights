@@ -13,6 +13,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { encryptForStorage, decryptFromStorage } from '@/lib/encryption'
 import {
   getPayoutAccounts,
@@ -121,6 +122,7 @@ export async function GET(req: NextRequest) {
 // ── POST ──────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const session = await auth()
     if (!session?.user?.email) {

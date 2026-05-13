@@ -18,6 +18,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { getIcpById } from '@/db/repositories/icpRepository'
 import { batchScoreConsumersForIcp } from '@/server/icpMatchScoringService'
 import { bulkScoreRateLimit } from '@/lib/rate-limit-upstash'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 
 const MAX_CONSUMER_IDS = 200
 
@@ -53,6 +54,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ icpId: string }> }
 ) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     // Auth first so we can rate-limit by brand ID (more accurate than IP)
     const { icpId } = await params

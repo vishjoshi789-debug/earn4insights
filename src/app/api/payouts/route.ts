@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { db } from '@/db'
 import { payoutRequests, users, userReputation } from '@/db/schema'
 import { eq, desc, sql } from 'drizzle-orm'
@@ -67,6 +68,7 @@ export async function GET() {
 
 // POST /api/payouts — request a payout (consumer)
 export async function POST(req: NextRequest) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -111,6 +113,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/payouts — approve/deny a payout (brand only)
 export async function PATCH(req: NextRequest) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const session = await auth()
     if (!session?.user?.id) {

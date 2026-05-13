@@ -15,10 +15,12 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { paymentVerifyRateLimit } from '@/lib/rate-limit-upstash'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { capturePayment, PaymentVerificationError, DuplicatePaymentError } from '@/server/razorpayService'
 import { getOrderByRazorpayId } from '@/db/repositories/razorpayRepository'
 
 export async function POST(req: NextRequest) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     // ── Auth ────────────────────────────────────────────────────────
     const session = await auth()

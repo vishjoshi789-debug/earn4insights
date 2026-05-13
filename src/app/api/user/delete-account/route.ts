@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { userProfiles, users } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { logAccountDeletion } from '@/lib/audit-log'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 /**
  * GDPR Account Deletion Endpoint
  * 
@@ -18,9 +19,10 @@ import { logAccountDeletion } from '@/lib/audit-log'
  */
 
 export async function POST(request: NextRequest) {
+  if (!validateCsrfToken(request)) return csrfErrorResponse()
   try {
     const session = await auth()
-    
+
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },

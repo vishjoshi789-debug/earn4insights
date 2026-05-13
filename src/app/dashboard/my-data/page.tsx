@@ -40,6 +40,7 @@ import {
   Lock, Target, RefreshCw, CheckCircle2, XCircle, FileText, Clock,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { apiPost } from '@/lib/api-client'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -248,7 +249,7 @@ export default function MyDataPage() {
   async function handleDsarRequest() {
     setDsarLoading(true)
     try {
-      const res = await fetch('/api/consumer/dsar/request', { method: 'POST' })
+      const res = await apiPost('/api/consumer/dsar/request')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Failed to initiate request')
       await fetchDsarStatus()
@@ -267,11 +268,7 @@ export default function MyDataPage() {
     if (otp.length !== 6) return
     setVerifying(true)
     try {
-      const res = await fetch('/api/consumer/dsar/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId: dsarStatus?.requestId, otp }),
-      })
+      const res = await apiPost('/api/consumer/dsar/verify', { requestId: dsarStatus?.requestId, otp })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Verification failed')
       setOtpOpen(false)

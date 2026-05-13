@@ -11,12 +11,12 @@ export default async function DashboardLayout({
   children: ReactNode
 }) {
   const session = await auth()
-  
+
   // Fetch profile in parallel with onboarding guard logic
   // OnboardingGuard also calls auth() + ensureUserProfile, but brands skip onboarding
   // so we can run profile fetch here and pass it to avoid duplicate DB calls
   let profile = null
-  
+
   if (session?.user?.id) {
     const [profileById, profileByEmail] = await Promise.all([
       getUserProfile(session.user.id),

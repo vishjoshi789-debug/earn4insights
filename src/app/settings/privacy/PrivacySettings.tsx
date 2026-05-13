@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { updateUserConsent, updateChannelPreferences } from './privacy.actions'
 import { toast } from 'sonner'
+import { apiPost } from '@/lib/api-client'
 import { Download, Trash2, AlertTriangle, Info, CheckCircle2, Shield } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
@@ -146,11 +147,7 @@ export function PrivacySettings({ userId, initialProfile }: PrivacySettingsProps
   const handleDeleteAccount = async () => {
     setIsDeleting(true)
     try {
-      const response = await fetch('/api/user/delete-account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: deletionReason })
-      })
+      const response = await apiPost('/api/user/delete-account', { reason: deletionReason })
 
       const data = await response.json()
 

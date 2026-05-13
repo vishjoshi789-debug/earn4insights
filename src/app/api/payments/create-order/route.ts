@@ -13,12 +13,14 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { paymentCreateOrderRateLimit } from '@/lib/rate-limit-upstash'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { createOrder } from '@/server/razorpayService'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
 import { getMilestoneById } from '@/db/repositories/campaignMilestoneRepository'
 import { DuplicatePaymentError } from '@/server/razorpayService'
 
 export async function POST(req: NextRequest) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     // ── Auth ────────────────────────────────────────────────────────
     const session = await auth()

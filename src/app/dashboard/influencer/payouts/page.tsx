@@ -42,6 +42,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency, getSupportedCurrencies } from '@/lib/currency'
+import { apiPost, apiDelete } from '@/lib/api-client'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -251,11 +252,7 @@ export default function InfluencerPayoutsPage() {
     if (!form.accountType) { toast.error('Select an account type'); return }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/payouts/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form }),
-      })
+      const res = await apiPost('/api/payouts/accounts', { ...form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       toast.success('Payout account added')
@@ -273,7 +270,7 @@ export default function InfluencerPayoutsPage() {
   const handleSetPrimary = async (id: string) => {
     setSettingPrimary(id)
     try {
-      const res = await fetch(`/api/payouts/accounts/${id}/primary`, { method: 'POST' })
+      const res = await apiPost(`/api/payouts/accounts/${id}/primary`)
       if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Primary account updated')
       loadAccounts()
@@ -289,7 +286,7 @@ export default function InfluencerPayoutsPage() {
     if (!deleteTarget) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/payouts/accounts/${deleteTarget.id}`, { method: 'DELETE' })
+      const res = await apiDelete(`/api/payouts/accounts/${deleteTarget.id}`)
       if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Account removed')
       setDeleteTarget(null)

@@ -39,6 +39,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
 import { IcpWeightEditor, type EditableCriterion } from '@/components/icp-weight-editor'
+import { apiPost } from '@/lib/api-client'
 import {
   ArrowLeft, Target, Loader2, AlertCircle, RefreshCw, Trash2, Save,
 } from 'lucide-react'
@@ -240,11 +241,7 @@ export default function IcpDetailPage() {
     const ids = matches.slice(0, 200).map((m) => m.consumerId)
     setRescoring(true)
     try {
-      const res = await fetch(`/api/brand/icps/${icpId}/bulk-score`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ consumerIds: ids }),
-      })
+      const res = await apiPost(`/api/brand/icps/${icpId}/bulk-score`, { consumerIds: ids })
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error ?? 'Rescore failed')

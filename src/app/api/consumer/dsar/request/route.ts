@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { initiateRequest } from '@/server/dsarService'
 import { dsarRateLimit } from '@/lib/rate-limit-upstash'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 
 export async function POST(request: NextRequest) {
+  if (!validateCsrfToken(request)) return csrfErrorResponse()
   const session = await auth()
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

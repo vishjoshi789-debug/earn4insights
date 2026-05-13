@@ -21,6 +21,7 @@ import { toast } from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RazorpayCheckout } from '@/components/payments/RazorpayCheckout'
 import { formatCurrency } from '@/lib/currency'
+import { apiPost } from '@/lib/api-client'
 
 export default function BrandCampaignDetailPage() {
   const { data: session, status } = useSession()
@@ -118,15 +119,11 @@ export default function BrandCampaignDetailPage() {
     if (!data?.campaign) return
     setCreatingOrder(true)
     try {
-      const res = await fetch('/api/payments/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          campaignId,
-          currency: data.campaign.budgetCurrency ?? 'INR',
-          paymentType: data.campaign.paymentType ?? 'escrow',
-          amount: data.campaign.budgetTotal,
-        }),
+      const res = await apiPost('/api/payments/create-order', {
+        campaignId,
+        currency: data.campaign.budgetCurrency ?? 'INR',
+        paymentType: data.campaign.paymentType ?? 'escrow',
+        amount: data.campaign.budgetTotal,
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error)
@@ -142,11 +139,7 @@ export default function BrandCampaignDetailPage() {
     if (!releaseMilestone || !releaseInfluencerId) return
     setReleasing(true)
     try {
-      const res = await fetch(`/api/payments/release/${campaignId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ milestoneId: releaseMilestone.id, influencerId: releaseInfluencerId }),
-      })
+      const res = await apiPost(`/api/payments/release/${campaignId}`, { milestoneId: releaseMilestone.id, influencerId: releaseInfluencerId })
       if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Payment released! Payout queued for admin processing.')
       setReleaseConfirmOpen(false)
@@ -166,11 +159,7 @@ export default function BrandCampaignDetailPage() {
     if (!razorpayOrder?.razorpayOrderId) return
     setRefunding(true)
     try {
-      const res = await fetch(`/api/payments/refund/${razorpayOrder.razorpayOrderId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: refundReason }),
-      })
+      const res = await apiPost(`/api/payments/refund/${razorpayOrder.razorpayOrderId}`, { reason: refundReason })
       if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Refund requested successfully')
       setRefundOpen(false)
