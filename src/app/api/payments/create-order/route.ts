@@ -12,7 +12,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
-import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { paymentCreateOrderRateLimit } from '@/lib/rate-limit-upstash'
 import { createOrder } from '@/server/razorpayService'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
 import { getMilestoneById } from '@/db/repositories/campaignMilestoneRepository'
@@ -31,12 +31,12 @@ export async function POST(req: NextRequest) {
     }
     const brandId: string = user.id
 
-    // ── Rate limit ──────────────────────────────────────────────────
-    const rl = checkRateLimit(getRateLimitKey(req, 'payment-create-order'), RATE_LIMITS.paymentCreateOrder)
-    if (!rl.allowed) {
+    // ── Rate limit (10 / min per brand, distributed via Upstash) ────
+    const rl = await paymentCreateOrderRateLimit.limit(brandId)
+    if (!rl.success) {
       return NextResponse.json(
         { error: 'Too many requests. Please wait before trying again.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
+        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
       )
     }
 

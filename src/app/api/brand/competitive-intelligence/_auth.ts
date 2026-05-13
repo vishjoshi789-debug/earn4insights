@@ -2,7 +2,7 @@ import 'server-only'
 
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
-import { checkRateLimit, getRateLimitKey, RATE_LIMITS, type RateLimitConfig } from '@/lib/rate-limit'
+import { competitiveReadRateLimit, type Limiter } from '@/lib/rate-limit-upstash'
 
 export type BrandAuthResult =
   | { ok: true; userId: string }
@@ -13,10 +13,14 @@ export type BrandAuthResult =
  * - Unauthenticated → 401
  * - Non-brand role  → 403
  * - Rate limited     → 429
+ *
+ * Pass a specific limiter for routes with stricter limits (e.g.
+ * competitiveAiGenerateRateLimit, competitiveRecomputeRateLimit).
+ * Defaults to competitiveReadRateLimit when omitted.
  */
 export async function requireBrand(
-  req: Request,
-  opts?: { limit?: RateLimitConfig; limitKeyPrefix?: string }
+  _req: Request,
+  opts?: { limiter?: Limiter }
 ): Promise<BrandAuthResult> {
   const session = await auth()
   if (!session?.user?.email) {
@@ -28,15 +32,14 @@ export async function requireBrand(
     return { ok: false, response: NextResponse.json({ error: 'Brand access only' }, { status: 403 }) }
   }
 
-  const limit = opts?.limit ?? RATE_LIMITS.competitiveRead
-  const keyPrefix = opts?.limitKeyPrefix ?? 'ci'
-  const rl = checkRateLimit(getRateLimitKey(req, `${keyPrefix}:${userId}`), limit)
-  if (!rl.allowed) {
+  const limiter = opts?.limiter ?? competitiveReadRateLimit
+  const rl = await limiter.limit(userId)
+  if (!rl.success) {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: 'Rate limit exceeded', resetAt: rl.resetAt },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
+        { error: 'Rate limit exceeded', resetAt: rl.reset },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
       ),
     }
   }

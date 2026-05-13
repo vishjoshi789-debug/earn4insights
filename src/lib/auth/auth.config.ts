@@ -4,7 +4,7 @@ import Credentials from "next-auth/providers/credentials"
 import { getUserByEmail, createUser } from "@/lib/user/userStore"
 import { verifyPassword } from "@/lib/user/password"
 import type { UserRole } from "@/lib/user/types"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { loginRateLimit } from "@/lib/rate-limit-upstash"
 import { ensureUserProfile } from "@/lib/auth/ensureUserProfile"
 
 // Extend NextAuth types
@@ -60,10 +60,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null
         }
 
-        // Rate limit login attempts by email
+        // Rate limit login attempts by email (5 / 15 min, distributed via Upstash)
         const email = (credentials.email as string).toLowerCase()
-        const rl = checkRateLimit(`auth:${email}`, RATE_LIMITS.authAttempt)
-        if (!rl.allowed) {
+        const rl = await loginRateLimit.limit(email)
+        if (!rl.success) {
           console.warn('[Auth] Rate limited login attempt for:', email)
           return null
         }

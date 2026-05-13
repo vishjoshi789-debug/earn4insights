@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { userEvents } from '@/db/schema'
-import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { trackEventRateLimit, ipFromRequest } from '@/lib/rate-limit-upstash'
 import { logger } from '@/lib/logger'
 
 /**
@@ -11,10 +11,9 @@ import { logger } from '@/lib/logger'
  */
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit by IP
-    const rlKey = getRateLimitKey(request, 'track-event')
-    const rl = checkRateLimit(rlKey, RATE_LIMITS.analyticsEvent)
-    if (!rl.allowed) {
+    // Rate limit by IP (100 / min, distributed via Upstash)
+    const rl = await trackEventRateLimit.limit(ipFromRequest(request))
+    if (!rl.success) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
     }
 

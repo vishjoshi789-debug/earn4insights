@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireBrand } from '../../_auth'
-import { RATE_LIMITS } from '@/lib/rate-limit'
+import { competitiveAiGenerateRateLimit } from '@/lib/rate-limit-upstash'
 import { generateInsightsForBrand } from '@/server/competitiveIntelligenceService'
 
 export async function POST(req: NextRequest) {
-  const authed = await requireBrand(req, {
-    limit: RATE_LIMITS.competitiveAiGenerate,
-    limitKeyPrefix: 'ci:gen',
-  })
+  const authed = await requireBrand(req, { limiter: competitiveAiGenerateRateLimit })
   if (!authed.ok) return authed.response
   try {
     const result = await generateInsightsForBrand(authed.userId)

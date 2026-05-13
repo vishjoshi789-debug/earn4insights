@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createUser } from '@/lib/user/userStore'
-import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { signupRateLimit, ipFromRequest } from '@/lib/rate-limit-upstash'
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit signup attempts
-    const rlKey = getRateLimitKey(request, 'signup')
-    const rl = checkRateLimit(rlKey, RATE_LIMITS.signup)
-    if (!rl.allowed) {
+    // Rate limit signup attempts (3 / hour per IP, distributed)
+    const rl = await signupRateLimit.limit(ipFromRequest(request))
+    if (!rl.success) {
       return NextResponse.json(
         { error: 'Too many signup attempts. Please try again later.' },
         { status: 429 }

@@ -8,7 +8,7 @@ import { eq, and, gte, sql, desc } from 'drizzle-orm'
 import { computeRelevanceScore } from '@/lib/personalization/smartDistributionService'
 import { extractAndPersistIntents } from '@/server/intentExtractionService'
 import { alertOnNewFeedback, alertOnHighIntent } from '@/server/brandAlertService'
-import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { feedbackSubmitRateLimit, ipFromRequest } from '@/lib/rate-limit-upstash'
 import { productExists } from '@/lib/entity-checks'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
 import { recordContribution } from '@/server/contributionPipeline'
@@ -91,10 +91,9 @@ function detectLowQuality(text: string): string | null {
  */
 export async function POST(request: Request) {
   try {
-    // ── 0. IP-level rate limit ─────────────────────────────────
-    const rlKey = getRateLimitKey(request, 'feedback')
-    const rl = checkRateLimit(rlKey, RATE_LIMITS.feedbackSubmit)
-    if (!rl.allowed) {
+    // ── 0. IP-level rate limit (10 / min, distributed via Upstash) ─
+    const rl = await feedbackSubmitRateLimit.limit(ipFromRequest(request))
+    if (!rl.success) {
       return NextResponse.json(
         { error: 'Too many submissions. Please wait before trying again.' },
         { status: 429 }

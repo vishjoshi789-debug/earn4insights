@@ -4,7 +4,7 @@ import { users, passwordResetTokens } from '@/db/schema'
 import { eq, and, isNull, gt } from 'drizzle-orm'
 import { createHash } from 'crypto'
 import { hashPassword } from '@/lib/user/password'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { resetPasswordRateLimit } from '@/lib/rate-limit-upstash'
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
@@ -28,13 +28,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // Rate limit: 5 attempts per 15 minutes per token
+    // Rate limit: 5 attempts per 15 minutes per token (distributed via Upstash)
     const tokenPrefix = token.slice(0, 16)
-    const rl = checkRateLimit(`reset-pwd:${tokenPrefix}`, {
-      maxRequests: 5,
-      windowSeconds: 900,
-    })
-    if (!rl.allowed) {
+    const rl = await resetPasswordRateLimit.limit(tokenPrefix)
+    if (!rl.success) {
       return NextResponse.json(
         { error: 'Too many attempts. Please try again later.' },
         { status: 429 }

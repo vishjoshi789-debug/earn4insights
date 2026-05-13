@@ -4,7 +4,7 @@ import { users, passwordResetTokens } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { Resend } from 'resend'
 import { randomBytes, createHash } from 'crypto'
-import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { forgotPasswordRateLimit } from '@/lib/rate-limit-upstash'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -27,12 +27,10 @@ export async function POST(request: Request) {
 
     const normalizedEmail = email.toLowerCase().trim()
 
-    // Rate limit: 3 requests per 15 minutes per email
-    const rl = checkRateLimit(`forgot-pwd:${normalizedEmail}`, {
-      maxRequests: 3,
-      windowSeconds: 900,
-    })
-    if (!rl.allowed) {
+    // Rate limit: 1 reset per email per 15 min — prevents email-bomb attacks
+    // even when an attacker rotates IPs. Distributed via Upstash.
+    const rl = await forgotPasswordRateLimit.limit(normalizedEmail)
+    if (!rl.success) {
       // Still return 200 to prevent email enumeration
       return NextResponse.json({
         message: 'If an account with that email exists, a password reset link has been sent.',

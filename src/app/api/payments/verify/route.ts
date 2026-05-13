@@ -14,7 +14,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
-import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { paymentVerifyRateLimit } from '@/lib/rate-limit-upstash'
 import { capturePayment, PaymentVerificationError, DuplicatePaymentError } from '@/server/razorpayService'
 import { getOrderByRazorpayId } from '@/db/repositories/razorpayRepository'
 
@@ -31,12 +31,12 @@ export async function POST(req: NextRequest) {
     }
     const brandId: string = user.id
 
-    // ── Rate limit ──────────────────────────────────────────────────
-    const rl = checkRateLimit(getRateLimitKey(req, 'payment-verify'), RATE_LIMITS.paymentVerify)
-    if (!rl.allowed) {
+    // ── Rate limit (20 / min per brand, distributed via Upstash) ────
+    const rl = await paymentVerifyRateLimit.limit(brandId)
+    if (!rl.success) {
       return NextResponse.json(
         { error: 'Too many requests. Please wait before trying again.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
+        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
       )
     }
 

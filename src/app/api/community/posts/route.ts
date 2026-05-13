@@ -6,7 +6,7 @@ import { desc, eq, ilike, inArray, and, or, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
 import { recordContribution } from '@/server/contributionPipeline'
-import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { communityPostRateLimit } from '@/lib/rate-limit-upstash'
 
 // GET /api/community/posts — list posts with filters
 export async function GET(req: NextRequest) {
@@ -115,9 +115,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Rate limit post creation per user
-    const rl = checkRateLimit(`community-post:${session.user.id}`, RATE_LIMITS.communityPost)
-    if (!rl.allowed) {
+    // Rate limit post creation per user (5 / min, distributed via Upstash)
+    const rl = await communityPostRateLimit.limit(session.user.id)
+    if (!rl.success) {
       return NextResponse.json(
         { error: 'Too many posts. Please wait before posting again.' },
         { status: 429 }

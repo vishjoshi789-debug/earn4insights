@@ -8,8 +8,7 @@
  *   Scoring is sequential (intentional — avoids concurrent DB/decryption pressure).
  *   At ~100ms per consumer, 200 consumers ≈ 20s — within Vercel's 60s Pro limit.
  *
- *   Rate limited: 2 requests per 60s per IP (in-memory, per-instance).
- *   For stricter global limiting, swap checkRateLimit for Upstash Redis.
+ *   Rate limited: 2 requests per 60s per brand (Upstash Redis, distributed).
  *
  * Access: brand role only. Brands can only score consumers against their own ICPs.
  */
@@ -18,7 +17,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { getIcpById } from '@/db/repositories/icpRepository'
 import { batchScoreConsumersForIcp } from '@/server/icpMatchScoringService'
-import { checkRateLimit, getRateLimitKey, RATE_LIMITS } from '@/lib/rate-limit'
+import { bulkScoreRateLimit } from '@/lib/rate-limit-upstash'
 
 const MAX_CONSUMER_IDS = 200
 
@@ -55,22 +54,22 @@ export async function POST(
   { params }: { params: Promise<{ icpId: string }> }
 ) {
   try {
-    // Rate limit check
-    const rlKey = getRateLimitKey(req, 'bulk-score')
-    const rl = checkRateLimit(rlKey, RATE_LIMITS.bulkScore)
-    if (!rl.allowed) {
+    // Auth first so we can rate-limit by brand ID (more accurate than IP)
+    const { icpId } = await params
+    const authResult = await getBrandAndVerifyOwnership(icpId)
+    if (authResult instanceof NextResponse) return authResult
+
+    // Rate limit per brand (2 / min, distributed via Upstash)
+    const rl = await bulkScoreRateLimit.limit(authResult.userId)
+    if (!rl.success) {
       return NextResponse.json(
         { error: 'Rate limit exceeded. Max 2 bulk-score requests per 60 seconds.' },
         {
           status: 429,
-          headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) },
+          headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) },
         }
       )
     }
-
-    const { icpId } = await params
-    const authResult = await getBrandAndVerifyOwnership(icpId)
-    if (authResult instanceof NextResponse) return authResult
 
     const body = await req.json().catch(() => null)
     if (!body || !Array.isArray(body.consumerIds)) {

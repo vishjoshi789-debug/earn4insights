@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireBrand } from '../../_auth'
-import { RATE_LIMITS } from '@/lib/rate-limit'
+import { competitiveRecomputeRateLimit } from '@/lib/rate-limit-upstash'
 import {
   computeCompetitiveScore,
   scoreBrandForAllCategories,
 } from '@/server/competitiveScoringService'
 
 export async function POST(req: NextRequest) {
-  const authed = await requireBrand(req, {
-    limit: RATE_LIMITS.competitiveRecompute,
-    limitKeyPrefix: 'ci:recompute',
-  })
+  const authed = await requireBrand(req, { limiter: competitiveRecomputeRateLimit })
   if (!authed.ok) return authed.response
 
   try {

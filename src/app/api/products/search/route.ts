@@ -1,23 +1,38 @@
 import { NextResponse } from 'next/server'
 import { searchProductsByName } from '@/db/repositories/productRepository'
+import { searchRateLimit, ipFromRequest } from '@/lib/rate-limit-upstash'
 
 /**
  * GET /api/products/search?q=iPhone&limit=10
- * 
- * Public product search API with fuzzy matching
+ *
+ * Public product search API with fuzzy matching.
  * Used by:
  * - Consumer feedback form (to attach feedback to existing products)
  * - Brand onboarding (to check for existing products before creating)
- * 
+ *
+ * Rate limited: 60 / min per IP (distributed via Upstash). Prevents
+ * scraping the entire product catalogue from a single client.
+ *
  * Returns products sorted by match score (higher = better match)
  */
 export async function GET(request: Request) {
   try {
+    const rl = await searchRateLimit.limit(ipFromRequest(request))
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Too many search requests. Please slow down.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) },
+        }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('q') || ''
     const limitParam = searchParams.get('limit')
     const limit = limitParam ? Math.min(parseInt(limitParam, 10), 20) : 10
-    
+
     if (!query || query.trim().length < 2) {
       return NextResponse.json({
         results: [],

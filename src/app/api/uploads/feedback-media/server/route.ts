@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getSurveyById, updateSurveyResponseById } from '@/db/repositories/surveyRepository'
 import { upsertFeedbackMedia } from '@/server/uploads/feedbackMediaRepo'
 import { auth } from '@/lib/auth/auth.config'
-import { checkRateLimit, getRateLimitKey } from '@/lib/rate-limit'
+import { uploadRateLimit, ipFromRequest } from '@/lib/rate-limit-upstash'
 
 const MAX_BYTES = 4 * 1024 * 1024 // stay safely under Vercel 4.5MB limit
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5MB for images
@@ -71,17 +71,14 @@ export async function POST(request: Request) {
       )
     }
 
-    // ── Rate limit: 30 uploads per IP per 5 minutes ────────────────
-    const rl = checkRateLimit(
-      getRateLimitKey(request, 'feedback-upload'),
-      { maxRequests: 30, windowSeconds: 300 }
-    )
-    if (!rl.allowed) {
+    // ── Rate limit (30 / 5min per IP, distributed via Upstash) ─────
+    const rl = await uploadRateLimit.limit(ipFromRequest(request))
+    if (!rl.success) {
       return NextResponse.json(
         { error: 'Too many uploads. Please wait before uploading more.' },
         {
           status: 429,
-          headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) },
+          headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) },
         }
       )
     }
