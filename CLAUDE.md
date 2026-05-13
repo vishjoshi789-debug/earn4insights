@@ -108,6 +108,7 @@ await pgClient.unsafe(sql)
 11. `POST /api/admin/run-migration-011` — Deals/Community FK CASCADE hardening (GDPR Art. 17 — adds 19 FKs to migration 009 tables; cleans orphans first; CASCADE on user content, SET NULL on staff/audit refs)
 12. `POST /api/admin/run-migration-012` — DSAR Requests table (GDPR Art. 15 — `dsar_requests` with FK CASCADE → users)
 13. `POST /api/admin/run-migration-013` — Backfill `products.owner_id` for orphan products (legacy launches before commit 99925e3 had `owner_id=null`; backfills from `created_by` then `claimed_by`; reports `stillOrphaned` count for manual triage)
+14. `POST /api/admin/run-migration-014` — WhatsApp OTP verifications table (`whatsapp_otp_verifications` with FK CASCADE → users; required before saving a WhatsApp phone via `/api/user/notification-settings`)
 
 ---
 

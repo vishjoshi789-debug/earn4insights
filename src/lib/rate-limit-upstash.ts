@@ -223,6 +223,14 @@ export const searchRateLimit = createLimiter({ name: 'search', tokens: 60, windo
 // before the DB check runs.
 export const dsarRateLimit = createLimiter({ name: 'dsar', tokens: 1, window: '30 d' })
 
+// WhatsApp OTP send — keyed by user ID. Twilio messages cost money;
+// 1 send per 60s prevents brute-force trigger of OTP delivery.
+export const whatsappOtpSendRateLimit = createLimiter({
+  name: 'whatsapp-otp-send',
+  tokens: 1,
+  window: '60 s',
+})
+
 // ── Helpers ───────────────────────────────────────────────────────
 /**
  * Extract the client IP from a request. Use as part of the limit key

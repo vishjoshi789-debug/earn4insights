@@ -15,6 +15,7 @@ import {
   getUserProfile,
   updateNotificationPreferences,
 } from '@/db/repositories/userProfileRepository'
+import { hasVerifiedPhone } from '@/server/whatsappOtpService'
 
 export async function GET(_req: NextRequest) {
   try {
@@ -72,6 +73,20 @@ export async function PATCH(req: NextRequest) {
 
     const profile = await getUserProfile(userId)
     const existing = (profile?.notificationPreferences as any) || {}
+    const currentPhone: string | null = existing?.whatsapp?.phoneNumber ?? null
+
+    // Require OTP verification when adding a new number OR changing the
+    // saved one. Clearing the number (trimmedPhone === '') and toggling
+    // the enabled flag on the existing number both skip this check.
+    if (trimmedPhone && trimmedPhone !== currentPhone) {
+      const verified = await hasVerifiedPhone(userId, trimmedPhone)
+      if (!verified) {
+        return NextResponse.json(
+          { error: 'Phone number not verified. Send and confirm the WhatsApp code before saving.' },
+          { status: 400 }
+        )
+      }
+    }
 
     const updated = await updateNotificationPreferences(userId, {
       ...existing,

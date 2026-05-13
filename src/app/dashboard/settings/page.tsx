@@ -14,7 +14,7 @@ import {
   Link2, Link2Off, ExternalLink,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiPatch } from '@/lib/api-client'
+import { apiPatch, apiPost } from '@/lib/api-client'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -85,9 +85,16 @@ export default function NotificationSettingsPage() {
 
   // ── WhatsApp state (all users) ──────────────────────────────────
   const [waPhone, setWaPhone] = useState('')
+  const [waSavedPhone, setWaSavedPhone] = useState<string | null>(null)
   const [waEnabled, setWaEnabled] = useState(false)
   const [savingWa, setSavingWa] = useState(false)
   const [waSaved, setWaSaved] = useState(false)
+  // OTP flow — only entered when phone changes vs. saved value
+  const [sendingOtp, setSendingOtp] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
+  const [verifyingOtp, setVerifyingOtp] = useState(false)
+  const [otpAttemptsLeft, setOtpAttemptsLeft] = useState<number | null>(null)
 
   // ── Consumer-only: social connections ──────────────────────────
   type SocialConnection = { platform: string; connectedAt: string; lastSyncedAt: string | null }
@@ -127,7 +134,9 @@ export default function NotificationSettingsPage() {
       const waRes = await fetch('/api/user/notification-settings')
       if (waRes.ok) {
         const data = await waRes.json()
-        setWaPhone(data.whatsappPhoneNumber || '')
+        const saved: string | null = data.whatsappPhoneNumber || null
+        setWaPhone(saved || '')
+        setWaSavedPhone(saved)
         setWaEnabled(data.whatsappEnabled || false)
       }
       // Brand-specific settings
@@ -207,6 +216,8 @@ export default function NotificationSettingsPage() {
 
   // Save WhatsApp preferences. Optional overrides let the toggle persist
   // its new value immediately without waiting for state-update batching.
+  // Phone changes are gated by OTP verification — the server rejects an
+  // unverified number, and the UI funnels users through Send/Verify first.
   async function saveWhatsApp(opts?: { enabled?: boolean; phone?: string }) {
     const enabledToSave = opts?.enabled ?? waEnabled
     const phoneToSave = (opts?.phone ?? waPhone).trim() || null
@@ -220,6 +231,7 @@ export default function NotificationSettingsPage() {
         const data = await res.json()
         throw new Error(data.error || 'Failed to save')
       }
+      setWaSavedPhone(phoneToSave)
       setWaSaved(true)
       setTimeout(() => setWaSaved(false), 3000)
       toast.success('WhatsApp preferences saved')
@@ -227,6 +239,56 @@ export default function NotificationSettingsPage() {
       toast.error(err.message || 'Failed to save WhatsApp settings')
     } finally {
       setSavingWa(false)
+    }
+  }
+
+  // Send a 6-digit OTP to the entered phone. Server rate-limits 1/60s.
+  async function handleSendWaOtp() {
+    const phone = waPhone.trim()
+    if (!phone) return
+    setSendingOtp(true)
+    setOtpAttemptsLeft(null)
+    try {
+      const res = await apiPost('/api/user/whatsapp/send-otp', { phoneNumber: phone })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to send code')
+      }
+      setOtpSent(true)
+      setOtpCode('')
+      toast.success('Verification code sent via WhatsApp')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send code')
+    } finally {
+      setSendingOtp(false)
+    }
+  }
+
+  // Verify the entered 6-digit OTP. On success, persist the new number.
+  async function handleVerifyWaOtp() {
+    const phone = waPhone.trim()
+    if (!phone || otpCode.length !== 6) return
+    setVerifyingOtp(true)
+    try {
+      const res = await apiPost('/api/user/whatsapp/verify-otp', {
+        phoneNumber: phone,
+        otp: otpCode,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        if (typeof data.attemptsRemaining === 'number') setOtpAttemptsLeft(data.attemptsRemaining)
+        throw new Error(data.error || 'Verification failed')
+      }
+      setOtpSent(false)
+      setOtpCode('')
+      setOtpAttemptsLeft(null)
+      toast.success('Phone number verified')
+      // Verified — save with current enabled state so the new number sticks
+      await saveWhatsApp({ phone })
+    } catch (err: any) {
+      toast.error(err.message || 'Verification failed')
+    } finally {
+      setVerifyingOtp(false)
     }
   }
 
@@ -328,6 +390,8 @@ export default function NotificationSettingsPage() {
   }
 
   const phoneInvalid = Boolean(waPhone && !/^\+[1-9]\d{6,14}$/.test(waPhone.trim()))
+  const phoneChanged = Boolean(waPhone.trim()) && waPhone.trim() !== (waSavedPhone ?? '')
+  const phoneCleared = !waPhone.trim() && waSavedPhone !== null
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -374,10 +438,10 @@ export default function NotificationSettingsPage() {
             </div>
             <Switch
               checked={waEnabled}
-              disabled={!waPhone.trim() || phoneInvalid || savingWa}
+              disabled={!waSavedPhone || phoneInvalid || savingWa || phoneChanged || otpSent}
               onCheckedChange={(v) => {
                 setWaEnabled(v)
-                saveWhatsApp({ enabled: v })
+                saveWhatsApp({ enabled: v, phone: waSavedPhone ?? '' })
               }}
               aria-label="Enable WhatsApp notifications"
             />
@@ -394,24 +458,90 @@ export default function NotificationSettingsPage() {
                 autoComplete="tel"
                 placeholder="+919876543210"
                 value={waPhone}
-                onChange={(e) => setWaPhone(e.target.value)}
+                onChange={(e) => {
+                  setWaPhone(e.target.value)
+                  // Cancel any in-flight OTP if the user edits the phone again
+                  if (otpSent) { setOtpSent(false); setOtpCode('') }
+                }}
+                disabled={otpSent}
                 className="font-mono text-sm"
               />
-              <Button
-                onClick={() => saveWhatsApp()}
-                disabled={savingWa || phoneInvalid}
-                variant={waSaved ? 'default' : 'outline'}
-                className="shrink-0"
-              >
-                {savingWa ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : waSaved ? (
-                  <><Check className="h-4 w-4 mr-1" />Saved</>
-                ) : (
-                  'Save'
-                )}
-              </Button>
+              {phoneChanged && !otpSent && (
+                <Button
+                  onClick={handleSendWaOtp}
+                  disabled={sendingOtp || phoneInvalid}
+                  variant="outline"
+                  className="shrink-0"
+                >
+                  {sendingOtp ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send code'}
+                </Button>
+              )}
+              {phoneCleared && (
+                <Button
+                  onClick={() => saveWhatsApp({ phone: '' })}
+                  disabled={savingWa}
+                  variant="outline"
+                  className="shrink-0"
+                >
+                  {savingWa ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Remove number'}
+                </Button>
+              )}
+              {!phoneChanged && !phoneCleared && waSavedPhone && (
+                <Button variant="default" disabled className="shrink-0">
+                  <Check className="h-4 w-4 mr-1" />Verified
+                </Button>
+              )}
             </div>
+
+            {/* OTP entry — shown after Send code succeeds */}
+            {otpSent && (
+              <div className="rounded-lg border border-green-200 bg-green-50/60 dark:bg-green-950/20 p-3 space-y-2">
+                <p className="text-sm font-medium">Enter the 6-digit code we sent to {waPhone}</p>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="font-mono text-base tracking-widest"
+                  />
+                  <Button
+                    onClick={handleVerifyWaOtp}
+                    disabled={verifyingOtp || otpCode.length !== 6}
+                    className="shrink-0"
+                  >
+                    {verifyingOtp ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => { setOtpSent(false); setOtpCode(''); setOtpAttemptsLeft(null) }}
+                    disabled={verifyingOtp}
+                    className="shrink-0"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                {otpAttemptsLeft !== null && otpAttemptsLeft > 0 && (
+                  <p className="text-xs text-amber-700">
+                    Incorrect code. {otpAttemptsLeft} attempt{otpAttemptsLeft === 1 ? '' : 's'} remaining.
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Code expires in 15 minutes. Didn&apos;t receive it?{' '}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={handleSendWaOtp}
+                    disabled={sendingOtp}
+                  >
+                    Resend
+                  </button>
+                </p>
+              </div>
+            )}
+
             {phoneInvalid && (
               <p className="text-xs text-destructive">
                 Use international format with your country code, no spaces or dashes.
@@ -428,7 +558,7 @@ export default function NotificationSettingsPage() {
                 {' '}<span className="font-mono">+919876543210</span> (India),
                 {' '}<span className="font-mono">+14155552671</span> (US),
                 {' '}<span className="font-mono">+447911123456</span> (UK).
-                Save your number first — then the toggle above can be turned on.
+                You&apos;ll receive a one-time code on WhatsApp to verify the number before it&apos;s saved.
               </p>
             )}
           </div>
@@ -537,7 +667,7 @@ export default function NotificationSettingsPage() {
                         ) : (
                           <Switch
                             checked={hasChannel(type, 'whatsapp')}
-                            disabled={!isEnabled || !waPhone || phoneInvalid || !waEnabled}
+                            disabled={!isEnabled || !waSavedPhone || phoneInvalid || !waEnabled}
                             onCheckedChange={(v) => toggleChannel(type, 'whatsapp', v)}
                             aria-label={`WhatsApp for ${config.label}`}
                           />

@@ -2154,3 +2154,25 @@ export const dsarRequests = pgTable('dsar_requests', {
 
 export type DsarRequest = typeof dsarRequests.$inferSelect
 export type NewDsarRequest = typeof dsarRequests.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION — WhatsApp OTP Verifications
+// Migration 014 — proves possession of a phone number before
+// notifications can be sent to it.
+// ════════════════════════════════════════════════════════════════
+
+export const whatsappOtpVerifications = pgTable('whatsapp_otp_verifications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),                  // → users.id (FK CASCADE)
+  phoneNumber: text('phone_number').notNull(),        // E.164 format
+  otpHash: text('otp_hash').notNull(),                // bcrypt — never store plain
+  expiresAt: timestamp('expires_at').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(3),
+  verifiedAt: timestamp('verified_at'),               // null until OTP confirmed
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  // INDEX (user_id, phone_number) in migration
+})
+
+export type WhatsappOtpVerification = typeof whatsappOtpVerifications.$inferSelect
+export type NewWhatsappOtpVerification = typeof whatsappOtpVerifications.$inferInsert
