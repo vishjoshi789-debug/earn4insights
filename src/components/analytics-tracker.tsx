@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
+import { hasAnalyticsConsent } from '@/lib/cookie-consent'
 
 // ── Session + Identity ────────────────────────────────────────────
 
@@ -52,6 +53,10 @@ let eventQueue: any[] = []
 let flushTimeout: ReturnType<typeof setTimeout> | null = null
 
 function queueEvent(event: Record<string, any>) {
+  // Gate: GDPR cookie consent. Drop the event silently if the user has
+  // not opted in to analytics (or hasn't responded to the banner yet).
+  if (!hasAnalyticsConsent()) return
+
   const base = {
     sessionId: getSessionId(),
     anonymousId: getAnonymousId(),

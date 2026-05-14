@@ -8,6 +8,7 @@ import { SiteHeader } from '@/components/site-header'
 import { SessionProvider } from '@/components/session-provider'
 import { Toaster } from 'sonner'
 import AnalyticsTracker from '@/components/analytics-tracker'
+import { CookieConsent } from '@/components/CookieConsent'
 import { CSRF_HEADER_NAME } from '@/lib/csrf'
 
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID
@@ -82,6 +83,7 @@ export default async function RootLayout({
           </div>
           <Toaster />
           <AnalyticsTracker />
+          <CookieConsent />
         </SessionProvider>
       </body>
     </html>

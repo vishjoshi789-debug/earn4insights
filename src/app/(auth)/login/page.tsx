@@ -76,9 +76,9 @@ function LoginForm() {
             The Intelligence Operating System for Brands, Consumers and Influencers
           </span>
         </div>
-        <CardTitle className="text-2xl font-bold text-center">Welcome back</CardTitle>
+        <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
         <CardDescription className="text-center">
-          Sign in to your account to continue
+          Sign in to continue to Earn4Insights
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -130,10 +130,10 @@ function LoginForm() {
 
         <div className="relative my-4">
           <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
+            <span className="w-full border-t border-border" />
           </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-gray-500">Or continue with</span>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-card px-3 text-muted-foreground">or continue with</span>
           </div>
         </div>
 
@@ -165,8 +165,8 @@ function LoginForm() {
           Sign in with Google
         </Button>
 
-        <p className="mt-4 text-center text-sm text-gray-600">
-          Don't have an account?{' '}
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          Don&apos;t have an account?{' '}
           <Link href="/signup" className="text-blue-600 hover:underline">
             Sign up
           </Link>
@@ -178,7 +178,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center px-4 py-12 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-950 dark:via-background dark:to-violet-950/30">
       <Suspense fallback={<Card className="w-full max-w-md p-6"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></Card>}>
         <LoginForm />
       </Suspense>
