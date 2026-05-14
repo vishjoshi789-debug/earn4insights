@@ -115,6 +115,66 @@ matchScore = round((totalEarned / totalPossible) × 100)   // 0–100
 
 ---
 
+## Production Security Hardening (Batches 1–5 — May 2026)
+
+### Batch 1 (commit 4a73fa5)
+| Fix | Detail |
+|-----|--------|
+| Upload auth | `POST /api/uploads/feedback-media/server` now verifies session before accepting files |
+| `products.owner_id` backfill | Migration 013 repairs legacy null `owner_id` from `created_by`/`claimed_by` |
+| emailService migration | Notification cron now calls `emailService` (Resend) instead of raw `fetch` |
+| Password complexity | Min 8 chars, at least 1 uppercase, 1 digit, 1 special char enforced at signup + reset |
+| Admin role guard | Sensitive admin routes verify `role === 'admin'`; non-admins get 403 |
+
+### Batch 2 (commit 9dd55e7) — Upstash Redis Rate Limiting
+Replaces the old in-memory `checkRateLimit` on 21 routes with Upstash sliding-window limiters shared across Vercel serverless instances.
+
+**17 limiters** in `src/lib/rate-limit-upstash.ts`:
+
+| Limiter | Limit | Window | Keyed by |
+|---------|-------|--------|----------|
+| `login` | 5 | 15 min | email |
+| `signup` | 3 | 1 h | IP |
+| `forgot-password` | 1 | 15 min | email |
+| `reset-password` | 5 | 15 min | token prefix |
+| `payment-create-order` | 10 | 1 min | userId |
+| `payment-verify` | 20 | 1 min | userId |
+| `feedback-submit` | 10 | 1 min | userId |
+| `upload` | 30 | 5 min | userId |
+| `community-post` | 5 | 1 min | userId |
+| `bulk-score` | 2 | 1 min | brandId |
+| `competitive-ai` | 3 | 1 min | brandId |
+| `competitive-recompute` | 5 | 1 min | brandId |
+| `competitive-read` | 30 | 1 min | brandId |
+| `track-event` | 100 | 1 min | IP |
+| `email-click` | 30 | 1 min | IP |
+| `search` | 60 | 1 min | IP |
+| `dsar` | 1 | 30 d | userId |
+| `whatsapp-otp-send` | 1 | 60 s | userId |
+
+### Batch 3 (commits b8bb412, 84207c6) — CSRF + WhatsApp OTP
+
+**CSRF (commit b8bb412):** `src/lib/csrf.ts` — `generateCsrfToken`, `validateCsrfToken` (timing-safe), `setCsrfCookie`. Middleware mints `e4i-csrf` cookie on every page response; root layout reads `x-csrf-token` header (injected by middleware into request) and renders `<meta name="csrf-token">`. Client code reads from meta tag via `src/lib/api-client.ts` (`apiPost`/`apiPatch`/`apiPut`/`apiDelete` wrappers). 17 routes validate the token before processing.
+
+**WhatsApp OTP (commit 84207c6):** `src/server/whatsappOtpService.ts` — `sendOtp(userId, phone)` generates 6-digit OTP, bcrypt-hashes it, inserts into `whatsapp_otp_verifications`, delivers via Twilio. `verifyOtp(userId, requestId, otp)` returns typed result union. `hasVerifiedPhone(userId, phone)` called by notification-settings route. Migration 014 creates the table.
+
+### Batch 4 (commit e34f9e9)
+| Fix | Detail |
+|-----|--------|
+| Admin diagnostics flag | Routes return bare `404` unless `ADMIN_DIAGNOSTICS_ENABLED === 'true'` |
+| Media-cron saturation warning | Batch processing warns at configurable saturation threshold |
+| PII log sanitization | `maskEmail` (`j***@example.com`) and `maskPhone` (`***1234`) exported from `src/lib/logger.ts`; applied in 7 server files; DSAR OTP no longer logged in production |
+
+### Batch 5 (commit e33a1d7)
+| Fix | Detail |
+|-----|--------|
+| Cookie consent banner | `src/components/CookieConsent.tsx` — fixed-bottom GDPR banner, Essential/Analytics/Preferences toggles. `src/lib/cookie-consent.ts` — `localStorage` key `e4i-cookie-consent`, `CONSENT_VERSION=1`. `hasAnalyticsConsent()` called in `analytics-tracker.tsx` before every event |
+| Branded error pages | `src/app/error.tsx` and `src/app/not-found.tsx` — Logo, gradient background, "Try Again" / "Go to Dashboard" CTAs |
+| Login polish | Gradient bg matching signup, "Welcome Back" heading, `bg-card` divider |
+| Mobile tab fix | `src/components/ui/tabs.tsx` — `max-w-full overflow-x-auto justify-start` on all `TabsList` instances (affects 13 pages) |
+
+---
+
 ## File Map
 
 ```
@@ -122,7 +182,12 @@ src/
 ├── lib/
 │   ├── encryption.ts                              # MODIFIED — versioned key rotation + security fixes (2,7,8)
 │   ├── consent-enforcement.ts                     # REWRITTEN — 13 operations + isSensitiveCategory()
-│   ├── rate-limit.ts                              # MODIFIED — added bulkScore rate limit config
+│   ├── rate-limit.ts                              # MODIFIED — added bulkScore rate limit config (legacy in-memory)
+│   ├── rate-limit-upstash.ts                      # NEW — 17 Upstash sliding-window limiters + ipFromRequest
+│   ├── csrf.ts                                    # NEW — generateCsrfToken, validateCsrfToken, setCsrfCookie
+│   ├── api-client.ts                              # NEW — apiPost/apiPatch/apiPut/apiDelete (inject X-CSRF-Token)
+│   ├── cookie-consent.ts                          # NEW — readConsent/writeConsent/hasAnalyticsConsent
+│   ├── logger.ts                                  # MODIFIED — added maskEmail, maskPhone exports
 │   └── personalization/
 │       └── userSignalAggregator.ts                # MODIFIED — added aggregateAndPersistUserSignals()
 │
@@ -138,7 +203,8 @@ src/
 │       ├── icpRepository.ts                       # NEW
 │       ├── sensitiveAttributeRepository.ts        # NEW — soft/physical delete + key rotation
 │       ├── socialConnectionRepository.ts          # NEW — encrypted OAuth token storage
-│       └── userProfileRepository.ts               # MODIFIED — hasConsent() delegation + JSONB fallback
+│       ├── userProfileRepository.ts               # MODIFIED — hasConsent() delegation + JSONB fallback
+│       └── whatsappOtpRepository.ts               # NEW — createOtp, findActiveOtp, incrementAttempts, markVerified, hasVerifiedPhone
 │
 ├── server/
 │   ├── brandAlertService.ts                       # MODIFIED — ICP gating + alertOnIcpMatch()
@@ -146,14 +212,18 @@ src/
 │   ├── sensitiveAttributeService.ts               # NEW — ConsentDeniedError + category mapping
 │   ├── icpMatchScoringService.ts                  # NEW — scoring engine (security fixes 4,5)
 │   ├── updateConsumerSignals.ts                   # NEW — batch signal cron + IP anonymization (fix 3)
-│   └── recomputeIcpScores.ts                      # NEW — batch ICP score recomputation
+│   ├── recomputeIcpScores.ts                      # NEW — batch ICP score recomputation
+│   └── whatsappOtpService.ts                      # NEW — sendOtp, verifyOtp (typed union), hasVerifiedPhone
 │
 ├── components/
 │   ├── icp-weight-editor.tsx                      # NEW — reusable ICP weight slider component
+│   ├── CookieConsent.tsx                          # NEW — GDPR cookie consent banner (Essential/Analytics/Preferences)
+│   ├── analytics-tracker.tsx                      # MODIFIED — gated behind hasAnalyticsConsent()
 │   └── ui/
 │       ├── slider.tsx                             # NEW — Slider component (range input wrapper)
 │       ├── accordion.tsx                          # NEW — Accordion component (custom, no Radix dep)
-│       └── dialog.tsx                             # MODIFIED — added asChild prop to DialogTrigger
+│       ├── dialog.tsx                             # MODIFIED — added asChild prop to DialogTrigger
+│       └── tabs.tsx                               # MODIFIED — max-w-full overflow-x-auto justify-start on TabsList
 │
 └── app/
     ├── dashboard/
@@ -168,6 +238,8 @@ src/
         ├── admin/
         │   ├── run-migration-002/route.ts         # NEW — apply schema migration
         │   ├── run-migration-003/route.ts         # NEW — FK constraints migration
+        │   ├── run-migration-013/route.ts         # NEW — backfill products.owner_id (DML)
+        │   ├── run-migration-014/route.ts         # NEW — whatsapp_otp_verifications table
         │   └── migrate-consent-records/route.ts   # NEW — backfill legacy consent
         ├── consumer/
         │   ├── consent/route.ts                   # NEW — GET/POST/DELETE
@@ -179,6 +251,9 @@ src/
         │       ├── connect/route.ts                # NEW — POST encrypted token storage
         │       ├── disconnect/route.ts             # NEW — DELETE revocation
         │       └── callback/route.ts               # NEW — OAuth redirect handler (LinkedIn)
+        ├── user/whatsapp/
+        │   ├── send-otp/route.ts              # NEW — POST; CSRF + 1/60s Upstash rate limit
+        │   └── verify-otp/route.ts            # NEW — POST; CSRF; returns attemptsRemaining on fail
         ├── brand/icps/
         │   ├── route.ts                           # NEW — GET/POST
         │   └── [icpId]/

@@ -47,7 +47,7 @@ If `CRON_SECRET` is unset, check is skipped (routes run unauthenticated). **Alwa
 
 ## Notes
 
-- Middleware does NOT intercept cron routes. The `middleware.ts` matcher `/((?!api|_next/static|_next/image|favicon.ico).*)` excludes `/api/*`. Cron routes handle their own auth.
+- Middleware does NOT intercept cron routes. The `middleware.ts` matcher `/((?!api|_next/static|_next/image|favicon.ico).*)` excludes `/api/*`. Cron routes handle their own auth via `Authorization: Bearer CRON_SECRET`. Note: middleware does mint the `e4i-csrf` cookie on page responses (for CSRF protection on UI-facing routes), but this does not affect `/api/*` cron routes.
 - `SIGNAL_CRON_BATCH_SIZE` — max users per signal cron run (default: all)
 - `ICP_SCORE_CRON_BATCH_SIZE=200` — max stale scores per ICP cron run. Bulk score is intentionally sequential: 200 × ~100ms ≈ 20s, safe within Vercel's 60s Pro function limit.
 - **`process-content-reviews`** vercel.json schedule is `0 2 * * *` (daily 02:00 UTC). The higher-cadence 2h triggering (`0 */2 * * *`) is wired externally via cron-job.org hitting the same route. Duplicate prevention: `content_review_reminders` table with UNIQUE index on `(post_id, reminder_type)`. Reminder types: `75_pct`, `90_pct`, `sla_expired`. At 100% SLA: auto-approves if `autoApproveEnabled=true`, otherwise sends escalation notification. Returns stats: `{ autoApproved, reminders75, reminders90, escalations }`.

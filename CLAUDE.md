@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: April 2026 (v6 — Competitive Intelligence Dashboard + DSAR System). Read at the start of every session.
+> Last updated: May 2026 (v7 — Production Security Hardening: rate limiting, CSRF, WhatsApp OTP, cookie consent). Read at the start of every session.
 
 ## Project Overview
 
@@ -93,6 +93,12 @@ await pgClient.unsafe(sql)
 | Admin Role Fix + Admin Sidebar Nav (OnboardingGuard bypass + 7 admin nav items) | ✅ COMPLETE |
 | Competitive Intelligence Dashboard (9 tables, 6-dimension scoring, AI insights, alert detection, 5 cron jobs) | ✅ COMPLETE |
 | DSAR System — GDPR Art. 15 (OTP verification, PDF generation via pdfkit + Vercel Blob, 30-day rate limit) | ✅ COMPLETE |
+| Security Batch 1 (upload auth, products.owner_id backfill, emailService migration, password complexity, admin role guards) | ✅ COMPLETE |
+| Upstash Redis Distributed Rate Limiting (17 limiters across 21 routes, sliding-window, fail-open, env-prefixed keys) | ✅ COMPLETE |
+| CSRF Double-Submit Cookie Protection (17 high-risk routes protected; `e4i-csrf` cookie + `X-CSRF-Token` header; middleware mints token) | ✅ COMPLETE |
+| WhatsApp OTP Phone Verification (migration 014, bcrypt OTP, 15-min TTL, 3 attempts, onboarding step 5, gate on phone save) | ✅ COMPLETE |
+| Admin Diagnostics Feature Flag + PII Log Sanitization (`ADMIN_DIAGNOSTICS_ENABLED`, `maskEmail`/`maskPhone` in logger) | ✅ COMPLETE |
+| Cookie Consent Banner + UX Polish (GDPR consent gates analytics; branded 404/500; login polish; mobile tab responsiveness) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -152,6 +158,14 @@ RAZORPAY_KEY_ID=                       # Razorpay dashboard → Settings → API
 RAZORPAY_KEY_SECRET=                   # Keep secret — never expose client-side
 RAZORPAY_WEBHOOK_SECRET=               # Dashboard → Webhooks → Secret
 NEXT_PUBLIC_RAZORPAY_KEY_ID=           # Same as RAZORPAY_KEY_ID — safe for client
+
+# Rate limiting (Upstash Redis)
+UPSTASH_REDIS_REST_URL=                # Upstash console → REST API URL
+UPSTASH_REDIS_REST_TOKEN=              # Upstash console → REST API token
+# If unset, falls back to in-memory rate limiting (not shared across serverless instances)
+
+# Feature flags
+ADMIN_DIAGNOSTICS_ENABLED=true         # Set to 'true' to enable /api/admin/diagnostics/* routes; bare 404 otherwise
 ```
 
 Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITECTURE.md`.
@@ -211,6 +225,17 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **DSAR PDF TTL: 7 days** | Balances access window with storage cost. `dsar-cleanup` cron deletes expired blobs from Vercel Blob and sets `status='expired'` in DB. |
 | **DSAR rate limit: 1 request per 30 days** | Prevents abuse of expensive PDF generation. If an active OTP-sent request exists and OTP is still valid, the existing `requestId` is returned so the user can retry without starting over. |
 | **DSAR PDF attached to delivery email if < 10 MB** | Convenience — user gets the PDF directly in their inbox. Falls back to download link only if PDF exceeds 10 MB. |
+| **Upstash sliding-window, fail-open** | `@upstash/ratelimit` sliding window is shared across all Vercel serverless instances (unlike the old in-memory limiter). Upstash errors fail-open (`[RATE_LIMIT_FAIL_OPEN]` log prefix) so a Redis outage never locks users out. Falls back to in-memory if env vars are unset. |
+| **Rate-limit keys prefixed `e4i:{env}:{limiter}:{caller-key}`** | One Redis DB can serve prod/preview/dev without cross-contamination. `env` derived from `VERCEL_ENV` / `NODE_ENV`. |
+| **CSRF double-submit cookie, `sameSite: lax`, `httpOnly: false`** | Double-submit is viable because cross-origin requests cannot read the `e4i-csrf` cookie (Same-Origin Policy). `sameSite:lax` blocks cross-site form posts while allowing top-level navigations. `httpOnly:false` intentional — the client reads the token from `<meta name="csrf-token">` injected by root layout; the meta tag is the distribution channel, not JS cookie read. |
+| **CSRF meta tag in root layout, not dashboard layout** | Root layout covers all routes including `/admin/*`, `/settings/*`, `/api/*` callsites in marketing pages. Dashboard layout is a child — injecting there would miss those callsites. One meta tag, one source of truth. |
+| **CSRF validation per-route, not in middleware** | Middleware runs on every request (including GET, static assets, crons). Per-route validation targets only state-mutating endpoints (POST/PATCH/PUT/DELETE on user-facing routes), avoiding performance overhead and false-positives on cron routes that use Bearer auth instead. |
+| **WhatsApp OTP: bcrypt-hashed in DB, 15-min TTL, 3 attempts** | OTP stored as bcrypt hash — even DB read access cannot recover the plaintext OTP. TTL prevents replay; attempt cap prevents brute-force. Same pattern as DSAR OTP. Table: `whatsapp_otp_verifications` (migration 014). |
+| **Phone save gated on OTP verification** | `PATCH /api/user/notification-settings` calls `hasVerifiedPhone(userId, phone)` before persisting a WhatsApp number. Prevents brands/consumers from saving an arbitrary phone number they don't own. Onboarding step 5 is optional — existing users without a verified phone can still use the platform. |
+| **Cookie consent via `localStorage`, not cookie** | Consent preference is UI state, not a tracking cookie. Using `localStorage` avoids creating a cookie-for-cookies meta-irony and keeps the consent state client-side and instantly readable without a round-trip. `CONSENT_VERSION=1` — bumping to `2` in `cookie-consent.ts` treats all v1 consent as expired and re-shows the banner. |
+| **Analytics gated on `hasAnalyticsConsent()`** | `analytics-tracker.tsx` checks consent before every `queueEvent()` call. First page_view is dropped on first visit (GDPR-correct — no tracking before consent). |
+| **PII masked in logs with `maskEmail` / `maskPhone`** | `j***@example.com` and `***1234` patterns prevent PII leakage in Vercel log drain, third-party APM, or log storage. Exports from `logger.ts` so every service has a one-import path. Production OTP values also guarded by `NODE_ENV` gate (dev-only console log). |
+| **Admin diagnostics behind `ADMIN_DIAGNOSTICS_ENABLED` flag** | Routes exist in the bundle regardless. Flag returns bare `404` (not `403`) when disabled so the route's existence is not discoverable. Default off in `.env.example`; set `true` only in environments where diagnostic access is intentional. |
 
 ---
 
@@ -263,7 +288,7 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 ## Reference Docs
 
 - **`ARCHITECTURE.md`** — Full technical architecture (authoritative)
-- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–012)
+- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–014)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
 - **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, @ tags, file map
 - **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (31 events), notification/presence architecture, file map

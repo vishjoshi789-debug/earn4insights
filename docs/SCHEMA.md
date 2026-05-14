@@ -271,6 +271,39 @@ Indexes:
 
 ---
 
+## Migration 013 — Backfill `products.owner_id` (DML only — no new tables)
+
+Applied via `POST /api/admin/run-migration-013`. Prerequisite: migration 012.
+
+This is a **data repair migration** with no schema changes. Legacy product launches before commit `99925e3` set `owner_id=null` because the brand confirmation email flow did not populate the column.
+
+**Repair logic (idempotent):**
+1. Sets `owner_id = created_by` for all products where `owner_id IS NULL AND created_by IS NOT NULL`.
+2. Sets `owner_id = claimed_by` for remaining products where `owner_id IS NULL AND claimed_by IS NOT NULL`.
+3. Returns `{ fixed, stillOrphaned }` — `stillOrphaned` products (no `created_by` or `claimed_by`) require manual triage.
+
+No `ALTER TABLE` or `CREATE TABLE` statements — safe to re-run multiple times.
+
+---
+
+## Migration 014 — WhatsApp OTP Verifications (1 new table)
+
+Applied via `POST /api/admin/run-migration-014`. Prerequisite: migration 013.
+
+### `whatsapp_otp_verifications`
+
+Records OTP verification attempts for WhatsApp phone ownership verification. Required before a user can save a WhatsApp phone number via `PATCH /api/user/notification-settings`.
+
+Columns: `id` (UUID PK), `user_id` (TEXT → users CASCADE), `phone` (TEXT — E.164 format, e.g. `+919876543210`), `otp_hash` (TEXT — bcrypt hash of 6-digit OTP), `expires_at` (TIMESTAMP — 15 minutes after creation), `attempts` (INTEGER default 0), `max_attempts` (INTEGER default 3), `verified` (BOOLEAN default false), `created_at`
+
+Indexes:
+- `(user_id, phone, verified)` — fast lookup for `hasVerifiedPhone()` check at notification-settings save time
+- `(expires_at)` — future cleanup (expired unverified rows)
+
+**Flow:** `POST /api/user/whatsapp/send-otp` → generate 6-digit OTP, bcrypt hash, insert row, deliver via Twilio WhatsApp. `POST /api/user/whatsapp/verify-otp` → fetch active row, `bcrypt.compare`, mark `verified=true`. Upstash rate limit: 1 send per 60s per user. Middleware CSRF required on both routes.
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`
