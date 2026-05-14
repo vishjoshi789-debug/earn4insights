@@ -644,7 +644,14 @@ async function buildPdf(data: DsarData): Promise<Buffer> {
 async function sendOtpEmail(to: string, otp: string) {
   const client = getResend()
   if (!client) {
-    console.warn('[DSAR] Resend not configured — OTP:', otp)
+    // OTPs are secrets — never log in production. In dev, the engineer
+    // running locally needs the code to test the flow, so it's safe to
+    // print there.
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[DSAR] Resend not configured — dev OTP:', otp)
+    } else {
+      console.error('[DSAR] Resend not configured in production — OTP delivery FAILED')
+    }
     return
   }
   const html = `

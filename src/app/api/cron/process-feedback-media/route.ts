@@ -17,11 +17,27 @@ export async function GET(request: Request) {
   }
 
   try {
-    const audioResult = await processPendingAudioFeedbackMedia({ limit: 10 })
-    const videoResult = await processPendingVideoFeedbackMedia({ limit: 5 })
+    const AUDIO_LIMIT = 10
+    const VIDEO_LIMIT = 5
+    const audioResult = await processPendingAudioFeedbackMedia({ limit: AUDIO_LIMIT })
+    const videoResult = await processPendingVideoFeedbackMedia({ limit: VIDEO_LIMIT })
 
     const { success: _audioSuccess, ...audio } = audioResult as any
     const { success: _videoSuccess, ...video } = videoResult as any
+
+    // If a batch was fully saturated, more rows are likely still pending.
+    // Next cron run picks them up — log a warning so the backlog is visible
+    // in production monitoring.
+    const audioSaturated = (audio.processed ?? 0) >= AUDIO_LIMIT
+    const videoSaturated = (video.processed ?? 0) >= VIDEO_LIMIT
+    if (audioSaturated || videoSaturated) {
+      logger.warn('[process-feedback-media] batch saturated — more items likely pending', {
+        audioSaturated,
+        videoSaturated,
+        audioProcessed: audio.processed,
+        videoProcessed: video.processed,
+      })
+    }
 
     logger.cronResult('process-feedback-media', true, { audio, video })
 

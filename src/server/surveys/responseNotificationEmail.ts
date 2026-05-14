@@ -2,6 +2,7 @@
 
 import 'server-only'
 import { Resend } from 'resend'
+import { maskEmail } from '@/lib/logger'
 
 let resend: Resend | null = null
 function getResendClient() {
@@ -95,7 +96,7 @@ export async function sendSurveyResponseNotification(
       return { success: false, error: String(error) }
     }
 
-    console.log(`[SurveyResponse] Email sent to ${ownerEmail} for survey ${surveyId}`)
+    console.log(`[SurveyResponse] Email sent to ${maskEmail(ownerEmail)} for survey ${surveyId}`)
     return { success: true }
   } catch (error) {
     console.error('[SurveyResponse] Email error:', error)

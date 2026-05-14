@@ -8,6 +8,9 @@ import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
  * GET /api/admin/test-db
  */
 export async function GET(request: NextRequest) {
+  if (process.env.ADMIN_DIAGNOSTICS_ENABLED !== 'true') {
+    return new NextResponse(null, { status: 404 })
+  }
   if (!authenticateAdmin(request)) return unauthorizedResponse()
   try {
     // Try to query products

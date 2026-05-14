@@ -4,6 +4,7 @@ import 'server-only'
 import { getSurveyById, getResponsesBySurveyId } from '@/db/repositories/surveyRepository'
 import { calculateMultimodalAnalytics } from './analyticsService'
 import { Resend } from 'resend'
+import { maskEmail } from '@/lib/logger'
 
 let resend: Resend | null = null
 function getResendClient() {
@@ -126,7 +127,7 @@ export async function sendSurveyDigestEmail(params: {
       return { success: false, error: String(error) }
     }
 
-    console.log(`[SurveyDigest] Email sent to ${recipientEmail} for survey ${surveyId}`)
+    console.log(`[SurveyDigest] Email sent to ${maskEmail(recipientEmail)} for survey ${surveyId}`)
     return { success: true }
   } catch (error) {
     console.error('Failed to send survey digest email:', error)

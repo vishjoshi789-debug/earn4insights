@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { maskEmail } from '@/lib/logger'
 
 let resend: Resend | null = null
 
@@ -41,7 +42,7 @@ export async function sendProductLaunchedEmail(params: {
       return { success: false, error }
     }
 
-    console.log(`[ProductLaunched] Email sent to ${brandEmail} for product ${productId}`)
+    console.log(`[ProductLaunched] Email sent to ${maskEmail(brandEmail)} for product ${productId}`)
     return { success: true, data }
   } catch (error) {
     console.error('[ProductLaunched] Email error:', error)

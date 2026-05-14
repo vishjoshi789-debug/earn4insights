@@ -33,6 +33,29 @@ function redact(obj: unknown, depth = 0): unknown {
   return result
 }
 
+/**
+ * Mask an email for logs: keep first character + domain, e.g. j***@example.com.
+ * Use anywhere an email would otherwise be logged verbatim — full emails are
+ * PII and should not appear in Vercel/Datadog/etc. logs.
+ */
+export function maskEmail(email: string | null | undefined): string {
+  if (!email || typeof email !== 'string') return '<no-email>'
+  const at = email.indexOf('@')
+  if (at <= 0) return '***'
+  return `${email[0]}***${email.slice(at)}`
+}
+
+/**
+ * Mask a phone number for logs: keep only the last 4 digits, e.g. ***1234.
+ * Full numbers are PII; the suffix is enough to disambiguate which account
+ * a log line belongs to during debugging.
+ */
+export function maskPhone(phone: string | null | undefined): string {
+  if (!phone || typeof phone !== 'string') return '<no-phone>'
+  const digits = phone.replace(/\D/g, '')
+  return digits.length <= 4 ? '***' : `***${digits.slice(-4)}`
+}
+
 /** Safely extract error info without leaking stack traces in production */
 function safeError(error: unknown): { message: string; name?: string } {
   if (error instanceof Error) {

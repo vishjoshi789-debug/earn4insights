@@ -1,6 +1,7 @@
 'use server'
 
 import 'server-only'
+import { maskEmail } from '@/lib/logger'
 
 /**
  * @deprecated DO NOT IMPORT — pure console logger, no real email delivery.
@@ -32,11 +33,11 @@ export type EmailNotification = {
  * 3. Uncomment the Resend implementation below
  */
 export async function sendEmail(notification: EmailNotification): Promise<void> {
-  // For development: Log to console
+  // For development: Log to console (PII-safe — mask recipient, omit body)
   console.log('📧 Email Notification:')
-  console.log('To:', notification.to)
+  console.log('To:', maskEmail(notification.to))
   console.log('Subject:', notification.subject)
-  console.log('Body:', notification.text)
+  // Body intentionally not logged — may contain user content / PII
 
   // TODO: Implement real email sending
   // Example with Resend:

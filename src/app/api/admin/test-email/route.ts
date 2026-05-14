@@ -15,6 +15,9 @@ import { auth } from '@/lib/auth/auth.config'
  * Consumers cannot send test emails.
  */
 export async function POST(request: NextRequest) {
+  if (process.env.ADMIN_DIAGNOSTICS_ENABLED !== 'true') {
+    return new NextResponse(null, { status: 404 })
+  }
   const apiKeyOk = authenticateAdmin(request)
   if (!apiKeyOk) {
     const session = await auth()

@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { maskEmail } from '@/lib/logger'
 
 // Lazy initialize Resend client only when needed
 let resend: Resend | null = null
@@ -56,7 +57,7 @@ export async function sendRankingNotification(data: RankingEmailData) {
       return { success: false, error }
     }
 
-    console.log(`✅ Ranking email sent to ${data.ownerEmail}`)
+    console.log(`✅ Ranking email sent to ${maskEmail(data.ownerEmail)}`)
     return { success: true, data: emailData }
   } catch (error) {
     console.error('Error sending ranking email:', error)

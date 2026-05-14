@@ -1,5 +1,5 @@
 import twilio from 'twilio'
-import { logger } from '@/lib/logger'
+import { logger, maskPhone } from '@/lib/logger'
 
 const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
@@ -53,7 +53,7 @@ export async function sendWhatsAppAlertMessage(params: {
       from: `whatsapp:${WHATSAPP_FROM}`,
       to: `whatsapp:${phoneNumber}`,
     })
-    console.log(`[WhatsApp] Alert sent to ${phoneNumber} (SID: ${result.sid})`)
+    console.log(`[WhatsApp] Alert sent to ${maskPhone(phoneNumber)} (SID: ${result.sid})`)
     return { success: true }
   } catch (error) {
     logger.serviceError('twilio', 'sendWhatsAppAlert', error, { phoneNumber })
@@ -118,7 +118,7 @@ View full rankings: ${process.env.NEXT_PUBLIC_APP_URL}/top-products
       to: `whatsapp:${data.phoneNumber}`,
     })
 
-    console.log(`✅ WhatsApp notification sent to ${data.phoneNumber}`)
+    console.log(`✅ WhatsApp notification sent to ${maskPhone(data.phoneNumber)}`)
     return { success: true, data: result }
   } catch (error) {
     logger.serviceError('twilio', 'sendWhatsApp', error, { phoneNumber: data.phoneNumber })

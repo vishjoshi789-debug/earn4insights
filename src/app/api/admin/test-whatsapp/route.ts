@@ -7,6 +7,9 @@ import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
  * POST /api/admin/test-whatsapp
  */
 export async function POST(request: NextRequest) {
+  if (process.env.ADMIN_DIAGNOSTICS_ENABLED !== 'true') {
+    return new NextResponse(null, { status: 404 })
+  }
   if (!authenticateAdmin(request)) return unauthorizedResponse()
 
   try {
