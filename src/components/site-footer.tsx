@@ -7,6 +7,7 @@ export function SiteFooter() {
         </p>
         <nav className="flex gap-4">
           <a href="/about-us" className="text-sm text-purple-700 hover:underline">About Us</a>
+          <a href="/help" className="text-sm text-purple-700 hover:underline">Help</a>
           <a href="/contact-us" className="text-sm text-purple-700 hover:underline">Contact Us</a>
         </nav>
       </div>

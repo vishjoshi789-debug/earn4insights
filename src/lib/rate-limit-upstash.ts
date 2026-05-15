@@ -231,6 +231,45 @@ export const whatsappOtpSendRateLimit = createLimiter({
   window: '60 s',
 })
 
+// ── Support system (Phase 4) ──────────────────────────────────────
+// Ticket creation is expensive (email dispatch + AI classification on
+// escalation) — strict cap.
+export const supportTicketCreateRateLimit = createLimiter({
+  name: 'support-ticket-create',
+  tokens: 5,
+  window: '1 h',
+})
+// Ticket replies are common in back-and-forth — looser cap.
+export const supportTicketReplyRateLimit = createLimiter({
+  name: 'support-ticket-reply',
+  tokens: 30,
+  window: '1 h',
+})
+// Chat messages — each one runs FAQ semantic search + (maybe) GPT-4o-mini.
+export const supportChatMessageRateLimit = createLimiter({
+  name: 'support-chat-message',
+  tokens: 20,
+  window: '1 m',
+})
+// Conversation starts — prevents abuse of greeting + DB row creation.
+export const supportChatStartRateLimit = createLimiter({
+  name: 'support-chat-start',
+  tokens: 10,
+  window: '1 m',
+})
+// General support reads (list, detail, FAQ browse, vote helpful).
+export const supportReadRateLimit = createLimiter({
+  name: 'support-read',
+  tokens: 60,
+  window: '1 m',
+})
+// Admin endpoints — bursty triage workflow needs headroom.
+export const supportAdminRateLimit = createLimiter({
+  name: 'support-admin',
+  tokens: 120,
+  window: '1 m',
+})
+
 // ── Helpers ───────────────────────────────────────────────────────
 /**
  * Extract the client IP from a request. Use as part of the limit key

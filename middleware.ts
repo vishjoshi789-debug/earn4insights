@@ -21,6 +21,7 @@ const PUBLIC_PATHS = new Set<string>([
   '/transparency',
   '/rankings',
   '/forgot-password',
+  '/help',
   '/favicon.ico',
 ])
 
@@ -32,6 +33,8 @@ const PUBLIC_PREFIXES: string[] = [
   '/api/webhooks/',
   '/api/cron/',
   '/api/jobs/',
+  '/help/',
+  '/api/support/faq',
 ]
 
 const PUBLIC_API_ADMIN_PREFIXES: string[] = [

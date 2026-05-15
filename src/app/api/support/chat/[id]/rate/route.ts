@@ -1,0 +1,51 @@
+import 'server-only'
+
+import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
+import { supportReadRateLimit } from '@/lib/rate-limit-upstash'
+import { rateConversation } from '@/server/chatbotService'
+
+/**
+ * POST /api/support/chat/[id]/rate
+ * Body: { rating: 1..5 }
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const userId = (session.user as any).id as string
+
+    const rl = await supportReadRateLimit.limit(userId)
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many requests.' }, { status: 429 })
+    }
+
+    const { id } = await params
+    if (!id) return NextResponse.json({ error: 'Conversation id required' }, { status: 400 })
+
+    const body = await req.json().catch(() => null)
+    const rating = body && typeof body.rating === 'number' ? body.rating : 0
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return NextResponse.json({ error: 'Rating must be 1..5' }, { status: 400 })
+    }
+
+    const conversation = await rateConversation({ conversationId: id, userId, rating })
+    return NextResponse.json({ conversation })
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.message === 'Conversation not found')
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      if (err.message === 'Forbidden')
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    console.error('[support/chat/[id]/rate POST] error:', err)
+    return NextResponse.json({ error: 'Failed to rate chat' }, { status: 500 })
+  }
+}

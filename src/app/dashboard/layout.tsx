@@ -4,6 +4,7 @@ import { OnboardingGuard } from '@/components/OnboardingGuard'
 import { auth } from '@/lib/auth/auth.config'
 import { getUserProfile, getUserProfileByEmail } from '@/db/repositories/userProfileRepository'
 import { ConsentRenewalWrapper } from '@/components/ConsentRenewalWrapper'
+import { ChatWidget } from '@/components/support/ChatWidget'
 
 export default async function DashboardLayout({
   children,
@@ -29,6 +30,7 @@ export default async function DashboardLayout({
     <OnboardingGuard>
       {profile && <ConsentRenewalWrapper profile={profile} userRole={session?.user?.role} />}
       <DashboardShell>{children}</DashboardShell>
+      <ChatWidget />
     </OnboardingGuard>
   )
 }

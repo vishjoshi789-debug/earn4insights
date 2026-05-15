@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Bell, MessageSquareText, Menu, LayoutDashboard, Package, MessageSquare, BarChart3, Award, Users, HandCoins, MessagesSquare, FileText, Trophy, TrendingUp, PackagePlus, Settings } from 'lucide-react';
+import { User, Bell, MessageSquareText, Menu, LayoutDashboard, Package, MessageSquare, BarChart3, Award, Users, HandCoins, MessagesSquare, FileText, Trophy, TrendingUp, PackagePlus, Settings, HelpCircle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -64,6 +64,7 @@ export function SiteHeader() {
               {/* Public Pages */}
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">Explore</p>
               <MobileNavLink href="/top-products" icon={Trophy} label="Rankings" onClick={() => setMobileMenuOpen(false)} />
+              <MobileNavLink href="/help" icon={HelpCircle} label="Help Center" onClick={() => setMobileMenuOpen(false)} />
 
               {user && (
                 <>
@@ -133,6 +134,12 @@ export function SiteHeader() {
               Community
             </Link>
           )}
+          <Link
+            href="/help"
+            className="font-medium transition-colors hover:text-primary"
+          >
+            Help
+          </Link>
         </nav>
         {/* Spacer pushes buttons to the right on mobile */}
         <div className="flex-1 md:hidden" />

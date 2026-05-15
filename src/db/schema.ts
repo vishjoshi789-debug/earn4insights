@@ -2176,3 +2176,135 @@ export const whatsappOtpVerifications = pgTable('whatsapp_otp_verifications', {
 
 export type WhatsappOtpVerification = typeof whatsappOtpVerifications.$inferSelect
 export type NewWhatsappOtpVerification = typeof whatsappOtpVerifications.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION — Customer Support System
+// Migration 015 — tickets, threaded messages, chatbot conversations,
+// FAQ knowledge base (tsvector + pgvector embeddings), analytics.
+// ════════════════════════════════════════════════════════════════
+
+// 1. Support tickets — primary record for user-submitted issues.
+//    ticket_number is generated via the `support_ticket_seq` Postgres
+//    sequence (see migration 015); format is `E4I-XXXX`.
+export const supportTickets = pgTable('support_tickets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  ticketNumber: text('ticket_number').notNull().unique(),
+  userId: text('user_id').notNull(),                          // → users.id CASCADE
+  userEmail: text('user_email').notNull(),
+  userRole: text('user_role').notNull(),                      // 'brand' | 'consumer' | 'influencer'
+  category: text('category').notNull()
+    .$type<
+      | 'account' | 'payment' | 'campaign' | 'feedback'
+      | 'technical' | 'billing' | 'feature_request' | 'bug_report'
+      | 'influencer' | 'deals' | 'community' | 'competitive_intel' | 'other'
+    >(),
+  subject: text('subject').notNull(),
+  description: text('description').notNull(),
+  status: text('status').notNull().default('open')
+    .$type<'open' | 'in_progress' | 'waiting_on_user' | 'resolved' | 'closed'>(),
+  priority: text('priority').notNull().default('medium')
+    .$type<'low' | 'medium' | 'high' | 'urgent'>(),
+  assignedTo: text('assigned_to'),                            // admin userId
+  resolutionNotes: text('resolution_notes'),
+  resolvedAt: timestamp('resolved_at'),
+  closedAt: timestamp('closed_at'),
+  satisfactionRating: integer('satisfaction_rating'),         // 1..5
+  satisfactionFeedback: text('satisfaction_feedback'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// 2. Threaded ticket messages. `sender_type` distinguishes user replies,
+//    admin replies, AI-suggested responses (from chatbot escalation), and
+//    system status-change notes. `is_internal_note` hides admin-only notes
+//    from the user view.
+export const supportTicketMessages = pgTable('support_ticket_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  ticketId: uuid('ticket_id').notNull(),                      // → support_tickets.id CASCADE
+  senderType: text('sender_type').notNull()
+    .$type<'user' | 'admin' | 'system' | 'ai'>(),
+  senderId: text('sender_id'),                                // null for system / ai
+  message: text('message').notNull(),
+  attachments: jsonb('attachments').notNull().default([]),    // Array<{ name, url, size }>
+  isInternalNote: boolean('is_internal_note').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// 3. Chatbot conversation sessions. Messages live in a JSONB array
+//    (session-scoped, typically <100 entries — fine for JSONB).
+//    `escalated_to_ticket_id` records the lineage when a chat becomes a ticket.
+export const chatConversations = pgTable('chat_conversations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),                          // → users.id CASCADE
+  userRole: text('user_role').notNull(),
+  status: text('status').notNull().default('active')
+    .$type<'active' | 'resolved' | 'escalated'>(),
+  escalatedToTicketId: uuid('escalated_to_ticket_id'),        // → support_tickets.id SET NULL
+  messages: jsonb('messages').notNull().default([])
+    .$type<Array<{ role: 'user' | 'assistant'; content: string; timestamp: string }>>(),
+  context: jsonb('context').default({})
+    .$type<{ currentPage?: string; recentActions?: string[]; accountAge?: number }>(),
+  satisfactionRating: integer('satisfaction_rating'),         // 1..5
+  totalMessages: integer('total_messages').notNull().default(0),
+  resolvedByAi: boolean('resolved_by_ai').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// 4. FAQ knowledge base. Both tsvector (keyword search on /help) AND
+//    pgvector embeddings (semantic match in chatbot) live on this table.
+//    `search_vector` is managed by a Postgres trigger; `embedding` is a
+//    1536-dim vector populated by the seed/edit routes via OpenAI
+//    text-embedding-3-small. Declared as text in Drizzle (vector type
+//    accessed via raw SQL in the repo).
+export const faqArticles = pgTable('faq_articles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  slug: text('slug').notNull().unique(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),                         // markdown
+  excerpt: text('excerpt').notNull(),
+  category: text('category').notNull()
+    .$type<
+      | 'getting_started' | 'account' | 'payments' | 'campaigns'
+      | 'feedback' | 'deals' | 'community' | 'influencer'
+      | 'competitive_intel' | 'privacy' | 'technical' | 'billing'
+    >(),
+  targetRoles: text('target_roles').array().notNull().default([]),
+  tags: text('tags').array().default([]),
+  viewCount: integer('view_count').notNull().default(0),
+  helpfulCount: integer('helpful_count').notNull().default(0),
+  notHelpfulCount: integer('not_helpful_count').notNull().default(0),
+  isPublished: boolean('is_published').notNull().default(true),
+  displayOrder: integer('display_order').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // search_vector tsvector — managed by DB trigger; not in Drizzle.
+  // embedding vector(1536) — managed by raw SQL in repo; not in Drizzle.
+})
+
+// 5. Support analytics events. Append-only log for chat/ticket/FAQ funnel
+//    metrics. Indexed by (event_type, created_at DESC).
+export const supportAnalytics = pgTable('support_analytics', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  eventType: text('event_type').notNull()
+    .$type<
+      | 'chat_started' | 'chat_resolved_by_ai' | 'chat_escalated'
+      | 'ticket_created' | 'ticket_resolved' | 'faq_viewed'
+      | 'faq_helpful' | 'faq_not_helpful' | 'avg_response_time' | 'satisfaction'
+    >(),
+  userId: text('user_id'),
+  data: jsonb('data').default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Support type exports ─────────────────────────────────────────
+export type SupportTicket = typeof supportTickets.$inferSelect
+export type NewSupportTicket = typeof supportTickets.$inferInsert
+export type SupportTicketMessage = typeof supportTicketMessages.$inferSelect
+export type NewSupportTicketMessage = typeof supportTicketMessages.$inferInsert
+export type ChatConversation = typeof chatConversations.$inferSelect
+export type NewChatConversation = typeof chatConversations.$inferInsert
+export type FaqArticle = typeof faqArticles.$inferSelect
+export type NewFaqArticle = typeof faqArticles.$inferInsert
+export type SupportAnalyticsEvent = typeof supportAnalytics.$inferSelect
+export type NewSupportAnalyticsEvent = typeof supportAnalytics.$inferInsert

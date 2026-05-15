@@ -53,6 +53,7 @@ import {
   CalendarClock,
   Timer,
   Banknote,
+  HelpCircle,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -147,6 +148,7 @@ const menuItems: MenuItem[] = [
   { href: '/admin/campaigns/analytics', label: 'Campaign Analytics', icon: TrendingUp, tourId: 'nav-admin-campaign-analytics', role: 'admin' },
   { href: '/admin/send-time-optimization', label: 'Send-Time Optimizer', icon: Timer, tourId: 'nav-admin-send-time', role: 'admin' },
   { href: '/admin/send-time-analytics', label: 'Send-Time Analytics', icon: Activity, tourId: 'nav-admin-send-time-analytics', role: 'admin' },
+  { href: '/admin/support', label: 'Support', icon: HelpCircle, tourId: 'nav-admin-support', role: 'admin' },
 ]
 
 // Items whose sub-paths have their own sidebar entry — use exact match only
@@ -202,6 +204,14 @@ function SidebarNav({
 
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Help Center">
+              <Link href="/help" onClick={handleNavClick}>
+                <HelpCircle />
+                <span>Help Center</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Settings" data-tour="nav-settings">
               <Link href="/dashboard/settings" onClick={handleNavClick}>
