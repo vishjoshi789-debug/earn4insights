@@ -31,6 +31,7 @@ import {
   sendUserReplyToAdmin,
   sendTicketResolvedToUser,
 } from '@/server/supportEmailService'
+import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 import type { SupportTicket, SupportTicketMessage } from '@/db/schema'
 
 // ════════════════════════════════════════════════════════════════
@@ -117,7 +118,18 @@ export async function createTicket(input: CreateTicketInput): Promise<CreatedTic
     },
   })
 
-  // TODO[Phase 9]: emit('support.ticket_created', { ticketId, userId, ticketNumber })
+  // Real-time fan-out to all admins (Pusher + notification_inbox).
+  void emit(PLATFORM_EVENTS.SUPPORT_TICKET_CREATED, {
+    actorId: input.userId,
+    actorRole: 'consumer',
+    ticketId: ticket.id,
+    ticketNumber: ticket.ticketNumber,
+    subject: ticket.subject,
+    category: ticket.category,
+    priority: ticket.priority,
+    userName: input.userName,
+    userRole: input.userRole,
+  }).catch((e) => console.error('[support] emit ticket_created failed:', e))
 
   return { ...ticket, firstMessage }
 }
@@ -229,7 +241,18 @@ export async function addTicketReply(
     }
   }
 
-  // TODO[Phase 9]: emit('support.admin_reply' | 'support.ticket_updated', ...)
+  // Real-time fan-out — admin reply pushes to user; user reply doesn't push
+  // (admin sees it in the queue refresh, and the email is sent).
+  if (input.senderRole === 'admin' && !isInternalNote) {
+    void emit(PLATFORM_EVENTS.SUPPORT_ADMIN_REPLY, {
+      actorId: input.senderUserId,
+      actorRole: 'admin',
+      ticketId: updated.id,
+      ticketNumber: updated.ticketNumber,
+      userId: updated.userId,
+      userRole: updated.userRole,
+    }).catch((e) => console.error('[support] emit admin_reply failed:', e))
+  }
 
   return { ticket: updated, message }
 }
@@ -280,9 +303,25 @@ export async function updateTicketStatus(
       },
     })
 
-    // TODO[Phase 9]: emit('support.ticket_resolved', { ticketId, userId })
+    void emit(PLATFORM_EVENTS.SUPPORT_TICKET_RESOLVED, {
+      actorId: input.adminId,
+      actorRole: 'admin',
+      ticketId: updated.id,
+      ticketNumber: updated.ticketNumber,
+      userId: updated.userId,
+      userRole: updated.userRole,
+    }).catch((e) => console.error('[support] emit ticket_resolved failed:', e))
   } else if (input.status !== ticket.status) {
-    // TODO[Phase 9]: emit('support.ticket_updated', { ticketId, fromStatus: ticket.status, toStatus: input.status })
+    void emit(PLATFORM_EVENTS.SUPPORT_TICKET_UPDATED, {
+      actorId: input.adminId,
+      actorRole: 'admin',
+      ticketId: updated.id,
+      ticketNumber: updated.ticketNumber,
+      userId: updated.userId,
+      userRole: updated.userRole,
+      fromStatus: ticket.status,
+      toStatus: input.status,
+    }).catch((e) => console.error('[support] emit ticket_updated failed:', e))
   }
 
   return updated

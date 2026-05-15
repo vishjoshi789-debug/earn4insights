@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createRealtimeEvent, markEventProcessed } from '@/db/repositories/realtimeEventRepository'
 import { dispatchToUsers, type NotificationTarget, type DispatchPayload } from '@/server/realtimeNotificationService'
+import { getAdminUserIds } from '@/db/repositories/userRepository'
 import { getProductById } from '@/db/repositories/productRepository'
 import { getTopMatchesForIcp } from '@/db/repositories/icpRepository'
 import { db } from '@/db'
@@ -54,6 +55,12 @@ export const PLATFORM_EVENTS = {
   COMMUNITY_DEAL_FLAGGED:        'community.deal.flagged',
   COMMUNITY_DEAL_APPROVED:       'community.deal.approved',
   COMMUNITY_DEAL_REJECTED:       'community.deal.rejected',
+  // Support system
+  SUPPORT_TICKET_CREATED:        'support.ticket_created',
+  SUPPORT_TICKET_UPDATED:        'support.ticket_updated',
+  SUPPORT_TICKET_RESOLVED:       'support.ticket_resolved',
+  SUPPORT_CHAT_ESCALATED:        'support.chat_escalated',
+  SUPPORT_ADMIN_REPLY:           'support.admin_reply',
 } as const
 
 export type PlatformEventType = typeof PLATFORM_EVENTS[keyof typeof PLATFORM_EVENTS]
@@ -882,6 +889,116 @@ async function routeEvent(
       break
     }
 
+    // ── Support: new ticket → notify all admins
+    case PLATFORM_EVENTS.SUPPORT_TICKET_CREATED: {
+      const adminIds = await getAdminUserIds()
+      if (adminIds.length === 0) break
+      const targets: NotificationTarget[] = adminIds.map((id) => ({ userId: id, role: 'admin' as const }))
+      await dispatchToUsers(targets, {
+        eventType,
+        eventId,
+        title: `New ticket from ${payload.userName ?? 'a user'}`,
+        body: payload.subject as string ?? 'New support ticket opened',
+        ctaUrl: `/admin/support/tickets/${payload.ticketId}`,
+        type: 'support_ticket_created',
+        entityType: 'support_ticket',
+        entityId: (payload.ticketId as string) ?? null,
+        metadata: {
+          ticketNumber: payload.ticketNumber,
+          userRole: payload.userRole,
+          category: payload.category,
+          priority: payload.priority,
+        },
+      })
+      break
+    }
+
+    // ── Support: chat escalated → notify all admins (with chat context hint)
+    case PLATFORM_EVENTS.SUPPORT_CHAT_ESCALATED: {
+      const adminIds = await getAdminUserIds()
+      if (adminIds.length === 0) break
+      const targets: NotificationTarget[] = adminIds.map((id) => ({ userId: id, role: 'admin' as const }))
+      await dispatchToUsers(targets, {
+        eventType,
+        eventId,
+        title: 'Chat escalated to ticket',
+        body: `AI couldn't resolve a chat from ${payload.userName ?? 'a user'}. Ticket ${payload.ticketNumber ?? ''} created.`,
+        ctaUrl: `/admin/support/tickets/${payload.ticketId}`,
+        type: 'support_chat_escalated',
+        entityType: 'support_ticket',
+        entityId: (payload.ticketId as string) ?? null,
+        metadata: {
+          ticketNumber: payload.ticketNumber,
+          conversationId: payload.conversationId,
+          messageCount: payload.messageCount,
+        },
+      })
+      break
+    }
+
+    // ── Support: admin replied → notify ticket owner
+    case PLATFORM_EVENTS.SUPPORT_ADMIN_REPLY: {
+      if (!payload.userId) break
+      const target: NotificationTarget = {
+        userId: payload.userId as string,
+        role: (payload.userRole as 'brand' | 'consumer' | 'admin' | undefined) ?? 'consumer',
+      }
+      await dispatchToUsers([target], {
+        eventType,
+        eventId,
+        title: `New reply on ticket ${payload.ticketNumber ?? ''}`.trim(),
+        body: 'Our team responded to your support request.',
+        ctaUrl: `/support/tickets/${payload.ticketId}`,
+        type: 'support_admin_reply',
+        entityType: 'support_ticket',
+        entityId: (payload.ticketId as string) ?? null,
+        metadata: { ticketNumber: payload.ticketNumber },
+      })
+      break
+    }
+
+    // ── Support: ticket status changed → notify owner (non-resolution)
+    case PLATFORM_EVENTS.SUPPORT_TICKET_UPDATED: {
+      if (!payload.userId) break
+      const target: NotificationTarget = {
+        userId: payload.userId as string,
+        role: (payload.userRole as 'brand' | 'consumer' | 'admin' | undefined) ?? 'consumer',
+      }
+      await dispatchToUsers([target], {
+        eventType,
+        eventId,
+        title: `Ticket ${payload.ticketNumber ?? ''} updated`.trim(),
+        body: `Status changed to ${payload.toStatus ?? 'updated'}.`,
+        ctaUrl: `/support/tickets/${payload.ticketId}`,
+        type: 'support_ticket_updated',
+        entityType: 'support_ticket',
+        entityId: (payload.ticketId as string) ?? null,
+        metadata: { fromStatus: payload.fromStatus, toStatus: payload.toStatus },
+      })
+      break
+    }
+
+    // ── Support: ticket resolved → notify owner with rating prompt
+    case PLATFORM_EVENTS.SUPPORT_TICKET_RESOLVED: {
+      if (!payload.userId) break
+      const target: NotificationTarget = {
+        userId: payload.userId as string,
+        role: (payload.userRole as 'brand' | 'consumer' | 'admin' | undefined) ?? 'consumer',
+      }
+      await dispatchToUsers([target], {
+        eventType,
+        eventId,
+        title: `Ticket ${payload.ticketNumber ?? ''} resolved`.trim(),
+        body: 'How did we do? Tap to rate your experience.',
+        ctaUrl: `/support/tickets/${payload.ticketId}?rate=1`,
+        type: 'support_ticket_resolved',
+        entityType: 'support_ticket',
+        entityId: (payload.ticketId as string) ?? null,
+        metadata: { ticketNumber: payload.ticketNumber },
+      })
+      break
+    }
+
     default:
       console.warn(`[EventBus] No handler for event type: ${eventType}`)
   }
@@ -890,6 +1007,7 @@ async function routeEvent(
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function resolveEntityType(eventType: string, payload: EventPayload): string | null {
+  if (eventType.startsWith('support.'))      return 'support_ticket'
   if (eventType.startsWith('payment.payout')) return 'payout'
   if (eventType.startsWith('payment.'))      return 'campaign'
   if (eventType.includes('reward'))          return 'reward'
@@ -904,6 +1022,7 @@ function resolveEntityType(eventType: string, payload: EventPayload): string | n
 }
 
 function resolveEntityId(eventType: string, payload: EventPayload): string | null {
+  if (eventType.startsWith('support.'))      return (payload.ticketId as string) ?? null
   if (eventType.startsWith('payment.payout')) return (payload.payoutId as string) ?? null
   if (eventType.startsWith('payment.'))      return payload.campaignId ?? null
   if (eventType.includes('reward'))          return payload.actorId ?? null

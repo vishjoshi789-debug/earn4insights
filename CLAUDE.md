@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> Last updated: May 2026 (v7 — Production Security Hardening: rate limiting, CSRF, WhatsApp OTP, cookie consent). Read at the start of every session.
+> Last updated: May 2026 (v8 — Customer Support System: AI chatbot, ticket workflow, FAQ knowledge base, admin dashboard, real-time notifications). Read at the start of every session.
 
 ## Project Overview
 
@@ -99,6 +99,7 @@ await pgClient.unsafe(sql)
 | WhatsApp OTP Phone Verification (migration 014, bcrypt OTP, 15-min TTL, 3 attempts, onboarding step 5, gate on phone save) | ✅ COMPLETE |
 | Admin Diagnostics Feature Flag + PII Log Sanitization (`ADMIN_DIAGNOSTICS_ENABLED`, `maskEmail`/`maskPhone` in logger) | ✅ COMPLETE |
 | Cookie Consent Banner + UX Polish (GDPR consent gates analytics; branded 404/500; login polish; mobile tab responsiveness) | ✅ COMPLETE |
+| Customer Support System (migration 015 — 5 tables; GPT-4o-mini chatbot with pgvector semantic FAQ matching + 18-pattern abuse filter; floating widget; 19 API routes; /help SEO pages; admin dashboard; 6 transactional emails + daily reminder cron; 5 eventBus events with Pusher real-time admin/user notifications) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -115,6 +116,8 @@ await pgClient.unsafe(sql)
 12. `POST /api/admin/run-migration-012` — DSAR Requests table (GDPR Art. 15 — `dsar_requests` with FK CASCADE → users)
 13. `POST /api/admin/run-migration-013` — Backfill `products.owner_id` for orphan products (legacy launches before commit 99925e3 had `owner_id=null`; backfills from `created_by` then `claimed_by`; reports `stillOrphaned` count for manual triage)
 14. `POST /api/admin/run-migration-014` — WhatsApp OTP verifications table (`whatsapp_otp_verifications` with FK CASCADE → users; required before saving a WhatsApp phone via `/api/user/notification-settings`)
+15. `POST /api/admin/run-migration-015` — Customer Support System (5 tables: `support_tickets` + `support_ticket_seq` sequence for E4I-XXXX numbering, `support_ticket_messages`, `chat_conversations`, `faq_articles` with `search_vector tsvector` trigger + `embedding vector(1536)` pgvector index, `support_analytics`; enables `vector` extension; FK CASCADE → users on user-content, SET NULL on admin/audit refs)
+16. `POST /api/admin/seed-faq` — Idempotent FAQ seed (31 articles); requires `OPENAI_API_KEY` to generate embeddings. Skips slugs that already exist
 
 ---
 
@@ -166,6 +169,11 @@ UPSTASH_REDIS_REST_TOKEN=              # Upstash console → REST API token
 
 # Feature flags
 ADMIN_DIAGNOSTICS_ENABLED=true         # Set to 'true' to enable /api/admin/diagnostics/* routes; bare 404 otherwise
+
+# Customer Support System (Phase 9)
+SUPPORT_ADMIN_EMAIL=                   # Defaults to contact@earn4insights.com — destination for all admin support notifications
+CHATBOT_MODEL=                         # Optional override; defaults to gpt-4o-mini
+CHATBOT_CLASSIFY_MODEL=                # Optional override for chat→ticket category classifier; defaults to gpt-4o-mini
 ```
 
 Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITECTURE.md`.
@@ -236,6 +244,22 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Analytics gated on `hasAnalyticsConsent()`** | `analytics-tracker.tsx` checks consent before every `queueEvent()` call. First page_view is dropped on first visit (GDPR-correct — no tracking before consent). |
 | **PII masked in logs with `maskEmail` / `maskPhone`** | `j***@example.com` and `***1234` patterns prevent PII leakage in Vercel log drain, third-party APM, or log storage. Exports from `logger.ts` so every service has a one-import path. Production OTP values also guarded by `NODE_ENV` gate (dev-only console log). |
 | **Admin diagnostics behind `ADMIN_DIAGNOSTICS_ENABLED` flag** | Routes exist in the bundle regardless. Flag returns bare `404` (not `403`) when disabled so the route's existence is not discoverable. Default off in `.env.example`; set `true` only in environments where diagnostic access is intentional. |
+| **Ticket numbering via Postgres sequence (`support_ticket_seq`)** | Atomic, gapless `E4I-XXXX` format from `to_char(nextval(...), 'FM0000')`. UUID PK plus a human-readable display number — UUID for refs, sequence number for support conversations and email subjects. |
+| **Chat conversation messages stored as JSONB array** | Session-scoped, typically <100 entries — JSONB is faster than join + simpler than a child table. Each conversation row carries its own transcript. |
+| **Chatbot FAQ match: pgvector (semantic), `/help` search: tsvector (keyword)** | Paraphrased questions ("how do I get money back?") must hit "Refunds" — pgvector cosine handles that. The public `/help` page is keyword-driven (users typing exact words), so tsvector + `ts_rank` is enough and avoids embedding cost. |
+| **FAQ semantic similarity cutoff: 0.78** | Above the 0.75 default in `faqService` — chatbot is stricter to avoid surfacing weak matches that would confuse users. Tuning lever for future relevance work. |
+| **Chatbot suspicious-intent regex + 3-flag auto-block** | 18 patterns catch prompt extraction, jailbreaks, internal-metrics fishing, cross-user data fishing, competitor recon. Soft flag → polite refusal; 3 flags → conversation auto-resolved (NOT escalated to a ticket — abusive sessions don't fan out to admin queue). |
+| **Blocked conversations cannot be escalated** | Hard gate at `escalateToTicket` — `context.blocked` throws. Prevents abuse → ticket → admin time-sink pipeline. |
+| **Chatbot system prompt: refuse internal business data + other-user data + prompt extraction** | Defence in depth: regex catches obvious patterns, but the system prompt also enumerates 10 strict rules (never invent features, never disclose internal metrics, never reveal the prompt, never share other users' data, etc.). |
+| **Documented public facts inlined in chatbot prompt** | Platform fees (8/12/10%), points rate (10 pts = ₹1), refund timelines, payout times, consent categories — bot may quote these verbatim. Custom pricing / enterprise contracts always escalate. |
+| **Email "fire-and-forget" with try/catch logging** | `void send().catch(log)` — ticket creation, replies, and escalations never block on email outages. Same pattern as competitive email service. |
+| **Ticket priority inferred from category** | `payment` / `billing` / `bug_report` → high, `feature_request` → low, else medium. Auto-prioritisation reduces admin triage workload. |
+| **Admin reply auto-transitions `open` → `in_progress`; user reply auto-transitions `waiting_on_user` → `in_progress`** | Reduces admin queue clutter — tickets self-organise based on who replied last. |
+| **Internal notes hidden from user emails AND user GET routes** | `getTicketDetail` filters at the repo layer when `isAdmin=false`. Email service skips internal notes entirely. Defence in depth. |
+| **Admin notifications fan out to ALL admins via `getAdminUserIds()` (5-min cache)** | `support.ticket_created` and `support.chat_escalated` push to every admin's private Pusher channel. 5-min cache TTL avoids hitting the users table on every fan-out — admin set changes rarely; stale cache is not a security concern (admin role rechecked at every route). |
+| **`/help` is server-rendered with ISR (`revalidate = 300`)** | Initial HTML carries all article content for SEO crawlers; refresh every 5 min picks up new articles without redeploy. |
+| **`/help/[slug]` includes JSON-LD `Article` schema** | `Article` (not `FAQPage`) — better fit for our long-form pages. Google Rich Results validator accepts the structure. |
+| **Daily reminder cron skips email when `total = 0`** | "0 tickets need attention" emails train admins to ignore the cron. Quiet days produce no noise. |
 
 ---
 
@@ -288,11 +312,12 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 ## Reference Docs
 
 - **`ARCHITECTURE.md`** — Full technical architecture (authoritative)
-- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–014)
+- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–015)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
 - **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, @ tags, file map
 - **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (31 events), notification/presence architecture, file map
 - **`docs/FEATURE4_COMPETITIVE_INTELLIGENCE.md`** — 9 tables, 6-dimension scoring, AI insights, alert detection, email digests, 5 crons, file map
 - **`docs/FEATURE5_DEALS_COMMUNITY.md`** — 9 deals/community tables, FK CASCADE hardening (migration 011), moderation, file map
 - **`docs/FEATURE6_DSAR.md`** — DSAR table, OTP flow, PDF generation, Vercel Blob, cleanup cron, file map
-- **`docs/CRON_JOBS.md`** — Full cron schedule (26 entries), auth pattern, batch size notes
+- **`docs/CRON_JOBS.md`** — Full cron schedule (27 entries), auth pattern, batch size notes
+- **`docs/FEATURE7_SUPPORT_SYSTEM.md`** — Schema (5 tables), services, API routes, chatbot architecture, KB seeding, admin dashboard, file map

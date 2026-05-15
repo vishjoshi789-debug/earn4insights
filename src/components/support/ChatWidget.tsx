@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { toast } from 'sonner'
 import { MessageCircle, X, MessagesSquare, BookOpen, Ticket as TicketIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { usePusher } from '@/hooks/usePusher'
 import { ChatTab, type ChatRole } from './ChatTab'
 import { FAQTab } from './FAQTab'
 import { TicketTab } from './TicketTab'
@@ -20,6 +22,7 @@ export function ChatWidget() {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('chat')
   const [hasSeen, setHasSeen] = useState(true)
+  const [unread, setUnread] = useState(0)
 
   // Hydration-safe init: only read sessionStorage on the client after mount.
   useEffect(() => {
@@ -82,6 +85,46 @@ export function ChatWidget() {
 
   const close = useCallback(() => setOpen(false), [])
 
+  // ── Real-time: subscribe to user's private channel for support events.
+  //    Admin reply / resolution / status change → bump unread + toast when
+  //    widget is closed.
+  const userId = (session?.user as any)?.id as string | undefined
+  usePusher({
+    channelName: userId ? `private-user-${userId}` : '',
+    enabled: !!userId && mounted,
+    events: {
+      'support.admin_reply': (data: any) => {
+        setUnread((n) => n + 1)
+        if (!open) {
+          toast.message(data?.title ?? 'Support team replied', {
+            description: data?.metadata?.ticketNumber
+              ? `Ticket ${data.metadata.ticketNumber}`
+              : data?.body,
+            action: { label: 'View', onClick: () => { setTab('tickets'); setOpen(true) } },
+          })
+        }
+      },
+      'support.ticket_resolved': (data: any) => {
+        setUnread((n) => n + 1)
+        if (!open) {
+          toast.message(data?.title ?? 'Ticket resolved', {
+            description: 'How did we do? Tap to rate.',
+            action: { label: 'Rate', onClick: () => { setTab('tickets'); setOpen(true) } },
+          })
+        }
+      },
+      'support.ticket_updated': () => {
+        setUnread((n) => n + 1)
+      },
+    },
+  })
+
+  // Reset unread count when user opens the Tickets tab — that's the
+  // surface the new pushes are about.
+  useEffect(() => {
+    if (open && tab === 'tickets') setUnread(0)
+  }, [open, tab])
+
   // Don't render anything for unauthenticated users (the widget is dashboard-only,
   // but the dashboard layout could theoretically render before session loads).
   if (!mounted || status !== 'authenticated' || !session?.user?.email) return null
@@ -92,13 +135,18 @@ export function ChatWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          aria-label="Open support chat"
+          aria-label={unread > 0 ? `Open support chat (${unread} unread)` : 'Open support chat'}
           className={cn(
             'fixed bottom-5 right-5 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 sm:bottom-6 sm:right-6',
             !hasSeen && 'animate-pulse'
           )}
         >
           <MessageCircle className="h-6 w-6" />
+          {unread > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground ring-2 ring-background">
+              {unread > 9 ? '9+' : unread}
+            </span>
+          )}
         </button>
       )}
 

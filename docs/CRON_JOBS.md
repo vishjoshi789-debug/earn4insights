@@ -1,6 +1,6 @@
 # Cron Jobs — Earn4Insights
 
-**26 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
+**27 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
 
 ## Schedule
 
@@ -32,6 +32,7 @@
 | Mon 06:00 | `/api/cron/competitive/weekly-report` | Generate GPT-4o weekly competitive summary per brand; persist report + queue email |
 | 09:00 | `/api/cron/competitive/send-reports` | Send pending competitive reports via Resend (daily + weekly); sets `email_sent=true` |
 | 03:00 | `/api/jobs/dsar-cleanup` | Delete expired DSAR PDFs from Vercel Blob; expire stale OTP-sent requests older than 1h |
+| 09:00 | `/api/cron/support-ticket-reminders` | Daily digest to admin inbox of stale tickets: `open` >48h with no admin reply + `in_progress` with no admin reply >24h. Skips email when total=0. |
 
 ## Auth Pattern (used by ALL cron routes)
 
@@ -61,3 +62,4 @@ If `CRON_SECRET` is unset, check is skipped (routes run unauthenticated). **Alwa
 - **`competitive/weekly-report`** runs Mondays at 06:00 UTC. Uses GPT-4o (not gpt-4o-mini) to generate strategic weekly competitive summary per brand. Persists `competitive_reports` row (`report_type='weekly'`). Returns: `{ reports, errors, duration }`.
 - **`competitive/send-reports`** runs daily at 09:00 UTC. Finds `competitive_reports` where `email_sent=false`. Sends via Resend using `competitiveEmailService` HTML templates; sets `email_sent=true`. Returns: `{ sent, errors, duration }`.
 - **`dsar-cleanup`** runs daily at 03:00 UTC. Two passes: (1) finds `completed` DSAR requests where `expires_at < NOW()` → calls Vercel Blob `del()`, sets `status='expired'`, clears `pdf_url`; (2) finds `otp_sent` requests stale > 1h → sets `status='expired'`. Returns: `{ pdfDeleted, otpExpired, errors, duration }`.
+- **`support-ticket-reminders`** runs daily at 09:00 UTC. Two queries: (1) `open` tickets > 48h old with no public admin reply (`needs_first_response`); (2) `in_progress` tickets where last public admin reply > 24h ago — or never replied (`needs_followup`). Both queries cap at 200 rows. If combined total > 0, sends a single HTML digest email to `SUPPORT_ADMIN_EMAIL` (default `contact@earn4insights.com`); silent on zero. Returns: `{ reminded, openCount, overdueCount, durationMs }`.

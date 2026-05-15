@@ -304,6 +304,66 @@ Indexes:
 
 ---
 
+## Migration 015 — Customer Support System (5 new tables)
+
+Applied via `POST /api/admin/run-migration-015`. Prerequisite: migration 014. Enables the `vector` extension (pgvector) on first run.
+
+Also creates the Postgres sequence `support_ticket_seq` used to mint atomic, gapless `E4I-XXXX` ticket numbers.
+
+### `support_tickets`
+
+Primary support ticket record. Linked to `users` via CASCADE; assigned admin via SET NULL (preserves audit history when admin account is removed).
+
+Columns: `id` (UUID PK), `ticket_number` (TEXT UNIQUE — `E4I-0001`), `user_id` (TEXT → users CASCADE), `user_email` (TEXT), `user_role` (TEXT — `'brand' | 'consumer' | 'influencer'`), `category` (TEXT — 13 values: account, payment, campaign, feedback, technical, billing, feature_request, bug_report, influencer, deals, community, competitive_intel, other), `subject` (TEXT), `description` (TEXT), `status` (TEXT — `'open' | 'in_progress' | 'waiting_on_user' | 'resolved' | 'closed'`), `priority` (TEXT — `'low' | 'medium' | 'high' | 'urgent'`), `assigned_to` (TEXT → users SET NULL), `resolution_notes` (TEXT), `resolved_at`, `closed_at`, `satisfaction_rating` (INTEGER 1..5), `satisfaction_feedback` (TEXT), `created_at`, `updated_at`
+
+Indexes:
+- `(user_id, status, created_at DESC)` — user's "my tickets" queue
+- `(status, priority, created_at ASC)` — admin queue (urgent first, oldest first)
+- `(ticket_number)` — UNIQUE lookup
+- `(assigned_to, status) WHERE assigned_to IS NOT NULL` — per-admin workload
+
+### `support_ticket_messages`
+
+Threaded conversation per ticket. `sender_type` distinguishes user / admin / system / ai messages. `is_internal_note=true` hides from user view AND user emails.
+
+Columns: `id` (UUID PK), `ticket_id` (UUID → support_tickets CASCADE), `sender_type` (TEXT — `'user' | 'admin' | 'system' | 'ai'`), `sender_id` (TEXT → users SET NULL — null for system/ai), `message` (TEXT), `attachments` (JSONB default `[]` — `[{name, url, size}]`), `is_internal_note` (BOOLEAN default false), `created_at`
+
+Index: `(ticket_id, created_at ASC)` — thread render order
+
+### `chat_conversations`
+
+Chatbot session per user. Messages stored as JSONB array; escalation lineage tracked via `escalated_to_ticket_id`.
+
+Columns: `id` (UUID PK), `user_id` (TEXT → users CASCADE), `user_role` (TEXT), `status` (TEXT — `'active' | 'resolved' | 'escalated'`), `escalated_to_ticket_id` (UUID → support_tickets SET NULL), `messages` (JSONB default `[]` — `[{role, content, timestamp}]`), `context` (JSONB default `{}` — `{currentPage?, recentActions?, accountAge?, flagCount?, flagHistory?, blocked?}`), `satisfaction_rating` (INTEGER 1..5), `total_messages` (INTEGER default 0), `resolved_by_ai` (BOOLEAN default false), `created_at`, `updated_at`
+
+Indexes:
+- `(user_id, status, created_at DESC)` — user's active conversations
+- `(status, created_at DESC)` — admin escalation queue
+
+### `faq_articles`
+
+Markdown knowledge base. `search_vector` (tsvector, DB trigger-managed) powers `/help` keyword search; `embedding vector(1536)` powers chatbot semantic FAQ matching via cosine similarity.
+
+Columns: `id` (UUID PK), `slug` (TEXT UNIQUE — kebab-case), `title` (TEXT), `content` (TEXT — markdown), `excerpt` (TEXT — ≤500), `category` (TEXT — 12 values: getting_started, account, payments, campaigns, feedback, deals, community, influencer, competitive_intel, privacy, technical, billing), `target_roles` (TEXT[] default `{}` — empty = visible to all roles), `tags` (TEXT[] default `{}`), `view_count`, `helpful_count`, `not_helpful_count` (INTEGER default 0), `is_published` (BOOLEAN default true), `display_order` (INTEGER default 0), `search_vector` (TSVECTOR — DB trigger from title+excerpt+content+tags), `embedding` (VECTOR(1536) — OpenAI text-embedding-3-small), `created_at`, `updated_at`
+
+Indexes:
+- `(category, is_published)`
+- `(slug)`
+- GIN on `search_vector` (tsvector keyword search for `/help`)
+- ivfflat (`lists=10`) on `embedding` using `vector_cosine_ops` (semantic search for chatbot)
+
+Trigger: `trg_faq_search` runs `update_faq_search()` BEFORE INSERT OR UPDATE OF (title, excerpt, content, tags) — keeps `search_vector` in sync automatically.
+
+### `support_analytics`
+
+Append-only event log for chat/ticket/FAQ funnel metrics.
+
+Columns: `id` (UUID PK), `event_type` (TEXT — `'chat_started' | 'chat_resolved_by_ai' | 'chat_escalated' | 'ticket_created' | 'ticket_resolved' | 'faq_viewed' | 'faq_helpful' | 'faq_not_helpful' | 'avg_response_time' | 'satisfaction'`), `user_id` (TEXT — nullable for anonymous events), `data` (JSONB default `{}`), `created_at`
+
+Index: `(event_type, created_at DESC)` — admin analytics dashboard queries
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`

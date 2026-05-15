@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import { toast } from 'sonner'
 import {
   Search, RefreshCw, Loader2, ShieldAlert, MessagesSquare,
   Inbox, Timer, Bot, Star, ChevronRight,
@@ -15,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { usePusher } from '@/hooks/usePusher'
 import { SupportAnalyticsCharts, type Analytics } from './SupportAnalyticsCharts'
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -173,6 +175,35 @@ export default function AdminSupportPage() {
       fetchAnalytics()
     }
   }, [role, fetchTickets, fetchAnalytics])
+
+  // ── Real-time: admin subscribes to their private channel and gets
+  //    Pusher pushes for every support.* event the eventBus dispatches.
+  const adminId = (session?.user as any)?.id as string | undefined
+  const refreshRef = useRef<() => void>(() => {})
+  refreshRef.current = () => {
+    fetchTickets()
+    fetchAnalytics()
+  }
+  usePusher({
+    channelName: adminId && role === 'admin' ? `private-user-${adminId}` : '',
+    enabled: !!adminId && role === 'admin',
+    events: {
+      'support.ticket_created': (data: any) => {
+        toast.message(`New ticket: ${data?.metadata?.ticketNumber ?? ''}`.trim(), {
+          description: data?.body ?? data?.title ?? 'A new support ticket was opened.',
+          action: data?.ctaUrl ? { label: 'Open', onClick: () => router.push(data.ctaUrl) } : undefined,
+        })
+        refreshRef.current()
+      },
+      'support.chat_escalated': (data: any) => {
+        toast.message('Chat escalated to ticket', {
+          description: data?.body ?? 'AI couldn\'t resolve a chat — review now.',
+          action: data?.ctaUrl ? { label: 'Open', onClick: () => router.push(data.ctaUrl) } : undefined,
+        })
+        refreshRef.current()
+      },
+    },
+  })
 
   // Client-side filtering for role + search + the open_in_progress combo
   const visibleTickets = useMemo(() => {

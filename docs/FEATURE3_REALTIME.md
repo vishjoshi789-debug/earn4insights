@@ -23,9 +23,9 @@ Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus
 
 Auth endpoint: `POST /api/pusher/auth` — validates NextAuth session; enforces users can only subscribe to their own private channel. On presence auth, stamps `lastActiveAt` on `userProfiles` (fire-and-forget).
 
-## 31 Platform Events
+## 36 Platform Events
 
-All defined in `PLATFORM_EVENTS` const in `src/server/eventBus.ts`. All 31 have `routeEvent()` case handlers.
+All defined in `PLATFORM_EVENTS` const in `src/server/eventBus.ts`. All 36 have `routeEvent()` case handlers.
 
 | Event | Targets | Emitted by |
 |-------|---------|------------|
@@ -60,6 +60,11 @@ All defined in `PLATFORM_EVENTS` const in `src/server/eventBus.ts`. All 31 have 
 | `payment.payout.completed` | Recipient | `payoutService.markPayoutCompleted()` (admin action) |
 | `payment.payout.failed` | Recipient | `payoutService.markPayoutFailed()` (admin action) |
 | `consumer.reward.redeemed` | Consumer | `POST /api/consumer/rewards/redeem` after successful deduction |
+| `support.ticket_created` | ALL admins (fan-out via `getAdminUserIds()` 5-min cache) | `supportService.createTicket()` |
+| `support.chat_escalated` | ALL admins | `chatbotService.escalateToTicket()` |
+| `support.admin_reply` | Ticket owner | `supportService.addTicketReply()` (admin role only, non-internal) |
+| `support.ticket_updated` | Ticket owner | `supportService.updateTicketStatus()` (non-resolved status change) |
+| `support.ticket_resolved` | Ticket owner | `supportService.updateTicketStatus()` (resolved transition) |
 
 ## Dispatch Flow (inbox-first)
 

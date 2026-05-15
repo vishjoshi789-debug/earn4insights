@@ -46,6 +46,7 @@ import {
 import { searchBySemantic } from '@/server/faqService'
 import { createTicket } from '@/server/supportService'
 import { sendChatEscalationToAdmin } from '@/server/supportEmailService'
+import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 import {
   getChatbotSystemPrompt,
   getGreeting,
@@ -364,6 +365,19 @@ export async function escalateToTicket(input: {
       .slice(-5)
       .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
   }).catch((e) => console.error('[chatbot] escalation email failed:', e))
+
+  // Real-time fan-out — push to all admins so they see the escalation toast
+  // even if they aren't watching the email inbox.
+  void emit(PLATFORM_EVENTS.SUPPORT_CHAT_ESCALATED, {
+    actorId: input.userId,
+    actorRole: 'consumer',
+    ticketId: ticket.id,
+    ticketNumber: ticket.ticketNumber,
+    conversationId: conversation.id,
+    userName,
+    userRole: conversation.userRole,
+    messageCount: conversation.totalMessages,
+  }).catch((e) => console.error('[chatbot] emit chat_escalated failed:', e))
 
   return ticket
 }
