@@ -2242,8 +2242,10 @@ export const chatConversations = pgTable('chat_conversations', {
   escalatedToTicketId: uuid('escalated_to_ticket_id'),        // → support_tickets.id SET NULL
   messages: jsonb('messages').notNull().default([])
     .$type<Array<{ role: 'user' | 'assistant'; content: string; timestamp: string }>>(),
-  context: jsonb('context').default({})
-    .$type<{ currentPage?: string; recentActions?: string[]; accountAge?: number }>(),
+  // Loose shape — chatbot writes both the spec'd fields (currentPage,
+  // recentActions, accountAge) AND abuse-tracking fields (flagCount,
+  // flagHistory, blocked, userName, etc.) into this JSONB.
+  context: jsonb('context').default({}).$type<Record<string, unknown>>(),
   satisfactionRating: integer('satisfaction_rating'),         // 1..5
   totalMessages: integer('total_messages').notNull().default(0),
   resolvedByAi: boolean('resolved_by_ai').notNull().default(false),
