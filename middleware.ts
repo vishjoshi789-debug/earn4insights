@@ -112,14 +112,17 @@ export default auth((req: NextRequest & { auth: any }) => {
   const token = existing ?? generateCsrfToken()
 
   if (decision) {
-    if (!existing) setCsrfCookie(decision, token)
+    // Always refresh — keeps maxAge sliding so the cookie never
+    // expires mid-session while the user is active.
+    setCsrfCookie(decision, token)
     return decision
   }
 
   const requestHeaders = new Headers(req.headers)
   requestHeaders.set(CSRF_HEADER_NAME, token)
   const response = NextResponse.next({ request: { headers: requestHeaders } })
-  if (!existing) setCsrfCookie(response, token)
+  // Same — refresh every response so an active session never sees an expired cookie.
+  setCsrfCookie(response, token)
   return response
 })
 
