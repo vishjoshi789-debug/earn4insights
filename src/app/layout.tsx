@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import Script from 'next/script'
-import { headers } from 'next/headers'
+import { headers, cookies } from 'next/headers'
 import './globals.css'
 
 import { SiteHeader } from '@/components/site-header'
@@ -9,7 +9,7 @@ import { SessionProvider } from '@/components/session-provider'
 import { Toaster } from 'sonner'
 import AnalyticsTracker from '@/components/analytics-tracker'
 import { CookieConsent } from '@/components/CookieConsent'
-import { CSRF_HEADER_NAME } from '@/lib/csrf'
+import { CSRF_HEADER_NAME, CSRF_COOKIE_NAME } from '@/lib/csrf'
 
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID
 
@@ -44,13 +44,18 @@ export default async function RootLayout({
   children: React.ReactNode
 }) {
   const hdrs = await headers()
-  const csrfToken = hdrs.get(CSRF_HEADER_NAME) ?? ''
-  // Diagnostic — when the meta tag would render empty, log so we can
-  // identify which routes are bypassing middleware (the only way this
-  // header would be missing is if middleware didn't run / didn't set it).
+  // Primary source: x-csrf-token request header set by middleware.
+  // Fallback source: the e4i-csrf cookie itself (in case middleware
+  // didn't set the request header on this render but the cookie was
+  // set on a previous request).
+  let csrfToken = hdrs.get(CSRF_HEADER_NAME) ?? ''
+  if (!csrfToken) {
+    const cookieStore = await cookies()
+    csrfToken = cookieStore.get(CSRF_COOKIE_NAME)?.value ?? ''
+  }
   if (!csrfToken) {
     const path = hdrs.get('x-pathname') ?? hdrs.get('x-invoke-path') ?? hdrs.get('referer') ?? 'unknown'
-    console.warn(`[CSRF_META_EMPTY] csrf header missing in layout — path=${path}`)
+    console.warn(`[CSRF_META_EMPTY] both header AND cookie missing in layout — path=${path}`)
   }
 
   return (

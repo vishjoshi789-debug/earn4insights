@@ -35,6 +35,7 @@ const PUBLIC_PREFIXES: string[] = [
   '/api/jobs/',
   '/help/',
   '/api/support/faq',
+  '/api/csrf/',
 ]
 
 const PUBLIC_API_ADMIN_PREFIXES: string[] = [
@@ -106,6 +107,11 @@ function decideAuth(req: NextRequest & { auth: any }): NextResponse | null {
 }
 
 export default auth((req: NextRequest & { auth: any }) => {
+  // Diagnostic — proves middleware actually ran for this request.
+  // Visible in Vercel logs as `[MW] path=...` and on every response
+  // as the `x-mw-ran` header so DevTools can verify per-request.
+  console.log(`[MW] path=${req.nextUrl.pathname} authed=${!!req.auth}`)
+
   const decision = decideAuth(req)
 
   const existing = req.cookies.get(CSRF_COOKIE_NAME)?.value
@@ -115,6 +121,8 @@ export default auth((req: NextRequest & { auth: any }) => {
     // Always refresh — keeps maxAge sliding so the cookie never
     // expires mid-session while the user is active.
     setCsrfCookie(decision, token)
+    decision.headers.set('x-mw-ran', '1')
+    decision.headers.set('x-mw-decision', 'redirect')
     return decision
   }
 
@@ -126,6 +134,8 @@ export default auth((req: NextRequest & { auth: any }) => {
   const response = NextResponse.next({ request: { headers: requestHeaders } })
   // Same — refresh every response so an active session never sees an expired cookie.
   setCsrfCookie(response, token)
+  response.headers.set('x-mw-ran', '1')
+  response.headers.set('x-mw-decision', 'continue')
   return response
 })
 

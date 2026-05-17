@@ -125,6 +125,24 @@ export function ChatWidget() {
     if (open && tab === 'tickets') setUnread(0)
   }, [open, tab])
 
+  // Bootstrap the e4i-csrf cookie on first open of the widget. This is
+  // a safety net for the production case where Next.js middleware
+  // failed to set the cookie on the page load — without this, the
+  // first protected POST (chat start, ticket create, etc.) fails with
+  // missing_header. The /api/csrf/init route always sets the cookie
+  // directly from its route handler, bypassing middleware entirely.
+  const [csrfBooted, setCsrfBooted] = useState(false)
+  useEffect(() => {
+    if (!open || csrfBooted || !mounted) return
+    fetch('/api/csrf/init', { credentials: 'same-origin' })
+      .then(() => setCsrfBooted(true))
+      .catch((err) => {
+        console.warn('[ChatWidget] csrf init failed:', err)
+        // Still mark as booted — we'll let the API call surface the error.
+        setCsrfBooted(true)
+      })
+  }, [open, csrfBooted, mounted])
+
   // Don't render anything for unauthenticated users (the widget is dashboard-only,
   // but the dashboard layout could theoretically render before session loads).
   if (!mounted || status !== 'authenticated' || !session?.user?.email) return null
@@ -191,15 +209,26 @@ export function ChatWidget() {
 
           {/* Body */}
           <div className="flex flex-1 flex-col overflow-hidden">
-            {tab === 'chat' && (
-              <ChatTab
-                role={role}
-                onSwitchToFaq={() => setTab('faq')}
-                onEscalated={() => setTab('tickets')}
-              />
+            {!csrfBooted ? (
+              <div className="flex flex-1 items-center justify-center p-6 text-center">
+                <div className="space-y-2">
+                  <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                  <p className="text-xs text-muted-foreground">Setting things up…</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {tab === 'chat' && (
+                  <ChatTab
+                    role={role}
+                    onSwitchToFaq={() => setTab('faq')}
+                    onEscalated={() => setTab('tickets')}
+                  />
+                )}
+                {tab === 'faq' && <FAQTab role={role} />}
+                {tab === 'tickets' && <TicketTab />}
+              </>
             )}
-            {tab === 'faq' && <FAQTab role={role} />}
-            {tab === 'tickets' && <TicketTab />}
           </div>
         </div>
       )}
