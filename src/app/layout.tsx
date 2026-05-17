@@ -45,6 +45,13 @@ export default async function RootLayout({
 }) {
   const hdrs = await headers()
   const csrfToken = hdrs.get(CSRF_HEADER_NAME) ?? ''
+  // Diagnostic — when the meta tag would render empty, log so we can
+  // identify which routes are bypassing middleware (the only way this
+  // header would be missing is if middleware didn't run / didn't set it).
+  if (!csrfToken) {
+    const path = hdrs.get('x-pathname') ?? hdrs.get('x-invoke-path') ?? hdrs.get('referer') ?? 'unknown'
+    console.warn(`[CSRF_META_EMPTY] csrf header missing in layout — path=${path}`)
+  }
 
   return (
     <html lang="en" className={inter.variable}>

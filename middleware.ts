@@ -120,6 +120,9 @@ export default auth((req: NextRequest & { auth: any }) => {
 
   const requestHeaders = new Headers(req.headers)
   requestHeaders.set(CSRF_HEADER_NAME, token)
+  // Forward the request path so the root layout can log which URL
+  // triggered an empty-csrf-token render (diagnostic).
+  requestHeaders.set('x-pathname', req.nextUrl.pathname)
   const response = NextResponse.next({ request: { headers: requestHeaders } })
   // Same — refresh every response so an active session never sees an expired cookie.
   setCsrfCookie(response, token)

@@ -56,14 +56,31 @@ export function ChatTab({
       const res = await apiPost('/api/support/chat/start', { currentPage, role })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        // When the server returns a CSRF-specific reason, surface it so the
-        // failure is diagnosable without log access.
         const baseMsg = data.error || 'Could not start chat'
         const reason = typeof data.reason === 'string' ? data.reason : null
-        setStartError(reason ? `${baseMsg} (${reason})` : baseMsg)
-        if (reason) {
-          console.warn(`[ChatTab] /chat/start failed: ${reason}`, data.detail || '')
+
+        // Client-side diagnostic snapshot at the moment of the failed POST.
+        // For CSRF failures, this tells us EXACTLY which side is broken:
+        //   - cookieFound=false  → browser never received Set-Cookie
+        //   - metaFound=false    → root layout rendered empty meta
+        //   - both false         → middleware never ran for this page load
+        let diag = ''
+        if (typeof document !== 'undefined') {
+          const hasCsrfCookie = /(?:^|;\s*)e4i-csrf=([^;]+)/.test(document.cookie)
+          const metaEl = document.querySelector('meta[name="csrf-token"]')
+          const metaContent = metaEl?.getAttribute('content') ?? ''
+          diag = ` cookie=${hasCsrfCookie ? 'yes' : 'no'} meta=${metaContent ? 'yes' : 'no'}`
+          console.warn(
+            `[ChatTab] /chat/start failed reason=${reason ?? 'unknown'} ` +
+            `serverDetail=${data.detail ?? '-'} ` +
+            `clientCookie=${hasCsrfCookie} ` +
+            `clientMetaLen=${metaContent.length}`
+          )
         }
+
+        setStartError(
+          reason ? `${baseMsg} (${reason}${diag})` : baseMsg
+        )
         return
       }
       const data = await res.json()
