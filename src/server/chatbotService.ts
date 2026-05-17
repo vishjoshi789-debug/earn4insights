@@ -263,6 +263,9 @@ export async function sendMessage(input: {
   let aiReply = OPENAI_ERROR_RESPONSE
 
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY env var not set')
+    }
     const completion = await getOpenAI().chat.completions.create({
       model: CHAT_MODEL,
       temperature: CHAT_TEMPERATURE,
@@ -276,7 +279,23 @@ export async function sendMessage(input: {
     const content = completion.choices[0]?.message?.content?.trim()
     if (content) aiReply = content
   } catch (err) {
-    console.error('[chatbot] GPT call failed:', err)
+    // Extract structured OpenAI SDK error fields for actionable logging
+    // + a short cause string that we append to the user-facing reply
+    // so the operator can diagnose without log access.
+    const e = err as Partial<{
+      status: number
+      code: string
+      type: string
+      message: string
+      name: string
+    }>
+    const cause = classifyOpenAIError(e)
+    console.error(
+      `[chatbot] GPT call failed model=${CHAT_MODEL} cause=${cause} ` +
+      `status=${e.status ?? '-'} code=${e.code ?? '-'} type=${e.type ?? '-'} ` +
+      `name=${e.name ?? '-'} message=${e.message ?? '-'}`
+    )
+    aiReply = `${OPENAI_ERROR_RESPONSE} (${cause})`
   }
 
   const newTotal = conversation.totalMessages + 2
@@ -512,6 +531,27 @@ async function classifyConversation(params: {
   }
 }
 
+/**
+ * Map an OpenAI SDK error (or anything error-like) to a short cause
+ * code the operator can read at a glance:
+ *   api_key, rate_limited, model_not_found, server_error, network, unknown
+ */
+function classifyOpenAIError(e: {
+  status?: number
+  code?: string
+  type?: string
+  message?: string
+  name?: string
+}): string {
+  if (e.message?.includes('OPENAI_API_KEY')) return 'api_key'
+  if (e.status === 401 || e.code === 'invalid_api_key' || e.type === 'authentication_error') return 'api_key'
+  if (e.status === 429 || e.code === 'rate_limit_exceeded' || e.type === 'rate_limit_exceeded') return 'rate_limited'
+  if (e.status === 404 || e.code === 'model_not_found') return 'model_not_found'
+  if ((e.status ?? 0) >= 500) return 'server_error'
+  if (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.name === 'AbortError') return 'network'
+  return 'unknown'
+}
+
 // ════════════════════════════════════════════════════════════════
 // ADMIN HELPERS — kept here so the support analytics page can pull
 // aggregate metrics without re-importing the repo
@@ -525,4 +565,46 @@ export async function getAiResolutionRate(
   const resolvedByAi = await countEventsInWindow('chat_resolved_by_ai', since)
   const rate = started > 0 ? resolvedByAi / started : 0
   return { started, resolvedByAi, rate }
+}
+
+/**
+ * Minimal end-to-end OpenAI probe used by the admin diagnostic route.
+ * Makes a single 1-token chat completion against the configured chat
+ * model and returns success/failure detail.
+ */
+export async function runOpenAIDiagnostic(): Promise<{
+  ok: boolean
+  model: string
+  hasKey: boolean
+  cause?: string
+  status?: number
+  code?: string
+  message?: string
+  responsePreview?: string
+}> {
+  const hasKey = !!process.env.OPENAI_API_KEY
+  if (!hasKey) {
+    return { ok: false, model: CHAT_MODEL, hasKey, cause: 'api_key', message: 'OPENAI_API_KEY env var not set' }
+  }
+  try {
+    const completion = await getOpenAI().chat.completions.create({
+      model: CHAT_MODEL,
+      max_tokens: 5,
+      temperature: 0,
+      messages: [{ role: 'user', content: 'Say "ok"' }],
+    })
+    const text = completion.choices[0]?.message?.content?.trim() ?? ''
+    return { ok: true, model: CHAT_MODEL, hasKey, responsePreview: text.slice(0, 50) }
+  } catch (err) {
+    const e = err as Partial<{ status: number; code: string; type: string; message: string; name: string }>
+    return {
+      ok: false,
+      model: CHAT_MODEL,
+      hasKey,
+      cause: classifyOpenAIError(e),
+      status: e.status,
+      code: e.code,
+      message: e.message,
+    }
+  }
 }
