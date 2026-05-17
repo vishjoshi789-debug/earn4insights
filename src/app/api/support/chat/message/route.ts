@@ -2,7 +2,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
-import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
+import { checkCsrf, csrfErrorResponse } from '@/lib/csrf'
 import { supportChatMessageRateLimit } from '@/lib/rate-limit-upstash'
 import { sendMessage } from '@/server/chatbotService'
 
@@ -12,7 +12,8 @@ import { sendMessage } from '@/server/chatbotService'
  * Returns the bot's reply + outcome metadata (faq/ai/flagged/blocked).
  */
 export async function POST(req: NextRequest) {
-  if (!validateCsrfToken(req)) return csrfErrorResponse()
+  const csrf = checkCsrf(req)
+  if (!csrf.ok) return csrfErrorResponse({ reason: csrf.reason, detail: csrf.detail })
   try {
     const session = await auth()
     if (!session?.user?.email) {

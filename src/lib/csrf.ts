@@ -39,55 +39,85 @@ function readCookieValue(cookieHeader: string | null, name: string): string | nu
   return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null
 }
 
+export type CsrfFailureReason =
+  | 'missing_header'
+  | 'missing_cookie'
+  | 'length_mismatch'
+  | 'value_mismatch'
+  | 'comparison_threw'
+
+export type CsrfCheckResult =
+  | { ok: true }
+  | { ok: false; reason: CsrfFailureReason; detail: string }
+
 /**
- * Validate that X-CSRF-Token header matches e4i-csrf cookie via
- * timing-safe comparison. Returns true on match.
+ * Check whether the X-CSRF-Token header matches the e4i-csrf cookie.
+ * Returns a tagged result so callers can surface the failure reason in
+ * the response body (callers who don't care can use validateCsrfToken).
  *
- * Logs the failure reason to the server console (greppable as
- * `[CSRF_FAIL]`) so we can diagnose which leg of the double-submit
- * pattern is breaking in production.
+ * Also logs every failure as `[CSRF_FAIL] <reason> ...` on the server
+ * console for log-based diagnosis.
  */
-export function validateCsrfToken(request: Request): boolean {
+export function checkCsrf(request: Request): CsrfCheckResult {
+  const pathname = (() => {
+    try { return new URL(request.url).pathname } catch { return '?' }
+  })()
   const headerToken = request.headers.get(CSRF_HEADER_NAME)
   if (!headerToken) {
-    console.warn(
-      `[CSRF_FAIL] missing header url=${new URL(request.url).pathname} ` +
-      `hasCookieHeader=${!!request.headers.get('cookie')}`
-    )
-    return false
+    const detail = `hasCookieHeader=${!!request.headers.get('cookie')}`
+    console.warn(`[CSRF_FAIL] missing_header url=${pathname} ${detail}`)
+    return { ok: false, reason: 'missing_header', detail }
   }
   const cookieToken = readCookieValue(request.headers.get('cookie'), CSRF_COOKIE_NAME)
   if (!cookieToken) {
-    console.warn(
-      `[CSRF_FAIL] missing cookie url=${new URL(request.url).pathname} ` +
-      `headerLen=${headerToken.length} hasCookieHeader=${!!request.headers.get('cookie')}`
-    )
-    return false
+    const detail = `headerLen=${headerToken.length} hasCookieHeader=${!!request.headers.get('cookie')}`
+    console.warn(`[CSRF_FAIL] missing_cookie url=${pathname} ${detail}`)
+    return { ok: false, reason: 'missing_cookie', detail }
   }
   if (headerToken.length !== cookieToken.length) {
-    console.warn(
-      `[CSRF_FAIL] length mismatch url=${new URL(request.url).pathname} ` +
-      `headerLen=${headerToken.length} cookieLen=${cookieToken.length}`
-    )
-    return false
+    const detail = `headerLen=${headerToken.length} cookieLen=${cookieToken.length}`
+    console.warn(`[CSRF_FAIL] length_mismatch url=${pathname} ${detail}`)
+    return { ok: false, reason: 'length_mismatch', detail }
   }
   try {
     const ok = timingSafeEqual(Buffer.from(headerToken), Buffer.from(cookieToken))
     if (!ok) {
-      console.warn(
-        `[CSRF_FAIL] value mismatch url=${new URL(request.url).pathname} ` +
-        `headerPrefix=${headerToken.slice(0, 8)} cookiePrefix=${cookieToken.slice(0, 8)}`
-      )
+      const detail = `headerPrefix=${headerToken.slice(0, 8)} cookiePrefix=${cookieToken.slice(0, 8)}`
+      console.warn(`[CSRF_FAIL] value_mismatch url=${pathname} ${detail}`)
+      return { ok: false, reason: 'value_mismatch', detail }
     }
-    return ok
+    return { ok: true }
   } catch (err) {
-    console.warn(
-      `[CSRF_FAIL] comparison threw url=${new URL(request.url).pathname} err=${err instanceof Error ? err.message : String(err)}`
-    )
-    return false
+    const detail = err instanceof Error ? err.message : String(err)
+    console.warn(`[CSRF_FAIL] comparison_threw url=${pathname} err=${detail}`)
+    return { ok: false, reason: 'comparison_threw', detail }
   }
 }
 
-export function csrfErrorResponse(): NextResponse {
-  return NextResponse.json({ error: 'Invalid or missing CSRF token.' }, { status: 403 })
+/**
+ * Backwards-compatible boolean wrapper around checkCsrf — keeps the
+ * existing 17 callers unchanged while new callers can use checkCsrf
+ * to surface the failure reason in the response.
+ */
+export function validateCsrfToken(request: Request): boolean {
+  return checkCsrf(request).ok
+}
+
+/**
+ * 403 response when the CSRF check fails. If a reason + detail are
+ * provided, they're included in the response body and an
+ * `X-CSRF-Fail-Reason` response header — so the failure is visible
+ * in the browser's Network tab without log diving.
+ */
+export function csrfErrorResponse(failure?: { reason: CsrfFailureReason; detail?: string }): NextResponse {
+  const response = NextResponse.json(
+    {
+      error: 'Invalid or missing CSRF token.',
+      ...(failure?.reason ? { reason: failure.reason } : {}),
+      ...(failure?.detail ? { detail: failure.detail } : {}),
+    },
+    { status: 403 }
+  )
+  if (failure?.reason) response.headers.set('X-CSRF-Fail-Reason', failure.reason)
+  return response
 }

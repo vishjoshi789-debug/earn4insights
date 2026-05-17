@@ -2,7 +2,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
-import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
+import { checkCsrf, csrfErrorResponse } from '@/lib/csrf'
 import { supportChatStartRateLimit } from '@/lib/rate-limit-upstash'
 import { startConversation } from '@/server/chatbotService'
 import type { ChatbotRole } from '@/server/chatbot-knowledge-base'
@@ -15,7 +15,8 @@ const VALID_ROLES: ReadonlyArray<ChatbotRole> = ['brand', 'consumer', 'influence
  * Returns the conversation row + greeting + role-specific quick actions.
  */
 export async function POST(req: NextRequest) {
-  if (!validateCsrfToken(req)) return csrfErrorResponse()
+  const csrf = checkCsrf(req)
+  if (!csrf.ok) return csrfErrorResponse({ reason: csrf.reason, detail: csrf.detail })
   try {
     const session = await auth()
     if (!session?.user?.email) {

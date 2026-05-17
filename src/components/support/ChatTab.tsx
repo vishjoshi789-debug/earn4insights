@@ -56,7 +56,14 @@ export function ChatTab({
       const res = await apiPost('/api/support/chat/start', { currentPage, role })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setStartError(data.error || 'Could not start chat')
+        // When the server returns a CSRF-specific reason, surface it so the
+        // failure is diagnosable without log access.
+        const baseMsg = data.error || 'Could not start chat'
+        const reason = typeof data.reason === 'string' ? data.reason : null
+        setStartError(reason ? `${baseMsg} (${reason})` : baseMsg)
+        if (reason) {
+          console.warn(`[ChatTab] /chat/start failed: ${reason}`, data.detail || '')
+        }
         return
       }
       const data = await res.json()
