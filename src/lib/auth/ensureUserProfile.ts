@@ -37,31 +37,47 @@ export async function ensureUserProfile(userId: string, email: string) {
     //     same email. The old user_profiles row is now orphaned because
     //     no users row matches its id.
     //   - Auth migrations changed the id generation format.
+    //   - The OAuth provider issued a fresh sub/id on a subsequent login.
     //
     // The session's userId is canonical (it's what the user is currently
     // logged in as, and it MUST exist in `users` for auth to have worked).
     // We resolve the mismatch by deleting the orphan and creating a fresh
-    // profile keyed by the session userId. All FKs from other tables to
-    // user_profiles.id use ON DELETE CASCADE (migration 003), so any
-    // dependent rows referencing the orphan id get cleaned up automatically.
-    // Those dependent rows were already inaccessible (orphaned alongside
-    // the profile), so nothing reachable is lost.
+    // profile keyed by the session userId — but we CARRY OVER every field
+    // from the old profile (onboarding state, demographics, interests,
+    // consent, signals, etc.) so the user does NOT lose work or get
+    // re-routed back to /onboarding on every login.
+    //
+    // FK dependents referencing user_profiles.id use ON DELETE CASCADE
+    // (migration 003), so child rows are cleaned up during DELETE. The
+    // user_profiles row itself is preserved field-by-field through the
+    // INSERT that follows in the same transaction.
     console.warn(
       `[ensureUserProfile] ID mismatch — orphan profile.id=${profile.id} ` +
-      `for email=${email}, session userId=${userId}. Reconciling…`
+      `for email=${email}, session userId=${userId}. Reconciling (non-destructive)…`
     )
 
+    const oldProfile = profile
+
     await db.transaction(async (tx) => {
-      await tx.delete(userProfiles).where(eq(userProfiles.id, profile!.id))
+      await tx.delete(userProfiles).where(eq(userProfiles.id, oldProfile.id))
       await tx.insert(userProfiles).values({
         id: userId,
         email,
-        demographics: null,
-        interests: null,
-        behavioral: null,
-        sensitiveData: null,
-        notificationPreferences: DEFAULT_NOTIFICATION_PREFS,
-        consent: DEFAULT_CONSENT,
+        // Carry over EVERY user-data field so onboarding state, signals,
+        // demographics, consent, sensitive data, etc. survive the id swap.
+        onboardingComplete: oldProfile.onboardingComplete ?? false,
+        demographics: oldProfile.demographics ?? null,
+        interests: oldProfile.interests ?? null,
+        behavioral: oldProfile.behavioral ?? null,
+        sensitiveData: oldProfile.sensitiveData ?? null,
+        psychographic: oldProfile.psychographic ?? null,
+        socialSignals: oldProfile.socialSignals ?? null,
+        signalVersion: oldProfile.signalVersion ?? '1.0',
+        lastSignalComputedAt: oldProfile.lastSignalComputedAt ?? null,
+        lastActiveAt: oldProfile.lastActiveAt ?? null,
+        notificationPreferences:
+          oldProfile.notificationPreferences ?? DEFAULT_NOTIFICATION_PREFS,
+        consent: oldProfile.consent ?? DEFAULT_CONSENT,
       })
     })
 
@@ -71,7 +87,11 @@ export async function ensureUserProfile(userId: string, email: string) {
         `Profile reconciliation failed: could not fetch new profile after replace for ${email}`
       )
     }
-    console.log(`[ensureUserProfile] Reconciled profile id=${userId} for email=${email}`)
+    console.log(
+      `[ensureUserProfile] Non-destructive reconciliation: carried over profile data ` +
+      `for email=${email} (id ${oldProfile.id} → ${userId}, ` +
+      `onboardingComplete=${oldProfile.onboardingComplete ?? false})`
+    )
     return reconciled
   }
 
