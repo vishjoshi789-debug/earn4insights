@@ -35,12 +35,26 @@ export async function OnboardingGuard({
   // (e.g. profile was created under a different auth provider)
   if (!skipOnboarding && !skipForRole) {
     const onboardingComplete = await hasCompletedOnboarding(profile.id)
-    
+
+    // Diagnostic logging — helps confirm whether the redirect loop is
+    // caused by the flag being false in DB vs. some other issue.
+    // Grep Vercel logs for "[OnboardingGuard]" to trace specific accounts.
+    console.log(
+      `[OnboardingGuard] email=${session.user.email} ` +
+      `role=${session.user.role} ` +
+      `profileId=${profile.id} ` +
+      `sessionId=${session.user.id} ` +
+      `flag=${profile.onboardingComplete} ` +
+      `hasDemo=${!!profile.demographics} ` +
+      `hasInterests=${!!profile.interests} ` +
+      `result=${onboardingComplete ? 'passed' : 'REDIRECT'}`
+    )
+
     if (!onboardingComplete) {
       redirect('/onboarding')
     }
   }
-  
+
   return <>{children}</>
 }
 

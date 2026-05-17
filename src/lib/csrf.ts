@@ -42,16 +42,48 @@ function readCookieValue(cookieHeader: string | null, name: string): string | nu
 /**
  * Validate that X-CSRF-Token header matches e4i-csrf cookie via
  * timing-safe comparison. Returns true on match.
+ *
+ * Logs the failure reason to the server console (greppable as
+ * `[CSRF_FAIL]`) so we can diagnose which leg of the double-submit
+ * pattern is breaking in production.
  */
 export function validateCsrfToken(request: Request): boolean {
   const headerToken = request.headers.get(CSRF_HEADER_NAME)
-  if (!headerToken) return false
+  if (!headerToken) {
+    console.warn(
+      `[CSRF_FAIL] missing header url=${new URL(request.url).pathname} ` +
+      `hasCookieHeader=${!!request.headers.get('cookie')}`
+    )
+    return false
+  }
   const cookieToken = readCookieValue(request.headers.get('cookie'), CSRF_COOKIE_NAME)
-  if (!cookieToken) return false
-  if (headerToken.length !== cookieToken.length) return false
+  if (!cookieToken) {
+    console.warn(
+      `[CSRF_FAIL] missing cookie url=${new URL(request.url).pathname} ` +
+      `headerLen=${headerToken.length} hasCookieHeader=${!!request.headers.get('cookie')}`
+    )
+    return false
+  }
+  if (headerToken.length !== cookieToken.length) {
+    console.warn(
+      `[CSRF_FAIL] length mismatch url=${new URL(request.url).pathname} ` +
+      `headerLen=${headerToken.length} cookieLen=${cookieToken.length}`
+    )
+    return false
+  }
   try {
-    return timingSafeEqual(Buffer.from(headerToken), Buffer.from(cookieToken))
-  } catch {
+    const ok = timingSafeEqual(Buffer.from(headerToken), Buffer.from(cookieToken))
+    if (!ok) {
+      console.warn(
+        `[CSRF_FAIL] value mismatch url=${new URL(request.url).pathname} ` +
+        `headerPrefix=${headerToken.slice(0, 8)} cookiePrefix=${cookieToken.slice(0, 8)}`
+      )
+    }
+    return ok
+  } catch (err) {
+    console.warn(
+      `[CSRF_FAIL] comparison threw url=${new URL(request.url).pathname} err=${err instanceof Error ? err.message : String(err)}`
+    )
     return false
   }
 }
