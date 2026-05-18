@@ -53,8 +53,26 @@ export async function GET(request: NextRequest) {
 
   const fromAddress = process.env.EMAIL_FROM || 'support@earn4insights.com'
   const adminInbox = process.env.SUPPORT_ADMIN_EMAIL || 'contact@earn4insights.com'
-  const to = request.nextUrl.searchParams.get('to') || adminInbox
+  // Strip any whitespace that may have crept in via clipboard / shell escaping.
+  // Common when PS users paste the curl one-liner and a non-breaking space lands
+  // mid-URL — Resend then rejects the address as malformed.
+  const rawTo = request.nextUrl.searchParams.get('to') || adminInbox
+  const to = rawTo.replace(/\s+/g, '')
   const hasKey = !!process.env.RESEND_API_KEY
+
+  // Pre-validate the cleaned address before we pay for a Resend round-trip.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return NextResponse.json({
+      ok: false,
+      hasKey,
+      from: fromAddress,
+      to,
+      rawTo,
+      cause: 'invalid_to',
+      message: `Recipient "${to}" is not a valid email address (rawTo="${rawTo}"). ` +
+               `Check for stray whitespace in the URL.`,
+    })
+  }
 
   if (!hasKey) {
     return NextResponse.json({
