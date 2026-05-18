@@ -1,6 +1,6 @@
 # Feature 3 — Real-Time Connection Layer
 
-Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus (31 events), notification inbox, activity feed, presence indicators, social listening.
+Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus (36 events), notification inbox, activity feed, presence indicators, social listening.
 
 **Status: ✅ COMPLETE + reviewed (April 2026)**
 
@@ -10,7 +10,7 @@ Pusher WebSocket (cluster ap2 — Mumbai/Asia), 6 DB tables + 1 ALTER, event bus
 
 - **`src/lib/pusher.ts`** — server SDK singleton, `triggerPusherEvent()`, `PUSHER_EVENTS`, channel helpers
 - **`src/lib/pusher-client.ts`** — client SDK singleton (`channelAuthorization`), channel helpers
-- **`src/server/eventBus.ts`** — `emit()` + `PLATFORM_EVENTS` (31 events) + `routeEvent()` + ICP targeting
+- **`src/server/eventBus.ts`** — `emit()` + `PLATFORM_EVENTS` (36 events) + `routeEvent()` + ICP targeting
 - **`src/server/realtimeNotificationService.ts`** — consent-gated dispatch: inbox + feed + Pusher + email/SMS
 
 ## Pusher Channel Design
@@ -26,6 +26,7 @@ Auth endpoint: `POST /api/pusher/auth` — validates NextAuth session; enforces 
 ## 36 Platform Events
 
 All defined in `PLATFORM_EVENTS` const in `src/server/eventBus.ts`. All 36 have `routeEvent()` case handlers.
+
 
 | Event | Targets | Emitted by |
 |-------|---------|------------|
@@ -84,7 +85,7 @@ emit(eventType, payload)
 
 ## Notification Preferences
 
-GET/POST `/api/notifications/preferences` — 31 event types, per-type `inApp`/`email`/`sms` toggles.
+GET/POST `/api/notifications/preferences` — 36 event types, per-type `inApp`/`email`/`sms` toggles.
 Defaults: `inApp=true`, `email=true`, `sms=false`.
 
 ## Online Presence
@@ -184,5 +185,5 @@ app/api/feedback/submit/route.ts                   # emit CONSUMER_FEEDBACK_SUBM
 app/api/influencer/content/route.ts                # NOTE: INFLUENCER_POST_PUBLISHED removed from here (was premature —
                                                    #       posts were drafts). Now emitted in contentApprovalService.
 app/api/brand/campaigns/route.ts                   # emit BRAND_CAMPAIGN_LAUNCHED
-vercel.json                                        # 26 cron entries (20 pre-CI + 5 competitive + 1 dsar-cleanup)
+vercel.json                                        # 27 cron entries (20 pre-CI + 5 competitive + 1 dsar-cleanup + 1 support-ticket-reminders)
 ```

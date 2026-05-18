@@ -1,7 +1,7 @@
 # Earn4Insights — Technical Architecture Document
 
-> **Version:** April 2026 v6 (authoritative — reflects all phases through Competitive Intelligence Dashboard + DSAR System)
-> **Stack:** Next.js 15 · TypeScript (strict) · Drizzle ORM · Neon PostgreSQL · NextAuth v5 · Pusher · OpenAI · Resend · Twilio · Vercel Blob · Vercel
+> **Version:** May 2026 v8 (authoritative — reflects all phases through Customer Support System + Security Hardening Batches 1-4)
+> **Stack:** Next.js 15 · TypeScript (strict) · Drizzle ORM · Neon PostgreSQL · NextAuth v5 · Pusher · OpenAI · Resend · Twilio · Vercel Blob · Upstash Redis · Vercel
 
 ---
 
@@ -21,6 +21,7 @@
 12. [Influencers Adda](#12-influencers-adda)
 12a. [Razorpay Payment Integration](#12a-razorpay-payment-integration)
 12b. [Competitive Intelligence Dashboard](#12b-competitive-intelligence-dashboard)
+12c. [Customer Support System](#12c-customer-support-system)
 13. [Rankings System](#13-rankings-system)
 14. [Notification & Alert System](#14-notification--alert-system)
 15. [Social Listening System](#15-social-listening-system)
@@ -281,6 +282,28 @@ Migration 009 created tables with raw `TEXT` user/entity columns — no FK const
 | `dsar_requests` | GDPR Art. 15 data access request tracking. OTP hash, PDF URL, TTL, status lifecycle. FK CASCADE → users. |
 
 Status lifecycle: `otp_sent → generating → completed → expired` (or `failed` on error).
+
+### Migration 013 — Products owner_id backfill (DML only)
+
+No new tables. Repairs `products.owner_id = NULL` for legacy launches before commit `99925e3`. Idempotent: sets from `created_by`, then `claimed_by`. Returns `{ fixed, stillOrphaned }`.
+
+### WhatsApp OTP Verifications table (migration 014 — May 2026)
+
+| Table | Purpose |
+|-------|---------|
+| `whatsapp_otp_verifications` | Stores bcrypt-hashed 6-digit OTPs for phone ownership verification. FK CASCADE → users. 15-min TTL, max 3 attempts. Required before saving WhatsApp number. |
+
+### Customer Support System tables (migration 015 — May 2026)
+
+Enables `vector` extension (pgvector). Creates `support_ticket_seq` for atomic gapless `E4I-XXXX` numbering.
+
+| Table | Purpose |
+|-------|---------|
+| `support_tickets` | Primary ticket record. 13 categories, 5 statuses, 4 priorities. Auto-priority from category. FK CASCADE → users. Assigned admin via SET NULL. |
+| `support_ticket_messages` | Threaded conversation. `sender_type`: `user`/`admin`/`system`/`ai`. `is_internal_note=true` hides from user and user emails. |
+| `chat_conversations` | Chatbot session. Messages JSONB array. `context` JSONB carries page, actions, flag counter, blocked flag. |
+| `faq_articles` | Markdown KB. `search_vector tsvector` (DB trigger) for `/help` keyword search; `embedding vector(1536)` (ivfflat cosine) for chatbot semantic FAQ matching. |
+| `support_analytics` | Append-only event log. 10 event types for chat/ticket/FAQ funnel metrics. |
 
 ---
 
@@ -825,6 +848,67 @@ Pages at `/dashboard/competitive-intelligence/`:
 
 ---
 
+## 12c. Customer Support System
+
+GPT-4o-mini chatbot, FAQ knowledge base (pgvector semantic search), ticket workflow, admin dashboard, real-time notifications, 7 transactional email templates, and daily reminder cron. 5 new DB tables (Migration 015).
+
+**Status: ✅ COMPLETE (May 2026)**
+
+### Three surfaces
+
+| Surface | Audience | Path |
+|---------|----------|------|
+| Floating chat widget (3 tabs: Chat / FAQ / Tickets) | All authenticated users on dashboard | Mounted in `dashboard/layout.tsx` |
+| Public help center | Anyone — SEO-friendly, ISR 300s | `/help` and `/help/[slug]` |
+| Admin dashboard | Admin users only | `/admin/support` and `/admin/support/tickets/[id]` |
+
+### Services (4)
+
+| Service | File | Responsibility |
+|---------|------|---------------|
+| `supportService` | `src/server/supportService.ts` | Ticket lifecycle: create, reply, status transitions, assign, rate |
+| `chatbotService` | `src/server/chatbotService.ts` | 4-step message flow: block check → regex filter → pgvector FAQ → GPT-4o-mini fallback |
+| `faqService` | `src/server/faqService.ts` | KB reads, keyword search, semantic search, admin CRUD, embedding regen |
+| `supportEmailService` | `src/server/supportEmailService.ts` | 7 Resend templates, all fail-soft |
+
+### Chatbot architecture
+
+**4-step message flow (in order):**
+1. Hard block if `context.blocked = true`
+2. 18-regex suspicious-intent filter (prompt extraction / jailbreaks / metrics fishing / cross-user data / competitor recon) — 3-flag threshold → conversation auto-resolves (NOT escalated)
+3. Semantic FAQ search (pgvector cosine, ≥ 0.78 cutoff) — return article excerpt + link
+4. GPT-4o-mini fallback — system prompt + last 10 messages, temp 0.3, 500 tokens
+
+Escalation hint: offered after ≥ 6 user messages if unresolved. Blocked conversations cannot be escalated.
+
+**Knowledge base:** 31 seed articles (`/api/admin/seed-faq`) across 6 category groups. Chatbot uses pgvector cosine; `/help` page uses tsvector keyword search. Both indexes maintained by DB triggers (tsvector) and OpenAI `text-embedding-3-small` (vector).
+
+### EventBus integration (5 events)
+
+| Event | Targets |
+|-------|---------|
+| `support.ticket_created` | All admins (fan-out via `getAdminUserIds()`, 5-min cache) |
+| `support.chat_escalated` | All admins |
+| `support.admin_reply` | Ticket owner |
+| `support.ticket_updated` | Ticket owner |
+| `support.ticket_resolved` | Ticket owner |
+
+### API routes (19 endpoints across 18 files)
+
+User tickets, user chat, user FAQ, admin ticket queue, admin support analytics, admin FAQ CRUD, migration route, seed route, and daily cron. Full route table in `docs/FEATURE7_SUPPORT_SYSTEM.md`.
+
+All user-facing state-mutating routes validate CSRF via `e4i-csrf` cookie + `X-CSRF-Token` header.
+
+### Rate limiting
+
+6 Upstash limiters: `supportRead` (60/min), `supportCreate` (5/h), `supportReply` (30/h), `supportChatStart` (10/min), `supportChatMessage` (20/min), `adminSupport` (120/min).
+
+### Cron
+
+`/api/cron/support-ticket-reminders` (daily 09:00 UTC): stale-ticket digest to `SUPPORT_ADMIN_EMAIL`. Queries `open` tickets > 48h without admin reply + `in_progress` tickets without admin reply > 24h. Silent when total = 0.
+
+---
+
 ## 13. Rankings System
 
 Weekly product rankings computed from:
@@ -852,7 +936,7 @@ All real-time notifications flow through a central event bus (`src/server/eventB
 
 Auth: `POST /api/pusher/auth` — validates NextAuth session; enforces users can only subscribe to their own private channel.
 
-#### 20 Platform Events
+#### 36 Platform Events
 
 | Event | Who triggers | Who receives |
 |-------|-------------|-------------|
@@ -860,8 +944,8 @@ Auth: `POST /api/pusher/auth` — validates NextAuth session; enforces users can
 | `brand.survey.created` | Brand API | ICP-matched consumers (score ≥ 50) |
 | `brand.campaign.launched` | Brand API | All active influencers |
 | `brand.alert.fired` | Alert service | Brand owner |
-| `brand.member.active` | Brand API | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* |
-| `brand.discount.created` | Brand API | ICP-matched consumers (score ≥ 50) — *handler ready; no emitter yet* |
+| `brand.member.active` | Brand API | ICP-matched consumers — *handler ready; no emitter yet* |
+| `brand.discount.created` | Brand API | ICP-matched consumers — *handler ready; no emitter yet* |
 | `brand.content.pending_review` | `contentApprovalService` | Campaign brand owner |
 | `brand.content.auto_approved` | `contentApprovalService` (cron) | Campaign brand owner |
 | `consumer.feedback.submitted` | Feedback API | Product brand |
@@ -870,12 +954,28 @@ Auth: `POST /api/pusher/auth` — validates NextAuth session; enforces users can
 | `consumer.product.searched` | Consumer API | Product brand |
 | `consumer.community.posted` | Community API | Product brand |
 | `consumer.reward.withdrawn` | Rewards API | Product brand (loyalty signal) |
+| `consumer.reward.redeemed` | `/api/consumer/rewards/redeem` | Consumer |
 | `influencer.post.published` | `contentApprovalService.approveContent()` | Campaign brand + ICP-matched consumers (score ≥ 60) |
 | `influencer.campaign.accepted` | Influencer API | Brand |
 | `influencer.milestone.completed` | Influencer API | Brand |
 | `influencer.content.approved` | `contentApprovalService` | Influencer who submitted post |
 | `influencer.content.rejected` | `contentApprovalService` | Influencer who submitted post |
+| `influencer.campaign.applied` | `campaignMarketplaceService` | Campaign brand owner |
 | `social.mention.detected` | Webhook / cron | Brand owning entity |
+| `payment.order.created` | `razorpayService.createOrder()` | Brand |
+| `payment.escrowed` | `razorpayService.capturePayment()` (webhook) | Brand + Campaign influencer |
+| `payment.released` | `/api/payments/release/[campaignId]` | Brand + Influencer |
+| `payment.failed` | Razorpay `payment.failed` webhook | Brand |
+| `payment.payout.initiated` | `payoutService.initiateRecipientPayout()` | Recipient |
+| `payment.payout.completed` | `payoutService.markPayoutCompleted()` | Recipient |
+| `payment.payout.failed` | `payoutService.markPayoutFailed()` | Recipient |
+| `brand.application.accepted` | `campaignMarketplaceService.respondToApplication()` | Influencer who applied |
+| `brand.application.rejected` | `campaignMarketplaceService.respondToApplication()` | Influencer who applied |
+| `support.ticket_created` | `supportService.createTicket()` | All admins (fan-out) |
+| `support.chat_escalated` | `chatbotService.escalateToTicket()` | All admins (fan-out) |
+| `support.admin_reply` | `supportService.addTicketReply()` (admin, non-internal) | Ticket owner |
+| `support.ticket_updated` | `supportService.updateTicketStatus()` (non-resolved) | Ticket owner |
+| `support.ticket_resolved` | `supportService.updateTicketStatus()` (resolved) | Ticket owner |
 
 **Note:** `influencer.post.published` was previously (incorrectly) emitted in `POST /api/influencer/content` when creating a draft. Fixed — now only emitted in `contentApprovalService.approveContent()`.
 
@@ -1090,8 +1190,9 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | Mon 06:00 | `/api/cron/competitive/weekly-report` | GPT-4o weekly strategic summary per brand; queue email |
 | 09:00 | `/api/cron/competitive/send-reports` | Send pending competitive reports via Resend; set `email_sent=true` |
 | 03:00 | `/api/jobs/dsar-cleanup` | Delete expired DSAR PDFs from Vercel Blob; expire stale OTP-sent requests |
+| 09:00 | `/api/cron/support-ticket-reminders` | Daily stale-ticket digest to `SUPPORT_ADMIN_EMAIL`: `open` > 48h + `in_progress` > 24h without admin reply. Silent when total = 0. |
 
-**vercel.json** defines all **26 cron entries** with exact schedules.
+**vercel.json** defines all **27 cron entries** with exact schedules.
 
 ---
 
@@ -1110,6 +1211,8 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | DELETE | `/social/disconnect` | Revoke social connection |
 | GET | `/social/callback` | OAuth redirect handler (LinkedIn) |
 | GET/POST/DELETE | `/follows/[influencerId]` | Follow / unfollow influencer |
+| POST | `/whatsapp/send-otp` | Send OTP to WhatsApp number (Upstash: 1/60s; CSRF required) |
+| POST | `/whatsapp/verify-otp` | Verify OTP — marks phone as verified (CSRF required) |
 
 ### Brand APIs (`/api/brand/`)
 
@@ -1193,6 +1296,16 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | POST | `/run-migration-010` | Competitive Intelligence (9 tables) |
 | POST | `/run-migration-011` | Deals/Community FK CASCADE hardening (19 FKs, GDPR Art. 17) |
 | POST | `/run-migration-012` | DSAR Requests table (GDPR Art. 15) |
+| POST | `/run-migration-013` | Backfill `products.owner_id` (DML only — no schema change) |
+| POST | `/run-migration-014` | WhatsApp OTP verifications table |
+| POST | `/run-migration-015` | Customer Support System (5 tables + pgvector + sequence + trigger) |
+| POST | `/seed-faq` | Idempotent FAQ seed — 31 articles with OpenAI embeddings |
+| GET | `/support/tickets` | Admin ticket queue (5-way filter, priority+age sort) |
+| GET/PUT | `/support/tickets/[id]` | Admin ticket detail + status/priority/category update |
+| POST | `/support/tickets/[id]/reply` | Admin reply (public or internal note) |
+| GET | `/support/analytics` | Support funnel analytics (4 metric cards + 5 chart series) |
+| GET/POST | `/support/faq` | FAQ article list + create with embedding |
+| PUT/DELETE | `/support/faq/[id]` | Update (re-embeds) / delete article |
 | GET | `/content/pending` | All pending posts (admin view) |
 | POST | `/content/[id]/approve` | Admin approve (bypasses brand ownership check) |
 | POST | `/content/[id]/reject` | Admin reject with reason (min 10 chars) |
@@ -1234,6 +1347,23 @@ All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
 | POST | `/verify` | Verify 6-digit OTP — generates PDF, uploads to Vercel Blob, emails consumer |
 | GET | `/status` | Check current DSAR request status (most recent active request) |
 | GET | `/download/[requestId]` | Stream PDF from Vercel Blob (auth + ownership checked, TTL checked) |
+
+### Support APIs (`/api/support/` + `/api/admin/support/`)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET/POST | `/api/support/tickets` | User: list own tickets / create ticket |
+| GET | `/api/support/tickets/[id]` | User: ticket detail |
+| POST | `/api/support/tickets/[id]/messages` | User: reply to ticket |
+| POST | `/api/support/tickets/[id]/rate` | User: rate resolved ticket (1–5) |
+| POST | `/api/support/chat/start` | Start chatbot conversation |
+| POST | `/api/support/chat/message` | Send message (4-step flow) |
+| POST | `/api/support/chat/[id]/escalate` | Escalate chat → ticket (creates ticket + email + Pusher) |
+| POST | `/api/support/chat/[id]/resolve` | Mark conversation resolved |
+| POST | `/api/support/chat/[id]/rate` | Rate chat (1–5) |
+| GET | `/api/support/faq` | List FAQ articles (category / role filter) |
+| GET | `/api/support/faq/[slug]` | Get article (increments view count) |
+| POST | `/api/support/faq/[slug]/rate` | Vote helpful/not-helpful |
 
 ### Brand Content Review APIs (`/api/brand/content/`)
 
@@ -1310,6 +1440,72 @@ All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
 | 11 | WARNING | `community-features/c/[slug]` pages used old Next.js 14 sync params type | Updated to `params: Promise<T>` + `await params` (Next.js 15 requirement) |
 | 12 | MINOR | `ACTIVITY_FEED_UPDATE` Pusher event defined but never triggered in service | Documented as known gap — ActivityFeed relies on polling until wired |
 | 13 | MINOR | `brand.member.active` / `brand.discount.created` handlers exist but no API route emits them | Documented as known gap — handlers ready, emitters needed |
+
+### Security Batch 1 (May 2026)
+
+| # | Severity | Finding | Fix |
+|---|----------|---------|-----|
+| 14 | HIGH | Media upload routes had no auth — any request could upload | Added session auth to all upload routes |
+| 15 | HIGH | `products.owner_id = null` on legacy launches — brand ownership broken | Migration 013: backfill from `created_by` / `claimed_by`; brand confirmation email now sets `owner_id` at launch |
+| 16 | HIGH | `emailService` imported directly from route files — coupling + hard to mock | Migrated all callers to `notificationService` wrapper |
+| 17 | MEDIUM | Password complexity not enforced — 6-char minimum only | Sign-up route now requires ≥ 8 chars, at least one digit and one uppercase letter |
+| 18 | MEDIUM | Admin role guard in content approval used string literal comparison instead of typed check | Replaced with `role === 'admin'` (consistent pattern) |
+
+### Security Batch 2 — Upstash Redis distributed rate limiting (May 2026)
+
+Replaced per-instance in-memory LRU rate limiters with Upstash Redis sliding-window limiters shared across all Vercel serverless instances.
+
+- **17 rate limiters** across **21 routes**
+- Keys prefixed `e4i:{env}:{limiter}:{caller-key}` — no cross-environment bleed
+- **Fail-open:** Upstash errors do not block requests; `[RATE_LIMIT_FAIL_OPEN]` logged for monitoring
+- Falls back to in-memory if `UPSTASH_REDIS_REST_URL/TOKEN` unset
+- `src/lib/rate-limit-upstash.ts` — central factory + all limiter definitions
+
+### Security Batch 3 — CSRF double-submit cookie protection (May 2026)
+
+17 high-risk state-mutating routes protected via `e4i-csrf` double-submit cookie pattern.
+
+**Flow:**
+1. `middleware.ts` mints a UUID CSRF token, sets `e4i-csrf` cookie (`sameSite: lax`, `httpOnly: false`, `secure` in prod)
+2. Root `layout.tsx` injects `<meta name="csrf-token" content={...}>` — client reads from meta tag (not JS cookie read)
+3. Client sends `X-CSRF-Token: <token>` header on all state-mutating requests
+4. API routes call `validateCsrfToken(request)` — compares cookie value vs header
+5. Mismatch → 403
+
+`httpOnly: false` is intentional — double-submit works because cross-origin requests cannot read the cookie (Same-Origin Policy). `sameSite: lax` blocks cross-site form posts.
+
+**WhatsApp OTP CSRF:** Both `POST /api/user/whatsapp/send-otp` and `POST /api/user/whatsapp/verify-otp` require CSRF. Chat widget reads token from `document.cookie` as a fallback when the meta tag is unavailable on onboarding pages.
+
+### Security Batch 4 — Admin diagnostics feature flag + PII log sanitization (May 2026)
+
+| Fix | Detail |
+|-----|--------|
+| `ADMIN_DIAGNOSTICS_ENABLED` flag | `/api/admin/diagnostics/*` routes return bare `404` (not `403`) when flag is `false`. Route existence not discoverable. Default: off. |
+| `maskEmail()` / `maskPhone()` | `j***@example.com` and `***1234` patterns in `logger.ts`. Applied across all services that log user-identifiable data. OTP values guarded by `NODE_ENV !== 'production'` gate. |
+| `/api/admin/diag-resend` | Email pipeline debugging route (strips whitespace from `to=`, pre-validates format, returns 200 with diagnostic payload even on failure). Gated by `ADMIN_DIAGNOSTICS_ENABLED`. |
+
+### WhatsApp OTP phone verification (May 2026)
+
+OTP ownership-gate before saving a WhatsApp phone number. Table: `whatsapp_otp_verifications` (migration 014).
+
+1. `POST /api/user/whatsapp/send-otp` — generate 6-digit OTP, bcrypt-hash, insert row, deliver via Twilio. Upstash rate limit: 1 send/60s per user. CSRF required.
+2. `POST /api/user/whatsapp/verify-otp` — fetch active row, `bcrypt.compare()`, mark `verified=true`. Max 3 attempts. CSRF required.
+3. `PATCH /api/user/notification-settings` — calls `hasVerifiedPhone(userId, phone)` before persisting WhatsApp number. Rejected if unverified.
+
+### Cookie consent banner (May 2026)
+
+- Consent preference stored in `localStorage` under key `e4i-cookie-consent` with `version` field (`CONSENT_VERSION=1`). Bumping to `2` in `cookie-consent.ts` treats v1 as expired and re-shows banner.
+- `analytics-tracker.tsx` checks `hasAnalyticsConsent()` before every `queueEvent()`. First page-view dropped on first visit (GDPR-correct — no tracking before consent).
+- Banner skips for admin users. Memoized with `useMemo` to avoid re-renders.
+
+### UX improvements (May 2026)
+
+| Item | Detail |
+|------|--------|
+| Branded 404/500 pages | Custom error pages with E4I branding, nav back to dashboard |
+| Login page polish | Value props, social proof, gradient background, improved copy |
+| Mobile tab responsiveness | Influencer campaigns tabs wrap on small screens (`flex-wrap`) |
+| Onboarding redirect loop fix | `non-destructive profile reconciliation` — never overwrites existing profile rows; CSRF token surfaced in chat widget on onboarding page |
 
 ---
 
@@ -1426,4 +1622,18 @@ SOCIAL_MENTION_WEBHOOK_SECRET=        # HMAC secret for POST /api/webhooks/socia
 
 # ── Slack ─────────────────────────────────────────────────────
 SLACK_BOT_TOKEN=                      # Brand Slack notifications
+
+# ── Upstash Redis (distributed rate limiting) ─────────────────
+UPSTASH_REDIS_REST_URL=               # Upstash console → REST API URL
+UPSTASH_REDIS_REST_TOKEN=             # Upstash console → REST API token
+# If unset → falls back to in-memory rate limiting (not shared across serverless instances)
+# Keys prefixed: e4i:{VERCEL_ENV|NODE_ENV}:{limiter}:{caller-key}
+
+# ── Feature flags ──────────────────────────────────────────────
+ADMIN_DIAGNOSTICS_ENABLED=            # Set 'true' to enable /api/admin/diagnostics/* routes; bare 404 otherwise
+
+# ── Customer Support System ────────────────────────────────────
+SUPPORT_ADMIN_EMAIL=                  # Admin support destination (default: contact@earn4insights.com)
+CHATBOT_MODEL=                        # Chat completion model (default: gpt-4o-mini)
+CHATBOT_CLASSIFY_MODEL=               # Chat→ticket classifier model (default: gpt-4o-mini)
 ```
