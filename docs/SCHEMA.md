@@ -364,6 +364,31 @@ Index: `(event_type, created_at DESC)` — admin analytics dashboard queries
 
 ---
 
+## Migration 016 — Scheduled Product Launch (2 new columns on `products`)
+
+Adds the ability for brands to queue a product launch for a future date/time. The product row is written immediately on submit but stays hidden from rankings, search, and consumer discovery until the cron flips `launch_status` to `'live'` at the scheduled time.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `launch_status` | `TEXT NOT NULL DEFAULT 'live'` | `'live'` = visible everywhere; `'scheduled'` = owner-only |
+| `scheduled_launch_at` | `TIMESTAMP NULL` | Wall-clock target time. NULL for live products |
+
+Index: `idx_products_scheduled_due ON products (scheduled_launch_at) WHERE launch_status = 'scheduled'` — partial index, only the scheduled rows are interesting; the live majority never enter it. Keeps the cron `getDueScheduledProducts()` lookup O(scheduled), not O(all products).
+
+Existing rows backfill to `'live'` via the column DEFAULT — no separate UPDATE needed.
+
+**Visibility enforcement** (repo layer, not just policy):
+- `getAllProducts()` adds `WHERE launch_status='live'` unless `{ includeScheduled: true }` opt-in. This is the lookup used by rankings, top-products, the products dashboard, and the recommendations cron.
+- `searchProductsByName()` adds the same filter unless `{ includeScheduled: true }` — keeps scheduled products out of `/api/products/search`.
+- `getScheduledProductsByOwner(ownerId)` is the brand-side counterpart — used by `/dashboard/launch` to show "Your scheduled launches".
+
+**Publish cron** (`/api/cron/publish-scheduled-launches`, every 15 min):
+1. `getDueScheduledProducts()` — `scheduled_launch_at <= NOW()`.
+2. `publishScheduledProduct(id)` — `UPDATE … SET launch_status='live' WHERE id=? AND launch_status='scheduled'` — returns null on race (second writer is no-op).
+3. Fire the same side-effects as instant launch: brand confirmation email, smart distribution to ICP-matched consumers, watchlist fan-out.
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`

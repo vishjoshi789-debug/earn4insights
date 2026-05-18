@@ -1,6 +1,6 @@
 # Cron Jobs — Earn4Insights
 
-**27 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
+**28 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
 
 ## Schedule
 
@@ -33,6 +33,7 @@
 | 09:00 | `/api/cron/competitive/send-reports` | Send pending competitive reports via Resend (daily + weekly); sets `email_sent=true` |
 | 03:00 | `/api/jobs/dsar-cleanup` | Delete expired DSAR PDFs from Vercel Blob; expire stale OTP-sent requests older than 1h |
 | 09:00 | `/api/cron/support-ticket-reminders` | Daily digest to admin inbox of stale tickets: `open` >48h with no admin reply + `in_progress` with no admin reply >24h. Skips email when total=0. |
+| */15 min | `/api/cron/publish-scheduled-launches` | Flip products where `launch_status='scheduled'` and `scheduled_launch_at<=NOW()` to `'live'`; fire the same side-effects as instant launch (brand confirmation email + smart distribution + watchlist fan-out). Race-safe — `publishScheduledProduct()` returns null on second writer. |
 
 ## Auth Pattern (used by ALL cron routes)
 

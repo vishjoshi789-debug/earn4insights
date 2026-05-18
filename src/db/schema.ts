@@ -56,7 +56,13 @@ export const products = pgTable('products', {
   
   // Search optimization
   nameNormalized: text('name_normalized'), // lowercase, trimmed, for fuzzy search
-  
+
+  // Scheduled launch (migration 016)
+  // launchStatus: 'live' (visible everywhere) | 'scheduled' (hidden from public,
+  // visible only to owner; cron flips to 'live' when scheduledLaunchAt arrives)
+  launchStatus: text('launch_status').default('live').notNull(),
+  scheduledLaunchAt: timestamp('scheduled_launch_at'),
+
   // Product profile (stored as JSONB)
   profile: jsonb('profile').$type<{
     category?: string

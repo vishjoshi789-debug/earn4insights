@@ -23,12 +23,20 @@ export const FAQ_SEED_ARTICLES: SeedArticle[] = [
     excerpt: 'A step-by-step guide to launching your first product on Earn4Insights.',
     content: `## Launch your first product
 
-1. Go to **Dashboard → Products → Launch Product**.
-2. Fill in the product name, description, category, and upload at least one image.
-3. Select the **launch type**: instant launch, or scheduled launch on a specific date.
-4. Confirm and submit. Consumers matching your ICP will be notified within a few minutes.
+1. Go to **Dashboard → Launch Product**.
+2. Fill in:
+   - **Product name** (required)
+   - **Platform** — Web, Mobile, or SaaS (required)
+   - **Website / App URL** (optional)
+   - **Description** (optional)
+3. Pick a **launch timing**:
+   - **Launch now** — product goes live immediately and consumers matching your ICP are notified within minutes.
+   - **Schedule for later** — pick any future date and time. The product stays hidden from rankings, search, and consumer discovery until then; we publish it and fire notifications automatically.
+4. Click **Launch product** (or **Schedule launch**) to submit.
 
-You can edit product details at any time from **Dashboard → Products**.`,
+You can see all your queued launches under **Dashboard → Launch Product → Your scheduled launches**.
+
+Extra product details — category, branding, images, key features — are configured later from **Dashboard → Products → [your product] → Profile**.`,
     category: 'getting_started',
     targetRoles: ['brand'],
     tags: ['product', 'launch', 'onboarding'],

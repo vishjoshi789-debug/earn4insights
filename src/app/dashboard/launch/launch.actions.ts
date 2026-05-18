@@ -32,6 +32,30 @@ export async function launchProduct(formData: FormData) {
   const platform = formData.get('platform') as string
   const domain = formData.get('domain') as string
   const description = formData.get('description') as string
+  const launchType = (formData.get('launchType') as string) || 'instant'
+  const scheduledAtRaw = formData.get('scheduledAt') as string | null
+
+  // Parse and validate the scheduled time before we touch the DB. The form
+  // value comes from <input type="datetime-local"> — a naive ISO string with
+  // no zone, interpreted as local. We require strictly future, with a small
+  // 30s skew so a fast-clicking brand whose clock is a hair ahead doesn't
+  // get rejected.
+  let scheduledAt: Date | null = null
+  let launchStatus: 'live' | 'scheduled' = 'live'
+  if (launchType === 'scheduled') {
+    if (!scheduledAtRaw) {
+      throw new Error('Scheduled launch requires a date and time')
+    }
+    const parsed = new Date(scheduledAtRaw)
+    if (isNaN(parsed.getTime())) {
+      throw new Error('Invalid scheduled launch date')
+    }
+    if (parsed.getTime() <= Date.now() - 30_000) {
+      throw new Error('Scheduled launch time must be in the future')
+    }
+    scheduledAt = parsed
+    launchStatus = 'scheduled'
+  }
 
   const product: Product = {
     id: crypto.randomUUID(),
@@ -44,6 +68,8 @@ export async function launchProduct(formData: FormData) {
     ownerId: userId,
     createdBy: userId,
     created_at: new Date().toISOString(),
+    launchStatus,
+    scheduledLaunchAt: scheduledAt?.toISOString(),
     features: {
       nps: true,
       feedback: true,
@@ -67,6 +93,16 @@ export async function launchProduct(formData: FormData) {
 
   await createProduct(product)
   initializeProductData(product.id)
+
+  // SCHEDULED branch — do NOT send launch notifications, email, or watcher
+  // pings yet. The publish-scheduled-launches cron fires those once
+  // scheduledLaunchAt arrives so the product is actually visible.
+  if (launchStatus === 'scheduled') {
+    redirect('/dashboard/launch?scheduled=1')
+  }
+
+  // INSTANT branch — original behaviour: brand confirmation + smart
+  // distribution + watchlist fan-out, then route into the product dashboard.
 
   // Send brand confirmation email — awaited (Vercel serverless will kill
   // the lambda after redirect, so unawaited fire-and-forget would die

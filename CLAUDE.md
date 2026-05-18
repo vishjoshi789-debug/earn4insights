@@ -100,6 +100,7 @@ await pgClient.unsafe(sql)
 | Admin Diagnostics Feature Flag + PII Log Sanitization (`ADMIN_DIAGNOSTICS_ENABLED`, `maskEmail`/`maskPhone` in logger) | ✅ COMPLETE |
 | Cookie Consent Banner + UX Polish (GDPR consent gates analytics; branded 404/500; login polish; mobile tab responsiveness) | ✅ COMPLETE |
 | Customer Support System (migration 015 — 5 tables; GPT-4o-mini chatbot with pgvector semantic FAQ matching + 18-pattern abuse filter; floating widget; 19 API routes; /help SEO pages; admin dashboard; 6 transactional emails + daily reminder cron; 5 eventBus events with Pusher real-time admin/user notifications) | ✅ COMPLETE |
+| Scheduled Product Launch (migration 016 — 2 columns + partial index; `LaunchForm` launch-type radio + datetime picker; server action branches instant vs scheduled; `/api/cron/publish-scheduled-launches` every 15 min flips due rows to live and fires the same side-effects as instant; `getAllProducts()` and `searchProductsByName()` filter scheduled by default; brand sees their queue at `/dashboard/launch`) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -118,6 +119,7 @@ await pgClient.unsafe(sql)
 14. `POST /api/admin/run-migration-014` — WhatsApp OTP verifications table (`whatsapp_otp_verifications` with FK CASCADE → users; required before saving a WhatsApp phone via `/api/user/notification-settings`)
 15. `POST /api/admin/run-migration-015` — Customer Support System (5 tables: `support_tickets` + `support_ticket_seq` sequence for E4I-XXXX numbering, `support_ticket_messages`, `chat_conversations`, `faq_articles` with `search_vector tsvector` trigger + `embedding vector(1536)` pgvector index, `support_analytics`; enables `vector` extension; FK CASCADE → users on user-content, SET NULL on admin/audit refs)
 16. `POST /api/admin/seed-faq` — Idempotent FAQ seed (31 articles); requires `OPENAI_API_KEY` to generate embeddings. Skips slugs that already exist
+17. `POST /api/admin/run-migration-016` — Scheduled Product Launch (adds `products.launch_status TEXT NOT NULL DEFAULT 'live'` + `products.scheduled_launch_at TIMESTAMP NULL` + partial index `idx_products_scheduled_due` on scheduled rows only)
 
 ---
 
@@ -266,6 +268,11 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Support analytics `safely()` pattern — always 200 with partial data** | `GET /api/admin/support/analytics` wraps each of ~14 sub-queries in `safely(label, run, fallback, errors)`. A single failing query returns its fallback ([], null, 0) instead of sinking the whole response. `_errors` field lists failed queries. UI renders available charts; skeleton freeze eliminated. |
 | **Admin diagnostic routes always return 200** | `diag-resend` and `diag-openai` return 200 even on failure — outcome in `body.ok`. PowerShell's `Invoke-RestMethod` throws on non-2xx and hides the body, so returning 500 on failure hid the diagnosis from PS operators. |
 | **ChatWidget mounted on `/onboarding` layout** | Users stuck in the onboarding loop are the ones who most need support. `ChatWidget` now mounted in `onboarding/layout.tsx` in addition to `dashboard/layout.tsx`. All chatbot APIs work normally since `/onboarding` requires authentication. |
+| **Scheduled launch hidden via repo-layer filter, not UI suppression** | `getAllProducts()` and `searchProductsByName()` add `WHERE launch_status='live'` unless an explicit `{ includeScheduled: true }` opt-in is passed. This means rankings, top-products, the public products list, the recommendations cron, and `/api/products/search` all transparently exclude scheduled products — no per-callsite checks to forget. The brand-side counterpart is `getScheduledProductsByOwner()`, used only in `/dashboard/launch`. |
+| **Scheduled launch publish cron at `*/15 * * * *`** | Vercel's smallest scheduled-launch granularity expectation. Brand picks a wall-clock time; up to 15 min of drift before the actual flip is acceptable (and called out in the form helper text). Tighter granularity (e.g. `*/5`) would burn 3× the cron invocations for a feature most brands schedule hours/days in advance. |
+| **Publish cron flips status before firing side-effects (race-safe)** | `publishScheduledProduct()` does `UPDATE … SET launch_status='live' WHERE id=? AND launch_status='scheduled' RETURNING *`. The WHERE-clause guard means a concurrent cron run (e.g. retried Vercel invocation) returns null and we skip the side-effects. Without this, two concurrent passes would double-fire the brand confirmation email + smart distribution + watchlist fan-out. |
+| **Scheduled launches skip ALL launch side-effects until publish** | The server action for the scheduled branch writes the row and redirects with `?scheduled=1`. No brand confirmation email, no smart distribution, no watchlist fan-out — the cron fires those at the scheduled time so consumers don't get "launched!" notifications for products they can't see yet. |
+| **`min` on the datetime input = now + 1h, not now** | Prevents the common UX failure of brands picking the current minute and being confused when the cron takes up to 15 min to fire. 1h floor sets the expectation that this is a planning tool, not a delayed-launch button. The server action also enforces strictly-future with a 30s skew to forgive clock drift. |
 
 ---
 
