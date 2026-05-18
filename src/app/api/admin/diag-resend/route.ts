@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       to,
       cause: 'api_key',
       message: 'RESEND_API_KEY env var not set in Vercel',
-    }, { status: 500 })
+    })
   }
 
   try {
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
         to,
         cause: classifyResendError(error),
         error,
-      }, { status: 500 })
+      })
     }
     return NextResponse.json({
       ok: true,
@@ -109,6 +109,6 @@ export async function GET(request: NextRequest) {
       to,
       cause: classifyResendError(err),
       message: err instanceof Error ? err.message : String(err),
-    }, { status: 500 })
+    })
   }
 }

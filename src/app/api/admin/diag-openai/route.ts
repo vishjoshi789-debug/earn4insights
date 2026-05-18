@@ -35,5 +35,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const result = await runOpenAIDiagnostic()
-  return NextResponse.json(result, { status: result.ok ? 200 : 500 })
+  // Always 200 — the diagnostic outcome is in the body. Returning a
+  // non-2xx makes curl-style PS clients throw and hide the body.
+  return NextResponse.json(result)
 }
