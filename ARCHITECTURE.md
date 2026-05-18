@@ -329,7 +329,25 @@ Enables `vector` extension (pgvector). Creates `support_ticket_seq` for atomic g
 
 After first login, consumers are redirected to `/onboarding` to complete demographics + interests. Brands and admins go directly to `/dashboard` — guard skips for both. Guard implemented in `OnboardingGuard` server component (`src/components/OnboardingGuard.tsx`).
 
+`hasCompletedOnboarding()` checks (in order): `onboardingComplete` flag → any demographic field → any interest category. All three must be false to trigger redirect. Guard logs `[OnboardingGuard] email=... role=... profileId=... result=passed|REDIRECT` on every evaluation.
+
 **Admin role caveat:** `UserRole` TypeScript type only includes `'brand' | 'consumer'`. At runtime the DB stores `'admin'`. The guard casts: `(session.user.role as string) === 'admin'` to bypass TypeScript's union narrowing.
+
+### Non-destructive profile reconciliation (`src/lib/auth/ensureUserProfile.ts`)
+
+When `session.userId` differs from the `user_profiles.id` matched by email (id mismatch — OAuth sub change, re-signup, auth migration), the old logic deleted the orphan profile and created a blank replacement — wiping `onboardingComplete`, demographics, interests, consent, signals, and preferences.
+
+**Fixed (May 2026):** The reconciliation now runs as a DB transaction:
+1. Snapshots the orphan profile fields
+2. DELETEs the orphan row (FK CASCADE cleans dependents)
+3. INSERTs a new row keyed to `session.userId`, carrying over every field: `onboardingComplete`, `demographics`, `interests`, `behavioral`, `sensitiveData`, `psychographic`, `socialSignals`, `signalVersion`, `lastSignalComputedAt`, `lastActiveAt`, `notificationPreferences`, `consent`
+4. Logs `[ensureUserProfile] Non-destructive reconciliation: carried over profile data for email=...`
+
+Race-condition path: if a duplicate-key error fires (concurrent request), fetches by email and recurses once if another id mismatch is found.
+
+### `/api/admin/fix-onboarding` — emergency recovery route
+
+`POST /api/admin/fix-onboarding` (`x-api-key` auth). Body: `{ email }`. Sets `onboarding_complete=true` and fills `demographics = {}` (or preserves existing) for the given email's profile. Used to unblock users whose `onboarding_complete` flag was wiped by a pre-fix destructive reconciliation pass. Idempotent. Returns `{ ok, previous, profile }`.
 
 ### Admin sidebar nav
 
@@ -858,9 +876,13 @@ GPT-4o-mini chatbot, FAQ knowledge base (pgvector semantic search), ticket workf
 
 | Surface | Audience | Path |
 |---------|----------|------|
-| Floating chat widget (3 tabs: Chat / FAQ / Tickets) | All authenticated users on dashboard | Mounted in `dashboard/layout.tsx` |
+| Floating chat widget (3 tabs: Chat / FAQ / Tickets) | All authenticated users on dashboard AND on `/onboarding` | Mounted in both `dashboard/layout.tsx` and `onboarding/layout.tsx` |
 | Public help center | Anyone — SEO-friendly, ISR 300s | `/help` and `/help/[slug]` |
 | Admin dashboard | Admin users only | `/admin/support` and `/admin/support/tickets/[id]` |
+
+**ChatWidget CSRF bootstrap:** On first open of the panel, `ChatWidget` fetches `GET /api/csrf/init` (credentials: same-origin) before rendering the tab body. This ensures the `e4i-csrf` cookie exists even when middleware failed to set it on the page load (observed in production on `/onboarding` redirect paths). A "Setting things up…" loader gates the panel until the cookie is confirmed. All subsequent CSRF-protected POSTs (chat start, message, ticket create, FAQ rate) then succeed reliably.
+
+**Support analytics defensive pattern (`safely()` helper):** `GET /api/admin/support/analytics` wraps each of its ~14 sub-queries in `safely(label, run, fallback, errors)`. Any single failing sub-query returns its fallback value (empty array, null, or 0) rather than sinking the entire response. The `_errors` field in the response body lists which sub-queries failed and why, enabling targeted diagnosis without Vercel log access. Always returns 200 with partial data — the admin dashboard renders available charts rather than a skeleton freeze.
 
 ### Services (4)
 
@@ -1300,6 +1322,9 @@ Middleware excludes `/api` routes — cron routes handle their own auth.
 | POST | `/run-migration-014` | WhatsApp OTP verifications table |
 | POST | `/run-migration-015` | Customer Support System (5 tables + pgvector + sequence + trigger) |
 | POST | `/seed-faq` | Idempotent FAQ seed — 31 articles with OpenAI embeddings |
+| POST | `/fix-onboarding` | Emergency: force `onboarding_complete=true` for a user by email (idempotent recovery) |
+| GET | `/diag-resend` | Email pipeline probe — sends live test via Resend; always 200; cause in body |
+| GET | `/diag-openai` | OpenAI/chatbot probe — tests CHATBOT_MODEL responds; always 200; cause in body |
 | GET | `/support/tickets` | Admin ticket queue (5-way filter, priority+age sort) |
 | GET/PUT | `/support/tickets/[id]` | Admin ticket detail + status/priority/category update |
 | POST | `/support/tickets/[id]/reply` | Admin reply (public or internal note) |
@@ -1394,6 +1419,12 @@ All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
 |--------|-------|---------|
 | GET | `/api/activity-feed` | Cursor-paginated activity feed |
 
+### CSRF API
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET/POST | `/api/csrf/init` | Public — mints/refreshes `e4i-csrf` cookie directly from route handler (middleware bypass safety net). Returns `{ ok, hadCookie }` + `X-CSRF-Token` header. Fetched by `ChatWidget` on first open. |
+
 ### Pusher API
 
 | Method | Route | Purpose |
@@ -1466,15 +1497,31 @@ Replaced per-instance in-memory LRU rate limiters with Upstash Redis sliding-win
 17 high-risk state-mutating routes protected via `e4i-csrf` double-submit cookie pattern.
 
 **Flow:**
-1. `middleware.ts` mints a UUID CSRF token, sets `e4i-csrf` cookie (`sameSite: lax`, `httpOnly: false`, `secure` in prod)
-2. Root `layout.tsx` injects `<meta name="csrf-token" content={...}>` — client reads from meta tag (not JS cookie read)
-3. Client sends `X-CSRF-Token: <token>` header on all state-mutating requests
-4. API routes call `validateCsrfToken(request)` — compares cookie value vs header
-5. Mismatch → 403
+1. `middleware.ts` mints a UUID CSRF token (`randomBytes(32).toString('hex')`), sets `e4i-csrf` cookie on **every** response (`sameSite: lax`, `httpOnly: false`, `secure` in prod, 24h sliding `maxAge`). Also forwards debug headers: `x-mw-ran: 1`, `x-mw-decision: continue|redirect`, and `x-pathname` on the modified request.
+2. Root `layout.tsx` injects `<meta name="csrf-token" content={...}>` — reads from (a) `x-csrf-token` request header (middleware-set, primary), (b) `e4i-csrf` cookie via `cookies()` API (fallback for redirect paths). Logs `[CSRF_META_EMPTY]` when both sources miss.
+3. `src/lib/api-client.ts` `getCsrfToken()` reads the `e4i-csrf` cookie first (always current, JS-readable by design), falls back to meta tag, then empty. Explicit `credentials: 'same-origin'` on every fetch.
+4. Client sends `X-CSRF-Token: <token>` header on all state-mutating requests (via `apiPost`).
+5. API routes call `validateCsrfToken(request)` (17 routes) or `checkCsrf(request)` (2 chat routes) — `timingSafeEqual` comparison of cookie vs header.
+6. Mismatch → 403 with `{ error, reason, detail }` body + `X-CSRF-Fail-Reason` response header.
+
+**`checkCsrf()` tagged result** (`src/lib/csrf.ts`): returns `{ ok: true } | { ok: false; reason: CsrfFailureReason; detail: string }`. Five failure reasons with greppable server logs:
+- `missing_header` — client didn't send X-CSRF-Token
+- `missing_cookie` — browser has no `e4i-csrf` cookie
+- `length_mismatch` — corrupted token
+- `value_mismatch` — header ≠ cookie (middleware bypass)
+- `comparison_threw` — encoding error
+
+`csrfErrorResponse(failure?)` embeds `reason` + `detail` in the 403 body and sets `X-CSRF-Fail-Reason` header — failure is visible in browser DevTools without Vercel log access.
+
+`validateCsrfToken(request)` — backwards-compatible boolean wrapper; internally delegates to `checkCsrf()`.
+
+**`/api/csrf/init` — safety-net route** (`src/app/api/csrf/init/route.ts`): `GET/POST`, public, no auth, no CSRF check. Mints (or refreshes) the `e4i-csrf` cookie directly from a route handler, bypassing middleware entirely. Returns `{ ok, hadCookie }` + `X-CSRF-Token` + `X-CSRF-Init: 1` response headers. Used by `ChatWidget` — fetches this route on **first open** of the panel, waits for completion (shows "Setting things up…" loader), then gates all CSRF-protected POSTs. Added `/api/csrf/` to PUBLIC_PREFIXES in middleware so the route is reachable without session auth.
+
+**ChatTab client-side CSRF diagnostics:** When `/api/support/chat/start` fails, the error text appends `cookie=yes/no meta=yes/no` (read from `document.cookie` and `<meta name="csrf-token">` at POST time) so operators see the exact CSRF failure mode directly in the UI without DevTools.
 
 `httpOnly: false` is intentional — double-submit works because cross-origin requests cannot read the cookie (Same-Origin Policy). `sameSite: lax` blocks cross-site form posts.
 
-**WhatsApp OTP CSRF:** Both `POST /api/user/whatsapp/send-otp` and `POST /api/user/whatsapp/verify-otp` require CSRF. Chat widget reads token from `document.cookie` as a fallback when the meta tag is unavailable on onboarding pages.
+**WhatsApp OTP CSRF:** Both `POST /api/user/whatsapp/send-otp` and `POST /api/user/whatsapp/verify-otp` require CSRF.
 
 ### Security Batch 4 — Admin diagnostics feature flag + PII log sanitization (May 2026)
 
@@ -1482,7 +1529,9 @@ Replaced per-instance in-memory LRU rate limiters with Upstash Redis sliding-win
 |-----|--------|
 | `ADMIN_DIAGNOSTICS_ENABLED` flag | `/api/admin/diagnostics/*` routes return bare `404` (not `403`) when flag is `false`. Route existence not discoverable. Default: off. |
 | `maskEmail()` / `maskPhone()` | `j***@example.com` and `***1234` patterns in `logger.ts`. Applied across all services that log user-identifiable data. OTP values guarded by `NODE_ENV !== 'production'` gate. |
-| `/api/admin/diag-resend` | Email pipeline debugging route (strips whitespace from `to=`, pre-validates format, returns 200 with diagnostic payload even on failure). Gated by `ADMIN_DIAGNOSTICS_ENABLED`. |
+| `/api/admin/diag-resend` | `GET ?to=<email>`, `x-api-key` auth. Sends a live Resend test through the exact same client + FROM address as support emails. Strips whitespace from `to=` (clipboard/PS quirk). Pre-validates format before paying for a Resend round-trip. Always returns 200 — outcome in `{ ok, cause }`. Causes: `api_key \| from_not_verified \| invalid_to \| rate_limited \| forbidden \| unknown`. |
+| `/api/admin/diag-openai` | `GET`, `x-api-key` auth. Confirms `OPENAI_API_KEY` is set and the configured `CHATBOT_MODEL` (default `gpt-4o-mini`) actually responds. Always returns 200. Causes: `api_key \| rate_limited \| model_not_found \| server_error \| network \| unknown`. Used when the chatbot shows "(api_key)" or similar parenthesized cause in chat replies. |
+| Chatbot error classification | `classifyOpenAIError()` in `chatbotService.ts` maps OpenAI SDK error fields (status, code, type) to a short cause string. Pre-flight check throws early if `OPENAI_API_KEY` is missing. Error replies now append the cause: "I'm having trouble reaching the assistant right now (api_key). Want me to create a support ticket?" — operator sees the cause directly in chat without log access. |
 
 ### WhatsApp OTP phone verification (May 2026)
 

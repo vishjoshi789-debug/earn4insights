@@ -12,9 +12,11 @@ Three surfaces, one schema:
 
 | Surface | Audience | Path |
 |---------|----------|------|
-| **Floating chat widget** (3 tabs: Chat / FAQ / Tickets) | All authenticated users on dashboard | mounted in `src/app/dashboard/layout.tsx` |
+| **Floating chat widget** (3 tabs: Chat / FAQ / Tickets) | All authenticated users on dashboard AND on `/onboarding` | mounted in `src/app/dashboard/layout.tsx` and `src/app/onboarding/layout.tsx` |
 | **Public help center** | Anyone (SEO-friendly) | `/help` and `/help/[slug]` |
 | **Admin dashboard** | Admin users only | `/admin/support` and `/admin/support/tickets/[id]` |
+
+**ChatWidget CSRF bootstrap (May 2026):** On first open of the panel, `ChatWidget` fetches `GET /api/csrf/init` before rendering any tab content. This mints the `e4i-csrf` cookie directly from a route handler, bypassing middleware, and gates the panel on a "Setting things up…" loader until complete. Fixes the production failure mode where `/onboarding` page loads did not receive a CSRF cookie from middleware, causing all chat/ticket POSTs to return 403 `missing_header`.
 
 The chatbot resolves common questions instantly via semantic FAQ matching (pgvector cosine). Anything it can't resolve becomes a ticket with auto-classified category, summarised description, and the full chat transcript attached. Tickets follow a standard support lifecycle (open → in_progress → waiting_on_user → resolved → closed) with SLA-driven email reminders.
 
@@ -67,6 +69,13 @@ Knowledge-base reads + admin CRUD. Functions:
 - `searchByKeyword` (tsvector — for `/help`)
 - `searchBySemantic` (pgvector — for chatbot; default cutoff 0.75)
 - `createArticleWithEmbedding`, `updateArticleWithEmbedding` (auto-regen on title/excerpt/content change), `deleteArticleById`, `regenerateEmbeddingForArticle`
+
+### `src/server/chatbotService.ts` — error handling (May 2026 update)
+
+- **Pre-flight check:** Throws early when `OPENAI_API_KEY` is missing (not a silent failure).
+- **`classifyOpenAIError(err)`:** Maps OpenAI SDK error fields (status, code, type, name) to a short cause: `api_key | rate_limited | model_not_found | server_error | network | unknown`.
+- **Error replies** append the cause in parentheses: `"I'm having trouble reaching the assistant right now (api_key). Want me to create a support ticket?"` — operator sees cause directly in the chat panel without Vercel log access.
+- **`runOpenAIDiagnostic()`:** Exported helper used by `GET /api/admin/diag-openai` — sends a tiny test completion and returns structured `{ ok, model, cause, status, code, message }`.
 
 ### `src/server/supportEmailService.ts`
 7 Resend templates, all fail-soft on missing API key:
@@ -130,11 +139,15 @@ Flag tracking lives in `conversation.context.flagCount`. At 3 flags: conversatio
 | **Admin** | `/api/admin/support/tickets` | GET | admin 120/min |
 | | `/api/admin/support/tickets/[id]` | GET / PUT | admin 120/min |
 | | `/api/admin/support/tickets/[id]/reply` | POST | admin 120/min |
-| | `/api/admin/support/analytics` | GET | admin 120/min |
+| | `/api/admin/support/analytics` | GET | admin 120/min — defensive: `safely()` wraps all ~14 sub-queries; always 200 with `_errors` field |
 | | `/api/admin/support/faq` | GET / POST | admin 120/min |
 | | `/api/admin/support/faq/[id]` | PUT / DELETE | admin 120/min |
 | **Cron** | `/api/cron/support-ticket-reminders` | GET/POST | Bearer CRON_SECRET |
 | **Admin migration / seed** | `/api/admin/run-migration-015`, `/api/admin/seed-faq` | POST | `x-api-key` |
+| **Admin diagnostics** | `/api/admin/diag-resend` | GET | `x-api-key` — Resend pipeline probe; always 200; cause in body |
+| | `/api/admin/diag-openai` | GET | `x-api-key` — OpenAI/chatbot probe; always 200; cause in body |
+| **Admin recovery** | `/api/admin/fix-onboarding` | POST | `x-api-key` — force-complete onboarding for user by email |
+| **CSRF bootstrap** | `/api/csrf/init` | GET/POST | Public — mint/refresh `e4i-csrf` cookie (middleware bypass safety net) |
 
 All user-facing state-mutating routes validate CSRF via the `e4i-csrf` cookie + `X-CSRF-Token` header.
 
@@ -257,6 +270,7 @@ CHATBOT_CLASSIFY_MODEL=gpt-4o-mini             # chat-to-ticket category classif
 | **Per-admin assignment workload view** | `assigned_to` is captured but not surfaced as a "my tickets" admin view yet. |
 | **FAQ embedding re-seed** | If `EMBEDDING_MODEL` is bumped or content is bulk-edited, we need an admin route to re-embed every article. Today only single-article edits trigger regeneration. |
 | **Chatbot conversation handover to admin** | No "transfer to live agent" path mid-chat. Only the post-hoc escalation-to-ticket flow exists. |
+| **CSRF on `/login` and `/signup`** | ChatWidget not mounted on unauthenticated pages; `/help` link in site header covers pre-auth support. `/api/csrf/init` is public so it could be called from those pages in future. |
 
 ---
 
@@ -310,6 +324,9 @@ src/
 │       ├── admin/
 │       │   ├── run-migration-015/route.ts                  # NEW — migration + pgvector + sequence + trigger
 │       │   ├── seed-faq/route.ts                           # NEW — idempotent FAQ seed
+│       │   ├── fix-onboarding/route.ts                     # NEW — emergency onboarding recovery by email
+│       │   ├── diag-resend/route.ts                        # NEW — Resend pipeline probe (always 200; whitespace-strip; cause classification)
+│       │   ├── diag-openai/route.ts                        # NEW — OpenAI/chatbot probe (always 200; cause classification)
 │       │   └── support/
 │       │       ├── tickets/route.ts                        # NEW
 │       │       ├── tickets/[id]/route.ts                   # NEW
@@ -330,15 +347,22 @@ src/
 │       │   ├── faq/route.ts                                # NEW
 │       │   ├── faq/[slug]/route.ts                         # NEW
 │       │   └── faq/[slug]/rate/route.ts                    # NEW
-│       └── cron/support-ticket-reminders/route.ts          # NEW — daily 09:00 UTC digest
+│       ├── cron/support-ticket-reminders/route.ts          # NEW — daily 09:00 UTC digest
+│       └── csrf/init/route.ts                              # NEW — public CSRF cookie bootstrap (middleware bypass safety net)
 │
 ├── components/
 │   ├── site-footer.tsx                                     # MODIFIED — Help link
 │   └── site-header.tsx                                     # MODIFIED — Help link (desktop + mobile)
 │
 ├── lib/
-│   └── rate-limit-upstash.ts                               # MODIFIED — 6 new support limiters
+│   ├── rate-limit-upstash.ts                               # MODIFIED — 6 new support limiters
+│   ├── csrf.ts                                             # MODIFIED — checkCsrf() tagged result; csrfErrorResponse(failure?); [CSRF_FAIL] logging
+│   └── api-client.ts                                       # MODIFIED — getCsrfToken reads cookie first then meta tag; credentials: 'same-origin'
 │
-├── middleware.ts                                           # MODIFIED — /help + /api/support/faq added to public whitelist
+├── lib/auth/
+│   └── ensureUserProfile.ts                                # MODIFIED — non-destructive reconciliation carries all profile fields on id-mismatch
+│
+├── app/onboarding/layout.tsx                               # MODIFIED — mounts <ChatWidget /> so onboarding users can get support
+├── middleware.ts                                           # MODIFIED — /help + /api/support/faq + /api/csrf public; refresh CSRF cookie on every response; x-mw-ran/x-mw-decision/x-pathname debug headers
 └── vercel.json                                             # MODIFIED — support-ticket-reminders cron at 0 9 * * *
 ```
