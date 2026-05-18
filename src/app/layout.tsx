@@ -59,7 +59,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${inter.variable} dark`}>
       <head>
         <meta name="csrf-token" content={csrfToken} />
       </head>
