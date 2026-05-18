@@ -110,7 +110,7 @@
     },
     {
       "path": "/api/cron/publish-scheduled-launches",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 6 * * *"
     }
   ]
 }
