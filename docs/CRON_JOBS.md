@@ -33,7 +33,7 @@
 | 09:00 | `/api/cron/competitive/send-reports` | Send pending competitive reports via Resend (daily + weekly); sets `email_sent=true` |
 | 03:00 | `/api/jobs/dsar-cleanup` | Delete expired DSAR PDFs from Vercel Blob; expire stale OTP-sent requests older than 1h |
 | 09:00 | `/api/cron/support-ticket-reminders` | Daily digest to admin inbox of stale tickets: `open` >48h with no admin reply + `in_progress` with no admin reply >24h. Skips email when total=0. |
-| */15 min | `/api/cron/publish-scheduled-launches` | Flip products where `launch_status='scheduled'` and `scheduled_launch_at<=NOW()` to `'live'`; fire the same side-effects as instant launch (brand confirmation email + smart distribution + watchlist fan-out). Race-safe — `publishScheduledProduct()` returns null on second writer. |
+| 06:00 (Vercel daily safety-net) + */15 min (cron-job.org) | `/api/cron/publish-scheduled-launches` | Flip products where `launch_status='scheduled'` and `scheduled_launch_at<=NOW()` to `'live'`; fire the same side-effects as instant launch (brand confirmation email + smart distribution + watchlist fan-out). Race-safe — `publishScheduledProduct()` returns null on second writer. **Vercel Hobby allows only daily crons**, so `vercel.json` registers `0 6 * * *` as a daily safety-net and the real 15-min cadence is driven externally by cron-job.org hitting the route with `Authorization: Bearer $CRON_SECRET`. |
 
 ## Auth Pattern (used by ALL cron routes)
 

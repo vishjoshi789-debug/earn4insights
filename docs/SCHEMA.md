@@ -382,7 +382,7 @@ Existing rows backfill to `'live'` via the column DEFAULT — no separate UPDATE
 - `searchProductsByName()` adds the same filter unless `{ includeScheduled: true }` — keeps scheduled products out of `/api/products/search`.
 - `getScheduledProductsByOwner(ownerId)` is the brand-side counterpart — used by `/dashboard/launch` to show "Your scheduled launches".
 
-**Publish cron** (`/api/cron/publish-scheduled-launches`, every 15 min):
+**Publish cron** (`/api/cron/publish-scheduled-launches` — Vercel Hobby registers a 06:00 UTC daily safety-net in `vercel.json`; the real 15-min cadence is driven externally by cron-job.org with `Authorization: Bearer $CRON_SECRET`):
 1. `getDueScheduledProducts()` — `scheduled_launch_at <= NOW()`.
 2. `publishScheduledProduct(id)` — `UPDATE … SET launch_status='live' WHERE id=? AND launch_status='scheduled'` — returns null on race (second writer is no-op).
 3. Fire the same side-effects as instant launch: brand confirmation email, smart distribution to ICP-matched consumers, watchlist fan-out.

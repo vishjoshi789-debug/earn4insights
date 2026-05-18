@@ -78,8 +78,8 @@ export default async function LaunchProductPage({
               ))}
               <p className="text-xs text-muted-foreground pt-1">
                 Scheduled products are hidden from consumers, rankings, and search
-                until launch time. The cron picks them up within 15 minutes of
-                the scheduled time.
+                until launch time. The publisher runs every 15 minutes, so the
+                actual go-live happens within ~15 min of the scheduled time.
               </p>
             </CardContent>
           </Card>

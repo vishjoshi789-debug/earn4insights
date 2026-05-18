@@ -2,7 +2,13 @@
  * Cron: Publish Scheduled Product Launches
  * GET /api/cron/publish-scheduled-launches
  *
- * Runs every 15 minutes (see vercel.json).
+ * Schedule:
+ *   - vercel.json registers a daily 06:00 UTC safety-net (Vercel Hobby
+ *     plan allows only daily crons).
+ *   - The real 15-min cadence is driven externally by cron-job.org,
+ *     which hits this route with `Authorization: Bearer $CRON_SECRET`.
+ *   - If the external scheduler is down, the Vercel daily cron still
+ *     picks up any backlog within 24h.
  *
  * For each product where launch_status='scheduled' AND scheduled_launch_at <= NOW():
  *   1. Flip launch_status -> 'live' (publishScheduledProduct — race-safe, no-op
