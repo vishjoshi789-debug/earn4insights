@@ -111,6 +111,18 @@
     {
       "path": "/api/cron/publish-scheduled-launches",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/compute-platform-metrics",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/compute-retention-cohorts",
+      "schedule": "0 2 * * 0"
+    },
+    {
+      "path": "/api/cron/compute-financial-snapshots",
+      "schedule": "0 3 1 * *"
     }
   ]
 }
