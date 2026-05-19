@@ -270,6 +270,16 @@ export const supportAdminRateLimit = createLimiter({
   window: '1 m',
 })
 
+// ── Platform Analytics (Phase 8 — founder dashboard) ─────────────
+// Single-user surface (founders), but the dashboard issues ~9 panel
+// queries per page render + auto-refresh polling — needs headroom.
+// 60/min/admin matches supportAdminRateLimit's rationale.
+export const platformAnalyticsRateLimit = createLimiter({
+  name: 'platform-analytics',
+  tokens: 60,
+  window: '1 m',
+})
+
 // ── Helpers ───────────────────────────────────────────────────────
 /**
  * Extract the client IP from a request. Use as part of the limit key
