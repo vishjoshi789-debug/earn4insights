@@ -141,7 +141,8 @@ const menuItems: MenuItem[] = [
     role: 'brand',
   },
   // Admin-only nav items — point to /admin/* routes
-  { href: '/admin/analytics', label: 'Platform Analytics', icon: BarChart2, tourId: 'nav-admin-analytics', role: 'admin' },
+  { href: '/admin/platform-analytics', label: 'Platform Analytics', icon: BarChart3, tourId: 'nav-admin-platform-analytics', role: 'admin' },
+  { href: '/admin/analytics', label: 'Traffic Analytics', icon: BarChart2, tourId: 'nav-admin-analytics', role: 'admin' },
   { href: '/admin/payouts', label: 'Payout Queue', icon: Banknote, tourId: 'nav-admin-payouts', role: 'admin' },
   { href: '/admin/community-deals', label: 'Community Deals', icon: Flame, tourId: 'nav-admin-community-deals', role: 'admin' },
   { href: '/admin/campaigns/schedule', label: 'Campaign Schedule', icon: CalendarClock, tourId: 'nav-admin-campaign-schedule', role: 'admin' },

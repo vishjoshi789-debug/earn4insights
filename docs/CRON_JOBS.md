@@ -1,6 +1,6 @@
 # Cron Jobs — Earn4Insights
 
-**28 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
+**31 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
 
 ## Schedule
 
