@@ -248,10 +248,16 @@ export interface UserCountSnapshot {
  * influencers are consumers with the flag on).
  */
 export async function getUserCountSnapshot(asOf: Date): Promise<UserCountSnapshot> {
+  // Date → ISO string before SQL interpolation. postgres.js encodes Date
+  // objects via Buffer-based binary protocol in some code paths and
+  // throws "The string argument must be of type string. Received an
+  // instance of Date" — passing the ISO string is unambiguous and
+  // accepted by every postgres.js code path.
+  const asOfIso = asOf.toISOString()
   const rows = await pgClient<{ role: string; is_influencer: boolean; n: string }[]>`
     SELECT role, is_influencer, COUNT(*)::text AS n
     FROM users
-    WHERE created_at <= ${asOf}
+    WHERE created_at <= ${asOfIso}
     GROUP BY role, is_influencer
   `
   let totalUsers = 0
@@ -278,10 +284,12 @@ export interface NewUserCounts {
 }
 
 export async function getNewUserCount(range: DateRange): Promise<NewUserCounts> {
+  const from = range.from.toISOString()
+  const to = range.to.toISOString()
   const rows = await pgClient<{ role: string; is_influencer: boolean; n: string }[]>`
     SELECT role, is_influencer, COUNT(*)::text AS n
     FROM users
-    WHERE created_at >= ${range.from} AND created_at < ${range.to}
+    WHERE created_at >= ${from} AND created_at < ${to}
     GROUP BY role, is_influencer
   `
   let newUsers = 0
@@ -307,11 +315,13 @@ export async function getNewUserCount(range: DateRange): Promise<NewUserCounts> 
  * Filters out anonymous events (user_id IS NULL).
  */
 export async function getActiveUserCount(since: Date, until: Date, role?: UserRole): Promise<number> {
+  const sinceIso = since.toISOString()
+  const untilIso = until.toISOString()
   if (role && role !== 'all') {
     const rows = await pgClient<{ n: string }[]>`
       SELECT COUNT(DISTINCT user_id)::text AS n
       FROM analytics_events
-      WHERE created_at >= ${since} AND created_at < ${until}
+      WHERE created_at >= ${sinceIso} AND created_at < ${untilIso}
         AND user_id IS NOT NULL
         AND user_role = ${role}
     `
@@ -320,7 +330,7 @@ export async function getActiveUserCount(since: Date, until: Date, role?: UserRo
   const rows = await pgClient<{ n: string }[]>`
     SELECT COUNT(DISTINCT user_id)::text AS n
     FROM analytics_events
-    WHERE created_at >= ${since} AND created_at < ${until}
+    WHERE created_at >= ${sinceIso} AND created_at < ${untilIso}
       AND user_id IS NOT NULL
   `
   return Number(rows[0]?.n ?? 0)
@@ -340,6 +350,8 @@ export interface DailyActiveByRolePoint {
  * consumers (we join to users to read the flag).
  */
 export async function getDailyActiveByRole(range: DateRange): Promise<DailyActiveByRolePoint[]> {
+  const from = range.from.toISOString()
+  const to = range.to.toISOString()
   const rows = await pgClient<{
     day: string
     dau: string
@@ -355,7 +367,7 @@ export async function getDailyActiveByRole(range: DateRange): Promise<DailyActiv
       COUNT(DISTINCT e.user_id) FILTER (WHERE u.is_influencer = true)::text AS influencer_dau
     FROM analytics_events e
     LEFT JOIN users u ON u.id = e.user_id
-    WHERE e.created_at >= ${range.from} AND e.created_at < ${range.to}
+    WHERE e.created_at >= ${from} AND e.created_at < ${to}
       AND e.user_id IS NOT NULL
     GROUP BY 1
     ORDER BY 1 ASC
@@ -389,27 +401,29 @@ export async function getDailyEngagement(range: DateRange): Promise<DailyEngagem
   // NOTE: column name corrections vs spec —
   //   deal_redemptions uses redeemed_at (not created_at)
   //   survey_responses uses submitted_at (matches spec)
+  const from = range.from.toISOString()
+  const to = range.to.toISOString()
   const rows = await pgClient<{ k: string; n: string }[]>`
     SELECT 'feedback'::text AS k,
-           (SELECT COUNT(*)::text FROM feedback WHERE created_at >= ${range.from} AND created_at < ${range.to}) AS n
+           (SELECT COUNT(*)::text FROM feedback WHERE created_at >= ${from} AND created_at < ${to}) AS n
     UNION ALL SELECT 'survey_responses',
-           (SELECT COUNT(*)::text FROM survey_responses WHERE submitted_at >= ${range.from} AND submitted_at < ${range.to})
+           (SELECT COUNT(*)::text FROM survey_responses WHERE submitted_at >= ${from} AND submitted_at < ${to})
     UNION ALL SELECT 'deals_redeemed',
-           (SELECT COUNT(*)::text FROM deal_redemptions WHERE redeemed_at >= ${range.from} AND redeemed_at < ${range.to})
+           (SELECT COUNT(*)::text FROM deal_redemptions WHERE redeemed_at >= ${from} AND redeemed_at < ${to})
     UNION ALL SELECT 'community_posts',
-           (SELECT COUNT(*)::text FROM community_deals_posts WHERE created_at >= ${range.from} AND created_at < ${range.to})
+           (SELECT COUNT(*)::text FROM community_deals_posts WHERE created_at >= ${from} AND created_at < ${to})
     UNION ALL SELECT 'community_comments',
-           (SELECT COUNT(*)::text FROM community_deals_comments WHERE created_at >= ${range.from} AND created_at < ${range.to})
+           (SELECT COUNT(*)::text FROM community_deals_comments WHERE created_at >= ${from} AND created_at < ${to})
     UNION ALL SELECT 'campaigns_created',
-           (SELECT COUNT(*)::text FROM influencer_campaigns WHERE created_at >= ${range.from} AND created_at < ${range.to})
+           (SELECT COUNT(*)::text FROM influencer_campaigns WHERE created_at >= ${from} AND created_at < ${to})
     UNION ALL SELECT 'campaigns_completed',
-           (SELECT COUNT(*)::text FROM influencer_campaigns WHERE status = 'completed' AND updated_at >= ${range.from} AND updated_at < ${range.to})
+           (SELECT COUNT(*)::text FROM influencer_campaigns WHERE status = 'completed' AND updated_at >= ${from} AND updated_at < ${to})
     UNION ALL SELECT 'chat_conversations',
-           (SELECT COUNT(*)::text FROM chat_conversations WHERE created_at >= ${range.from} AND created_at < ${range.to})
+           (SELECT COUNT(*)::text FROM chat_conversations WHERE created_at >= ${from} AND created_at < ${to})
     UNION ALL SELECT 'chat_resolved_by_ai',
-           (SELECT COUNT(*)::text FROM chat_conversations WHERE resolved_by_ai = true AND created_at >= ${range.from} AND created_at < ${range.to})
+           (SELECT COUNT(*)::text FROM chat_conversations WHERE resolved_by_ai = true AND created_at >= ${from} AND created_at < ${to})
     UNION ALL SELECT 'support_tickets',
-           (SELECT COUNT(*)::text FROM support_tickets WHERE created_at >= ${range.from} AND created_at < ${range.to})
+           (SELECT COUNT(*)::text FROM support_tickets WHERE created_at >= ${from} AND created_at < ${to})
   `
   const m = new Map(rows.map((r) => [r.k, Number(r.n)]))
   return {
@@ -441,6 +455,8 @@ export interface PaymentMetrics {
 }
 
 export async function getPaymentMetrics(range: DateRange): Promise<PaymentMetrics> {
+  const from = range.from.toISOString()
+  const to = range.to.toISOString()
   // campaign_payments aggregate (gross, fees, payouts, refunds, counts)
   const [pay] = await pgClient<{
     gross: string | null
@@ -455,16 +471,16 @@ export async function getPaymentMetrics(range: DateRange): Promise<PaymentMetric
     SELECT
       SUM(CASE WHEN status IN ('escrowed', 'released') THEN amount ELSE 0 END)::text AS gross,
       SUM(CASE WHEN status IN ('escrowed', 'released') THEN platform_fee ELSE 0 END)::text AS fees,
-      SUM(CASE WHEN status = 'released' AND released_at >= ${range.from} AND released_at < ${range.to}
+      SUM(CASE WHEN status = 'released' AND released_at >= ${from} AND released_at < ${to}
                THEN influencer_amount ELSE 0 END)::text AS payouts,
-      SUM(CASE WHEN status = 'refunded' AND refunded_at >= ${range.from} AND refunded_at < ${range.to}
+      SUM(CASE WHEN status = 'refunded' AND refunded_at >= ${from} AND refunded_at < ${to}
                THEN amount ELSE 0 END)::text AS refunds,
       COUNT(*)::text AS total_count,
       COUNT(*) FILTER (WHERE status IN ('escrowed', 'released'))::text AS success_count,
       COUNT(*) FILTER (WHERE status = 'failed')::text AS failed_count,
       AVG(CASE WHEN status IN ('escrowed', 'released') THEN amount ELSE NULL END)::text AS avg_amt
     FROM campaign_payments
-    WHERE created_at >= ${range.from} AND created_at < ${range.to}
+    WHERE created_at >= ${from} AND created_at < ${to}
   `
 
   // Consumer rewards redeemed value in paise
@@ -472,7 +488,7 @@ export async function getPaymentMetrics(range: DateRange): Promise<PaymentMetric
   const [rew] = await pgClient<{ pts: string | null }[]>`
     SELECT SUM(points_spent)::text AS pts
     FROM reward_redemptions
-    WHERE created_at >= ${range.from} AND created_at < ${range.to}
+    WHERE created_at >= ${from} AND created_at < ${to}
       AND status = 'fulfilled'
   `
 
@@ -510,6 +526,8 @@ export async function getFeatureUsage(range: DateRange): Promise<FeatureUsageRow
   //   deal_redemptions — consumer_id (not user_id), redeemed_at (not created_at)
   //   community_deals_posts / _comments — author_id (not user_id)
   //   dsar_requests — consumer_id (not user_id)
+  const from = range.from.toISOString()
+  const to = range.to.toISOString()
   const rows = await pgClient<{
     feature: string
     brand_users: string
@@ -521,46 +539,46 @@ export async function getFeatureUsage(range: DateRange): Promise<FeatureUsageRow
       SELECT 'feedback'::text AS feature, u.id AS user_id
       FROM feedback f
       JOIN users u ON u.email = f.user_email
-      WHERE f.created_at >= ${range.from} AND f.created_at < ${range.to}
+      WHERE f.created_at >= ${from} AND f.created_at < ${to}
         AND f.user_email IS NOT NULL
       UNION ALL
       SELECT 'surveys', u.id
       FROM survey_responses sr
       JOIN users u ON u.email = sr.user_email
-      WHERE sr.submitted_at >= ${range.from} AND sr.submitted_at < ${range.to}
+      WHERE sr.submitted_at >= ${from} AND sr.submitted_at < ${to}
         AND sr.user_email IS NOT NULL
       UNION ALL
       SELECT 'deals', dr.consumer_id
       FROM deal_redemptions dr
-      WHERE dr.redeemed_at >= ${range.from} AND dr.redeemed_at < ${range.to}
+      WHERE dr.redeemed_at >= ${from} AND dr.redeemed_at < ${to}
       UNION ALL
       SELECT 'community', cp.author_id
       FROM community_deals_posts cp
-      WHERE cp.created_at >= ${range.from} AND cp.created_at < ${range.to}
+      WHERE cp.created_at >= ${from} AND cp.created_at < ${to}
       UNION ALL
       SELECT 'campaigns', ic.brand_id
       FROM influencer_campaigns ic
-      WHERE ic.created_at >= ${range.from} AND ic.created_at < ${range.to}
+      WHERE ic.created_at >= ${from} AND ic.created_at < ${to}
       UNION ALL
       SELECT 'icp', bi.brand_id
       FROM brand_icps bi
-      WHERE bi.created_at >= ${range.from} AND bi.created_at < ${range.to}
+      WHERE bi.created_at >= ${from} AND bi.created_at < ${to}
       UNION ALL
       SELECT 'competitive_intel', cprof.brand_id
       FROM competitor_profiles cprof
-      WHERE cprof.created_at >= ${range.from} AND cprof.created_at < ${range.to}
+      WHERE cprof.created_at >= ${from} AND cprof.created_at < ${to}
       UNION ALL
       SELECT 'social_hub', csc.user_id
       FROM consumer_social_connections csc
-      WHERE csc.created_at >= ${range.from} AND csc.created_at < ${range.to}
+      WHERE csc.created_at >= ${from} AND csc.created_at < ${to}
       UNION ALL
       SELECT 'dsar', dr.consumer_id
       FROM dsar_requests dr
-      WHERE dr.created_at >= ${range.from} AND dr.created_at < ${range.to}
+      WHERE dr.created_at >= ${from} AND dr.created_at < ${to}
       UNION ALL
       SELECT 'support_chat', cc.user_id
       FROM chat_conversations cc
-      WHERE cc.created_at >= ${range.from} AND cc.created_at < ${range.to}
+      WHERE cc.created_at >= ${from} AND cc.created_at < ${to}
     )
     SELECT
       u.feature,

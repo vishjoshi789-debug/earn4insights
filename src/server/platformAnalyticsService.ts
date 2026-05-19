@@ -276,6 +276,11 @@ export async function computeFinancialSnapshot(month: Date, opts?: { cashBalance
   const mrrGrowthPercent = pctChange(mrr, lastMonthNet)
 
   // ARPU + LTV — single round-trip
+  // Dates → ISO strings before SQL interpolation (postgres.js can throw
+  // "The string argument must be of type string. Received an instance of
+  // Date" when Date objects hit certain encoder code paths).
+  const monthStartIso = monthStart.toISOString()
+  const monthEndIso = monthEnd.toISOString()
   const [{ active_brands, brand_ltv, consumer_ltv }] = await pgClient<{
     active_brands: string
     brand_ltv: string
@@ -287,7 +292,7 @@ export async function computeFinancialSnapshot(month: Date, opts?: { cashBalance
        FROM campaign_payments cp
        JOIN influencer_campaigns ic ON ic.id = cp.campaign_id
        WHERE cp.status IN ('escrowed','released')
-         AND cp.created_at >= ${monthStart} AND cp.created_at < ${monthEnd}
+         AND cp.created_at >= ${monthStartIso} AND cp.created_at < ${monthEndIso}
       ) AS active_brands,
       -- avg lifetime platform fees per brand (rough brand LTV in paise)
       COALESCE((
@@ -804,12 +809,14 @@ async function rawHealthFactors(errors: string[], daysAgo = 0): Promise<HealthSc
 
   // Support CSAT — avg satisfaction_rating / 5 * 100, null → 50 (neutral, no signal)
   const supportRows = await safe('hs_csat', async () => {
+    const sinceIso = addDays(asOf, -29).toISOString()
+    const untilIso = asOfEnd.toISOString()
     const [r] = await pgClient<{ avg_csat: string | null }[]>`
       SELECT AVG(satisfaction_rating)::text AS avg_csat
       FROM support_tickets
       WHERE satisfaction_rating IS NOT NULL
-        AND created_at >= ${addDays(asOf, -29)}
-        AND created_at < ${asOfEnd}
+        AND created_at >= ${sinceIso}
+        AND created_at < ${untilIso}
     `
     return r
   }, { avg_csat: null } as { avg_csat: string | null })
