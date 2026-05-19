@@ -12,6 +12,10 @@ import { MetricCard } from '@/components/admin/analytics/MetricCard'
 import { UserGrowthChart } from '@/components/admin/analytics/UserGrowthChart'
 import { RetentionHeatmap } from '@/components/admin/analytics/RetentionHeatmap'
 import { RevenueChart } from '@/components/admin/analytics/RevenueChart'
+import { EngagementMiniChart } from '@/components/admin/analytics/EngagementMiniChart'
+import { FeatureAdoptionMap } from '@/components/admin/analytics/FeatureAdoptionMap'
+import { FinancialOverview } from '@/components/admin/analytics/FinancialOverview'
+import { CostBreakdownDonut } from '@/components/admin/analytics/CostBreakdownDonut'
 import type { DashboardPayload, TimeRange } from '@/lib/types/platformAnalytics'
 
 interface Props {
@@ -33,6 +37,11 @@ function compactMoney(paise: number): string {
   if (rupees >= 1e5) return `₹${(rupees / 1e5).toFixed(2)}L`
   if (rupees >= 1000) return `₹${(rupees / 1000).toFixed(1)}k`
   return formatCurrency(paise)
+}
+
+function firstOfMonthIso(): string {
+  const d = new Date()
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10)
 }
 
 function timeSince(iso: string): string {
@@ -209,10 +218,59 @@ export default function PlatformAnalyticsClient({ initial }: Props) {
         <RevenueChart data={data.revenue} />
       </section>
 
-      {/* ── Rows 4–9 placeholders — populated in Phases 5–7 ──── */}
-      <PhasePlaceholder title="Engagement metrics" subtitle="Feedback / surveys / deals / community (Phase 5)" />
-      <PhasePlaceholder title="Feature adoption" subtitle="Per-role usage heatmap (Phase 5)" />
-      <PhasePlaceholder title="Financial overview" subtitle="Revenue vs costs · cost breakdown · LTV (Phase 5)" />
+      {/* ── Row 4 — Engagement (4 mini charts) ────────────────── */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <EngagementMiniChart
+          title="Feedback submitted"
+          total={data.engagement.feedback.total}
+          pctChange={data.engagement.feedback.pctChange}
+          series={data.engagement.feedback.series}
+          color="#6366f1"
+        />
+        <EngagementMiniChart
+          title="Surveys completed"
+          total={data.engagement.surveys.total}
+          pctChange={data.engagement.surveys.pctChange}
+          series={data.engagement.surveys.series}
+          color="#10b981"
+        />
+        <EngagementMiniChart
+          title="Deals redeemed"
+          total={data.engagement.deals.total}
+          pctChange={data.engagement.deals.pctChange}
+          series={data.engagement.deals.series}
+          color="#f59e0b"
+        />
+        <EngagementMiniChart
+          title="Community activity"
+          total={data.engagement.community.totalPosts + data.engagement.community.totalComments}
+          pctChange={data.engagement.community.pctChange}
+          series={data.engagement.community.series.map((p) => ({
+            date: p.date,
+            count: p.posts + p.comments,
+          }))}
+          color="#a855f7"
+        />
+      </section>
+
+      {/* ── Row 5 — Feature adoption (full width) ─────────────── */}
+      <section>
+        <FeatureAdoptionMap features={data.engagement.features} />
+      </section>
+
+      {/* ── Row 6 — Financial overview + cost breakdown ───────── */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <FinancialOverview data={data.financial} />
+        </div>
+        <CostBreakdownDonut
+          breakdown={data.financial.costBreakdown}
+          totalCosts={data.financial.totalCosts}
+          month={firstOfMonthIso()}
+        />
+      </section>
+
+      {/* ── Rows 7–9 placeholders — populated in Phases 6–7 ──── */}
       <PhasePlaceholder title="Manage monthly costs" subtitle="CRUD table + inline form (Phase 6)" />
       <PhasePlaceholder title="Growth predictions" subtitle="OLS forecast + confidence bands (Phase 6)" />
       <PhasePlaceholder title="Support snapshot" subtitle="Tickets · AI resolution · CSAT (Phase 6)" />
