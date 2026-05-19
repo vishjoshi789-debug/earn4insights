@@ -2315,4 +2315,166 @@ export type NewChatConversation = typeof chatConversations.$inferInsert
 export type FaqArticle = typeof faqArticles.$inferSelect
 export type NewFaqArticle = typeof faqArticles.$inferInsert
 export type SupportAnalyticsEvent = typeof supportAnalytics.$inferSelect
+
+// ════════════════════════════════════════════════════════════════
+// SECTION 13: PLATFORM ANALYTICS (Migration 017 — Founder Dashboard)
+// All monetary amounts in paise (₹ × 100). Each daily table is
+// idempotently upserted by /api/cron/compute-platform-metrics.
+// ════════════════════════════════════════════════════════════════
+
+// Daily snapshot of users + engagement counters. One row per calendar day.
+export const platformMetricsDaily = pgTable('platform_metrics_daily', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  date: date('date').notNull().unique(),
+
+  // Cumulative user counts as of end-of-day
+  totalUsers: integer('total_users').notNull().default(0),
+  totalBrands: integer('total_brands').notNull().default(0),
+  totalConsumers: integer('total_consumers').notNull().default(0),
+  totalInfluencers: integer('total_influencers').notNull().default(0),
+
+  // New signups this day
+  newUsers: integer('new_users').notNull().default(0),
+  newBrands: integer('new_brands').notNull().default(0),
+  newConsumers: integer('new_consumers').notNull().default(0),
+  newInfluencers: integer('new_influencers').notNull().default(0),
+
+  // Active users (distinct user_id in analytics_events for the window)
+  dau: integer('dau').notNull().default(0),
+  wau: integer('wau').notNull().default(0),
+  mau: integer('mau').notNull().default(0),
+  brandDau: integer('brand_dau').notNull().default(0),
+  consumerDau: integer('consumer_dau').notNull().default(0),
+  influencerDau: integer('influencer_dau').notNull().default(0),
+
+  // Engagement counters (rows created that day)
+  feedbackCount: integer('feedback_count').notNull().default(0),
+  surveyResponses: integer('survey_responses').notNull().default(0),
+  dealsRedeemed: integer('deals_redeemed').notNull().default(0),
+  communityPosts: integer('community_posts').notNull().default(0),
+  communityComments: integer('community_comments').notNull().default(0),
+  campaignsCreated: integer('campaigns_created').notNull().default(0),
+  campaignsCompleted: integer('campaigns_completed').notNull().default(0),
+  chatConversations: integer('chat_conversations').notNull().default(0),
+  chatResolvedByAi: integer('chat_resolved_by_ai').notNull().default(0),
+  supportTickets: integer('support_tickets').notNull().default(0),
+
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+})
+
+// Daily payment / revenue rollup. Source: campaign_payments + reward_redemptions.
+export const revenueMetricsDaily = pgTable('revenue_metrics_daily', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  date: date('date').notNull().unique(),
+
+  grossRevenue: integer('gross_revenue').notNull().default(0),            // paise — sum of campaign_payments.amount where status in ('escrowed','released')
+  platformFees: integer('platform_fees').notNull().default(0),            // paise — sum of campaign_payments.platform_fee
+  influencerPayouts: integer('influencer_payouts').notNull().default(0),  // paise — sum of campaign_payments.influencer_amount where released that day
+  consumerRewardsRedeemed: integer('consumer_rewards_redeemed').notNull().default(0), // paise — value of points redeemed (10 pts = ₹1 → 1 paise per point)
+  refunds: integer('refunds').notNull().default(0),                       // paise — sum of refunded amounts that day
+  netRevenue: integer('net_revenue').notNull().default(0),                // paise — platform_fees - refunds (what E4I actually keeps)
+
+  paymentCount: integer('payment_count').notNull().default(0),
+  paymentSuccessCount: integer('payment_success_count').notNull().default(0),
+  paymentFailedCount: integer('payment_failed_count').notNull().default(0),
+  avgPaymentAmount: integer('avg_payment_amount').notNull().default(0),   // paise
+
+  currency: text('currency').notNull().default('INR'),
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+})
+
+// Sliding-window cohort retention. Refreshed weekly.
+// One row per (cohort_date, role, period_type). day_N = % of cohort still active N days after signup.
+export const retentionCohorts = pgTable('retention_cohorts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  cohortDate: date('cohort_date').notNull(),               // start of the cohort bucket (signup week/month)
+  cohortSize: integer('cohort_size').notNull(),
+  role: text('role').notNull()                             // 'all' = combined
+    .$type<'all' | 'brand' | 'consumer' | 'influencer'>(),
+  periodType: text('period_type').notNull()
+    .$type<'daily' | 'weekly' | 'monthly'>(),
+
+  day1: decimal('day_1', { precision: 5, scale: 2 }),
+  day7: decimal('day_7', { precision: 5, scale: 2 }),
+  day14: decimal('day_14', { precision: 5, scale: 2 }),
+  day30: decimal('day_30', { precision: 5, scale: 2 }),
+  day60: decimal('day_60', { precision: 5, scale: 2 }),
+  day90: decimal('day_90', { precision: 5, scale: 2 }),
+
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqCohort: index('uniq_retention_cohort').on(table.cohortDate, table.role, table.periodType), // backed by a real UNIQUE in the migration SQL
+  byRole: index('idx_retention_role_period').on(table.role, table.periodType, table.cohortDate),
+}))
+
+// Manual cost entries — founder/CFO enters monthly burn lines.
+export const platformCosts = pgTable('platform_costs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  month: date('month').notNull(),                          // always first day of month
+  category: text('category').notNull()
+    .$type<
+      | 'hosting' | 'database' | 'ai_api' | 'email_service'
+      | 'sms_whatsapp' | 'cdn_storage' | 'payment_gateway'
+      | 'marketing' | 'salaries' | 'legal'
+      | 'office' | 'tools_subscriptions' | 'other'
+    >(),
+  description: text('description'),
+  amount: integer('amount').notNull(),                     // paise
+  currency: text('currency').notNull().default('INR'),
+  isRecurring: boolean('is_recurring').notNull().default(true),
+  enteredBy: text('entered_by'),                           // → users.id (SET NULL on user delete)
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  byMonth: index('idx_platform_costs_month').on(table.month, table.category),
+}))
+
+// Monthly aggregated financial snapshot. Derived from revenueMetricsDaily + platformCosts.
+// cash_balance is manually entered (founder updates monthly); runway = cash_balance / burn_rate.
+export const financialSnapshotsMonthly = pgTable('financial_snapshots_monthly', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  month: date('month').notNull().unique(),                 // first day of month
+
+  // Revenue rollup (paise)
+  grossRevenue: integer('gross_revenue').notNull().default(0),
+  platformFees: integer('platform_fees').notNull().default(0),
+  influencerPayouts: integer('influencer_payouts').notNull().default(0),
+  consumerRewards: integer('consumer_rewards').notNull().default(0),
+  refunds: integer('refunds').notNull().default(0),
+  netRevenue: integer('net_revenue').notNull().default(0),
+
+  // Costs
+  totalCosts: integer('total_costs').notNull().default(0),                       // paise — sum of platformCosts for the month
+  costBreakdown: jsonb('cost_breakdown').$type<Record<string, number>>().default({}), // { hosting: 12000, ai_api: 8000, ... } in paise
+
+  // Margin
+  grossMargin: integer('gross_margin').notNull().default(0),                     // paise — netRevenue - totalCosts
+  grossMarginPercent: decimal('gross_margin_percent', { precision: 5, scale: 2 }).default('0'),
+
+  // Cash / runway (cash_balance is manually entered alongside costs)
+  cashBalance: integer('cash_balance').notNull().default(0),                     // paise
+  burnRate: integer('burn_rate').notNull().default(0),                           // paise — totalCosts - netRevenue (negative = net positive)
+  runwayMonths: decimal('runway_months', { precision: 5, scale: 1 }),            // NULL = infinite (net positive)
+
+  // SaaS metrics
+  mrr: integer('mrr').notNull().default(0),                                      // paise
+  mrrGrowthPercent: decimal('mrr_growth_percent', { precision: 5, scale: 2 }).default('0'),
+  arpu: integer('arpu').notNull().default(0),                                    // paise — revenue / active brands
+  brandLtv: integer('brand_ltv').notNull().default(0),                           // paise
+  consumerLtv: integer('consumer_ltv').notNull().default(0),                     // paise
+
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+})
+
+// ── Platform Analytics type exports ──────────────────────────────
+export type PlatformMetricsDaily = typeof platformMetricsDaily.$inferSelect
+export type NewPlatformMetricsDaily = typeof platformMetricsDaily.$inferInsert
+export type RevenueMetricsDaily = typeof revenueMetricsDaily.$inferSelect
+export type NewRevenueMetricsDaily = typeof revenueMetricsDaily.$inferInsert
+export type RetentionCohort = typeof retentionCohorts.$inferSelect
+export type NewRetentionCohort = typeof retentionCohorts.$inferInsert
+export type PlatformCost = typeof platformCosts.$inferSelect
+export type NewPlatformCost = typeof platformCosts.$inferInsert
+export type FinancialSnapshotMonthly = typeof financialSnapshotsMonthly.$inferSelect
+export type NewFinancialSnapshotMonthly = typeof financialSnapshotsMonthly.$inferInsert
 export type NewSupportAnalyticsEvent = typeof supportAnalytics.$inferInsert
