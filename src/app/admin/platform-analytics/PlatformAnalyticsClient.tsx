@@ -16,6 +16,10 @@ import { EngagementMiniChart } from '@/components/admin/analytics/EngagementMini
 import { FeatureAdoptionMap } from '@/components/admin/analytics/FeatureAdoptionMap'
 import { FinancialOverview } from '@/components/admin/analytics/FinancialOverview'
 import { CostBreakdownDonut } from '@/components/admin/analytics/CostBreakdownDonut'
+import { CostManagement } from '@/components/admin/analytics/CostManagement'
+import { PredictionChart } from '@/components/admin/analytics/PredictionChart'
+import Link from 'next/link'
+import { Inbox, Bot, Timer, Star } from 'lucide-react'
 import type { DashboardPayload, TimeRange } from '@/lib/types/platformAnalytics'
 
 interface Props {
@@ -270,10 +274,81 @@ export default function PlatformAnalyticsClient({ initial }: Props) {
         />
       </section>
 
-      {/* ── Rows 7–9 placeholders — populated in Phases 6–7 ──── */}
-      <PhasePlaceholder title="Manage monthly costs" subtitle="CRUD table + inline form (Phase 6)" />
-      <PhasePlaceholder title="Growth predictions" subtitle="OLS forecast + confidence bands (Phase 6)" />
-      <PhasePlaceholder title="Support snapshot" subtitle="Tickets · AI resolution · CSAT (Phase 6)" />
+      {/* ── Row 7 — Manage monthly costs ──────────────────────── */}
+      <section>
+        <CostManagement />
+      </section>
+
+      {/* ── Row 8 — Growth predictions ────────────────────────── */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <PredictionChart data={data.predictions.users} title="User growth forecast" />
+        <PredictionChart data={data.predictions.revenue} title="Revenue forecast" />
+      </section>
+
+      {/* ── Row 9 — Support snapshot ──────────────────────────── */}
+      <section>
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Support snapshot (last 30d)</CardTitle>
+            <Link
+              href="/admin/support"
+              className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+            >
+              View full support dashboard →
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <SupportTile
+                icon={Inbox}
+                label="Open tickets"
+                value={data.support.openTickets.toLocaleString()}
+                tone={data.support.openTickets > 20 ? 'warning' : 'default'}
+              />
+              <SupportTile
+                icon={Bot}
+                label="AI resolution"
+                value={`${data.support.aiResolutionRatePct.toFixed(1)}%`}
+                tone={data.support.aiResolutionRatePct >= 60 ? 'positive' : 'default'}
+              />
+              <SupportTile
+                icon={Timer}
+                label="Avg response"
+                value={
+                  data.support.avgFirstResponseHours == null
+                    ? '—'
+                    : `${data.support.avgFirstResponseHours.toFixed(1)}h`
+                }
+                tone={
+                  data.support.avgFirstResponseHours != null && data.support.avgFirstResponseHours < 4
+                    ? 'positive'
+                    : data.support.avgFirstResponseHours != null && data.support.avgFirstResponseHours > 24
+                    ? 'critical'
+                    : 'default'
+                }
+              />
+              <SupportTile
+                icon={Star}
+                label="CSAT"
+                value={
+                  data.support.satisfactionAvg == null
+                    ? '—'
+                    : `${data.support.satisfactionAvg.toFixed(2)} / 5`
+                }
+                tone={
+                  data.support.satisfactionAvg == null
+                    ? 'default'
+                    : data.support.satisfactionAvg >= 4
+                    ? 'positive'
+                    : data.support.satisfactionAvg < 3
+                    ? 'critical'
+                    : 'warning'
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   )
 }
@@ -290,15 +365,32 @@ function Breakdown({ color, label, value }: { color: string; label: string; valu
   )
 }
 
-function PhasePlaceholder({ title, subtitle }: { title: string; subtitle: string }) {
+type IconType = React.ComponentType<{ className?: string }>
+
+function SupportTile({
+  icon: Icon,
+  label,
+  value,
+  tone = 'default',
+}: {
+  icon: IconType
+  label: string
+  value: string
+  tone?: 'default' | 'positive' | 'warning' | 'critical'
+}) {
+  const toneClass = {
+    default: 'text-foreground',
+    positive: 'text-emerald-500',
+    warning: 'text-amber-500',
+    critical: 'text-rose-500',
+  }[tone]
   return (
-    <Card className="border-dashed">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-xs text-muted-foreground">{subtitle}</p>
-      </CardContent>
-    </Card>
+    <div className="rounded-md border border-border bg-card/50 px-3 py-2.5">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <Icon className="w-3.5 h-3.5" />
+        {label}
+      </div>
+      <p className={cn('text-xl font-semibold tabular-nums leading-tight mt-1', toneClass)}>{value}</p>
+    </div>
   )
 }
