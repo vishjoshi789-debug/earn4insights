@@ -1017,7 +1017,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Code expires in 15 minutes.{' '}
+                  Code expires in 10 minutes.{' '}
                   <button
                     type="button"
                     className="underline hover:text-foreground"

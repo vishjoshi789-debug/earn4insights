@@ -54,22 +54,11 @@ export async function POST(req: NextRequest) {
   switch (result.reason) {
     case 'no_active_otp':
       return NextResponse.json(
-        { error: 'No active verification code. Please request a new one.' },
-        { status: 400 }
-      )
-    case 'too_many_attempts':
-      return NextResponse.json(
-        { error: 'Too many attempts. Please request a new code.' },
+        { error: 'This code has expired or is no longer valid. Please request a new one.' },
         { status: 400 }
       )
     case 'invalid_otp':
-      return NextResponse.json(
-        {
-          error: 'Incorrect code.',
-          attemptsRemaining: result.attemptsRemaining,
-        },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Incorrect code.' }, { status: 400 })
     default:
       return NextResponse.json({ error: 'Verification failed.' }, { status: 400 })
   }

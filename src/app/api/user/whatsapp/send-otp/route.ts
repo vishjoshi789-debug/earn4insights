@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await sendOtp(userId, phoneNumber)
+    await sendOtp(phoneNumber)
     return NextResponse.json({ success: true, message: 'Code sent via WhatsApp.' })
   } catch (err) {
     if (err instanceof WhatsappOtpError) {

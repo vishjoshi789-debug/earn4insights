@@ -1,18 +1,32 @@
 import 'server-only'
 
-import { randomInt } from 'crypto'
-import bcrypt from 'bcryptjs'
+import twilio from 'twilio'
 import {
-  createOtp,
-  findActiveOtp,
-  incrementAttempts,
-  markVerified,
+  recordVerifiedPhone,
   hasVerifiedPhone as repoHasVerifiedPhone,
 } from '@/db/repositories/whatsappOtpRepository'
-import { sendWhatsAppAlertMessage } from '@/server/whatsappNotifications'
+import { logger } from '@/lib/logger'
 
-const OTP_TTL_MS = 15 * 60 * 1000 // 15 minutes
-const MAX_ATTEMPTS = 3
+/**
+ * WhatsApp phone verification via Twilio Verify.
+ *
+ * Twilio Verify owns OTP generation, delivery, expiry, and attempt limits,
+ * and sends through Twilio's own pre-approved WhatsApp templates — so a
+ * code reaches a brand-new number on first contact (free-form WhatsApp
+ * messages would silently fail outside a 24h session window).
+ *
+ * We persist nothing about the OTP itself. The only thing recorded locally
+ * is the *fact* that a (userId, phoneNumber) pair passed verification —
+ * `whatsappOtpVerifications` now holds verified-phone markers, used to gate
+ * saving a number to notification settings (see `hasVerifiedPhone`).
+ */
+
+const twilioClient =
+  process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+    ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+    : null
+
+const VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID
 
 export class WhatsappOtpError extends Error {
   constructor(message: string, public readonly code: string) {
@@ -21,81 +35,123 @@ export class WhatsappOtpError extends Error {
   }
 }
 
+function isConfigured(): boolean {
+  return Boolean(twilioClient && VERIFY_SERVICE_SID)
+}
+
 /**
- * Generate a 6-digit OTP, store its bcrypt hash with a 15-minute TTL, and
- * deliver it to the supplied WhatsApp phone number via Twilio. Throws
- * WhatsappOtpError on delivery failure.
+ * Start a WhatsApp OTP verification for `phoneNumber` (E.164). Twilio
+ * generates and delivers the code. Resolves on a successful send; throws
+ * WhatsappOtpError on a config or delivery failure.
  */
-export async function sendOtp(userId: string, phoneNumber: string): Promise<void> {
-  const otp = String(randomInt(100000, 999999))
-  const otpHash = await bcrypt.hash(otp, 10)
-  const expiresAt = new Date(Date.now() + OTP_TTL_MS)
-
-  await createOtp({
-    userId,
-    phoneNumber,
-    otpHash,
-    expiresAt,
-  })
-
-  const result = await sendWhatsAppAlertMessage({
-    phoneNumber,
-    title: 'Verify your WhatsApp number',
-    body:
-      `Your Earn4Insights verification code is: *${otp}*\n\n` +
-      `This code expires in 15 minutes. If you didn't request this, ignore this message.`,
-  })
-
-  if (!result.success) {
+export async function sendOtp(phoneNumber: string): Promise<void> {
+  if (!isConfigured()) {
+    logger.serviceError('twilio-verify', 'sendOtp', 'TWILIO_VERIFY_SERVICE_SID not configured')
     throw new WhatsappOtpError(
-      'Failed to deliver OTP via WhatsApp. Confirm the number is correct and try again.',
+      'WhatsApp verification is temporarily unavailable. Please try again later.',
+      'not_configured'
+    )
+  }
+
+  try {
+    const verification = await twilioClient!.verify.v2
+      .services(VERIFY_SERVICE_SID!)
+      .verifications.create({ to: phoneNumber, channel: 'whatsapp' })
+
+    // A successful send leaves the verification in 'pending'.
+    if (verification.status !== 'pending') {
+      throw new WhatsappOtpError(
+        'Could not send the verification code. Please try again.',
+        'send_failed'
+      )
+    }
+  } catch (err) {
+    if (err instanceof WhatsappOtpError) throw err
+    logger.serviceError('twilio-verify', 'sendOtp', err, { phoneNumber })
+
+    const code = (err as { code?: number }).code
+    if (code === 60200) {
+      throw new WhatsappOtpError(
+        'That phone number is not valid for WhatsApp. Check the country code and try again.',
+        'invalid_number'
+      )
+    }
+    if (code === 60203) {
+      throw new WhatsappOtpError(
+        'Too many code requests for this number. Please wait a few minutes and try again.',
+        'max_send_attempts'
+      )
+    }
+    throw new WhatsappOtpError(
+      'Failed to send the verification code via WhatsApp. Please try again.',
       'delivery_failed'
     )
   }
 }
 
 /**
- * Verify a 6-digit OTP against the most recent unexpired OTP record. On
- * success, marks verified_at. On failure, increments attempts and surfaces
- * the failure reason so the UI can show "X attempts remaining".
+ * Check a 6-digit code against the active Twilio verification. On approval,
+ * records the (userId, phoneNumber) pair as verified and returns success.
+ * Never throws — returns a tagged failure the route maps to a 4xx body.
+ *
+ *  - `invalid_otp`   → wrong code; the user can retry with the same code request.
+ *  - `no_active_otp` → expired, already used, or attempt limit hit; request a new code.
  */
 export async function verifyOtp(
   userId: string,
   phoneNumber: string,
   otp: string
-): Promise<{ success: true } | { success: false; reason: 'no_active_otp' | 'too_many_attempts' | 'invalid_otp'; attemptsRemaining?: number }> {
+): Promise<
+  | { success: true }
+  | { success: false; reason: 'no_active_otp' | 'invalid_otp' }
+> {
   if (!/^\d{6}$/.test(otp)) {
-    return { success: false, reason: 'invalid_otp', attemptsRemaining: undefined }
+    return { success: false, reason: 'invalid_otp' }
   }
-
-  const record = await findActiveOtp(userId, phoneNumber)
-  if (!record) {
+  if (!isConfigured()) {
+    logger.serviceError('twilio-verify', 'verifyOtp', 'TWILIO_VERIFY_SERVICE_SID not configured')
     return { success: false, reason: 'no_active_otp' }
   }
 
-  if (record.attempts >= record.maxAttempts) {
-    return { success: false, reason: 'too_many_attempts' }
-  }
+  try {
+    const check = await twilioClient!.verify.v2
+      .services(VERIFY_SERVICE_SID!)
+      .verificationChecks.create({ to: phoneNumber, code: otp })
 
-  const matches = await bcrypt.compare(otp, record.otpHash)
-  if (!matches) {
-    await incrementAttempts(record.id)
-    const attemptsRemaining = Math.max(0, record.maxAttempts - record.attempts - 1)
-    return { success: false, reason: 'invalid_otp', attemptsRemaining }
+    if (check.status === 'approved') {
+      try {
+        await recordVerifiedPhone(userId, phoneNumber)
+      } catch (err) {
+        // Non-fatal: Twilio approved the code, so verification did succeed.
+        // A DB failure here only blocks the later notification-settings save
+        // (the hasVerifiedPhone gate) — not worth turning a verified code
+        // into a 500. Most likely cause: migration 018 has not been run.
+        logger.serviceError('twilio-verify', 'recordVerifiedPhone', err, { phoneNumber })
+      }
+      return { success: true }
+    }
+    // 'pending'  → wrong code, still retryable
+    // 'canceled' → verification consumed/cancelled — need a fresh code
+    return {
+      success: false,
+      reason: check.status === 'canceled' ? 'no_active_otp' : 'invalid_otp',
+    }
+  } catch (err) {
+    // Twilio returns 404 once a verification is approved, expired, or has
+    // exceeded its check-attempt limit — there is nothing left to check.
+    if ((err as { status?: number }).status === 404) {
+      return { success: false, reason: 'no_active_otp' }
+    }
+    logger.serviceError('twilio-verify', 'verifyOtp', err, { phoneNumber })
+    return { success: false, reason: 'invalid_otp' }
   }
-
-  await markVerified(record.id)
-  return { success: true }
 }
 
 /**
- * Has the (userId, phoneNumber) pair ever been verified? Used to gate the
- * notification-settings save endpoint — saving a new phone is only allowed
- * after verification.
+ * Has the (userId, phoneNumber) pair ever passed verification? Gates the
+ * notification-settings save endpoint — a number can only be saved after
+ * its owner has proven possession at least once.
  */
 export async function hasVerifiedPhone(userId: string, phoneNumber: string): Promise<boolean> {
   return repoHasVerifiedPhone(userId, phoneNumber)
 }
-
-export const WHATSAPP_OTP_TTL_MS = OTP_TTL_MS
-export const WHATSAPP_OTP_MAX_ATTEMPTS = MAX_ATTEMPTS

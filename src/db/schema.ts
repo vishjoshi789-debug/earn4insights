@@ -2171,13 +2171,14 @@ export const whatsappOtpVerifications = pgTable('whatsapp_otp_verifications', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: text('user_id').notNull(),                  // → users.id (FK CASCADE)
   phoneNumber: text('phone_number').notNull(),        // E.164 format
-  otpHash: text('otp_hash').notNull(),                // bcrypt — never store plain
-  expiresAt: timestamp('expires_at').notNull(),
+  otpHash: text('otp_hash'),                          // nullable — Twilio Verify owns the OTP (migration 018)
+  expiresAt: timestamp('expires_at'),                 // nullable — see otpHash (migration 018)
   attempts: integer('attempts').notNull().default(0),
   maxAttempts: integer('max_attempts').notNull().default(3),
-  verifiedAt: timestamp('verified_at'),               // null until OTP confirmed
+  verifiedAt: timestamp('verified_at'),               // set when the phone passes verification
   createdAt: timestamp('created_at').defaultNow().notNull(),
   // INDEX (user_id, phone_number) in migration
+  // Rows are verified-phone markers, not OTP records — see whatsappOtpService.
 })
 
 export type WhatsappOtpVerification = typeof whatsappOtpVerifications.$inferSelect

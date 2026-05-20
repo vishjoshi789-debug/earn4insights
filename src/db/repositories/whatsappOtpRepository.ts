@@ -1,64 +1,39 @@
 import 'server-only'
 
 import { db } from '@/db'
-import {
-  whatsappOtpVerifications,
-  type WhatsappOtpVerification,
-  type NewWhatsappOtpVerification,
-} from '@/db/schema'
-import { and, desc, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm'
-
-export async function createOtp(
-  data: Omit<NewWhatsappOtpVerification, 'id' | 'createdAt' | 'verifiedAt' | 'attempts' | 'maxAttempts'>
-    & Partial<Pick<NewWhatsappOtpVerification, 'maxAttempts'>>
-): Promise<WhatsappOtpVerification> {
-  const [row] = await db.insert(whatsappOtpVerifications).values(data).returning()
-  return row
-}
+import { whatsappOtpVerifications } from '@/db/schema'
+import { and, eq, isNotNull } from 'drizzle-orm'
 
 /**
- * Most recent unverified, unexpired OTP for the (userId, phoneNumber) pair.
- * Returns null if none exists.
+ * Persistence for WhatsApp phone verification.
+ *
+ * Twilio Verify owns the OTP lifecycle (generation, delivery, expiry,
+ * attempt limits), so this table no longer stores codes. It holds only
+ * verified-phone markers: one row per (userId, phoneNumber) pair that has
+ * passed verification. `otp_hash` / `expires_at` are nullable and unused
+ * (migration 018).
  */
-export async function findActiveOtp(
+
+/**
+ * Record that (userId, phoneNumber) passed WhatsApp OTP verification.
+ * Idempotent — a no-op if the pair is already marked verified.
+ */
+export async function recordVerifiedPhone(
   userId: string,
   phoneNumber: string
-): Promise<WhatsappOtpVerification | null> {
-  const now = new Date()
-  const rows = await db
-    .select()
-    .from(whatsappOtpVerifications)
-    .where(
-      and(
-        eq(whatsappOtpVerifications.userId, userId),
-        eq(whatsappOtpVerifications.phoneNumber, phoneNumber),
-        isNull(whatsappOtpVerifications.verifiedAt),
-        gt(whatsappOtpVerifications.expiresAt, now)
-      )
-    )
-    .orderBy(desc(whatsappOtpVerifications.createdAt))
-    .limit(1)
-  return rows[0] ?? null
-}
-
-export async function incrementAttempts(id: string): Promise<void> {
-  await db
-    .update(whatsappOtpVerifications)
-    .set({ attempts: sql`${whatsappOtpVerifications.attempts} + 1` })
-    .where(eq(whatsappOtpVerifications.id, id))
-}
-
-export async function markVerified(id: string): Promise<void> {
-  await db
-    .update(whatsappOtpVerifications)
-    .set({ verifiedAt: new Date() })
-    .where(eq(whatsappOtpVerifications.id, id))
+): Promise<void> {
+  if (await hasVerifiedPhone(userId, phoneNumber)) return
+  await db.insert(whatsappOtpVerifications).values({
+    userId,
+    phoneNumber,
+    verifiedAt: new Date(),
+  })
 }
 
 /**
  * True if any row exists for (userId, phoneNumber) with verified_at IS NOT NULL.
- * Once a phone is verified for a user, it stays verified — proves possession
- * at some point. Re-verification is only required when the number changes.
+ * Once a phone is verified for a user it stays verified — possession was
+ * proven. Re-verification is only required when the number changes.
  */
 export async function hasVerifiedPhone(
   userId: string,
