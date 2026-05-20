@@ -38,6 +38,33 @@ function clearDraft() {
   } catch { /* ignore */ }
 }
 
+/**
+ * Ensure the `e4i-csrf` cookie exists before any state-mutating POST.
+ *
+ * Next.js middleware does NOT reliably set the cookie on redirect paths
+ * into /onboarding (documented production issue — same root cause that
+ * the ChatWidget works around). Without the cookie, `apiPost()` reads an
+ * empty token from both the cookie and the `<meta name="csrf-token">`
+ * tag, sends no `X-CSRF-Token` header, and the WhatsApp OTP routes
+ * reject with a 403 (missing_header).
+ *
+ * `/api/csrf/init` mints the cookie directly from its route handler,
+ * bypassing middleware. Idempotent + cheap — the promise is memoised so
+ * concurrent callers share one request; a failed init clears the cache
+ * so the next caller retries.
+ */
+let csrfInitPromise: Promise<void> | null = null
+function ensureCsrfCookie(): Promise<void> {
+  if (csrfInitPromise) return csrfInitPromise
+  csrfInitPromise = fetch('/api/csrf/init', { credentials: 'same-origin' })
+    .then(() => undefined)
+    .catch((err) => {
+      console.warn('[onboarding] csrf init failed:', err)
+      csrfInitPromise = null // allow a retry on the next call
+    })
+  return csrfInitPromise
+}
+
 export default function OnboardingClient({ userRole }: { userRole?: string }) {
   const router = useRouter()
   const draft = typeof window !== 'undefined' ? loadDraft() : null
@@ -89,6 +116,11 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
       purchaseFrequency, selectedCategories])
 
   useEffect(() => { persistDraft() }, [persistDraft])
+
+  // Mint the e4i-csrf cookie early so it exists well before the user
+  // reaches Step 5 (WhatsApp OTP) or any draft-save POST. Fire-and-forget
+  // — the OTP handlers also await it defensively as a belt-and-suspenders.
+  useEffect(() => { void ensureCsrfCookie() }, [])
 
   const progressSteps = [
     { id: 1, title: 'Welcome', description: 'Get started' },
@@ -242,6 +274,9 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     setWaSendingOtp(true)
     setWaAttemptsLeft(null)
     try {
+      // Guarantee the e4i-csrf cookie is set before the POST — covers the
+      // edge case where the mount-effect init hasn't resolved yet.
+      await ensureCsrfCookie()
       const res = await apiPost('/api/user/whatsapp/send-otp', { phoneNumber: phone })
       if (!res.ok) {
         const data = await res.json()
@@ -263,6 +298,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     if (!phone || waOtpCode.length !== 6) return
     setWaVerifying(true)
     try {
+      await ensureCsrfCookie()
       const res = await apiPost('/api/user/whatsapp/verify-otp', {
         phoneNumber: phone,
         otp: waOtpCode,
