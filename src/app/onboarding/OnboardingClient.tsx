@@ -127,7 +127,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     { id: 2, title: 'About You', description: 'Demographics' },
     { id: 3, title: 'Goals & Lifestyle', description: 'Lifestyle & Goals' },
     { id: 4, title: 'Interests', description: 'Categories' },
-    { id: 5, title: 'WhatsApp', description: 'Optional alerts' },
+    { id: 5, title: 'Phone', description: 'Optional alerts' },
   ]
 
   const handleCategoryToggle = (category: string) => {
@@ -284,7 +284,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
       }
       setWaOtpSent(true)
       setWaOtpCode('')
-      toast.success('Verification code sent via WhatsApp')
+      toast.success('Verification code sent')
     } catch (err: any) {
       toast.error(err.message || 'Failed to send code')
     } finally {
@@ -946,15 +946,15 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
         <Card className="max-w-2xl w-full">
           <CardHeader>
             <ProgressIndicator currentStep={5} steps={progressSteps} />
-            <CardTitle className="text-2xl mt-4">Enable WhatsApp notifications</CardTitle>
+            <CardTitle className="text-2xl mt-4">Verify Your Phone Number</CardTitle>
             <CardDescription>
-              Get instant alerts on rewards, deals, and updates via WhatsApp.
-              You&apos;ll receive a one-time code to verify your number. Optional — you can set this up later.
+              Add your phone number to receive important alerts via SMS.
+              You&apos;ll receive a verification code.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="onboard-wa-phone">WhatsApp phone number</Label>
+              <Label htmlFor="onboard-wa-phone">Phone number</Label>
               <div className="flex gap-2">
                 <Input
                   id="onboard-wa-phone"

@@ -8,12 +8,12 @@ import {
 import { logger } from '@/lib/logger'
 
 /**
- * WhatsApp phone verification via Twilio Verify.
+ * Phone-number verification via Twilio Verify.
  *
- * Twilio Verify owns OTP generation, delivery, expiry, and attempt limits,
- * and sends through Twilio's own pre-approved WhatsApp templates — so a
- * code reaches a brand-new number on first contact (free-form WhatsApp
- * messages would silently fail outside a 24h session window).
+ * Twilio Verify owns OTP generation, delivery, expiry, and attempt limits.
+ * The delivery channel is set by TWILIO_VERIFY_CHANNEL — 'sms' by default,
+ * 'whatsapp' once a Twilio WhatsApp sender is approved. Switching channels
+ * is an env-var change only, no code change.
  *
  * We persist nothing about the OTP itself. The only thing recorded locally
  * is the *fact* that a (userId, phoneNumber) pair passed verification —
@@ -27,6 +27,10 @@ const twilioClient =
     : null
 
 const VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID
+
+// Delivery channel for the verification code. 'sms' now; flip the env var
+// to 'whatsapp' once the Twilio WhatsApp sender is approved — no code change.
+const VERIFY_CHANNEL = process.env.TWILIO_VERIFY_CHANNEL === 'whatsapp' ? 'whatsapp' : 'sms'
 
 export class WhatsappOtpError extends Error {
   constructor(message: string, public readonly code: string) {
@@ -48,7 +52,7 @@ export async function sendOtp(phoneNumber: string): Promise<void> {
   if (!isConfigured()) {
     logger.serviceError('twilio-verify', 'sendOtp', 'TWILIO_VERIFY_SERVICE_SID not configured')
     throw new WhatsappOtpError(
-      'WhatsApp verification is temporarily unavailable. Please try again later.',
+      'Phone verification is temporarily unavailable. Please try again later.',
       'not_configured'
     )
   }
@@ -56,7 +60,7 @@ export async function sendOtp(phoneNumber: string): Promise<void> {
   try {
     const verification = await twilioClient!.verify.v2
       .services(VERIFY_SERVICE_SID!)
-      .verifications.create({ to: phoneNumber, channel: 'whatsapp' })
+      .verifications.create({ to: phoneNumber, channel: VERIFY_CHANNEL })
 
     // A successful send leaves the verification in 'pending'.
     if (verification.status !== 'pending') {
@@ -72,7 +76,7 @@ export async function sendOtp(phoneNumber: string): Promise<void> {
     const code = (err as { code?: number }).code
     if (code === 60200) {
       throw new WhatsappOtpError(
-        'That phone number is not valid for WhatsApp. Check the country code and try again.',
+        'That phone number is not valid. Check the country code and try again.',
         'invalid_number'
       )
     }
@@ -83,7 +87,7 @@ export async function sendOtp(phoneNumber: string): Promise<void> {
       )
     }
     throw new WhatsappOtpError(
-      'Failed to send the verification code via WhatsApp. Please try again.',
+      'Failed to send the verification code. Please try again.',
       'delivery_failed'
     )
   }

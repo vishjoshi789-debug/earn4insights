@@ -1,9 +1,9 @@
 /**
  * POST /api/user/whatsapp/verify-otp
  *
- * Verify a 6-digit OTP for the supplied WhatsApp phone number. On
- * success, the (userId, phoneNumber) pair is marked verified — saving the
- * number to notification settings becomes allowed.
+ * Verify a 6-digit OTP for the supplied phone number. On success, the
+ * (userId, phoneNumber) pair is marked verified — saving the number to
+ * notification settings becomes allowed.
  *
  * Body: { phoneNumber: string, otp: string }
  *

@@ -1,8 +1,9 @@
 /**
  * POST /api/user/whatsapp/send-otp
  *
- * Send a 6-digit OTP to the supplied WhatsApp phone number to prove
- * possession before it can be saved to notification preferences.
+ * Send a 6-digit OTP to the supplied phone number (via Twilio Verify —
+ * SMS or WhatsApp per TWILIO_VERIFY_CHANNEL) to prove possession before
+ * it can be saved to notification preferences.
  *
  * Body: { phoneNumber: string }   — E.164 format
  *
