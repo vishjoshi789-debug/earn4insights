@@ -389,6 +389,121 @@ Existing rows backfill to `'live'` via the column DEFAULT — no separate UPDATE
 
 ---
 
+## Migration 017 — Platform Analytics / Founder Dashboard (5 new tables)
+
+Founder dashboard at `/admin/platform-analytics`. Source data for `getDashboardData()` and the three analytics crons. **All money columns in paise** (₹ × 100) — same convention as `campaign_payments` / `reward_redemptions`.
+
+### `platform_metrics_daily`
+
+Daily snapshot of users + engagement counters. One row per UTC calendar day. UNIQUE on `date`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `date` | `DATE NOT NULL UNIQUE` | UTC calendar day |
+| `total_users / total_brands / total_consumers / total_influencers` | `INTEGER NOT NULL DEFAULT 0` | Cumulative end-of-day counts. `total_influencers` = `users.role='consumer' AND is_influencer=true` |
+| `new_users / new_brands / new_consumers / new_influencers` | `INTEGER NOT NULL DEFAULT 0` | New signups that day |
+| `dau / wau / mau` | `INTEGER NOT NULL DEFAULT 0` | Distinct user_id in `analytics_events` for 1/7/30-day window |
+| `brand_dau / consumer_dau / influencer_dau` | `INTEGER NOT NULL DEFAULT 0` | Per-role DAU — joins `analytics_events` to `users` for the `is_influencer` flag |
+| `feedback_count / survey_responses / deals_redeemed` | `INTEGER NOT NULL DEFAULT 0` | Rows created that day on `feedback` / `survey_responses` (`submitted_at`) / `deal_redemptions` (`redeemed_at`) |
+| `community_posts / community_comments` | `INTEGER NOT NULL DEFAULT 0` | From `community_deals_posts` / `_comments` |
+| `campaigns_created / campaigns_completed` | `INTEGER NOT NULL DEFAULT 0` | `influencer_campaigns` rows; `_completed` filters `status='completed' AND updated_at` in window |
+| `chat_conversations / chat_resolved_by_ai / support_tickets` | `INTEGER NOT NULL DEFAULT 0` | From support tables |
+| `computed_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | When the daily cron last upserted this row |
+
+Index: `idx_platform_metrics_date_desc ON (date DESC)` — supports the dashboard's "last N days" series queries.
+
+Idempotency: cron upserts on `UNIQUE(date)` — re-running for the same day rewrites the same row.
+
+### `revenue_metrics_daily`
+
+Daily payment / revenue rollup. Sourced from `campaign_payments` + `reward_redemptions`. UNIQUE on `date`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `date` | `DATE NOT NULL UNIQUE` | |
+| `gross_revenue` | `INTEGER NOT NULL DEFAULT 0` | paise — sum of `amount` where `status IN ('escrowed','released')` |
+| `platform_fees` | `INTEGER NOT NULL DEFAULT 0` | paise — sum of `platform_fee` for same status |
+| `influencer_payouts` | `INTEGER NOT NULL DEFAULT 0` | paise — sum of `influencer_amount` where `status='released' AND released_at` in window |
+| `consumer_rewards_redeemed` | `INTEGER NOT NULL DEFAULT 0` | paise — `SUM(points_spent) × 10 paise/point` from `reward_redemptions` where `status='fulfilled'` |
+| `refunds` | `INTEGER NOT NULL DEFAULT 0` | paise — `SUM(amount)` where `status='refunded' AND refunded_at` in window |
+| `net_revenue` | `INTEGER NOT NULL DEFAULT 0` | paise — `platform_fees − refunds` (what E4I actually keeps after refund clawbacks) |
+| `payment_count / payment_success_count / payment_failed_count` | `INTEGER NOT NULL DEFAULT 0` | |
+| `avg_payment_amount` | `INTEGER NOT NULL DEFAULT 0` | paise — `AVG(amount)` for escrowed/released |
+| `currency` | `TEXT NOT NULL DEFAULT 'INR'` | |
+| `computed_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | |
+
+Index: `idx_revenue_metrics_date_desc ON (date DESC)`.
+
+### `retention_cohorts`
+
+Sliding-window cohort retention. Refreshed weekly. UNIQUE on `(cohort_date, role, period_type)`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `cohort_date` | `DATE NOT NULL` | Monday-start of signup week |
+| `cohort_size` | `INTEGER NOT NULL` | Number of users who signed up that week (matching the `role` filter) |
+| `role` | `TEXT NOT NULL` | `'all' \| 'brand' \| 'consumer' \| 'influencer'` |
+| `period_type` | `TEXT NOT NULL` | `'daily' \| 'weekly' \| 'monthly'` — currently only `'weekly'` is computed |
+| `day_1 / day_7 / day_14 / day_30 / day_60 / day_90` | `NUMERIC(5,2)` (nullable) | % retained. **`NULL` when the cell hasn't matured** (e.g. Day 30 for a 10-day-old cohort) — UI renders `—` |
+| `computed_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | |
+
+Index: `idx_retention_role_period ON (role, period_type, cohort_date DESC)` — supports the role-tab filter on the heatmap.
+
+Cohort algorithm: for each (cohort, day_N) cell, count distinct users from the cohort with ≥1 event in `[signup + N − 0.5d, signup + N + 0.5d)`. The ±0.5d window absorbs weekday-boundary effects of the cron schedule.
+
+### `platform_costs`
+
+Manual cost ledger — founder enters via the Cost Management UI in `/admin/platform-analytics` (row 7). NOT cron-managed.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `month` | `DATE NOT NULL` | Always first-of-month (normalised on insert) |
+| `category` | `TEXT NOT NULL` | One of 13: `hosting / database / ai_api / email_service / sms_whatsapp / cdn_storage / payment_gateway / marketing / salaries / legal / office / tools_subscriptions / other` |
+| `description` | `TEXT NULL` | Capped at 500 chars by API |
+| `amount` | `INTEGER NOT NULL` | paise |
+| `currency` | `TEXT NOT NULL DEFAULT 'INR'` | |
+| `is_recurring` | `BOOLEAN NOT NULL DEFAULT true` | |
+| `entered_by` | `TEXT NULL → users.id ON DELETE SET NULL` | Preserves cost history if the founder who entered it is later deleted |
+| `created_at / updated_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | |
+
+Index: `idx_platform_costs_month ON (month DESC, category)`.
+
+### `financial_snapshots_monthly`
+
+Derived monthly aggregate. UNIQUE on `month` (first-of-month). Built by `computeFinancialSnapshot()` from `revenue_metrics_daily` + `platform_costs`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `month` | `DATE NOT NULL UNIQUE` | First-of-month |
+| `gross_revenue / platform_fees / influencer_payouts / consumer_rewards / refunds / net_revenue` | `INTEGER NOT NULL DEFAULT 0` | paise — sums of `revenue_metrics_daily` for the month |
+| `total_costs` | `INTEGER NOT NULL DEFAULT 0` | paise — sum of `platform_costs` for the month |
+| `cost_breakdown` | `JSONB DEFAULT '{}'` | `{ hosting: 120000, ai_api: 80000, ... }` in paise — per-category sums |
+| `gross_margin` | `INTEGER NOT NULL DEFAULT 0` | paise — `net_revenue − total_costs` |
+| `gross_margin_percent` | `NUMERIC(5,2) DEFAULT 0` | `gross_margin / net_revenue × 100`, 0 when no revenue |
+| `cash_balance` | `INTEGER NOT NULL DEFAULT 0` | paise — manually entered by founder. Carried over from previous snapshot unless `?cashBalance=PAISE` override on the cron |
+| `burn_rate` | `INTEGER NOT NULL DEFAULT 0` | paise — `total_costs − net_revenue` (positive = net negative) |
+| `runway_months` | `NUMERIC(5,1)` (nullable) | `cash_balance / burn_rate` when both > 0; `NULL` when net positive or no signal |
+| `mrr` | `INTEGER NOT NULL DEFAULT 0` | paise — proxy: monthly netRevenue. Will be redefined when a true subscription product exists |
+| `mrr_growth_percent` | `NUMERIC(5,2) DEFAULT 0` | vs previous month |
+| `arpu` | `INTEGER NOT NULL DEFAULT 0` | paise — `net_revenue / active_brand_count_this_month` |
+| `brand_ltv` | `INTEGER NOT NULL DEFAULT 0` | paise — `AVG(SUM(platform_fee))` per brand across all escrowed/released payments |
+| `consumer_ltv` | `INTEGER NOT NULL DEFAULT 0` | paise — `AVG(SUM(points_spent) × 10)` per consumer (proxy for engagement cost) |
+| `computed_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | |
+
+Index: `idx_financial_snapshots_month_desc ON (month DESC)`.
+
+**Cron schedule** (all natively Vercel Hobby-friendly — no sub-daily, no cron-job.org needed):
+
+| Time (UTC) | Route | Side-effect |
+|------------|-------|-------------|
+| 01:00 daily | `/api/cron/compute-platform-metrics` | Upsert yesterday's `platform_metrics_daily` + `revenue_metrics_daily`. `?backfill=N` (cap 30) walks back for historical seed |
+| 02:00 Sun | `/api/cron/compute-retention-cohorts` | Rebuild 12 weeks × 4 roles into `retention_cohorts`. `?weeks=N` (cap 26) override |
+| 03:00 1st of month | `/api/cron/compute-financial-snapshots` | Snapshot PREVIOUS month into `financial_snapshots_monthly`. `?month=YYYY-MM` recompute specific; `?months=N` (cap 12) walk-back seed; `?cashBalance=PAISE` override |
+
+All idempotent — every upsert keys on the table's UNIQUE constraint, so cron retries write the same row.
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`

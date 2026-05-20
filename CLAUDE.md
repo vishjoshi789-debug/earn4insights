@@ -101,6 +101,7 @@ await pgClient.unsafe(sql)
 | Cookie Consent Banner + UX Polish (GDPR consent gates analytics; branded 404/500; login polish; mobile tab responsiveness) | ✅ COMPLETE |
 | Customer Support System (migration 015 — 5 tables; GPT-4o-mini chatbot with pgvector semantic FAQ matching + 18-pattern abuse filter; floating widget; 19 API routes; /help SEO pages; admin dashboard; 6 transactional emails + daily reminder cron; 5 eventBus events with Pusher real-time admin/user notifications) | ✅ COMPLETE |
 | Scheduled Product Launch (migration 016 — 2 columns + partial index; `LaunchForm` launch-type radio + datetime picker; server action branches instant vs scheduled; `/api/cron/publish-scheduled-launches` flips due rows to live and fires the same side-effects as instant — Vercel Hobby registers a 06:00 UTC daily safety-net, cron-job.org drives the real 15-min cadence externally; `getAllProducts()` and `searchProductsByName()` filter scheduled by default; brand sees their queue at `/dashboard/launch`) | ✅ COMPLETE |
+| Platform Analytics — Founder Dashboard (migration 017 — 5 tables: `platform_metrics_daily`, `revenue_metrics_daily`, `retention_cohorts`, `platform_costs`, `financial_snapshots_monthly`; 24-fn repo + 7-fn service incl. `computeHealthScore` + OLS `computeGrowthPrediction`; 8 admin API routes (CSRF-gated CRUD on costs); 12 dashboard components (recharts); `/admin/platform-analytics` 9-row layout with `safely()`-wrapped sub-panels; 3 crons — daily metrics 01:00 UTC, weekly retention Sun 02:00 UTC, monthly financial 1st 03:00 UTC) | ✅ COMPLETE |
 
 **Production migrations (run in order — all idempotent, require `x-api-key: <ADMIN_API_KEY>`):**
 1. `POST /api/admin/run-migration-002` — 6 new tables + 3 ALTERs
@@ -120,6 +121,7 @@ await pgClient.unsafe(sql)
 15. `POST /api/admin/run-migration-015` — Customer Support System (5 tables: `support_tickets` + `support_ticket_seq` sequence for E4I-XXXX numbering, `support_ticket_messages`, `chat_conversations`, `faq_articles` with `search_vector tsvector` trigger + `embedding vector(1536)` pgvector index, `support_analytics`; enables `vector` extension; FK CASCADE → users on user-content, SET NULL on admin/audit refs)
 16. `POST /api/admin/seed-faq` — Idempotent FAQ seed (31 articles); requires `OPENAI_API_KEY` to generate embeddings. Skips slugs that already exist
 17. `POST /api/admin/run-migration-016` — Scheduled Product Launch (adds `products.launch_status TEXT NOT NULL DEFAULT 'live'` + `products.scheduled_launch_at TIMESTAMP NULL` + partial index `idx_products_scheduled_due` on scheduled rows only)
+18. `POST /api/admin/run-migration-017` — Platform Analytics / Founder Dashboard (5 tables: `platform_metrics_daily`, `revenue_metrics_daily`, `retention_cohorts` + UNIQUE(cohort_date, role, period_type), `platform_costs` with FK SET NULL → users, `financial_snapshots_monthly` incl. `cash_balance` paise column for runway calc; all money columns in paise)
 
 ---
 
@@ -273,6 +275,19 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Publish cron flips status before firing side-effects (race-safe)** | `publishScheduledProduct()` does `UPDATE … SET launch_status='live' WHERE id=? AND launch_status='scheduled' RETURNING *`. The WHERE-clause guard means a concurrent cron run (e.g. retried Vercel invocation) returns null and we skip the side-effects. Without this, two concurrent passes would double-fire the brand confirmation email + smart distribution + watchlist fan-out. |
 | **Scheduled launches skip ALL launch side-effects until publish** | The server action for the scheduled branch writes the row and redirects with `?scheduled=1`. No brand confirmation email, no smart distribution, no watchlist fan-out — the cron fires those at the scheduled time so consumers don't get "launched!" notifications for products they can't see yet. |
 | **`min` on the datetime input = now + 1h, not now** | Prevents the common UX failure of brands picking the current minute and being confused when the cron takes up to 15 min to fire. 1h floor sets the expectation that this is a planning tool, not a delayed-launch button. The server action also enforces strictly-future with a 30s skew to forgive clock drift. |
+| **Platform analytics — all money in paise** | Same convention as Razorpay integration and `campaign_payments` / `reward_redemptions`. UI converts via `formatCurrency()` (paise → ₹ display). DB columns are `INTEGER` (not `NUMERIC`) — Math is exact, no float-precision drift over millions of rupees. |
+| **`safely()` defensive wrapper in `getDashboardData`** | Every sub-block (overview, growth, retention, revenue, engagement, financial, predictions, support) is wrapped so a single panel failure populates `_errors[]` instead of sinking the dashboard response. Mirrors the support-analytics pattern. Banner in the UI shows "N panels could not load — showing partial data." |
+| **MRR proxy = monthly netRevenue** | E4I doesn't have a true subscription product yet — fees are billed per-campaign. When subscriptions ship, redefine MRR as recurring-subscription revenue and treat per-campaign fees as one-time. Documented in `docs/FEATURE8_PLATFORM_ANALYTICS.md`. |
+| **Health score: 6-factor weighted 0–100** | DAU/MAU 20% + Day-7 retention 20% + MoM user growth 15% + MoM revenue growth 15% + engagement events/MAU 15% + support CSAT 15%. Bands: ≥70 healthy (green), 40–69 attention (amber), <40 critical (rose). Trend = recompute factors 7d back, diff totals. `null` CSAT and unmatured retention fall back to neutral 50, not 0 — avoids penalising no-signal as "bad". |
+| **Cohort retention reports null for unmatured cells** | A 10-day-old cohort can't have a Day 30 number. We report `null` (UI renders `—`) instead of misleading 0%. Without this, the heatmap silently shows the right edge as red even for healthy products. |
+| **Feature adoption denominator = today's per-role DAU** | Numerator = distinct users who touched the feature in the window. Known approximation — true "active across window" would need a role-split MAU column we don't have yet. For 30d window it's roughly accurate; for 7d slightly inflated. |
+| **Cohort retention queries branch per role, not via mid-query SQL composition** | `buildCohortRetention()` runs one of four explicit `pgClient\`...\`` blocks based on the role param. Tried `pgClient\`...${roleClauseSqlFragment}...\`` originally — postgres.js template tags don't compose like Drizzle's `sql\`\``. Cleaner to duplicate the 4 queries than to wrestle with mid-query composition. |
+| **NEVER pass Date objects to pgClient template literals** | postgres.js's binary encoder can throw "The string argument must be of type string. Received an instance of Date" in some code paths. ALWAYS pre-compute via `.toISOString()` into a local string variable before SQL interpolation. Applied to every Date interpolation in `platformAnalyticsRepository.ts` and `platformAnalyticsService.ts`. Drizzle ORM's `gte`/`lte`/`eq` on `date` columns also require strings (`yyyy-MM-dd`) — Drizzle types them as `string` not `Date`. |
+| **3 analytics crons all natively Vercel Hobby-friendly** | None are sub-daily (daily 01:00 / weekly Sun 02:00 / monthly 1st 03:00), so no cron-job.org redundancy layer needed for analytics — unlike `publish-scheduled-launches` which needs 15-min cadence. All idempotent — service compute fns upsert on UNIQUE keys, so cron retries are no-ops. |
+| **Daily metrics cron never computes today** | Always snaps to yesterday's UTC day so the row reflects a complete 24h window. Eliminates the "11pm cron run shows half a day" footgun. `?backfill=N` (cap 30) walks back N days from yesterday for one-shot historical seed. |
+| **`cash_balance` carried over by default** | Financial cron reads existing snapshot row and preserves `cash_balance` unless `?cashBalance=PAISE` override is passed. Founder updates cash by hitting the route directly with the override — avoids needing a separate "treasury edit" UI. |
+| **Costs use `apiPost/apiPut/apiDelete` from api-client (auto-CSRF)** | `CostManagement.tsx` calls the shared `apiPost/apiPut/apiDelete` helpers, which read `e4i-csrf` cookie and attach `X-CSRF-Token` header automatically. No per-component CSRF code, no manual cookie reads. |
+| **Renamed existing `/admin/analytics` → "Traffic Analytics" in nav** | The new `/admin/platform-analytics` (founder dashboard) took the "Platform Analytics" label, so the older raw-events tool needed a more accurate name to avoid confusion. Routes unchanged — only the nav label moved. |
 
 ---
 
@@ -320,17 +335,30 @@ Other env vars (Resend, Twilio, OpenAI, NextAuth, Stripe, etc.) are in `ARCHITEC
 | **Market share dimension** | Computed from relative feedback volume within category — proxy metric only; actual GMV/unit-share not available |
 | **Consumer-switching alert cohort gate** | `consumer_switching` alert type uses 3-condition check + cohort ≥ 5; conditions without sufficient data silently skip the check (won't fire false alerts) |
 
+### Platform Analytics (Founder Dashboard)
+| Item | Notes |
+|------|-------|
+| **MRR is a proxy** | Defined as monthly netRevenue, not true subscription MRR. Replace when a recurring-subscription product exists. |
+| **Consumer LTV is a payout-cost proxy** | `avg(points_spent × 10 paise)` per consumer — what we've paid out per consumer, not the value of their contribution to brands. Replace once a value-per-feedback model exists. |
+| **Brand LTV doesn't weight by churn** | `avg(SUM(platform_fee))` per brand. When brand-active-since-last-payment is tracked, weight by survival probability. |
+| **Feature adoption denominator is today's DAU per role** | Need a role-split MAU column to compute true "active across window" denominator. |
+| **No CAC / LTV:CAC ratio** | Requires attribution data we don't currently capture (UTM cohorts × payment outcomes). |
+| **All cost lines visible to all admins** | If non-founder admins are added (ops, support managers), gate `salaries` / `legal` behind a `role: 'founder'` distinction. |
+| **Health score trend recomputes 6 factors every render** | Cheap today (3 small queries) but if it becomes a hotspot, persist `health_score_history` and read instead of recomputing. |
+
 ---
 
 ## Reference Docs
 
 - **`ARCHITECTURE.md`** — Full technical architecture (authoritative)
-- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–015)
+- **`docs/SCHEMA.md`** — All DB table definitions (migrations 002–017)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — Encryption, consent system, ICP scoring algorithm, security hardening, file map
 - **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — Campaign lifecycle, payment flow, earnings dashboard, content approval, @ tags, file map
 - **`docs/FEATURE3_REALTIME.md`** — Pusher setup, event bus (31 events), notification/presence architecture, file map
 - **`docs/FEATURE4_COMPETITIVE_INTELLIGENCE.md`** — 9 tables, 6-dimension scoring, AI insights, alert detection, email digests, 5 crons, file map
 - **`docs/FEATURE5_DEALS_COMMUNITY.md`** — 9 deals/community tables, FK CASCADE hardening (migration 011), moderation, file map
 - **`docs/FEATURE6_DSAR.md`** — DSAR table, OTP flow, PDF generation, Vercel Blob, cleanup cron, file map
-- **`docs/CRON_JOBS.md`** — Full cron schedule (27 entries), auth pattern, batch size notes
+- **`docs/FEATURE7_SUPPORT_SYSTEM.md`** — Schema (5 tables), services, API routes, chatbot architecture, KB seeding, admin dashboard, file map
+- **`docs/FEATURE8_PLATFORM_ANALYTICS.md`** — Migration 017 (5 tables), service methodology (DAU/MAU, cohorts, MRR, LTV, ARPU, health score, OLS forecast), 8 API routes, 12 UI components, 3 crons, runbook
+- **`docs/CRON_JOBS.md`** — Full cron schedule (31 entries), auth pattern, batch size notes
 - **`docs/FEATURE7_SUPPORT_SYSTEM.md`** — Schema (5 tables), services, API routes, chatbot architecture, KB seeding, admin dashboard, file map
