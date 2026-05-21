@@ -30,7 +30,10 @@ function bytesToB64url(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-function b64urlToBytes(s: string): Uint8Array {
+// Return type is intentionally inferred (Uint8Array<ArrayBuffer>) — an
+// explicit `Uint8Array` annotation widens it to ArrayBufferLike, which
+// TypeScript 5.7+ rejects where crypto.subtle expects a BufferSource.
+function b64urlToBytes(s: string) {
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4)
   const bin = atob(b64)
   const bytes = new Uint8Array(bin.length)
