@@ -504,6 +504,53 @@ All idempotent — every upsert keys on the table's UNIQUE constraint, so cron r
 
 ---
 
+## Migration 019 — Two-Factor Authentication (3 new tables)
+
+Admin route: `POST /api/admin/run-migration-019`. Also adds
+`users.two_factor_enabled BOOLEAN NOT NULL DEFAULT false`. All FKs CASCADE → `users`.
+
+### `user_totp_secrets`
+One RFC 6238 TOTP secret per user. Created at setup disabled; flipped on once a code verifies.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `user_id` | TEXT NOT NULL UNIQUE | → `users.id` CASCADE |
+| `encrypted_secret` | TEXT NOT NULL | AES-256-GCM ciphertext of the base32 secret |
+| `encryption_key_id` | TEXT NOT NULL | versioned-key id — required to decrypt |
+| `is_enabled` | BOOLEAN NOT NULL DEFAULT false | |
+| `verified_at` | TIMESTAMP | set when setup completed |
+| `last_used_at` | TIMESTAMP | |
+| `created_at` / `updated_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+
+### `user_recovery_codes`
+Single-use recovery codes (10 per user), bcrypt-hashed. INDEX `idx_recovery_codes_user (user_id)`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `user_id` | TEXT NOT NULL | → `users.id` CASCADE |
+| `code_hash` | TEXT NOT NULL | bcrypt hash — never store plain |
+| `is_used` | BOOLEAN NOT NULL DEFAULT false | |
+| `used_at` | TIMESTAMP | |
+| `created_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+
+### `trusted_devices`
+Devices that skip the 2FA challenge for 30 days. Indexes:
+`idx_trusted_devices_user_fp (user_id, device_fingerprint)`, `idx_trusted_devices_expires (expires_at)`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `user_id` | TEXT NOT NULL | → `users.id` CASCADE |
+| `device_fingerprint` | TEXT NOT NULL | SHA-256 of the `e4i-trusted-device` cookie token |
+| `device_name` | TEXT NOT NULL | parsed from User-Agent, e.g. "Chrome on Windows" |
+| `last_used_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+| `expires_at` | TIMESTAMP NOT NULL | 30 days from creation |
+| `created_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+
+---
+
 ## Consent Data Categories (3 tiers)
 
 **Tier 1 — Platform Essentials:** `tracking`, `personalization`, `analytics`, `marketing`

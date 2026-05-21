@@ -231,6 +231,30 @@ export const whatsappOtpSendRateLimit = createLimiter({
   window: '60 s',
 })
 
+// ── Two-Factor Authentication (Feature 9) ─────────────────────────
+// Login 2FA challenge — keyed by user ID, shared across the TOTP and
+// recovery-code routes (an attacker must not get 5 tries on each).
+// Exhausting it locks the account for the rest of the 15-minute window.
+export const twoFactorChallengeRateLimit = createLimiter({
+  name: 'two-factor-challenge',
+  tokens: 5,
+  window: '15 m',
+})
+// 2FA management (setup, enable, disable, regenerate codes) — keyed by
+// user ID. Looser cap; these are full-auth, lower-risk surfaces.
+export const twoFactorManageRateLimit = createLimiter({
+  name: 'two-factor-manage',
+  tokens: 10,
+  window: '15 m',
+})
+// One lockout-alert email per 15-min window — dedups the alert so a user
+// hammering the locked challenge doesn't get a flood of emails.
+export const twoFactorLockoutNotifyRateLimit = createLimiter({
+  name: 'two-factor-lockout-notify',
+  tokens: 1,
+  window: '15 m',
+})
+
 // ── Support system (Phase 4) ──────────────────────────────────────
 // Ticket creation is expensive (email dispatch + AI classification on
 // escalation) — strict cap.

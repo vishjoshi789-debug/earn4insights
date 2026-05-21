@@ -7,6 +7,7 @@ import {
   generateCsrfToken,
   setCsrfCookie,
 } from "@/lib/csrf"
+import { TWO_FACTOR_PROOF_COOKIE, verifyProofCookie } from "@/lib/twoFactor/proofCookie"
 
 const PUBLIC_PATHS = new Set<string>([
   '/',
@@ -57,11 +58,80 @@ function isSafeCallbackUrl(value: string | null | undefined): value is string {
   return true
 }
 
-function decideAuth(req: NextRequest & { auth: any }): NextResponse | null {
+/**
+ * Paths a requires-2FA session may still reach: the challenge page, the
+ * challenge/status APIs, NextAuth internals, CSRF init, and static assets.
+ * Everything else is blocked until a valid 2FA proof cookie is present.
+ *
+ * NOTE: /api/auth/2fa/{setup,verify-setup,disable,regenerate-codes,
+ * trusted-devices} are deliberately NOT allowed — letting a user disable
+ * 2FA mid-challenge would defeat the gate.
+ */
+function isAllowedDuringTwoFactor(pathname: string): boolean {
+  if (pathname === '/auth/two-factor') return true
+  if (
+    pathname === '/api/auth/2fa/verify' ||
+    pathname === '/api/auth/2fa/recovery' ||
+    pathname === '/api/auth/2fa/status'
+  ) {
+    return true
+  }
+  // NextAuth internals (session, signout, csrf, callback) — but not our
+  // own /api/auth/2fa/* management routes.
+  if (pathname.startsWith('/api/auth/') && !pathname.startsWith('/api/auth/2fa/')) return true
+  if (pathname.startsWith('/api/csrf/')) return true
+  if (
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/images/') ||
+    pathname.startsWith('/fonts/') ||
+    pathname === '/favicon.ico'
+  ) {
+    return true
+  }
+  return false
+}
+
+async function decideAuth(req: NextRequest & { auth: any }): Promise<NextResponse | null> {
   const { nextUrl } = req
   const pathname = nextUrl.pathname
   const isLoggedIn = !!req.auth
   const role = req.auth?.user?.role as string | undefined
+
+  // ── 2FA interlock ──────────────────────────────────────────────
+  // A logged-in session flagged requires2FA is confined to the 2FA
+  // challenge until it presents a valid, unexpired e4i-2fa proof cookie
+  // bound to this login's nonce.
+  if (isLoggedIn && req.auth?.requires2FA === true) {
+    const proof = req.cookies.get(TWO_FACTOR_PROOF_COOKIE)?.value
+    const passed = await verifyProofCookie(proof, req.auth?.loginNonce ?? null)
+    if (!passed) {
+      if (isAllowedDuringTwoFactor(pathname)) return null
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { error: 'Two-factor authentication required' },
+          { status: 403 },
+        )
+      }
+      const url = new URL('/auth/two-factor', nextUrl)
+      if (pathname !== '/') {
+        url.searchParams.set('callbackUrl', pathname + nextUrl.search)
+      }
+      return NextResponse.redirect(url)
+    }
+    // proof valid → 2FA satisfied → fall through to normal handling.
+  }
+
+  // The challenge page is only for sessions still mid-challenge. A fully
+  // authenticated user who lands here is sent to the dashboard; a
+  // logged-out visitor to /login.
+  if (pathname === '/auth/two-factor') {
+    if (!isLoggedIn) {
+      const url = new URL('/login', nextUrl)
+      url.searchParams.set('callbackUrl', pathname)
+      return NextResponse.redirect(url)
+    }
+    return NextResponse.redirect(new URL('/dashboard', nextUrl))
+  }
 
   if (pathname === '/login' || pathname === '/signup') {
     if (isLoggedIn) {
@@ -106,13 +176,13 @@ function decideAuth(req: NextRequest & { auth: any }): NextResponse | null {
   return null
 }
 
-export default auth((req: NextRequest & { auth: any }) => {
+export default auth(async (req: NextRequest & { auth: any }) => {
   // Diagnostic — proves middleware actually ran for this request.
   // Visible in Vercel logs as `[MW] path=...` and on every response
   // as the `x-mw-ran` header so DevTools can verify per-request.
   console.log(`[MW] path=${req.nextUrl.pathname} authed=${!!req.auth}`)
 
-  const decision = decideAuth(req)
+  const decision = await decideAuth(req)
 
   const existing = req.cookies.get(CSRF_COOKIE_NAME)?.value
   const token = existing ?? generateCsrfToken()

@@ -10,15 +10,40 @@ import { ensureUserProfile } from "@/lib/auth/ensureUserProfile"
 // Extend NextAuth types
 declare module "next-auth" {
   interface Session {
+    /** Per-login random nonce — binds the 2FA proof cookie to this login. */
+    loginNonce?: string
+    /** True while this login still needs to pass the 2FA challenge. */
+    requires2FA?: boolean
     user: {
       id: string
       role: UserRole
     } & DefaultSession["user"]
   }
-  
+
   interface User {
     role: UserRole
+    /** Set by authorize() — 2FA is enabled and this device is not trusted. */
+    twoFactorPending?: boolean
   }
+}
+
+/** Trusted-device cookie name — mirrors src/lib/twoFactor/devices.ts. */
+const TRUSTED_DEVICE_COOKIE = 'e4i-trusted-device'
+
+/** Read a single cookie value from a raw Cookie header. */
+function readCookie(cookieHeader: string | null | undefined, name: string): string | null {
+  if (!cookieHeader) return null
+  for (const part of cookieHeader.split(';')) {
+    const trimmed = part.trim()
+    if (trimmed.startsWith(`${name}=`)) {
+      try {
+        return decodeURIComponent(trimmed.slice(name.length + 1))
+      } catch {
+        return trimmed.slice(name.length + 1)
+      }
+    }
+  }
+  return null
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -83,11 +108,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null
         }
 
+        // Password is correct. Decide whether a 2FA challenge is still
+        // required. 2FA applies to password accounts only — Google users
+        // rely on Google's own 2FA.
+        let twoFactorPending = false
+        if (user.twoFactorEnabled) {
+          twoFactorPending = true
+          // Lazy import — keeps the 2FA service (otpauth/qrcode/bcrypt/DB)
+          // out of the static graph this config shares with the Edge
+          // middleware bundle.
+          const { isDeviceTrusted } = await import('@/server/twoFactorService')
+          const deviceCookie = readCookie(
+            request?.headers?.get('cookie'),
+            TRUSTED_DEVICE_COOKIE,
+          )
+          if (await isDeviceTrusted(user.id, deviceCookie)) {
+            twoFactorPending = false // recognised device — skip the challenge
+          }
+        }
+
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role,
+          twoFactorPending,
         }
       },
     }),
@@ -176,8 +221,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role
         token.name = user.name
         token.email = user.email
+        // Per-login nonce — the 2FA proof cookie is bound to this so it
+        // cannot survive into a later login.
+        token.loginNonce = crypto.randomUUID()
+        // Whether this login still owes a 2FA challenge (credentials only;
+        // Google sign-ins carry no twoFactorPending → falsy → false).
+        token.twoFactorPending =
+          (user as { twoFactorPending?: boolean }).twoFactorPending === true
       }
-      
+
       return token
     },
 
@@ -185,6 +237,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token) {
         session.user.id = token.id as string
         session.user.role = token.role as UserRole
+        session.loginNonce = token.loginNonce as string | undefined
+        session.requires2FA = token.twoFactorPending === true
       }
       return session
     },

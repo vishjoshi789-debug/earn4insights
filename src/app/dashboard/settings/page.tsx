@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiPatch, apiPost } from '@/lib/api-client'
+import { SecuritySettingsCard } from '@/components/two-factor/SecuritySettingsCard'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -402,6 +403,9 @@ export default function NotificationSettingsPage() {
           Configure how and where you receive real-time alerts.
         </p>
       </div>
+
+      {/* ── Security: Two-Factor Authentication (all users) ── */}
+      <SecuritySettingsCard />
 
       {/* ── WhatsApp (all users) ── */}
       <Card>

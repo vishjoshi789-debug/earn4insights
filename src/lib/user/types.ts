@@ -9,6 +9,9 @@ export interface User {
   // Authentication
   passwordHash?: string              // Only for email/password users
   googleId?: string                  // Only for Google OAuth users
+
+  // Security
+  twoFactorEnabled?: boolean         // TOTP 2FA active (migration 019)
   
   // Consent (required)
   consent: {

@@ -14,6 +14,7 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash'), // For email/password auth
   googleId: text('google_id'), // For Google OAuth
   consent: jsonb('consent'), // { termsAcceptedAt, privacyAcceptedAt }
+  twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false), // TOTP 2FA active (migration 019)
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -2479,3 +2480,61 @@ export type NewPlatformCost = typeof platformCosts.$inferInsert
 export type FinancialSnapshotMonthly = typeof financialSnapshotsMonthly.$inferSelect
 export type NewFinancialSnapshotMonthly = typeof financialSnapshotsMonthly.$inferInsert
 export type NewSupportAnalyticsEvent = typeof supportAnalytics.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION — Two-Factor Authentication (2FA / TOTP)
+// Migration 019 — TOTP secrets, single-use recovery codes, trusted
+// devices. RFC 6238 TOTP. The secret is AES-256-GCM encrypted via the
+// versioned encryption system, so encryption_key_id is stored next to
+// the ciphertext (needed to decrypt). Recovery codes are bcrypt-hashed.
+// ════════════════════════════════════════════════════════════════
+
+// 1. One TOTP secret per user (user_id UNIQUE). Created during setup
+//    with is_enabled=false; flipped true once the user verifies a code.
+export const userTotpSecrets = pgTable('user_totp_secrets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull().unique(),               // → users.id CASCADE
+  encryptedSecret: text('encrypted_secret').notNull(),      // AES-256-GCM ciphertext of the base32 TOTP secret
+  encryptionKeyId: text('encryption_key_id').notNull(),     // versioned-key id — required to decrypt
+  isEnabled: boolean('is_enabled').notNull().default(false),
+  verifiedAt: timestamp('verified_at'),                     // set when setup is completed
+  lastUsedAt: timestamp('last_used_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// 2. Single-use recovery codes (10 generated per user). bcrypt-hashed —
+//    plaintext is shown to the user exactly once at generation time.
+export const userRecoveryCodes = pgTable('user_recovery_codes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),                        // → users.id CASCADE
+  codeHash: text('code_hash').notNull(),                    // bcrypt hash — never store plain
+  isUsed: boolean('is_used').notNull().default(false),
+  usedAt: timestamp('used_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  byUser: index('idx_recovery_codes_user').on(table.userId),
+}))
+
+// 3. Trusted devices — skip the 2FA challenge for 30 days on a known
+//    device. device_fingerprint is a hashed device identifier.
+export const trustedDevices = pgTable('trusted_devices', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),                        // → users.id CASCADE
+  deviceFingerprint: text('device_fingerprint').notNull(),  // hashed (not reversible)
+  deviceName: text('device_name').notNull(),                // parsed from UA, e.g. "Chrome on Windows"
+  lastUsedAt: timestamp('last_used_at').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at').notNull(),             // 30 days from creation
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  byUserFingerprint: index('idx_trusted_devices_user_fp').on(table.userId, table.deviceFingerprint),
+  byExpiry: index('idx_trusted_devices_expires').on(table.expiresAt),
+}))
+
+// ── 2FA type exports ──────────────────────────────────────────────
+export type UserTotpSecret = typeof userTotpSecrets.$inferSelect
+export type NewUserTotpSecret = typeof userTotpSecrets.$inferInsert
+export type UserRecoveryCode = typeof userRecoveryCodes.$inferSelect
+export type NewUserRecoveryCode = typeof userRecoveryCodes.$inferInsert
+export type TrustedDevice = typeof trustedDevices.$inferSelect
+export type NewTrustedDevice = typeof trustedDevices.$inferInsert
