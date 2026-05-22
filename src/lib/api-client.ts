@@ -37,6 +37,48 @@ function getCsrfToken(): string {
   return meta?.getAttribute('content') ?? ''
 }
 
+/** Read only the `e4i-csrf` cookie (no meta-tag fallback). */
+function readCsrfCookie(): string {
+  if (typeof document === 'undefined' || typeof document.cookie !== 'string' || !document.cookie) {
+    return ''
+  }
+  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${CSRF_COOKIE_NAME}=([^;]+)`))
+  if (m && m[1]) {
+    try {
+      return decodeURIComponent(m[1])
+    } catch {
+      return m[1]
+    }
+  }
+  return ''
+}
+
+/**
+ * Ensure the `e4i-csrf` cookie exists before a state-mutating request.
+ *
+ * The CSRF double-submit check compares the `X-CSRF-Token` header against
+ * the `e4i-csrf` COOKIE — a meta-tag token alone fails the check. Next.js
+ * middleware does not always mint the cookie (observed on redirect-entry
+ * `/onboarding` and `/dashboard` renders), so `/api/csrf/init` mints it
+ * directly. A no-op when the cookie is already present.
+ *
+ * Memoised so concurrent callers share one request; fail-open — a failed
+ * init never blocks the caller (`send()` proceeds with whatever it has).
+ */
+let csrfInitPromise: Promise<void> | null = null
+export function ensureCsrfCookie(): Promise<void> {
+  if (typeof document === 'undefined') return Promise.resolve()
+  if (readCsrfCookie()) return Promise.resolve()
+  if (csrfInitPromise) return csrfInitPromise
+  csrfInitPromise = fetch('/api/csrf/init', { credentials: 'same-origin' })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => {
+      csrfInitPromise = null
+    })
+  return csrfInitPromise
+}
+
 type ExtraInit = Omit<RequestInit, 'method' | 'body'>
 
 async function send(
@@ -45,6 +87,9 @@ async function send(
   body?: unknown,
   init?: ExtraInit
 ): Promise<Response> {
+  // The CSRF double-submit check needs the e4i-csrf cookie present, not
+  // just the meta-tag token — mint it first if middleware hasn't.
+  await ensureCsrfCookie()
   const headers = new Headers(init?.headers)
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   if (!headers.has('Content-Type') && body !== undefined && !isFormData) {
