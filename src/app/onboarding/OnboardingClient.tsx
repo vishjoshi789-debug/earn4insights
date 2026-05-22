@@ -12,8 +12,6 @@ import { completeOnboarding } from './actions'
 import { toast } from 'sonner'
 import { ProgressIndicator } from '@/components/ProgressIndicator'
 import { FieldTooltip } from '@/components/FieldTooltip'
-import { Input } from '@/components/ui/input'
-import { apiPatch, apiPost } from '@/lib/api-client'
 
 const ONBOARDING_STORAGE_KEY = 'e4i_onboarding_draft'
 
@@ -38,38 +36,14 @@ function clearDraft() {
   } catch { /* ignore */ }
 }
 
-/**
- * Ensure the `e4i-csrf` cookie exists before any state-mutating POST.
- *
- * Next.js middleware does NOT reliably set the cookie on redirect paths
- * into /onboarding (documented production issue — same root cause that
- * the ChatWidget works around). Without the cookie, `apiPost()` reads an
- * empty token from both the cookie and the `<meta name="csrf-token">`
- * tag, sends no `X-CSRF-Token` header, and the WhatsApp OTP routes
- * reject with a 403 (missing_header).
- *
- * `/api/csrf/init` mints the cookie directly from its route handler,
- * bypassing middleware. Idempotent + cheap — the promise is memoised so
- * concurrent callers share one request; a failed init clears the cache
- * so the next caller retries.
- */
-let csrfInitPromise: Promise<void> | null = null
-function ensureCsrfCookie(): Promise<void> {
-  if (csrfInitPromise) return csrfInitPromise
-  csrfInitPromise = fetch('/api/csrf/init', { credentials: 'same-origin' })
-    .then(() => undefined)
-    .catch((err) => {
-      console.warn('[onboarding] csrf init failed:', err)
-      csrfInitPromise = null // allow a retry on the next call
-    })
-  return csrfInitPromise
-}
-
 export default function OnboardingClient({ userRole }: { userRole?: string }) {
   const router = useRouter()
   const draft = typeof window !== 'undefined' ? loadDraft() : null
 
-  const [step, setStep] = useState<number>(draft?.step ?? 1)
+  // Clamp to the last step (4) — a draft saved by an older build may carry
+  // step 5 (the removed WhatsApp opt-in); without the clamp the component
+  // would render nothing for that value.
+  const [step, setStep] = useState<number>(Math.min(draft?.step ?? 1, 4))
   const [loading, setLoading] = useState(false)
 
   // Demographics
@@ -95,15 +69,6 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
   // Interests
   const [selectedCategories, setSelectedCategories] = useState<string[]>(draft?.selectedCategories ?? [])
 
-  // Step 5 — WhatsApp opt-in (optional, not persisted to draft on purpose)
-  const [waPhone, setWaPhone] = useState<string>('')
-  const [waSendingOtp, setWaSendingOtp] = useState(false)
-  const [waOtpSent, setWaOtpSent] = useState(false)
-  const [waOtpCode, setWaOtpCode] = useState('')
-  const [waVerifying, setWaVerifying] = useState(false)
-  const [waVerified, setWaVerified] = useState(false)
-  const [waAttemptsLeft, setWaAttemptsLeft] = useState<number | null>(null)
-
   // Persist draft to sessionStorage on every change
   const persistDraft = useCallback(() => {
     saveDraft({
@@ -117,17 +82,11 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
 
   useEffect(() => { persistDraft() }, [persistDraft])
 
-  // Mint the e4i-csrf cookie early so it exists well before the user
-  // reaches Step 5 (WhatsApp OTP) or any draft-save POST. Fire-and-forget
-  // — the OTP handlers also await it defensively as a belt-and-suspenders.
-  useEffect(() => { void ensureCsrfCookie() }, [])
-
   const progressSteps = [
     { id: 1, title: 'Welcome', description: 'Get started' },
     { id: 2, title: 'About You', description: 'Demographics' },
     { id: 3, title: 'Goals & Lifestyle', description: 'Lifestyle & Goals' },
     { id: 4, title: 'Interests', description: 'Categories' },
-    { id: 5, title: 'Phone', description: 'Optional alerts' },
   ]
 
   const handleCategoryToggle = (category: string) => {
@@ -204,7 +163,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
     return Math.round((filledFields / totalFields) * 100)
   }
 
-  const finishOnboarding = async (phoneToSave?: string) => {
+  const finishOnboarding = async () => {
     setLoading(true)
     try {
       const demographics = {
@@ -234,20 +193,6 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
 
       await completeOnboarding({ demographics, interests, sensitiveData })
 
-      // Persist the verified WhatsApp number if provided. Server gate requires
-      // an existing verified_at row for (userId, phoneToSave) — which we just
-      // created in Step 5 via verify-otp. Non-fatal if it fails.
-      if (phoneToSave) {
-        try {
-          await apiPatch('/api/user/notification-settings', {
-            whatsappEnabled: true,
-            whatsappPhoneNumber: phoneToSave,
-          })
-        } catch (err) {
-          console.error('[onboarding] save phone failed', err)
-        }
-      }
-
       clearDraft()
       toast.success('Profile completed! Enjoy personalized experiences.')
 
@@ -261,59 +206,6 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
       console.error(error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  // Step 5 — send a 6-digit OTP via WhatsApp
-  const handleOnboardingSendOtp = async () => {
-    const phone = waPhone.trim()
-    if (!phone || !/^\+[1-9]\d{6,14}$/.test(phone)) {
-      toast.error('Enter a valid number in international format (e.g. +919876543210)')
-      return
-    }
-    setWaSendingOtp(true)
-    setWaAttemptsLeft(null)
-    try {
-      // Guarantee the e4i-csrf cookie is set before the POST — covers the
-      // edge case where the mount-effect init hasn't resolved yet.
-      await ensureCsrfCookie()
-      const res = await apiPost('/api/user/whatsapp/send-otp', { phoneNumber: phone })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to send code')
-      }
-      setWaOtpSent(true)
-      setWaOtpCode('')
-      toast.success('Verification code sent')
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to send code')
-    } finally {
-      setWaSendingOtp(false)
-    }
-  }
-
-  // Step 5 — verify the 6-digit OTP
-  const handleOnboardingVerifyOtp = async () => {
-    const phone = waPhone.trim()
-    if (!phone || waOtpCode.length !== 6) return
-    setWaVerifying(true)
-    try {
-      await ensureCsrfCookie()
-      const res = await apiPost('/api/user/whatsapp/verify-otp', {
-        phoneNumber: phone,
-        otp: waOtpCode,
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        if (typeof data.attemptsRemaining === 'number') setWaAttemptsLeft(data.attemptsRemaining)
-        throw new Error(data.error || 'Verification failed')
-      }
-      setWaVerified(true)
-      toast.success('Phone verified')
-    } catch (err: any) {
-      toast.error(err.message || 'Verification failed')
-    } finally {
-      setWaVerifying(false)
     }
   }
 
@@ -869,7 +761,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
           {/* Privacy Note */}
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
             <p className="text-sm text-purple-800">
-              <strong>Almost done!</strong> Your data is now encrypted and protected. Select categories — there&apos;s one more optional step after this.
+              <strong>Final step!</strong> Your data is now encrypted and protected. Select the categories that interest you to complete your profile.
             </p>
           </div>
 
@@ -920,139 +812,21 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
           )}
 
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setStep(3)}>
+            <Button variant="outline" onClick={() => setStep(3)} disabled={loading}>
               ← Back
             </Button>
             <Button
-              onClick={() => setStep(5)}
+              onClick={() => finishOnboarding()}
               className="flex-1"
-              disabled={!isStep4Valid()}
+              disabled={!isStep4Valid() || loading}
             >
-              Continue
+              {loading ? 'Finishing…' : 'Finish 🎉'}
               {!isStep4Valid() && <span className="ml-2 text-xs">(Select categories)</span>}
             </Button>
           </div>
         </CardContent>
       </Card>
     </div>
-    )
-  }
-
-  // Step 5: Optional WhatsApp opt-in
-  if (step === 5) {
-    const phoneValid = /^\+[1-9]\d{6,14}$/.test(waPhone.trim())
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <Card className="max-w-2xl w-full">
-          <CardHeader>
-            <ProgressIndicator currentStep={5} steps={progressSteps} />
-            <CardTitle className="text-2xl mt-4">Verify Your Phone Number</CardTitle>
-            <CardDescription>
-              Add your phone number to receive important alerts via SMS.
-              You&apos;ll receive a verification code.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="onboard-wa-phone">Phone number</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="onboard-wa-phone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="+919876543210"
-                  value={waPhone}
-                  onChange={(e) => {
-                    setWaPhone(e.target.value)
-                    if (waOtpSent) { setWaOtpSent(false); setWaOtpCode(''); setWaVerified(false) }
-                  }}
-                  disabled={waOtpSent || waVerified}
-                  className="font-mono text-sm"
-                />
-                {!waOtpSent && !waVerified && (
-                  <Button
-                    onClick={handleOnboardingSendOtp}
-                    disabled={waSendingOtp || !phoneValid}
-                    variant="outline"
-                  >
-                    {waSendingOtp ? 'Sending…' : 'Send code'}
-                  </Button>
-                )}
-                {waVerified && (
-                  <Button variant="default" disabled>
-                    ✓ Verified
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Use international format with country code — e.g.{' '}
-                <span className="font-mono">+919876543210</span>.
-              </p>
-            </div>
-
-            {waOtpSent && !waVerified && (
-              <div className="rounded-lg border border-green-200 bg-green-50/60 p-3 space-y-2">
-                <p className="text-sm font-medium">Enter the 6-digit code sent to {waPhone}</p>
-                <div className="flex gap-2">
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="123456"
-                    value={waOtpCode}
-                    onChange={(e) => setWaOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="font-mono text-base tracking-widest"
-                  />
-                  <Button
-                    onClick={handleOnboardingVerifyOtp}
-                    disabled={waVerifying || waOtpCode.length !== 6}
-                  >
-                    {waVerifying ? 'Verifying…' : 'Verify'}
-                  </Button>
-                </div>
-                {waAttemptsLeft !== null && waAttemptsLeft > 0 && (
-                  <p className="text-xs text-amber-700">
-                    Incorrect code. {waAttemptsLeft} attempt{waAttemptsLeft === 1 ? '' : 's'} remaining.
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Code expires in 10 minutes.{' '}
-                  <button
-                    type="button"
-                    className="underline hover:text-foreground"
-                    onClick={handleOnboardingSendOtp}
-                    disabled={waSendingOtp}
-                  >
-                    Resend
-                  </button>
-                </p>
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" onClick={() => setStep(4)} disabled={loading}>
-                ← Back
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => finishOnboarding()}
-                disabled={loading}
-                className="flex-1"
-              >
-                Skip for now
-              </Button>
-              <Button
-                onClick={() => finishOnboarding(waPhone.trim())}
-                disabled={loading || !waVerified}
-                className="flex-1"
-              >
-                {loading ? 'Finishing…' : 'Finish 🎉'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     )
   }
 }

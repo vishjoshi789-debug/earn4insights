@@ -349,7 +349,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="notifications"]',
     title: '🔔 Notifications',
-    description: 'Stay on top of everything — new feedback, ranking changes, campaign updates, reward milestones, and more.',
+    description: 'Stay on top of everything — new feedback, ranking changes, campaign updates and reward milestones. Updates appear here in-app and are sent to your email inbox.',
     position: 'bottom',
     icon: '🔔',
   },

@@ -77,6 +77,22 @@ const ALERT_TYPES: Record<string, AlertTypeConfig> = {
 
 
 
+// ── Feature flags ──────────────────────────────────────────────────
+
+/**
+ * WhatsApp notifications are disabled for launch — the Twilio trial
+ * account is not production-ready, so the platform ships email-only for
+ * now. Set NEXT_PUBLIC_WHATSAPP_ENABLED='true' (in Vercel) to re-expose
+ * every WhatsApp UI entry point. No env var = hidden. The underlying
+ * code, Twilio env vars, and DB tables are all intentionally retained.
+ */
+const WHATSAPP_ENABLED = process.env.NEXT_PUBLIC_WHATSAPP_ENABLED === 'true'
+
+// Alert-rules channel grid: 5 columns with WhatsApp, 4 without.
+const CHANNEL_GRID_COLS = WHATSAPP_ENABLED
+  ? 'grid-cols-[1fr_auto_auto_auto_auto]'
+  : 'grid-cols-[1fr_auto_auto_auto]'
+
 // ── Component ──────────────────────────────────────────────────────
 
 export default function NotificationSettingsPage() {
@@ -407,7 +423,8 @@ export default function NotificationSettingsPage() {
       {/* ── Security: Two-Factor Authentication (all users) ── */}
       <SecuritySettingsCard />
 
-      {/* ── WhatsApp (all users) ── */}
+      {/* ── WhatsApp (all users) — gated behind NEXT_PUBLIC_WHATSAPP_ENABLED ── */}
+      {WHATSAPP_ENABLED && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -568,6 +585,7 @@ export default function NotificationSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* ── Brand-only: Alert Rules ── */}
       {isBrand && (
@@ -579,7 +597,7 @@ export default function NotificationSettingsPage() {
             </CardTitle>
             <CardDescription>
               Choose which events trigger notifications and on which channels. In-app is always on.
-              WhatsApp toggles require a phone number saved above.
+              {WHATSAPP_ENABLED && ' WhatsApp toggles require a phone number saved above.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -590,12 +608,12 @@ export default function NotificationSettingsPage() {
             ) : (
               <div className="space-y-1">
                 {/* Column headers */}
-                <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-3 px-3 pb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                <div className={`grid ${CHANNEL_GRID_COLS} gap-3 px-3 pb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide`}>
                   <span>Alert type</span>
                   <span className="w-14 text-center">In-app</span>
                   <span className="w-14 text-center">Email</span>
                   <span className="w-14 text-center">Slack</span>
-                  <span className="w-14 text-center">WhatsApp</span>
+                  {WHATSAPP_ENABLED && <span className="w-14 text-center">WhatsApp</span>}
                 </div>
 
                 {Object.entries(ALERT_TYPES).map(([type, config]) => {
@@ -606,7 +624,7 @@ export default function NotificationSettingsPage() {
                   return (
                     <div
                       key={type}
-                      className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-3 items-center px-3 py-3 rounded-lg transition-colors ${
+                      className={`grid ${CHANNEL_GRID_COLS} gap-3 items-center px-3 py-3 rounded-lg transition-colors ${
                         isEnabled ? 'hover:bg-muted/50' : 'opacity-50'
                       }`}
                     >
@@ -664,19 +682,21 @@ export default function NotificationSettingsPage() {
                         )}
                       </div>
 
-                      {/* WhatsApp */}
-                      <div className="w-14 flex justify-center">
-                        {savingRule === `${type}-whatsapp` ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        ) : (
-                          <Switch
-                            checked={hasChannel(type, 'whatsapp')}
-                            disabled={!isEnabled || !waSavedPhone || phoneInvalid || !waEnabled}
-                            onCheckedChange={(v) => toggleChannel(type, 'whatsapp', v)}
-                            aria-label={`WhatsApp for ${config.label}`}
-                          />
-                        )}
-                      </div>
+                      {/* WhatsApp — gated behind NEXT_PUBLIC_WHATSAPP_ENABLED */}
+                      {WHATSAPP_ENABLED && (
+                        <div className="w-14 flex justify-center">
+                          {savingRule === `${type}-whatsapp` ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Switch
+                              checked={hasChannel(type, 'whatsapp')}
+                              disabled={!isEnabled || !waSavedPhone || phoneInvalid || !waEnabled}
+                              onCheckedChange={(v) => toggleChannel(type, 'whatsapp', v)}
+                              aria-label={`WhatsApp for ${config.label}`}
+                            />
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -695,8 +715,9 @@ export default function NotificationSettingsPage() {
               Survey Notifications
             </CardTitle>
             <CardDescription>
-              You'll receive WhatsApp messages when brands you follow publish new surveys. Enable
-              WhatsApp above to activate real-time alerts.
+              {WHATSAPP_ENABLED
+                ? "You'll receive WhatsApp messages when brands you follow publish new surveys. Enable WhatsApp above to activate real-time alerts."
+                : "You'll receive an email when brands you follow publish new surveys that match your interests."}
             </CardDescription>
           </CardHeader>
           <CardContent>
