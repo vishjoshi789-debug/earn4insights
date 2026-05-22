@@ -104,6 +104,13 @@ async function decideAuth(req: NextRequest & { auth: any }): Promise<NextRespons
   if (isLoggedIn && req.auth?.requires2FA === true) {
     const proof = req.cookies.get(TWO_FACTOR_PROOF_COOKIE)?.value
     const passed = await verifyProofCookie(proof, req.auth?.loginNonce ?? null)
+    // Diagnostic — surfaces in Vercel logs as `[2FA-DEBUG]`. Shows the
+    // 2FA interlock saw a requires2FA session and whether the proof
+    // cookie cleared it for this request.
+    console.log(
+      `[2FA-DEBUG] interlock path=${pathname} requires2FA=true`,
+      `hasProofCookie=${!!proof} proofPassed=${passed}`,
+    )
     if (!passed) {
       if (isAllowedDuringTwoFactor(pathname)) return null
       if (pathname.startsWith('/api/')) {

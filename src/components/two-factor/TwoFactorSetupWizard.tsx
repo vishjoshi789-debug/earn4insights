@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { signOut } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -32,6 +33,7 @@ export function TwoFactorSetupWizard() {
 
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
   const [savedConfirmed, setSavedConfirmed] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
 
   async function startSetup() {
     setStarting(true)
@@ -65,6 +67,19 @@ export function TwoFactorSetupWizard() {
     } finally {
       setVerifying(false)
     }
+  }
+
+  /**
+   * Finish setup. The current session's JWT was minted before 2FA was
+   * enabled, so it carries no `twoFactorPending` flag — the 2FA challenge
+   * would never fire for it. Sign the user out and send them to /login so
+   * the next login mints a fresh JWT that the middleware interlock can
+   * gate. Same pattern GitHub uses after enabling 2FA.
+   */
+  async function finishSetup() {
+    setSigningOut(true)
+    toast.success('2FA is now active! Please sign in again to verify it works.')
+    await signOut({ callbackUrl: '/login' })
   }
 
   async function copySecret() {
@@ -210,10 +225,11 @@ export function TwoFactorSetupWizard() {
         </div>
 
         <Button
-          onClick={() => router.push('/dashboard/settings')}
-          disabled={!savedConfirmed}
+          onClick={finishSetup}
+          disabled={!savedConfirmed || signingOut}
           className="w-full"
         >
+          {signingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Done
         </Button>
       </CardContent>

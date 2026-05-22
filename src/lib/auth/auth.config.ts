@@ -127,6 +127,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
 
+        // Diagnostic — surfaces in Vercel logs as `[2FA-DEBUG]`. Confirms
+        // whether a fresh login picked up the DB two_factor_enabled flag
+        // and whether this login still owes a 2FA challenge.
+        console.log(
+          '[2FA-DEBUG] authorize email:', email,
+          'twoFactorEnabled:', user.twoFactorEnabled,
+          'twoFactorPending:', twoFactorPending,
+        )
+
         return {
           id: user.id,
           email: user.email,
