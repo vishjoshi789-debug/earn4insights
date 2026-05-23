@@ -183,9 +183,12 @@ export default function NotificationSettingsPage() {
   }, [loadSettings])
 
   // Load social connections for consumers and admins. Brands have no
-  // social connections of their own.
+  // social connections of their own. The `as string` cast is required
+  // because the UserRole type is declared as 'brand'|'consumer' only —
+  // 'admin' is a runtime-only DB value, not in the type union (see
+  // CLAUDE.md: "Admin role skips OnboardingGuard").
   useEffect(() => {
-    if (userRole !== 'consumer' && userRole !== 'admin') return
+    if (userRole !== 'consumer' && (userRole as string) !== 'admin') return
     setLoadingSocial(true)
     fetch('/api/consumer/social/connections')
       .then((r) => r.ok ? r.json() : { connections: [] })
