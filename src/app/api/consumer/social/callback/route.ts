@@ -38,7 +38,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { enforceConsent } from '@/lib/consent-enforcement'
-import { getConsent } from '@/db/repositories/consentRepository'
+import { getConsent, grantConsent } from '@/db/repositories/consentRepository'
 import { encryptForStorage } from '@/lib/encryption'
 import {
   createSocialConnection,
@@ -106,16 +106,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard/settings?social=error&reason=invalid_state', req.url))
   }
 
+  // Surfaces as [LinkedIn-Callback] in Vercel logs. The auth code is
+  // single-use and short-lived, so logging it is fine for debugging.
+  console.log('[LinkedIn-Callback] entered',
+    'hasCode=', !!code,
+    'hasState=', !!state,
+    'provider_error=', error || '(none)',
+    'platform=', state?.platform,
+  )
+
   const returnTo = state?.returnTo ?? '/dashboard/settings'
 
   // Provider denied or user cancelled
   if (error) {
+    console.warn('[LinkedIn-Callback] provider returned error:', error)
     return NextResponse.redirect(
       new URL(`${returnTo}?social=error&reason=${encodeURIComponent(error)}`, req.url)
     )
   }
 
   if (!code || !state?.platform || !state?.userId) {
+    console.warn('[LinkedIn-Callback] missing required params — code:', !!code,
+      'platform:', state?.platform, 'userId:', state?.userId)
     return NextResponse.redirect(new URL(`${returnTo}?social=error&reason=missing_params`, req.url))
   }
 
@@ -123,25 +135,47 @@ export async function GET(req: NextRequest) {
     // Verify the session matches the userId in state (CSRF protection)
     const session = await auth()
     const sessionUserId = (session?.user as any)?.id
+    const role = (session?.user as any)?.role as string | undefined
     if (!session || sessionUserId !== state.userId) {
+      console.warn('[LinkedIn-Callback] session_mismatch — sessionUserId:', sessionUserId,
+        'stateUserId:', state.userId)
       return NextResponse.redirect(new URL(`${returnTo}?social=error&reason=session_mismatch`, req.url))
     }
+    console.log('[LinkedIn-Callback] session OK userId=', sessionUserId, 'role=', role)
 
     const userId = state.userId
     const platform = state.platform
 
-    // Enforce consent
-    await enforceConsent(userId, 'social', 'connect_social_account')
+    // Consent gate. Admin is the data subject + controller for their own
+    // account, so the admin self-grants social consent here — that lets
+    // the platform owner exercise the same Connect flow consumers do
+    // without a separate consent-grant UI hop. grantConsent is
+    // idempotent (onConflictDoUpdate on user+category), and the grant is
+    // still recorded in consent_records for the GDPR audit trail.
+    if (role === 'admin') {
+      console.log('[LinkedIn-Callback] admin role — auto-granting social consent')
+      await grantConsent(userId, 'social', {
+        purpose: 'admin_self_connect',
+        consentVersion: 'admin-1',
+        ipAddress: req.headers.get('x-forwarded-for') ?? undefined,
+        userAgent: req.headers.get('user-agent') ?? undefined,
+      })
+    } else {
+      await enforceConsent(userId, 'social', 'connect_social_account')
+    }
+    console.log('[LinkedIn-Callback] consent OK')
 
     // Get active consent record ID
     const consentRecord = await getConsent(userId, 'social')
     if (!consentRecord) {
+      console.warn('[LinkedIn-Callback] no consent record after enforce/grant — userId:', userId)
       return NextResponse.redirect(new URL(`${returnTo}?social=error&reason=no_consent`, req.url))
     }
 
     // Check not already connected
     const existing = await getActiveConnection(userId, platform)
     if (existing) {
+      console.log('[LinkedIn-Callback] already connected — platform:', platform)
       return NextResponse.redirect(new URL(`${returnTo}?social=already_connected&platform=${platform}`, req.url))
     }
 
@@ -152,8 +186,9 @@ export async function GET(req: NextRequest) {
       const tokens = await exchangeLinkedInCode(code)
       accessToken = tokens.accessToken
       expiresAt = tokens.expiresAt
+      console.log('[LinkedIn-Callback] token exchange OK expiresAt=', expiresAt)
     } else {
-      // Other platforms pending provider setup
+      console.warn('[LinkedIn-Callback] platform_not_configured — platform:', platform)
       return NextResponse.redirect(
         new URL(`${returnTo}?social=error&reason=platform_not_configured&platform=${platform}`, req.url)
       )
@@ -172,12 +207,25 @@ export async function GET(req: NextRequest) {
       inferredInterests: {},
       inferenceMethod: 'followed_accounts',
     })
+    console.log('[LinkedIn-Callback] connection stored — platform:', platform)
 
     return NextResponse.redirect(
       new URL(`${returnTo}?social=connected&platform=${platform}`, req.url)
     )
   } catch (err) {
-    console.error('[Social OAuth Callback] Error:', err)
-    return NextResponse.redirect(new URL(`${returnTo}?social=error&reason=server_error`, req.url))
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[LinkedIn-Callback] ERROR:', msg)
+    console.error('[LinkedIn-Callback] Full error:',
+      err instanceof Error ? (err.stack ?? err) : JSON.stringify(err, null, 2))
+
+    // Map known error signatures onto specific redirect reasons so the
+    // user-facing URL points at the actual cause instead of a generic
+    // "server_error" that hides everything.
+    let reason = 'server_error'
+    if (/has not consented/i.test(msg)) reason = 'no_consent'
+    else if (/LinkedIn token exchange failed/i.test(msg)) reason = 'token_exchange_failed'
+    else if (/OAuth env vars not configured/i.test(msg)) reason = 'oauth_not_configured'
+
+    return NextResponse.redirect(new URL(`${returnTo}?social=error&reason=${reason}`, req.url))
   }
 }
