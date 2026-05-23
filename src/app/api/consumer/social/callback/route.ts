@@ -17,8 +17,13 @@
  *              ?response_type=code
  *              &client_id=${LINKEDIN_CLIENT_ID}
  *              &redirect_uri=${SOCIAL_OAUTH_REDIRECT_URI}
- *              &scope=r_liteprofile%20r_emailaddress
+ *              &scope=openid%20profile%20email
  *              &state=<base64(JSON)>
+ *
+ *              Uses OpenID Connect scopes. The old `r_liteprofile` /
+ *              `r_emailaddress` scopes are retired and produce a
+ *              "Bummer" error from LinkedIn. Requires the "Sign In with
+ *              LinkedIn using OpenID Connect" product on the LinkedIn app.
  *
  *   Instagram: Instagram Basic Display API was deprecated in 2025.
  *              Use Instagram Graph API via Facebook App in Advanced Access.

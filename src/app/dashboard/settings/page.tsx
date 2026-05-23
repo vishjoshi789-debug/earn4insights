@@ -226,7 +226,11 @@ export default function NotificationSettingsPage() {
       `${window.location.origin}/api/consumer/social/callback`
     )
     if (platform === 'linkedin') {
-      return `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID ?? ''}&redirect_uri=${redirectUri}&scope=r_liteprofile%20r_emailaddress&state=${state}`
+      // OpenID Connect scopes — `r_liteprofile` / `r_emailaddress` are retired
+      // and trigger LinkedIn's "Bummer" error. The Products tab of the
+      // LinkedIn app must have "Sign In with LinkedIn using OpenID Connect"
+      // enabled for these scopes to be granted.
+      return `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID ?? ''}&redirect_uri=${redirectUri}&scope=openid%20profile%20email&state=${state}`
     }
     return '#'   // Instagram: pending App Review
   }
