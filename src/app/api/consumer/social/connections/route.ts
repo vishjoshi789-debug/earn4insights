@@ -20,8 +20,11 @@ export async function GET(_req: NextRequest) {
     const userId = (session.user as any).id
     const role = (session.user as any).role
 
-    if (!userId || role !== 'consumer') {
-      return NextResponse.json({ error: 'Consumer access only' }, { status: 403 })
+    // Admins manage their own social connections from the same settings
+    // page consumers use, so admin role is allowed alongside consumer.
+    // Brands have no connections of their own — keep them out.
+    if (!userId || (role !== 'consumer' && role !== 'admin')) {
+      return NextResponse.json({ error: 'Consumer or admin access only' }, { status: 403 })
     }
 
     const connections = await getActiveSocialConnections(userId)

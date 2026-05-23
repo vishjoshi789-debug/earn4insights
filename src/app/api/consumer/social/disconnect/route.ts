@@ -26,8 +26,10 @@ export async function DELETE(req: NextRequest) {
     const userId = (session.user as any).id
     const role = (session.user as any).role
 
-    if (!userId || role !== 'consumer') {
-      return NextResponse.json({ error: 'Consumer access only' }, { status: 403 })
+    // Admins disconnect their own social connections from the same UI;
+    // brands have nothing to disconnect.
+    if (!userId || (role !== 'consumer' && role !== 'admin')) {
+      return NextResponse.json({ error: 'Consumer or admin access only' }, { status: 403 })
     }
 
     const body = await req.json().catch(() => null)

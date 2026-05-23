@@ -182,9 +182,10 @@ export default function NotificationSettingsPage() {
     loadSettings()
   }, [loadSettings])
 
-  // Load social connections for consumers
+  // Load social connections for consumers and admins. Brands have no
+  // social connections of their own.
   useEffect(() => {
-    if (userRole !== 'consumer') return
+    if (userRole !== 'consumer' && userRole !== 'admin') return
     setLoadingSocial(true)
     fetch('/api/consumer/social/connections')
       .then((r) => r.ok ? r.json() : { connections: [] })
@@ -192,6 +193,30 @@ export default function NotificationSettingsPage() {
       .catch(() => {})
       .finally(() => setLoadingSocial(false))
   }, [userRole])
+
+  // Surface the OAuth callback outcome (set by /api/consumer/social/callback)
+  // as a toast on first mount, then strip the query string so a reload
+  // doesn't re-fire it. Both `connected` and `already_connected` are
+  // user-visible successes — from the user's POV the account IS linked.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    const status = url.searchParams.get('social')
+    if (!status) return
+
+    const platform = url.searchParams.get('platform') || 'account'
+    const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1)
+
+    if (status === 'connected' || status === 'already_connected') {
+      toast.success(`${platformLabel} connected successfully! ✅`)
+    } else if (status === 'error') {
+      const reason = (url.searchParams.get('reason') || 'unknown').replace(/_/g, ' ')
+      toast.error(`${platformLabel} connection failed: ${reason}`)
+    }
+
+    // Clean the query string without triggering a Next.js navigation.
+    window.history.replaceState(null, '', url.pathname)
+  }, [])
 
   async function handleSocialDisconnect(platform: string) {
     setDisconnecting(platform)
