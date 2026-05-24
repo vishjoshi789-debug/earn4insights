@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { TrendingSocialBanner } from '@/components/TrendingSocialBanner'
 
 type CommunityPost = {
   id: string
@@ -290,6 +291,21 @@ export default function CommunityPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/*
+        Trending social keywords — additive banner. Hides itself silently
+        on no-data / error, so the community feed below is untouched by
+        anything that could go wrong in the trending aggregate.
+        Clicking a chip pushes the keyword into BOTH `queryInput` (so the
+        search box shows it) and `searchQuery` (so the filter applies),
+        matching what the manual search flow does.
+      */}
+      <TrendingSocialBanner
+        onKeywordClick={(kw) => {
+          setQueryInput(kw)
+          setSearchQuery(kw)
+        }}
+      />
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
