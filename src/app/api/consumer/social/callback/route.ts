@@ -194,6 +194,34 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    // Phase 4 — capture the platform's immutable subject id so a future
+    // listening adapter can attribute posts back to this user via
+    // handleAttributionService. Strictly optional: a userinfo failure
+    // must NOT break the OAuth completion. The connection still saves;
+    // it just won't participate in attribution. The handle column is
+    // left NULL for LinkedIn (OIDC userinfo does not expose vanity URL).
+    let verifiedSubject: string | null = null
+    if (platform === 'linkedin') {
+      try {
+        const ui = await fetch('https://api.linkedin.com/v2/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        if (ui.ok) {
+          const data = await ui.json()
+          if (typeof data?.sub === 'string' && data.sub.length > 0) {
+            verifiedSubject = data.sub        // e.g. "urn:li:person:abc123"
+            console.log('[LinkedIn-Callback] userinfo OK — verified_subject captured')
+          } else {
+            console.warn('[LinkedIn-Callback] userinfo missing sub field')
+          }
+        } else {
+          console.warn('[LinkedIn-Callback] userinfo non-200:', ui.status)
+        }
+      } catch (uiErr) {
+        console.warn('[LinkedIn-Callback] userinfo failed (non-fatal):', uiErr)
+      }
+    }
+
     // Encrypt and store
     const tokenPayload = JSON.stringify({ accessToken, expiresAt })
     const { encryptedValue, encryptionKeyId } = await encryptForStorage(tokenPayload)
@@ -206,6 +234,9 @@ export async function GET(req: NextRequest) {
       consentRecordId: consentRecord.id,
       inferredInterests: {},
       inferenceMethod: 'followed_accounts',
+      verifiedHandle: null,                    // LinkedIn OIDC has no vanity handle; future platforms will populate
+      verifiedSubject,
+      handleVerifiedAt: verifiedSubject ? new Date() : null,
     })
     console.log('[LinkedIn-Callback] connection stored — platform:', platform)
 

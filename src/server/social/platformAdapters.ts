@@ -33,6 +33,13 @@ export type SocialPostInput = {
   url?: string
   author?: string
   authorHandle?: string
+  /**
+   * Phase 4 — platform-native immutable id of the post author (e.g.
+   * a LinkedIn URN, Reddit user id, YouTube channel id). Populated
+   * by adapters that have access to it; consumed by the attribution
+   * service in socialIngestionService. Not persisted on social_posts.
+   */
+  authorSubject?: string
   authorAvatar?: string
   authorFollowers?: number
   isVerifiedAuthor?: boolean

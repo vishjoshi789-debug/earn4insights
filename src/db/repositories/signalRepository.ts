@@ -30,6 +30,7 @@ export type TriggeredBy =
   | 'feedback_submit'
   | 'social_sync'
   | 'manual'
+  | 'attributed_social_post'   // Phase 4 — social_posts.author matched to a connected user via verified_handle/verified_subject
 
 // ── Writes ────────────────────────────────────────────────────────
 

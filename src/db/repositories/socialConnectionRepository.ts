@@ -33,6 +33,13 @@ export type CreateConnectionInput = {
   consentRecordId: string
   inferredInterests?: Record<string, number>
   inferenceMethod?: 'followed_accounts' | 'public_profile_analysis'
+  // Phase 4 — populated by the OAuth callback after a successful
+  // userinfo / "me" fetch on the platform. Strictly OAuth-verified;
+  // never user-declared. NULL is the safe default — connections
+  // without these fields simply don't participate in attribution.
+  verifiedHandle?: string | null
+  verifiedSubject?: string | null
+  handleVerifiedAt?: Date | null
 }
 
 // ── Read ─────────────────────────────────────────────────────────
@@ -95,6 +102,9 @@ export async function createSocialConnection(
       inferredInterests: input.inferredInterests ?? {},
       inferenceMethod: input.inferenceMethod ?? 'followed_accounts',
       connectedAt: new Date(),
+      verifiedHandle: input.verifiedHandle ?? null,
+      verifiedSubject: input.verifiedSubject ?? null,
+      handleVerifiedAt: input.handleVerifiedAt ?? null,
     })
     .returning()
   return rows[0]

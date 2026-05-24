@@ -23,6 +23,9 @@ import {
   type SocialPostInput,
 } from './platformAdapters'
 import { insertSocialPosts, getSocialPostByExternalId } from '@/db/repositories/socialRepository'
+import { AttributionCache } from './handleAttributionService'
+import { checkConsent } from '@/lib/consent-enforcement'
+import { insertSignalSnapshot } from '@/db/repositories/signalRepository'
 
 // ============================================================================
 // INGESTION FOR A SINGLE PRODUCT
@@ -185,6 +188,56 @@ export async function ingestSocialForProduct(
     result.duplicatesSkipped += relevantPosts.length - inserted
   } catch (err) {
     result.errors.push(`DB insert: ${String(err)}`)
+  }
+
+  // ── Phase 4: attribute posts to connected users ─────────────────
+  // Entirely additive. Runs only for posts that carry an author handle
+  // or subject; if any step throws, we log and continue — the main
+  // ingestion outcome (already committed above) is never affected.
+  //
+  // Today: zero matches by design (no platform produces authorSubject
+  // yet, and only LinkedIn-OAuth has populated verified_subject — and
+  // LinkedInAdapter is still a stub). The infrastructure activates the
+  // moment either side of that intersection comes online.
+  try {
+    const cache = new AttributionCache()
+    for (const post of relevantPosts) {
+      const handle = post.authorHandle ?? null
+      const subject = post.authorSubject ?? null
+      if (!handle && !subject) continue
+
+      const userId = await cache.resolve({
+        platform: post.platform,
+        authorHandle: handle,
+        authorSubject: subject,
+      })
+      if (!userId) continue
+
+      // Privacy double-check at write-time — consent may have been
+      // revoked between OAuth connect and now. Hot path; rate of true
+      // matches is low so the per-post check is cheap in aggregate.
+      const consent = await checkConsent(userId, 'social')
+      if (!consent.allowed) continue
+
+      await insertSignalSnapshot(
+        userId,
+        'social',
+        {
+          type:           'attributed_social_post',
+          platform:       post.platform,
+          postId:         post.id,
+          externalId:     post.externalId,
+          sentimentScore: post.sentimentScore,
+          keywords:       post.keywords,
+          postedAt:       post.postedAt,
+        },
+        'attributed_social_post',
+      )
+    }
+  } catch (err) {
+    // Posts are already inserted — attribution failure is silent and
+    // never propagated to the caller. Logged for observability.
+    console.error('[social-attribution] non-fatal:', err)
   }
 
   return result
