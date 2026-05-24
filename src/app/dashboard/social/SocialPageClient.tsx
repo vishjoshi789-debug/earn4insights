@@ -81,19 +81,47 @@ export type SocialPageData = {
   isBrand: boolean
 }
 
-const PLATFORM_OPTIONS: { value: string; label: string }[] = [
-  { value: 'all', label: 'All platforms' },
-  { value: 'twitter', label: 'Twitter / X' },
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'tiktok', label: 'TikTok' },
-  { value: 'meta', label: 'Meta / Facebook' },
-  { value: 'google', label: 'Google Reviews' },
-  { value: 'amazon', label: 'Amazon Reviews' },
-  { value: 'flipkart', label: 'Flipkart Reviews' },
-  { value: 'reddit', label: 'Reddit' },
-  { value: 'youtube', label: 'YouTube' },
-  { value: 'linkedin', label: 'LinkedIn' },
+// Per-platform integration status. Drives the badge shown in the filter
+// dropdown and the explanatory card that replaces the post grid when a
+// non-working platform is selected. See docs/SOCIAL_PLATFORM_SETUP.md
+// for what each status means operationally.
+type PlatformStatus = 'working' | 'configure' | 'coming_soon'
+
+type PlatformOption = {
+  value: string
+  label: string
+  status: PlatformStatus
+  /** Shown under the badge inside the explanatory card. */
+  message?: string
+}
+
+const PLATFORM_OPTIONS: PlatformOption[] = [
+  { value: 'all',       label: 'All platforms',       status: 'working' },
+  { value: 'reddit',    label: 'Reddit',              status: 'working' },
+  { value: 'youtube',   label: 'YouTube',             status: 'working' },
+  { value: 'twitter',   label: 'Twitter / X',         status: 'configure',
+    message: 'Twitter / X is ready but needs an API key configured. Contact an admin to enable.' },
+  { value: 'google',    label: 'Google Reviews',      status: 'configure',
+    message: 'Google Reviews is ready but needs the Places API key configured. Contact an admin to enable.' },
+  { value: 'telegram',  label: 'Telegram',            status: 'configure',
+    message: "Telegram is ready but needs a bot token configured, and brands must add the bot to channels they want monitored." },
+  { value: 'instagram', label: 'Instagram',           status: 'coming_soon',
+    message: "We're working on bringing Instagram live — pending Meta App Review (estimated 4–6 weeks)." },
+  { value: 'tiktok',    label: 'TikTok',              status: 'coming_soon',
+    message: "We're working on bringing TikTok live — pending TikTok Research API approval." },
+  { value: 'meta',      label: 'Meta / Facebook',     status: 'coming_soon',
+    message: "We're working on bringing Meta / Facebook live — pending Meta App Review." },
+  { value: 'linkedin',  label: 'LinkedIn',            status: 'coming_soon',
+    message: "We're working on bringing LinkedIn listening live — pending LinkedIn Partner access." },
+  { value: 'amazon',    label: 'Amazon Reviews',      status: 'coming_soon',
+    message: "We're working on bringing Amazon Reviews live — pending scraper-provider integration." },
+  { value: 'flipkart',  label: 'Flipkart Reviews',    status: 'coming_soon',
+    message: "We're working on bringing Flipkart Reviews live — pending scraper-provider integration." },
 ]
+
+function getPlatformOption(value: string): PlatformOption | undefined {
+  return PLATFORM_OPTIONS.find((o) => o.value === value)
+}
 
 // ============================================================================
 // OVERVIEW CARDS
@@ -590,7 +618,21 @@ export default function SocialPageClient({ data }: { data: SocialPageData }) {
           </SelectTrigger>
           <SelectContent>
             {PLATFORM_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              <SelectItem key={o.value} value={o.value}>
+                <span className="inline-flex items-center gap-2">
+                  <span>{o.label}</span>
+                  {o.status === 'configure' && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                      Requires API key
+                    </Badge>
+                  )}
+                  {o.status === 'coming_soon' && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                      Coming Soon
+                    </Badge>
+                  )}
+                </span>
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -645,7 +687,40 @@ export default function SocialPageClient({ data }: { data: SocialPageData }) {
         </Card>
       )}
 
-      {data.hasProducts && posts.length === 0 && !loading && (
+      {/*
+        Honest-status card — only shown when the user has explicitly
+        selected a non-working platform. The empty state below is left
+        for the 'all' / working-platform cases where zero results
+        genuinely means "nothing yet" rather than "platform isn't live".
+      */}
+      {data.hasProducts && platformFilter !== 'all' && (() => {
+        const opt = getPlatformOption(platformFilter)
+        if (!opt || opt.status === 'working') return null
+        const isComingSoon = opt.status === 'coming_soon'
+        return (
+          <Card>
+            <CardContent className="py-10 text-center space-y-2">
+              <div className="flex justify-center">
+                <Badge variant={isComingSoon ? 'secondary' : 'outline'} className="text-xs">
+                  {isComingSoon ? 'Coming Soon' : 'Requires API key'}
+                </Badge>
+              </div>
+              <p className="text-base font-medium">{opt.label}</p>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                {opt.message ?? 'This platform is not yet active.'}
+              </p>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
+      {data.hasProducts && posts.length === 0 && !loading && (() => {
+        // Suppress the generic "No social mentions yet" empty state when
+        // the user is filtering to a non-working platform — the card
+        // above already explains why there is no data.
+        const opt = getPlatformOption(platformFilter)
+        if (opt && opt.status !== 'working') return null
+        return (
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
@@ -663,7 +738,8 @@ export default function SocialPageClient({ data }: { data: SocialPageData }) {
             )}
           </CardContent>
         </Card>
-      )}
+        )
+      })()}
 
       {/* Posts grid */}
       {posts.length > 0 && (

@@ -1170,7 +1170,28 @@ export const consumerSocialConnections = pgTable('consumer_social_connections', 
   lastSyncedAt: timestamp('last_synced_at'),
   revokedAt: timestamp('revoked_at'),          // set when user disconnects account
   // UNIQUE (userId, platform) WHERE revokedAt IS NULL — enforced in migration SQL
+
+  // Verified identity on the source platform — captured at OAuth time via
+  // the platform's userinfo endpoint, never user-declared. Used by the
+  // social-post attribution path (handleAttributionService) to map a
+  // public post's author back to a connected E4I user. Migration 020.
+  verifiedHandle: text('verified_handle'),         // human-readable username (e.g. Reddit "u/lalit"); may be NULL when the platform exposes only an opaque subject
+  verifiedSubject: text('verified_subject'),       // opaque immutable id (e.g. LinkedIn URN urn:li:person:...)
+  handleVerifiedAt: timestamp('handle_verified_at'),
 })
+
+// ────────────────────────────────────────────────────────────────────
+// Telegram bot state — single-row KV for getUpdates offset tracking.
+// Migration 020. CHECK (id = 1) at the SQL layer enforces single row.
+// ────────────────────────────────────────────────────────────────────
+export const telegramBotState = pgTable('telegram_bot_state', {
+  id: integer('id').primaryKey().default(1),
+  lastUpdateId: integer('last_update_id').notNull().default(0),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export type TelegramBotState = typeof telegramBotState.$inferSelect
+export type NewTelegramBotState = typeof telegramBotState.$inferInsert
 
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert

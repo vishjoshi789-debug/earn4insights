@@ -920,7 +920,12 @@ export default function NotificationSettingsPage() {
                   )
                 })()}
 
-                {/* Instagram — pending App Review */}
+                {/* Coming soon — additional providers, gated on each platform's OAuth/approval. */}
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground pt-2">
+                  Coming soon — connect to improve your personalization
+                </p>
+
+                {/* Instagram — pending Meta App Review */}
                 <div className="flex items-center justify-between rounded-lg border px-4 py-3 opacity-60">
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-pink-100 text-pink-600 font-bold text-sm">
@@ -928,7 +933,49 @@ export default function NotificationSettingsPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">Instagram</p>
-                      <p className="text-xs text-muted-foreground">Coming soon — pending provider approval</p>
+                      <p className="text-xs text-muted-foreground">Pending Meta App Review</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">Soon</Badge>
+                </div>
+
+                {/* YouTube — channel-linking OAuth (different from brand-side YOUTUBE_API_KEY listener) */}
+                <div className="flex items-center justify-between rounded-lg border px-4 py-3 opacity-60">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-600 font-bold text-sm">
+                      YT
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">YouTube</p>
+                      <p className="text-xs text-muted-foreground">Channel-account linking — coming soon</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">Soon</Badge>
+                </div>
+
+                {/* Twitter / X */}
+                <div className="flex items-center justify-between rounded-lg border px-4 py-3 opacity-60">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-900 font-bold text-sm">
+                      X
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Twitter / X</p>
+                      <p className="text-xs text-muted-foreground">Pending developer account approval</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">Soon</Badge>
+                </div>
+
+                {/* TikTok */}
+                <div className="flex items-center justify-between rounded-lg border px-4 py-3 opacity-60">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-100 text-cyan-700 font-bold text-sm">
+                      TT
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">TikTok</p>
+                      <p className="text-xs text-muted-foreground">Pending TikTok API approval</p>
                     </div>
                   </div>
                   <Badge variant="secondary" className="text-xs">Soon</Badge>

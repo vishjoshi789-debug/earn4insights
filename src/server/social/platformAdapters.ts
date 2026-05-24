@@ -724,6 +724,167 @@ export class MetaAdapter implements PlatformAdapter {
 }
 
 // ============================================================================
+// TELEGRAM ADAPTER  (Bot API — channels/groups the bot has been added to)
+//
+// Honest scope: Telegram's Bot API can only read messages from channels or
+// groups where the bot is a member/admin. There is NO public-channel search
+// endpoint. For broad public-channel monitoring you'd need MTProto (the
+// client protocol) — that requires phone-number auth, carries ban + ToS
+// risk, and is intentionally out of scope. See docs/SOCIAL_PLATFORM_SETUP.md.
+//
+// Operational model: brands invite our bot to their own channels/groups,
+// the bot reads new messages via getUpdates with an offset cursor stored in
+// the single-row `telegram_bot_state` table, and we filter by keyword.
+// ============================================================================
+
+type TelegramUpdate = {
+  update_id: number
+  message?: TelegramMessage
+  channel_post?: TelegramMessage
+  edited_channel_post?: TelegramMessage
+}
+
+type TelegramMessage = {
+  message_id: number
+  date: number                              // unix seconds
+  text?: string
+  caption?: string
+  views?: number
+  forward_origin?: { type: string }
+  chat: {
+    id: number
+    title?: string
+    username?: string
+    type: 'channel' | 'group' | 'supergroup' | 'private'
+  }
+  from?: { id: number; username?: string; first_name?: string }
+  sender_chat?: { id: number; title?: string; username?: string }
+}
+
+export class TelegramAdapter implements PlatformAdapter {
+  platform = 'telegram'
+
+  async fetchMentions(
+    keywords: string[],
+    productId: string,
+  ): Promise<SocialPostInput[]> {
+    const token = process.env.TELEGRAM_BOT_TOKEN
+    if (!token) return []
+    if (keywords.length === 0) return []
+
+    const posts: SocialPostInput[] = []
+
+    // Lazy DB imports — keep the adapter file edge-bundle-friendly.
+    const { db } = await import('@/db')
+    const { telegramBotState } = await import('@/db/schema')
+    const { eq } = await import('drizzle-orm')
+
+    // Read the current offset cursor. Migration 020 seeds id=1 so this row
+    // always exists; if a fresh deploy is racing the migration we fall back
+    // to offset 0 (re-reads recent updates — de-dup catches duplicates).
+    const stateRows = await db
+      .select()
+      .from(telegramBotState)
+      .where(eq(telegramBotState.id, 1))
+      .limit(1)
+    const offset = stateRows[0]?.lastUpdateId ?? 0
+
+    try {
+      const url = `https://api.telegram.org/bot${encodeURIComponent(token)}/getUpdates` +
+        `?offset=${offset + 1}` +
+        `&limit=100` +
+        `&timeout=0` +
+        `&allowed_updates=${encodeURIComponent(JSON.stringify(['channel_post', 'message']))}`
+
+      const res = await fetch(url, { next: { revalidate: 0 } })
+      if (!res.ok) {
+        console.error(`[TelegramAdapter] API ${res.status} — ${await res.text().catch(() => '')}`)
+        return posts
+      }
+
+      const data = await res.json()
+      if (!data?.ok) {
+        console.error('[TelegramAdapter] API !ok:', data?.description)
+        return posts
+      }
+
+      const updates: TelegramUpdate[] = data.result ?? []
+      if (updates.length === 0) return posts
+
+      const keywordsLower = keywords.map((k) => k.toLowerCase())
+      let maxUpdateId = offset
+
+      for (const update of updates) {
+        if (update.update_id > maxUpdateId) maxUpdateId = update.update_id
+
+        const msg = update.channel_post ?? update.edited_channel_post ?? update.message
+        if (!msg) continue
+
+        const text = (msg.text ?? msg.caption ?? '').trim()
+        if (!text) continue
+
+        // Keyword gate — relevance scoring happens in the ingestion service
+        // afterwards, but skip obvious non-matches here to save sentiment cost.
+        const textLower = text.toLowerCase()
+        if (!keywordsLower.some((k) => textLower.includes(k))) continue
+
+        const chat = msg.chat
+        const authorHandle = msg.sender_chat?.username
+          ? `@${msg.sender_chat.username}`
+          : msg.from?.username
+            ? `@${msg.from.username}`
+            : undefined
+        const author = msg.sender_chat?.title ?? msg.from?.first_name ?? chat.title ?? 'Telegram user'
+
+        // Telegram doesn't expose likes/shares — channel posts have `views`
+        // which we map to views; forwards are sometimes present.
+        const views = msg.views ?? 0
+        const linkBase = chat.username
+          ? `https://t.me/${chat.username}/${msg.message_id}`
+          : undefined
+
+        posts.push({
+          id: genId('telegram'),
+          productId,
+          platform: 'telegram',
+          postType: chat.type === 'channel' ? 'broadcast' : 'mention',
+          content: text.slice(0, 2000),
+          url: linkBase,
+          author,
+          authorHandle,
+          likes: 0,
+          shares: 0,
+          comments: 0,
+          views,
+          engagementScore: calculateEngagement(0, 0, 0, views),
+          influenceScore: 0,
+          category: classifyPost(text),
+          keywords: extractKeywords(text),
+          language: 'en',
+          source: 'api',
+          externalId: `tg_${chat.id}_${msg.message_id}`,
+          postedAt: msg.date ? new Date(msg.date * 1000) : undefined,
+        })
+      }
+
+      // Advance the cursor so we never re-fetch the same updates. Bumping
+      // even when no keyword matched is intentional — those updates are
+      // permanently discarded by getUpdates once acknowledged.
+      if (maxUpdateId > offset) {
+        await db
+          .update(telegramBotState)
+          .set({ lastUpdateId: maxUpdateId, updatedAt: new Date() })
+          .where(eq(telegramBotState.id, 1))
+      }
+    } catch (err) {
+      console.error('[TelegramAdapter] fetch error:', err)
+    }
+
+    return enrichSentiment(posts)
+  }
+}
+
+// ============================================================================
 // BRAND-SUBMITTED LINK ADAPTER
 // Brands paste a URL; we fetch the page, extract text, and create a post.
 // ============================================================================
@@ -802,6 +963,7 @@ function detectPlatformFromUrl(url: string): string {
   if (lower.includes('amazon.')) return 'amazon'
   if (lower.includes('flipkart.')) return 'flipkart'
   if (lower.includes('google.com/maps') || lower.includes('goo.gl/maps')) return 'google'
+  if (lower.includes('t.me/') || lower.includes('telegram.me/')) return 'telegram'
   return 'other'
 }
 
@@ -820,6 +982,7 @@ export const ALL_ADAPTERS: PlatformAdapter[] = [
   new YouTubeAdapter(),
   new LinkedInAdapter(),
   new MetaAdapter(),
+  new TelegramAdapter(),
 ]
 
 export function getAdapterForPlatform(platform: string): PlatformAdapter | undefined {

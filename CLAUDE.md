@@ -126,6 +126,7 @@ await pgClient.unsafe(sql)
 18. `POST /api/admin/run-migration-017` — Platform Analytics / Founder Dashboard (5 tables: `platform_metrics_daily`, `revenue_metrics_daily`, `retention_cohorts` + UNIQUE(cohort_date, role, period_type), `platform_costs` with FK SET NULL → users, `financial_snapshots_monthly` incl. `cash_balance` paise column for runway calc; all money columns in paise)
 19. `POST /api/admin/run-migration-018` — WhatsApp OTP → Twilio Verify (drops NOT NULL on `whatsapp_otp_verifications.otp_hash` + `expires_at`; Twilio Verify owns the OTP, so the table now stores verified-phone markers only — rows of `(user_id, phone_number, verified_at)`)
 20. `POST /api/admin/run-migration-019` — Two-Factor Authentication (3 tables: `user_totp_secrets` incl. `encryption_key_id`, `user_recovery_codes`, `trusted_devices`; adds `users.two_factor_enabled`; all FK CASCADE → users)
+21. `POST /api/admin/run-migration-020` — Social Listening cron expansion (single-row `telegram_bot_state` for Bot API offset tracking; adds `consumer_social_connections.verified_handle / verified_subject / handle_verified_at` plus partial indexes `idx_csc_platform_handle` / `idx_csc_platform_subject` for the Phase 4 handle-attribution lookup — only OAuth-verified handles are populated, no self-declared values)
 
 ---
 

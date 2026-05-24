@@ -26,7 +26,36 @@ import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 import { db } from '@/db'
 import { products } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { YouTubeAdapter } from '@/server/social/platformAdapters'
+import {
+  RedditAdapter,
+  YouTubeAdapter,
+  GoogleReviewsAdapter,
+  TelegramAdapter,
+  type PlatformAdapter,
+} from '@/server/social/platformAdapters'
+
+// ─────────────────────────────────────────────────────────────────────
+// Platform registry — env-gated dispatch.
+//
+// Reddit needs no key (free public JSON), so it's always on.
+// The other three are skipped silently when their env var is unset; the
+// run-log calls out which platforms were active vs. skipped so a missing
+// key is obvious without grepping. New platforms become live by adding
+// one entry here — no other callsite changes.
+// ─────────────────────────────────────────────────────────────────────
+type PollPlatformSpec = {
+  key: 'reddit' | 'youtube' | 'google' | 'telegram'
+  envOk: () => boolean
+  envVar: string | null      // null when always-on
+  make: () => PlatformAdapter
+}
+
+const POLL_PLATFORMS: PollPlatformSpec[] = [
+  { key: 'reddit',   envVar: null,                    envOk: () => true,                                make: () => new RedditAdapter() },
+  { key: 'youtube',  envVar: 'YOUTUBE_API_KEY',       envOk: () => !!process.env.YOUTUBE_API_KEY,       make: () => new YouTubeAdapter() },
+  { key: 'google',   envVar: 'GOOGLE_PLACES_API_KEY', envOk: () => !!process.env.GOOGLE_PLACES_API_KEY, make: () => new GoogleReviewsAdapter() },
+  { key: 'telegram', envVar: 'TELEGRAM_BOT_TOKEN',    envOk: () => !!process.env.TELEGRAM_BOT_TOKEN,    make: () => new TelegramAdapter() },
+]
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
@@ -36,66 +65,81 @@ export async function GET(request: NextRequest) {
   }
 
   const results = {
-    polled:   { youtube: 0, newMentions: 0 },
+    polled:   { byPlatform: {} as Record<string, number>, newMentions: 0 },
+    active:   [] as string[],
+    skipped:  [] as string[],
     notified: { processed: 0, skipped: 0 },
     errors:   [] as string[],
   }
 
-  // ── Job 1: Poll YouTube for new mentions ─────────────────────────────────
+  // ── Job 1: Poll all env-active platforms for new mentions ────────────────
+  // Platforms whose env var is unset are silently skipped (and logged) so
+  // adding a key in Vercel auto-activates the platform on the next run.
   try {
-    const youtubeAdapter = new YouTubeAdapter()
-    const activeRules = await getAllActiveRules()
-    const youtubeRules = activeRules.filter(
-      r => r.platforms.includes('youtube') || r.platforms.includes('all')
+    const active = POLL_PLATFORMS.filter((p) => p.envOk())
+    const skipped = POLL_PLATFORMS.filter((p) => !p.envOk())
+    results.active = active.map((p) => p.key)
+    results.skipped = skipped.map((p) => `${p.key} (no ${p.envVar})`)
+    console.log(
+      `[Social-Cron] Active: ${results.active.join(', ') || '(none)'}` +
+      (results.skipped.length ? ` | Skipped: ${results.skipped.join(', ')}` : ''),
     )
 
-    for (const rule of youtubeRules) {
-      if (rule.keywords.length === 0) continue
+    const activeRules = await getAllActiveRules()
 
-      try {
-        // YouTubeAdapter.fetchMentions returns SocialPostInput[] from the existing social listening system
-        // We store relevant ones into social_mentions for our notification pipeline
-        const mentions = await youtubeAdapter.fetchMentions(rule.keywords, rule.entityId)
-        results.polled.youtube++
+    for (const spec of active) {
+      const adapter = spec.make()
+      const platformRules = activeRules.filter(
+        (r) => r.platforms.includes(spec.key) || r.platforms.includes('all'),
+      )
+      results.polled.byPlatform[spec.key] = 0
 
-        for (const mention of mentions) {
-          const text = mention.content ?? mention.title ?? ''
-          if (!text || !textMatchesRule(text, rule)) continue
+      for (const rule of platformRules) {
+        if (rule.keywords.length === 0) continue
 
-          // Resolve brand owner
-          let brandId: string | undefined
-          if (rule.entityType === 'product') {
-            const rows = await db
-              .select({ ownerId: products.ownerId })
-              .from(products)
-              .where(eq(products.id, rule.entityId))
-              .limit(1)
-            brandId = rows[0]?.ownerId ?? undefined
-          } else if (rule.entityType === 'brand') {
-            brandId = rule.entityId
+        try {
+          const mentions = await adapter.fetchMentions(rule.keywords, rule.entityId)
+          results.polled.byPlatform[spec.key]++
+
+          for (const mention of mentions) {
+            const text = mention.content ?? mention.title ?? ''
+            if (!text || !textMatchesRule(text, rule)) continue
+
+            // Resolve brand owner — identical to the previous YouTube branch.
+            let brandId: string | undefined
+            if (rule.entityType === 'product') {
+              const rows = await db
+                .select({ ownerId: products.ownerId })
+                .from(products)
+                .where(eq(products.id, rule.entityId))
+                .limit(1)
+              brandId = rows[0]?.ownerId ?? undefined
+            } else if (rule.entityType === 'brand') {
+              brandId = rule.entityId
+            }
+
+            if (!brandId) continue
+
+            await createMention({
+              platform:            spec.key,
+              mentionUrl:          mention.url ?? null,
+              mentionText:         text.slice(0, 1000),
+              mentionedEntityType: rule.entityType,
+              mentionedEntityId:   rule.entityId,
+              authorHandle:        mention.author ?? null,
+              authorFollowerCount: null,
+              sentimentScore:      mention.sentimentScore != null
+                ? String(mention.sentimentScore)
+                : null,
+              relevanceScore:      null,
+              detectedAt:          new Date(),
+              processedAt:         null,
+            })
+            results.polled.newMentions++
           }
-
-          if (!brandId) continue
-
-          await createMention({
-            platform:            'youtube',
-            mentionUrl:          mention.url ?? null,
-            mentionText:         text.slice(0, 1000),
-            mentionedEntityType: rule.entityType,
-            mentionedEntityId:   rule.entityId,
-            authorHandle:        mention.author ?? null,
-            authorFollowerCount: null,
-            sentimentScore:      mention.sentimentScore != null
-              ? String(mention.sentimentScore)
-              : null,
-            relevanceScore:      null,
-            detectedAt:          new Date(),
-            processedAt:         null,
-          })
-          results.polled.newMentions++
+        } catch (ruleErr: any) {
+          results.errors.push(`${spec.key} rule ${rule.id}: ${ruleErr?.message ?? String(ruleErr)}`)
         }
-      } catch (ruleErr: any) {
-        results.errors.push(`YouTube rule ${rule.id}: ${ruleErr?.message ?? String(ruleErr)}`)
       }
     }
   } catch (pollErr: any) {
