@@ -27,7 +27,16 @@ Cached match scores. UNIQUE (icpId, consumerId). `isStale=true` triggers daily c
 
 ### `consumer_social_connections`
 Connected social accounts (Instagram, Twitter, LinkedIn, YouTube). OAuth token encrypted AES-256-GCM.
-LinkedIn implemented; Instagram pending App Review.
+LinkedIn implemented (OIDC); Instagram pending App Review.
+
+Migration 020 added three columns + two partial indexes powering Phase 4 handle attribution:
+- `verified_handle` (text, nullable) — human-readable platform username, captured at OAuth time from the platform's `userinfo` / `/me` endpoint. NULL for platforms that don't expose one (e.g. LinkedIn OIDC).
+- `verified_subject` (text, nullable) — opaque immutable id, e.g. `urn:li:person:abc123`.
+- `handle_verified_at` (timestamp, nullable) — set when either field is populated.
+- `idx_csc_platform_handle` partial index on `(platform, LOWER(verified_handle))` WHERE `verified_handle IS NOT NULL AND revoked_at IS NULL`.
+- `idx_csc_platform_subject` partial index on `(platform, verified_subject)` WHERE `verified_subject IS NOT NULL AND revoked_at IS NULL`.
+
+Strict invariant: these fields are populated **only** by OAuth callbacks, never by user input. The lookup in `handleAttributionService` uses case-insensitive exact match + `LIMIT 2` duplicate detection — refuses to attribute when more than one active row matches.
 
 ### Modified existing tables
 
@@ -548,6 +557,38 @@ Devices that skip the 2FA challenge for 30 days. Indexes:
 | `last_used_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
 | `expires_at` | TIMESTAMP NOT NULL | 30 days from creation |
 | `created_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+
+---
+
+## Migration 020 — Social Listening v2 (1 new table + 3 columns)
+
+| Object | Purpose |
+|--------|---------|
+| `telegram_bot_state` | Single-row KV holding the `last_update_id` cursor for Telegram Bot API `getUpdates`. `CHECK (id = 1)` constraint enforces a single row; the migration `INSERT … ON CONFLICT DO NOTHING` seeds it. |
+| `consumer_social_connections.verified_handle / verified_subject / handle_verified_at` | OAuth-captured identity for Phase 4 handle attribution (documented above under that table). |
+| `idx_csc_platform_handle` | Partial index — `(platform, LOWER(verified_handle))` WHERE `verified_handle IS NOT NULL AND revoked_at IS NULL`. |
+| `idx_csc_platform_subject` | Partial index — `(platform, verified_subject)` WHERE `verified_subject IS NOT NULL AND revoked_at IS NULL`. |
+
+### `telegram_bot_state`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK DEFAULT 1 CHECK (id = 1) | enforces a single row |
+| `last_update_id` | BIGINT NOT NULL DEFAULT 0 | offset cursor advanced by `TelegramAdapter` after each `getUpdates` call |
+| `updated_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+
+**Why these landed together:** Phase 4 attribution needed the verified-handle columns; Phase 1 of the same social-listening sprint added the Telegram adapter which needed offset tracking. Single migration to avoid two round-trips.
+
+---
+
+## Notes on tables that have evolved since their original migration
+
+### `whatsapp_otp_verifications` (migrations 014 → 018)
+Originally created by migration 014 with `otp_hash` + `expires_at` NOT NULL (hand-rolled bcrypt OTP). Migration 018 dropped both NOT NULL constraints because Twilio Verify now owns the OTP — generation, delivery, expiry, attempt-cap, all of it. The table now stores **verified-phone markers only**: `(user_id, phone_number, verified_at)`. The `hasVerifiedPhone(userId, phone)` gate that `/api/user/notification-settings` calls reads these markers; `whatsappOtpService` no longer generates / hashes / stores codes itself.
+
+The table is intentionally retained (not dropped) because:
+1. Existing rows still represent valid verified phones.
+2. Future channels (SMS-only / WhatsApp / both) write the same marker shape.
+3. `NEXT_PUBLIC_WHATSAPP_ENABLED=false` hides the UI but the table + verification gate are still active for any flow that re-enables it (Twilio Verify works independently).
 
 ---
 

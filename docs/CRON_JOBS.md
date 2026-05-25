@@ -1,6 +1,6 @@
 # Cron Jobs — Earn4Insights
 
-**31 total entries** in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
+**32 total entries** in `vercel.json` (post migration 019 — `cleanup-trusted-devices`). All authenticated via `Authorization: Bearer CRON_SECRET`.
 
 ## Schedule
 
@@ -19,7 +19,7 @@
 | 04:00 | `/api/cron/send-time-analysis` | Analyse optimal send times |
 | 04:30 | `/api/cron/sync-social-stats` | Validate influencer social stats (placeholder for platform API sync) |
 | 05:00 | `/api/cron/cleanup-analytics-events` | Purge old analytics events |
-| 05:30 | `/api/cron/process-social-mentions` | Poll YouTube for new mentions + notify brands on pending social_mentions |
+| 05:30 | `/api/cron/process-social-mentions` | Env-gated registry — Reddit (always on, free) + YouTube (`YOUTUBE_API_KEY`) + Google Reviews (`GOOGLE_PLACES_API_KEY`) + Telegram (`TELEGRAM_BOT_TOKEN`); polls each active adapter against `social_listening_rules`, writes matches to `social_mentions`, then notifies brands on pending rows. Logs `[Social-Cron] Active: ... | Skipped: ... (no <ENV_VAR>)`. Adding a platform = one entry in `POLL_PLATFORMS`. |
 | 06:00 | `/api/cron/process-notifications` | Process queued notifications |
 | 06:00 | `/api/cron/process-payouts` | Find released campaign_payments with no payout record → create payout; retry failed payouts (cool-down: >1h, max 3 retries) |
 | 07:00 | `/api/cron/sync-razorpay-status` | Poll Razorpay Payouts API for processing payouts (placeholder — activates when `RAZORPAYX_ENABLED=true`) |
@@ -68,3 +68,5 @@ If `CRON_SECRET` is unset, check is skipped (routes run unauthenticated). **Alwa
 - **`competitive/send-reports`** runs daily at 09:00 UTC. Finds `competitive_reports` where `email_sent=false`. Sends via Resend using `competitiveEmailService` HTML templates; sets `email_sent=true`. Returns: `{ sent, errors, duration }`.
 - **`dsar-cleanup`** runs daily at 03:00 UTC. Two passes: (1) finds `completed` DSAR requests where `expires_at < NOW()` → calls Vercel Blob `del()`, sets `status='expired'`, clears `pdf_url`; (2) finds `otp_sent` requests stale > 1h → sets `status='expired'`. Returns: `{ pdfDeleted, otpExpired, errors, duration }`.
 - **`support-ticket-reminders`** runs daily at 09:00 UTC. Two queries: (1) `open` tickets > 48h old with no public admin reply (`needs_first_response`); (2) `in_progress` tickets where last public admin reply > 24h ago — or never replied (`needs_followup`). Both queries cap at 200 rows. If combined total > 0, sends a single HTML digest email to `SUPPORT_ADMIN_EMAIL` (default `contact@earn4insights.com`); silent on zero. Returns: `{ reminded, openCount, overdueCount, durationMs }`.
+- **`process-social-mentions`** (env-gated registry, since Phase 1 of Social Listening v2). The `POLL_PLATFORMS` array in the route file defines the registry: `{ key, envOk, envVar, make }` per platform. Reddit's `envOk` is `() => true` (free, always-on); the others gate on their env var presence at runtime — **server-only env vars, so flipping them in Vercel takes effect on the next cron run with no redeploy**. Per-platform `make()` instantiates the adapter; `getAllActiveRules()` is then iterated and any rule that mentions the platform key (or `'all'`) is polled. Same `social_mentions` insert + `[Social-Cron]` log shape as before. Adding a new platform that doesn't need cron-job.org redundancy is one line. Today: Reddit + YouTube (if key) + Google Reviews (if key) + Telegram (if token).
+- **`cleanup-trusted-devices`** runs daily at 04:00 UTC. Calls `cleanupExpiredDevices()` which `DELETE`s rows from `trusted_devices` where `expires_at < NOW()`. Expired rows are also pruned lazily on read inside `isDeviceTrusted` — this cron is the sweep for devices that simply went unused for 30+ days. Returns count.

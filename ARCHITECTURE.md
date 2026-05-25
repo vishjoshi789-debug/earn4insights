@@ -1680,9 +1680,82 @@ UPSTASH_REDIS_REST_TOKEN=             # Upstash console → REST API token
 
 # ── Feature flags ──────────────────────────────────────────────
 ADMIN_DIAGNOSTICS_ENABLED=            # Set 'true' to enable /api/admin/diagnostics/* routes; bare 404 otherwise
+NEXT_PUBLIC_WHATSAPP_ENABLED=false    # 'true' re-exposes WhatsApp UI (onboarding step + settings card + alert-rules column + survey copy). NEXT_PUBLIC_ → rebuild required after flip.
 
 # ── Customer Support System ────────────────────────────────────
 SUPPORT_ADMIN_EMAIL=                  # Admin support destination (default: contact@earn4insights.com)
 CHATBOT_MODEL=                        # Chat completion model (default: gpt-4o-mini)
 CHATBOT_CLASSIFY_MODEL=               # Chat→ticket classifier model (default: gpt-4o-mini)
+
+# ── Phone OTP via Twilio Verify (migration 018) ────────────────
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_VERIFY_SERVICE_SID=            # Twilio Console → Verify → Services (starts with "VA")
+TWILIO_VERIFY_CHANNEL=sms             # 'sms' (default) | 'whatsapp' (once a WhatsApp sender is approved)
+
+# ── Social Listening v2 (Phase 1 — env-gated cron registry) ────
+YOUTUBE_API_KEY=                      # also drives sync-social-stats (influencer subscriber verification)
+GOOGLE_PLACES_API_KEY=                # Places API enabled on the Google Cloud project (separate key recommended for quota isolation)
+TELEGRAM_BOT_TOKEN=                   # @BotFather. Bot MUST be added as member/admin to channels you want monitored; Bot API has no public-channel search.
+
+# ── LinkedIn OAuth (OIDC — consumer account linking) ───────────
+LINKEDIN_CLIENT_ID=                   # server-side — token exchange in /api/consumer/social/callback
+LINKEDIN_CLIENT_SECRET=               # server-side, never client-exposed
+NEXT_PUBLIC_LINKEDIN_CLIENT_ID=       # client-side — used by getSocialOAuthUrl() in settings/page.tsx. SAME VALUE as LINKEDIN_CLIENT_ID. NEXT_PUBLIC_ → rebuild required after flip.
+SOCIAL_OAUTH_REDIRECT_URI=            # e.g. https://www.earn4insights.com/api/consumer/social/callback
 ```
+
+---
+
+## Recent Architecture Additions
+
+### Two-Factor Authentication (TOTP, migration 019)
+
+NextAuth JWT sessions are stateless, so 2FA can't be a mutable session flag. The interlock is split across `authorize()`, the JWT/session callbacks, and middleware:
+
+1. `authorize()` in `auth.config.ts` reads `users.two_factor_enabled`; if true AND the request lacks a valid `e4i-trusted-device` cookie, returns `{ ..., twoFactorPending: true }`.
+2. The `jwt` callback copies `twoFactorPending` and a per-login `loginNonce = crypto.randomUUID()` onto the token.
+3. The `session` callback exposes both as `session.requires2FA` and `session.loginNonce`.
+4. Middleware (`middleware.ts:104`) confines a `requires2FA` session to `/auth/two-factor` (plus a narrow allowlist) until it presents a valid `e4i-2fa` proof cookie — HMAC-`AUTH_SECRET` signed, bound to `loginNonce` so it cannot survive into a later login.
+
+**Critical UX:** `TwoFactorSetupWizard`'s "Done" button calls `signOut({ callbackUrl: '/login' })`. The current session was minted *before* 2FA was enabled and therefore carries no `twoFactorPending` flag; without sign-out the user would never be challenged. Same pattern GitHub uses.
+
+**Secret storage:** `user_totp_secrets` uses `encryptForStorage` / `decryptFromStorage` (versioned AES-256-GCM via `ENCRYPTION_KEY_v1`). Recovery codes are bcrypt-hashed. Trusted-device fingerprint is SHA-256 of a random cookie token. `cleanup-trusted-devices` cron prunes expired rows daily at 04:00 UTC.
+
+**Auth.config edge bundle:** the 2FA service has Node-only deps (qrcode/bcrypt/DB) — `authorize()` lazy-imports `isDeviceTrusted` so the Edge middleware bundle stays slim.
+
+### Phone OTP via Twilio Verify (migration 018)
+
+The Twilio WhatsApp Sandbox silently drops messages to numbers that haven't joined it — discovered the hard way in production. Migration 018 replaces hand-rolled bcrypt OTP with Twilio Verify, which owns code generation, delivery, expiry (~10 min), and the check-attempt cap. Delivery channel is `TWILIO_VERIFY_CHANNEL` — `sms` at launch, switch to `whatsapp` once a Twilio WhatsApp sender is approved with no code change. `whatsapp_otp_verifications` table is now verified-phone markers only (no `otp_hash` / `expires_at` NOT NULL); `hasVerifiedPhone(userId, phone)` reads it.
+
+### WhatsApp UI feature flag (`NEXT_PUBLIC_WHATSAPP_ENABLED`)
+
+Trial-account limitations don't go away by waiting, so for launch we ship email-only. Onboarding Step 5 removed (Step 4 Interests is the final step with "Final step!" label). Settings page WhatsApp card + brand alert-rules WhatsApp column + consumer survey-notifications copy are all wrapped in `{WHATSAPP_ENABLED && ...}`. `DEFAULT_NOTIFICATION_PREFS.whatsapp.enabled = false`. The flag defaults to `false` — no env var = hidden. Everything (Twilio env vars, `whatsappOtpService`, `whatsappNotifications`, migrations 014/018) is retained; flipping the flag + rebuild brings the UI back with no code change.
+
+### CSRF cookie minting via `/api/csrf/init`
+
+Next.js middleware does not reliably set the `e4i-csrf` cookie on redirect paths (observed in production on `/onboarding` and `/dashboard/settings` after auth redirects). Rather than debug Next internals, `/api/csrf/init` mints the cookie directly from a route handler — middleware is still primary, this is the safety net. Client callsites that need certainty (chat widget, OAuth redirects, mutating POSTs from redirected pages) `await fetch('/api/csrf/init')` before the first mutating request. The middleware ALSO continues to mint and refresh the cookie on every page response — both paths are safe to overlap.
+
+### LinkedIn OAuth (OIDC — consumer account linking)
+
+Settings page → "Connect" button opens `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${NEXT_PUBLIC_LINKEDIN_CLIENT_ID}&redirect_uri=...&scope=openid%20profile%20email&state=<base64>` — current OpenID Connect product, NOT the retired "Sign In with LinkedIn" which uses `r_liteprofile r_emailaddress` and triggers the "Bummer" error. The callback at `/api/consumer/social/callback`:
+
+1. CSRF-checks state ↔ session userId.
+2. Auto-grants `'social'` consent for admin role (data subject + controller for own account, idempotent via `grantConsent` `onConflictDoUpdate`), otherwise `enforceConsent`.
+3. Exchanges code for token, then fetches `/v2/userinfo` to capture `sub` (LinkedIn person URN) into `consumer_social_connections.verified_subject` — wrapped in try/catch so userinfo failure cannot break the OAuth completion.
+4. Encrypts the access token, stores the connection.
+5. Differentiated redirect reasons: `no_consent` / `token_exchange_failed` / `oauth_not_configured` / `server_error` — no more generic "server_error" hiding the real cause.
+
+`[LinkedIn-Callback]` step-by-step logs cover every branch for Vercel-side diagnosis. Both `connections` GET and `disconnect` DELETE routes are gated `role === 'consumer' || role === 'admin'`. The settings page success toast pops on `?social=connected` / `?social=already_connected` and `history.replaceState` strips the URL so a reload doesn't re-fire.
+
+### Social Listening v2 (Phases 1-4)
+
+**Phase 1 — UI honesty + env-gated cron + Telegram + migration 020.** `PLATFORM_OPTIONS` carries `status: 'working' | 'configure' | 'coming_soon'` and per-platform `message`; the filter dropdown renders badges; non-working platforms get an explanatory card instead of the misleading "no mentions yet" empty state. The `process-social-mentions` cron is now an env-gated `POLL_PLATFORMS` registry — Reddit (free, always on), YouTube, Google Reviews, Telegram. New platforms flip on by setting the env var in Vercel — server-side, no rebuild needed. `TelegramAdapter` uses Bot API `getUpdates` with offset tracked in single-row `telegram_bot_state` (Bot API only — MTProto is out of scope; documented in `docs/SOCIAL_PLATFORM_SETUP.md#future-considerations`).
+
+**Phase 2 — `docs/SOCIAL_PLATFORM_SETUP.md`.** Per-platform: status, API used, cost, approval needed, setup steps, env vars, what auto-activates. Quick status table at the top mirrors what the cron run-log reports.
+
+**Phase 3 — community trending banner.** `getTrendingKeywords({ days, category?, limit })` in `src/server/community/trendingSocialService.ts` UNNESTs `social_posts.keywords` (jsonb) via `jsonb_array_elements_text` with a 10-min in-process TTL cache keyed by `${days}|${category}`. `/api/community/trending` exposes it. `<TrendingSocialBanner>` is a client component mounted above the community feed; clicking a chip flows into the existing community search via `setQueryInput`+`setSearchQuery`. Returns `null` on empty/error so the feed below is never affected.
+
+**Phase 4 — handle attribution.** Strictly OAuth-verified — `verified_handle` and `verified_subject` columns on `consumer_social_connections` are populated **only** by OAuth callbacks (LinkedIn captures `sub` URN today; future Reddit/Twitter/YouTube OAuth will populate handles). `handleAttributionService.AttributionCache` does per-batch memoised lookup with case-insensitive exact match + `LIMIT 2` duplicate detection (refuses to attribute on data anomaly). Inline post-insert hook in `socialIngestionService.ingestSocialForProduct` resolves authors → user, re-verifies `checkConsent(userId, 'social')` at write-time, and `insertSignalSnapshot(userId, 'social', { type: 'attributed_social_post', ... }, 'attributed_social_post')`. Entire hook wrapped in try/catch — any failure logs but never affects the already-committed post insert. Today's match rate is zero by design (LinkedIn-OAuth has populated `verified_subject` but LinkedIn listening adapter is still a stub); activates the moment any user-OAuth + working listener intersection comes online, with no further code changes needed.
+
+**Existing flows preserved end-to-end:** Refresh-data path runs identical insert; `themeExtractionService`, `socialAnalyticsService`, `unifiedAnalyticsService` all read `social_posts` exactly as before. LinkedIn disconnect flips `revoked_at`; partial indexes exclude revoked rows from attribution instantly.
