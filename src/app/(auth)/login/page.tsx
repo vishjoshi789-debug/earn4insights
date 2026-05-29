@@ -26,6 +26,13 @@ function LoginForm() {
   const rawCallback = searchParams.get('callbackUrl')
   const callbackUrl = isSafeCallbackUrl(rawCallback) ? rawCallback : '/dashboard'
 
+  // `?error=no_account` is set by the auth.config signIn callback when a
+  // brand-new Google user clicks "Sign in with Google" instead of going
+  // through /signup. We render a friendly banner with a Sign-up CTA rather
+  // than silently auto-creating an account at a guessed role.
+  const errorParam = searchParams.get('error')
+  const noAccount = errorParam === 'no_account'
+
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -82,6 +89,22 @@ function LoginForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {noAccount && (
+          <Alert className="mb-4 border-amber-500/40 bg-amber-500/10">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <AlertDescription className="text-sm">
+              <span className="block font-medium">No account found with this Google email.</span>
+              <span className="mt-1 block text-muted-foreground">
+                If you&apos;re new here,{' '}
+                <Link href="/signup" className="font-medium text-primary underline-offset-4 hover:underline">
+                  sign up
+                </Link>{' '}
+                to choose your account type and create one.
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>

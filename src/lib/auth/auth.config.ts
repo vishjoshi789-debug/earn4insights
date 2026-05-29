@@ -1,11 +1,13 @@
 import NextAuth, { type DefaultSession } from "next-auth"
 import Google from "next-auth/providers/google"
 import Credentials from "next-auth/providers/credentials"
+import { cookies } from "next/headers"
 import { getUserByEmail, createUser } from "@/lib/user/userStore"
 import { verifyPassword } from "@/lib/user/password"
 import type { UserRole } from "@/lib/user/types"
 import { loginRateLimit } from "@/lib/rate-limit-upstash"
 import { ensureUserProfile } from "@/lib/auth/ensureUserProfile"
+import { SIGNUP_INTENT_COOKIE, verifySignupIntent } from "@/lib/auth/signupIntent"
 
 // Extend NextAuth types
 declare module "next-auth" {
@@ -154,52 +156,94 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   callbacks: {
-    async signIn({ user, account, profile }) {
-      // For Google OAuth, check if user exists
+    async signIn({ user, account }) {
+      // ─────────────────────────────────────────────────────────────
+      // Google OAuth branch.
+      //
+      // Decision matrix (see src/lib/auth/signupIntent.ts header):
+      //
+      //   user EXISTS                       → log them in (DB role wins,
+      //                                       intent cookie ignored — a
+      //                                       second click can't change role)
+      //   user DOES NOT EXIST + valid intent → createUser(role = intent.role)
+      //   user DOES NOT EXIST + no intent    → reject; redirect to
+      //                                       /login?error=no_account
+      //                                       (user must visit /signup to
+      //                                       set their intended role)
+      //
+      // The /signup page POSTs to /api/auth/signup-intent before calling
+      // signIn('google') so the intent cookie is present here. The /login
+      // page never sets the cookie, so login attempts by brand-new users
+      // are intentionally rejected — prevents silent account creation at a
+      // guessed role (Stripe / Auth0 pattern).
+      // ─────────────────────────────────────────────────────────────
       if (account?.provider === "google") {
         try {
           let existingUser = await getUserByEmail(user.email!)
-          
-          if (!existingUser) {
-            // Auto-create user with Google OAuth
-            console.log('[Auth] Creating new Google user:', user.email)
+
+          if (existingUser) {
+            // Existing account — sign them in at their stored role.
+            // Intent cookie (if any) is intentionally ignored so a second
+            // visit to /signup cannot change a stored role.
+            user.role = existingUser.role
+            user.id = existingUser.id
+            console.log('[Auth] Google sign-in for existing user:', user.email, 'role:', user.role)
+            // Fall through to ensureUserProfile below.
+          } else {
+            // New Google identity — only proceed if a valid intent cookie
+            // is present from the /signup flow. Use next/headers cookies()
+            // since NextAuth v5 doesn't pass the Request to signIn callbacks.
+            const cookieStore = await cookies()
+            const intentCookieRaw = cookieStore.get(SIGNUP_INTENT_COOKIE)?.value ?? null
+            const intent = await verifySignupIntent(intentCookieRaw)
+
+            if (!intent) {
+              // No valid intent → this was a Google LOGIN attempt by a
+              // user who has never signed up. Reject with a redirect
+              // string; the /login page renders the no_account banner.
+              console.log('[Auth] Google sign-in rejected — no account, no signup intent:', user.email)
+              return '/login?error=no_account'
+            }
+
+            // Valid intent → create the user at the chosen role.
+            console.log('[Auth] Creating new Google user:', user.email, 'role:', intent.role)
             try {
               existingUser = await createUser({
                 email: user.email!,
                 name: user.name || '',
-                role: 'brand', // Default to brand, can be changed later
+                role: intent.role,
                 googleId: user.id,
                 acceptedTerms: true,
                 acceptedPrivacy: true,
               })
             } catch (createError: any) {
-              // Handle duplicate key constraint violations
-              if (createError?.message?.includes('duplicate key') || 
-                  createError?.message?.includes('unique constraint')) {
-                console.log('[Auth] User already exists (duplicate key), fetching existing user')
-                // Race condition: user was created between check and insert
-                // Fetch the user that was created
+              // Race window between getUserByEmail and createUser — two
+              // tabs completing OAuth simultaneously. Re-fetch and treat
+              // as a normal existing-user sign-in.
+              if (
+                createError?.message?.includes('duplicate key') ||
+                createError?.message?.includes('unique constraint') ||
+                createError?.message?.includes('already exists')
+              ) {
+                console.log('[Auth] User already exists (race), fetching existing:', user.email)
                 existingUser = await getUserByEmail(user.email!)
               } else {
-                // Re-throw other errors
                 throw createError
               }
             }
+
+            if (!existingUser) {
+              console.error('[Auth] Failed to create or re-fetch Google user:', user.email)
+              return false
+            }
+
+            user.role = existingUser.role
+            user.id = existingUser.id
+            console.log('[Auth] Google sign-up successful:', user.email, 'role:', user.role)
           }
-          
-          // Ensure we have a valid user before proceeding
-          if (!existingUser) {
-            console.error('[Auth] Failed to get or create user for:', user.email)
-            return false // Reject sign-in
-          }
-          
-          // User exists or was just created, allow sign in
-          user.role = existingUser.role
-          user.id = existingUser.id
-          console.log('[Auth] Sign-in successful for:', user.email, 'Role:', user.role)
         } catch (error) {
           console.error('[Auth] signIn error:', error)
-          return false // Reject sign-in on unexpected errors
+          return false
         }
       }
 

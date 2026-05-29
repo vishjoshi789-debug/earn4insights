@@ -14,6 +14,7 @@ import { signUpAction } from '@/lib/actions/auth.actions'
 import { signIn } from 'next-auth/react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { Logo } from '@/components/logo'
+import { apiPost } from '@/lib/api-client'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -67,7 +68,31 @@ export default function SignupPage() {
 
   async function handleGoogleSignup() {
     setLoading(true)
-    signIn('google', { callbackUrl: '/dashboard' })
+    setError('')
+
+    // Mint the signed `e4i-signup-intent` cookie BEFORE handing off to Google.
+    // The auth.config signIn callback reads + verifies it after the OAuth
+    // round-trip and creates the user at this role. If we skipped this step,
+    // the callback would reject a brand-new Google identity with
+    // `/login?error=no_account` (intentional — see auth.config decision matrix).
+    try {
+      const res = await apiPost('/api/auth/signup-intent', { role })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data?.error ?? 'Could not prepare Google signup. Please try again.')
+        setLoading(false)
+        return
+      }
+    } catch {
+      setError('Network error. Please try again.')
+      setLoading(false)
+      return
+    }
+
+    // Redirect a brand to /dashboard, a consumer to /top-products (matches the
+    // email/password path's per-role redirect above).
+    const callbackUrl = role === 'brand' ? '/dashboard' : '/top-products'
+    signIn('google', { callbackUrl })
   }
 
   return (
