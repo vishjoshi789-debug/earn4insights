@@ -18,6 +18,7 @@ import {
   getApplicationsForInfluencer,
   getApplicationsForCampaign,
   updateApplicationStatus,
+  acceptApplicationAtomic,
   withdrawApplication as withdrawApplicationRepo,
   getApplicationCount,
   getIcpMatchScore,
@@ -180,6 +181,20 @@ export async function applyToCampaign(
 }
 
 // ── Brand respond to application ────────────────────────────────
+//
+// Accept and reject take very different code paths:
+//
+//   ACCEPT   → acceptApplicationAtomic() runs both writes in one tx:
+//              flip campaign_applications.status + insert/reconcile
+//              the campaign_influencers membership row. Until this
+//              fix shipped, the missing membership row silently broke
+//              payment release, dispute, reviews, and influencer
+//              "My Campaigns" — see audit Pass 2 C1 / Pass 3 I-C1.
+//
+//   REJECT   → single-row UPDATE; no membership writes needed.
+//
+// Both paths emit their notification events POST-commit so a Pusher
+// outage cannot leave the DB in a half-applied state.
 
 export async function respondToApplication(
   brandId: string,
@@ -187,6 +202,48 @@ export async function respondToApplication(
   status: 'accepted' | 'rejected',
   response: string | null
 ) {
+  if (status === 'accepted') {
+    // Atomic accept — throws on validation / ownership failure.
+    // Translate thrown messages to the same shape the old call returned
+    // so the API route's existing error-mapping continues to work.
+    let result
+    try {
+      result = await acceptApplicationAtomic(applicationId, response, brandId)
+    } catch (err: any) {
+      const msg = err?.message ?? 'Failed to accept application'
+      throw new Error(msg)
+    }
+
+    const app = result.application
+    const campaign = await getCampaignById(app.campaignId)
+
+    // Notify the influencer that their application was accepted.
+    // Skip on idempotent replay — we already notified the first time.
+    if (!result.alreadyAccepted) {
+      emit(PLATFORM_EVENTS.BRAND_APPLICATION_ACCEPTED, {
+        influencerId: app.influencerId,
+        campaignId: app.campaignId,
+        campaignTitle: campaign?.title ?? 'a campaign',
+        brandId,
+        brandName: undefined, // resolved in eventBus if needed
+      }).catch(() => {})
+
+      // Notify the brand that the campaign now has a confirmed influencer
+      // member — mirrors what fires in the manual-invite flow when the
+      // influencer accepts. Useful when the brand has multiple admins or
+      // when the accepting brand wants the activity-feed entry recorded.
+      emit(PLATFORM_EVENTS.INFLUENCER_CAMPAIGN_ACCEPTED, {
+        brandId,
+        campaignId: app.campaignId,
+        campaignTitle: campaign?.title ?? 'your campaign',
+        influencerId: app.influencerId,
+      }).catch(() => {})
+    }
+
+    return app
+  }
+
+  // ── Reject path ───────────────────────────────────────────────
   const result = await updateApplicationStatus(applicationId, status, response, brandId)
   if (result.error) throw new Error(result.error)
   if (!result.application) throw new Error('Failed to update application')
@@ -194,23 +251,13 @@ export async function respondToApplication(
   const app = result.application
   const campaign = await getCampaignById(app.campaignId)
 
-  if (status === 'accepted') {
-    emit(PLATFORM_EVENTS.BRAND_APPLICATION_ACCEPTED, {
-      influencerId: app.influencerId,
-      campaignId: app.campaignId,
-      campaignTitle: campaign?.title ?? 'a campaign',
-      brandId,
-      brandName: undefined, // Will be resolved in eventBus if needed
-    }).catch(() => {})
-  } else {
-    emit(PLATFORM_EVENTS.BRAND_APPLICATION_REJECTED, {
-      influencerId: app.influencerId,
-      campaignId: app.campaignId,
-      campaignTitle: campaign?.title ?? 'a campaign',
-      brandId,
-      brandResponse: response,
-    }).catch(() => {})
-  }
+  emit(PLATFORM_EVENTS.BRAND_APPLICATION_REJECTED, {
+    influencerId: app.influencerId,
+    campaignId: app.campaignId,
+    campaignTitle: campaign?.title ?? 'a campaign',
+    brandId,
+    brandResponse: response,
+  }).catch(() => {})
 
   return result.application
 }
