@@ -201,6 +201,34 @@ These came up DURING Phase 1 execution. Real findings, not blocking Phase 1, nee
 
 ---
 
+## End-of-Phase-6 — one-shot tasks (do BEFORE doc sync)
+
+### Preserve the 6 audit pass reports into the repo
+
+**Context:** The 6 audit pass reports were produced across TWO Claude sessions:
+
+| Pass | Topic | Where it lives |
+|---|---|---|
+| 1 | Security | Original web-Claude session (not in this VS Code session's context) |
+| 2 | Business Logic | Original web-Claude session (not in this VS Code session's context) |
+| 3 | Stakeholder Workflows | Original web-Claude session (not in this VS Code session's context) |
+| 4 | Objectives | Original web-Claude session (not in this VS Code session's context) |
+| 5 | UI/UX | Written in this VS Code session (in chat history) |
+| 6 | Data Integrity + Performance | Written in this VS Code session (in chat history) |
+
+User confirmed (2026-05-30) that the original session ended before Phase 1 began, so Passes 1–4 are NOT recoverable from this session's chat history. They live only in the web Claude session history.
+
+**Plan at end of Phase 6:**
+1. User pastes Passes 1–4 reports verbatim from the web Claude session
+2. Claude saves all 6 into `docs/PRELAUNCH_AUDIT_REPORTS.md` (or split per pass — TBD at the time) without modification or "improvement"
+3. This becomes the permanent reference for future Claude sessions that don't have either chat history
+
+**Why deferred:** Saving partial (Passes 5+6 only) would create a misleading reference. Saving all 6 in one pass at the end is honest and complete.
+
+**Risk if forgotten:** Future Claude sessions working on related code would have no access to the original audit findings — they'd have to re-derive context from the fix log alone, which is summarised not verbatim.
+
+---
+
 ## Docs to sync when Phase 6 ships
 
 One consolidated update pass at the end. Per-doc checklist:
