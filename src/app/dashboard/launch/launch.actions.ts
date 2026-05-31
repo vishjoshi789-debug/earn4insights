@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { fromZonedTime } from 'date-fns-tz'
 import { Product } from '@/lib/types/product'
 import { initializeProductData } from '@/lib/product/initProduct'
 import { createProduct } from '@/db/repositories/productRepository'
@@ -8,6 +9,18 @@ import { triggerProductLaunchNotifications } from '@/lib/personalization/smartDi
 import { notifyWatchersOnLaunch } from '@/server/watchlistService'
 import { auth } from '@/lib/auth/auth.config'
 import { sendProductLaunchedEmail } from '@/server/productNotifications'
+
+// Returns true when `tz` is a real IANA zone the runtime can use.
+// Invalid zones make Intl.DateTimeFormat throw RangeError.
+function isValidIanaTimezone(tz: string): boolean {
+  if (!tz) return false
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date())
+    return true
+  } catch {
+    return false
+  }
+}
 
 export async function launchProduct(formData: FormData) {
   // Auth guard — must be a logged-in brand. Without a session we can't
@@ -34,19 +47,46 @@ export async function launchProduct(formData: FormData) {
   const description = formData.get('description') as string
   const launchType = (formData.get('launchType') as string) || 'instant'
   const scheduledAtRaw = formData.get('scheduledAt') as string | null
+  const scheduledAtTzRaw = (formData.get('scheduledAtTz') as string | null)?.trim() ?? ''
 
-  // Parse and validate the scheduled time before we touch the DB. The form
-  // value comes from <input type="datetime-local"> — a naive ISO string with
-  // no zone, interpreted as local. We require strictly future, with a small
-  // 30s skew so a fast-clicking brand whose clock is a hair ahead doesn't
-  // get rejected.
+  // Parse and validate the scheduled time before we touch the DB.
+  //
+  // The form value is a naive yyyy-MM-ddTHH:mm string from
+  // <input type="datetime-local"> — no zone info. The brand picks
+  // "May 31, 09:00" in their head meaning their wall-clock; we must
+  // interpret it in their IANA timezone, NOT the server's (which is
+  // UTC on Vercel, so the old new Date(naiveStr) was 5h30 off for IST).
+  //
+  // scheduledAtTz comes from a hidden field captured at form-mount via
+  // Intl.DateTimeFormat().resolvedOptions().timeZone. fromZonedTime
+  // (date-fns-tz) handles DST and other edges correctly.
+  //
+  // Fallback: if scheduledAtTz is missing/invalid (rare — JS off,
+  // stale cached page), interpret as UTC and log a [LaunchTZ] warning
+  // so we can see how often the fallback fires.
+  //
+  // Audit ref: Pass 2 C2 / A5.
   let scheduledAt: Date | null = null
+  let resolvedTz: string = ''
   let launchStatus: 'live' | 'scheduled' = 'live'
   if (launchType === 'scheduled') {
     if (!scheduledAtRaw) {
       throw new Error('Scheduled launch requires a date and time')
     }
-    const parsed = new Date(scheduledAtRaw)
+
+    let parsed: Date
+    if (scheduledAtTzRaw && isValidIanaTimezone(scheduledAtTzRaw)) {
+      // Happy path — interpret the wall-clock string in the brand's TZ.
+      parsed = fromZonedTime(scheduledAtRaw, scheduledAtTzRaw)
+      resolvedTz = scheduledAtTzRaw
+      console.log(`[LaunchTZ] tz=${scheduledAtTzRaw} local=${scheduledAtRaw} utc=${parsed.toISOString()}`)
+    } else {
+      // Fallback — server-local (UTC on Vercel) interpretation.
+      parsed = new Date(scheduledAtRaw)
+      resolvedTz = 'UTC'
+      console.warn(`[LaunchTZ] no/invalid tz="${scheduledAtTzRaw}" — falling back to UTC interpretation of local="${scheduledAtRaw}"`)
+    }
+
     if (isNaN(parsed.getTime())) {
       throw new Error('Invalid scheduled launch date')
     }
@@ -97,8 +137,15 @@ export async function launchProduct(formData: FormData) {
   // SCHEDULED branch — do NOT send launch notifications, email, or watcher
   // pings yet. The publish-scheduled-launches cron fires those once
   // scheduledLaunchAt arrives so the product is actually visible.
-  if (launchStatus === 'scheduled') {
-    redirect('/dashboard/launch?scheduled=1')
+  //
+  // Pass `at` (utc iso) + `tz` (iana) in the query string so the success
+  // banner can format the resolved time back into the brand's wall-clock
+  // ("Scheduled to launch at May 31, 9:00 AM IST") — removes any doubt
+  // that the conversion happened correctly. Stripe/Calendly pattern.
+  if (launchStatus === 'scheduled' && scheduledAt) {
+    const at = encodeURIComponent(scheduledAt.toISOString())
+    const tz = encodeURIComponent(resolvedTz)
+    redirect(`/dashboard/launch?scheduled=1&at=${at}&tz=${tz}`)
   }
 
   // INSTANT branch — original behaviour: brand confirmation + smart

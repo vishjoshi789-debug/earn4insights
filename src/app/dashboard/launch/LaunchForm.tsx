@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { launchProduct } from './launch.actions'
 
@@ -13,10 +13,27 @@ function nowPlusOneHourLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// Best-effort IANA timezone detection. Modern browsers in Node 18+
+// always return a real zone (e.g. "Asia/Kolkata"). The empty-string
+// fallback triggers the server's UTC fallback path with a logged
+// warning (see launch.actions.ts).
+function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''
+  } catch {
+    return ''
+  }
+}
+
 export default function LaunchForm() {
   const [launchType, setLaunchType] = useState<'instant' | 'scheduled'>('instant')
   const minScheduled = useMemo(() => nowPlusOneHourLocal(), [])
   const [scheduledAt, setScheduledAt] = useState(minScheduled)
+  // Captured on mount, sent as a hidden form field. We avoid useMemo
+  // for this so SSR renders an empty string (matches client first paint
+  // for hydration), then the effect populates it after mount.
+  const [tz, setTz] = useState('')
+  useEffect(() => { setTz(detectTimezone()) }, [])
 
   return (
     <form action={launchProduct} className="space-y-8">
@@ -141,8 +158,17 @@ export default function LaunchForm() {
               onChange={(e) => setScheduledAt(e.target.value)}
               className="w-full border rounded-md px-3 py-2 bg-background text-foreground"
             />
+            {/* Captured-once-on-mount IANA timezone. Server uses this to
+                interpret the naive datetime-local string in the brand's
+                wall-clock and convert correctly to UTC. Empty value falls
+                back server-side to UTC interpretation (logged warning).
+                Audit ref: A5 / Pass 2 C2. */}
+            <input type="hidden" name="scheduledAtTz" value={tz} />
             <p className="text-xs text-muted-foreground">
-              Uses your device&apos;s timezone. Earliest pickup is the next cron run after this time.
+              {tz
+                ? <>Interpreted in <span className="font-semibold text-foreground">{tz}</span> (your device timezone). Cron pickup runs every 15 minutes after the chosen time.</>
+                : <>Timezone detection unavailable — time will be interpreted as UTC. Cron pickup runs every 15 minutes after the chosen time.</>
+              }
             </p>
           </div>
         )}
