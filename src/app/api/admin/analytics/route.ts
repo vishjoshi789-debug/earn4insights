@@ -2,26 +2,57 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { analyticsEvents, users, userProfiles } from '@/db/schema'
 import { desc, sql, eq, gte, and, count, inArray } from 'drizzle-orm'
+import { authenticateAdmin, unauthorizedResponse } from '@/lib/auth'
 
-const ADMIN_SECRET = process.env.ANALYTICS_ADMIN_SECRET || process.env.ADMIN_API_KEY
-
+/**
+ * Local auth gate — composes the shared authenticateAdmin() helper with a
+ * legacy ANALYTICS_ADMIN_SECRET fallback so deployments that historically
+ * used an analytics-specific secret don't break.
+ *
+ * Both paths are HEADER-ONLY. The previous `?key=<secret>` query-string
+ * fallback was REMOVED (Phase 2 audit fix A11) because secrets in URLs
+ * leak to Vercel access logs, browser history, referrer headers, and
+ * CDN edge logs. Auto-refresh on the /admin/analytics page meant the key
+ * was logged every 10 seconds per active admin session.
+ *
+ * Migration note: clients must send the key via either
+ *   - Authorization: Bearer <key>          (preferred, matches helper)
+ *   - x-admin-api-key: <key>               (alternative)
+ */
 function checkAuth(request: NextRequest): boolean {
-  if (!ADMIN_SECRET) return false
-  const key = request.headers.get('x-admin-key')
-    || request.nextUrl.searchParams.get('key')
-  return key === ADMIN_SECRET
+  // Primary path — shared admin auth against ADMIN_API_KEY.
+  if (authenticateAdmin(request)) return true
+
+  // Legacy fallback — pre-consolidation deployments using ANALYTICS_ADMIN_SECRET.
+  // Accepts the same header names as authenticateAdmin so the migration is
+  // transparent: same client code, just compared against a different env var.
+  const legacy = process.env.ANALYTICS_ADMIN_SECRET
+  if (legacy) {
+    const authHeader = request.headers.get('Authorization')
+    if (authHeader === `Bearer ${legacy}`) return true
+    const headerKey = request.headers.get('x-admin-api-key')
+    if (headerKey === legacy) return true
+  }
+
+  return false
 }
 
 /**
  * GET /api/admin/analytics
  * Admin-only deep analytics data endpoint.
- * ?key=<secret> for auth
- * ?view=overview|live|visitors|pages|devices|geo|events
- * ?hours=24 (time window)
+ *
+ * Auth (HEADER ONLY — no query-string secrets):
+ *   - Authorization: Bearer <ADMIN_API_KEY>    (preferred)
+ *   - x-admin-api-key: <ADMIN_API_KEY>         (alternative)
+ *
+ * URL params (non-secret):
+ *   ?view=overview|live|visitors|pages|devices|geo|events|timeline|visitor
+ *   ?hours=24 (time window)
+ *   ?visitorId=... &userId=... &limit=... (visitor view)
  */
 export async function GET(request: NextRequest) {
   if (!checkAuth(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return unauthorizedResponse()
   }
 
   const view = request.nextUrl.searchParams.get('view') || 'overview'

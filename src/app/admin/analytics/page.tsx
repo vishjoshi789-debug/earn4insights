@@ -32,7 +32,13 @@ export default function AdminAnalyticsPage() {
   const fetchData = useCallback(async (key: string, v?: ViewType) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/analytics?view=${v || view}&hours=${hours}&key=${encodeURIComponent(key)}`)
+      // Admin key sent as HEADER, never URL — secrets in query strings leak
+      // to Vercel access logs, browser history, referrer headers, CDN edge
+      // logs. Auto-refresh would have logged the key every 10 seconds.
+      const res = await fetch(
+        `/api/admin/analytics?view=${v || view}&hours=${hours}`,
+        { headers: { 'x-admin-api-key': key } },
+      )
       const json = await res.json()
       if (res.ok) {
         setData(json)
@@ -53,9 +59,13 @@ export default function AdminAnalyticsPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setAuthError('')
-    // Verify the key actually works before granting access
+    // Verify the key actually works before granting access.
+    // Header-only (see fetchData comment).
     try {
-      const res = await fetch(`/api/admin/analytics?view=overview&hours=24&key=${encodeURIComponent(inputKey)}`)
+      const res = await fetch(
+        `/api/admin/analytics?view=overview&hours=24`,
+        { headers: { 'x-admin-api-key': inputKey } },
+      )
       if (res.ok) {
         setAdminKey(inputKey)
         sessionStorage.setItem('e4i_admin_key', inputKey)
@@ -298,7 +308,8 @@ function VisitorsView({
     setFullHistoryEvents(null)
     try {
       const res = await fetch(
-        `/api/admin/analytics?view=visitor&hours=${hours}&key=${encodeURIComponent(adminKey)}&visitorId=${encodeURIComponent(visitorId)}`
+        `/api/admin/analytics?view=visitor&hours=${hours}&visitorId=${encodeURIComponent(visitorId)}`,
+        { headers: { 'x-admin-api-key': adminKey } },
       )
       const json = await res.json()
       if (res.ok) setDetail(json)
@@ -313,7 +324,8 @@ function VisitorsView({
     setFullHistoryLoading(true)
     try {
       const res = await fetch(
-        `/api/admin/analytics?view=visitor&hours=8760&key=${encodeURIComponent(adminKey)}&visitorId=${encodeURIComponent(visitorId)}&limit=500`
+        `/api/admin/analytics?view=visitor&hours=8760&visitorId=${encodeURIComponent(visitorId)}&limit=500`,
+        { headers: { 'x-admin-api-key': adminKey } },
       )
       const json = await res.json()
       if (res.ok) setFullHistoryEvents(json.events || [])
