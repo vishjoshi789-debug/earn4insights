@@ -10,6 +10,8 @@ import { userProfiles, products, feedback, userPoints } from '@/db/schema';
 import { eq, sql, count, and } from 'drizzle-orm';
 import { getPersonalizedRecommendations } from '@/server/personalizationEngine';
 import { RecommendationCard } from '@/components/recommendation-card';
+import { BrandOnboardingBanner } from '@/components/BrandOnboardingBanner';
+import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepository';
 import { Sparkles, ArrowRight, MessageSquare, TrendingUp, BarChart3, ExternalLink, Award, PenSquare, Trophy, ClipboardList } from 'lucide-react';
 
 // Quick feedback totals for the dashboard (brand view — all feedback)
@@ -81,9 +83,13 @@ export default async function DashboardPage() {
 // ── Brand Dashboard ──────────────────────────────────────────────
 
 async function BrandDashboard({ userId }: { userId?: string }) {
-  const [feedbackStats, recommendations] = await Promise.all([
+  const [feedbackStats, recommendations, brandOnboardingDone] = await Promise.all([
     getDashboardFeedbackStats(),
     userId ? getPersonalizedRecommendations(userId, 3).catch(() => []) : Promise.resolve([]),
+    // Banner gating: shown when brand has NOT yet completed the wizard.
+    // OnboardingGuard force-redirects new brands; existing brands fall
+    // through to here and see the banner.
+    userId ? hasCompletedBrandOnboarding(userId).catch(() => true) : Promise.resolve(true),
   ]);
 
   let topRecommendations: Array<{
@@ -115,6 +121,10 @@ async function BrandDashboard({ userId }: { userId?: string }) {
           Overview of your products, feedback, and community activity.
         </p>
       </div>
+
+      {/* Soft-prompt to complete brand onboarding (existing brands).
+          New brands are force-redirected by OnboardingGuard. */}
+      <BrandOnboardingBanner show={!brandOnboardingDone} />
 
       {topRecommendations.length > 0 && (
         <section className="bg-slate-900 rounded-lg p-6 border border-slate-700">

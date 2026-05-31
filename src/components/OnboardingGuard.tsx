@@ -1,53 +1,75 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth/auth.config'
 import { ensureUserProfile, hasCompletedOnboarding } from '@/lib/auth/ensureUserProfile'
+import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepository'
 
 /**
  * Wrapper component that ensures user has a profile and has completed onboarding.
- * 
- * Usage: Wrap this around pages that require onboarding to be complete.
- * 
+ *
+ * Role behaviour:
+ *   - consumer → must complete consumer onboarding (user_profiles.onboardingComplete)
+ *   - brand    → must complete brand onboarding (brand_profiles.onboarding_completed)
+ *   - admin    → no onboarding required
+ *
+ * If onboarding isn't complete, redirects to /onboarding (which itself
+ * routes the user to the correct wizard based on role).
+ *
  * @param skipOnboarding - If true, creates profile but doesn't check onboarding status
  * @param children - Child components to render
  */
-export async function OnboardingGuard({ 
+export async function OnboardingGuard({
   children,
   skipOnboarding = false
-}: { 
+}: {
   children: React.ReactNode
   skipOnboarding?: boolean
 }) {
   const session = await auth()
-  
+
   if (!session?.user?.id || !session?.user?.email) {
     redirect('/api/auth/signin')
   }
-  
-  // Ensure user profile exists (create if needed)
-  const profile = await ensureUserProfile(session.user.id, session.user.email)
-  
-  // Brands and admins don't need consumer onboarding — skip entirely
-  const skipForRole = session.user.role === 'brand' || (session.user.role as string) === 'admin'
 
-  // Check if onboarding is complete (unless skipped or brand/admin user)
-  // Use the profile directly rather than re-fetching by userId,
-  // because the profile.id may differ from session.user.id
-  // (e.g. profile was created under a different auth provider)
-  if (!skipOnboarding && !skipForRole) {
+  const role = session.user.role as string
+  const userId = session.user.id
+
+  // Admin — no onboarding gate.
+  if (role === 'admin') {
+    return <>{children}</>
+  }
+
+  // Brand path — gate on brand_profiles.onboarding_completed.
+  // We don't call ensureUserProfile here because brand_profiles is
+  // a separate table; ensureUserProfile is consumer-flavoured (it
+  // creates user_profiles rows with consumer-shaped JSONB).
+  if (role === 'brand') {
+    if (skipOnboarding) return <>{children}</>
+    const done = await hasCompletedBrandOnboarding(userId)
+    console.log(
+      `[OnboardingGuard] email=${session.user.email} role=brand done=${done} ` +
+      `result=${done ? 'passed' : 'REDIRECT'}`,
+    )
+    if (!done) redirect('/onboarding')
+    return <>{children}</>
+  }
+
+  // Consumer path — original behaviour.
+  // Ensure user profile exists (create if needed).
+  const profile = await ensureUserProfile(userId, session.user.email)
+
+  if (!skipOnboarding) {
     const onboardingComplete = await hasCompletedOnboarding(profile.id)
 
-    // Diagnostic logging — helps confirm whether the redirect loop is
-    // caused by the flag being false in DB vs. some other issue.
-    // Grep Vercel logs for "[OnboardingGuard]" to trace specific accounts.
+    // Diagnostic — grep Vercel logs for "[OnboardingGuard]" to trace.
     console.log(
       `[OnboardingGuard] email=${session.user.email} ` +
-      `role=${session.user.role} ` +
+      `role=${role} ` +
       `profileId=${profile.id} ` +
-      `sessionId=${session.user.id} ` +
+      `sessionId=${userId} ` +
       `flag=${profile.onboardingComplete} ` +
       `hasDemo=${!!profile.demographics} ` +
       `hasInterests=${!!profile.interests} ` +
-      `result=${onboardingComplete ? 'passed' : 'REDIRECT'}`
+      `result=${onboardingComplete ? 'passed' : 'REDIRECT'}`,
     )
 
     if (!onboardingComplete) {
