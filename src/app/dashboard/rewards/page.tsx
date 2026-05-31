@@ -51,9 +51,13 @@ type RedemptionType = 'platform_credits' | 'voucher' | 'cash_payout'
 // ── Constants ──────────────────────────────────────────────────────
 
 const POINTS_TO_INR = 0.10   // ₹0.10 per point (10 pts = ₹1, matches API POINTS_PER_INR = 10)
+// Minimum points to redeem ANY reward type. Matches the server's
+// MINIMUM_REDEMPTION_POINTS in /api/consumer/rewards/redeem/route.ts.
+// Per-type tiered minimums (100/200/500) caused a UX bug where the
+// UI accepted amounts the server rejected — see Pass 3 C-C2.
 const MINS: Record<RedemptionType, number> = {
-  platform_credits: 100,
-  voucher: 200,
+  platform_credits: 500,
+  voucher: 500,
   cash_payout: 500,
 }
 
