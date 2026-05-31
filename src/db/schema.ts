@@ -2559,3 +2559,64 @@ export type UserRecoveryCode = typeof userRecoveryCodes.$inferSelect
 export type NewUserRecoveryCode = typeof userRecoveryCodes.$inferInsert
 export type TrustedDevice = typeof trustedDevices.$inferSelect
 export type NewTrustedDevice = typeof trustedDevices.$inferInsert
+
+// ════════════════════════════════════════════════════════════════
+// SECTION: BRAND ONBOARDING (migration 021)
+// ════════════════════════════════════════════════════════════════
+//
+// Captures the company-level fields a brand fills during onboarding —
+// kept in a separate table (not user_profiles) so consumer profile
+// schema evolution doesn't churn brand data and vice versa.
+//
+// Lifecycle:
+//   - Row created on first save during the wizard (partial OK; columns
+//     are nullable except company_name + industry which the wizard
+//     blocks progression on).
+//   - onboarding_completed flips to true on the final wizard step.
+//   - OnboardingGuard checks this flag for brand sessions; redirects
+//     to /onboarding if false.
+
+export const brandProfiles = pgTable('brand_profiles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull().unique(),     // → users.id CASCADE (constraint in migration)
+
+  // ── Company basics (step 2) ─────────────────────────────────────
+  companyName: text('company_name').notNull(),
+  industry: text('industry').notNull(),           // dropdown enum, see brand-onboarding validation
+  companySize: text('company_size'),              // '1-10' | '11-50' | '51-200' | '200+'
+  website: text('website'),
+  description: text('description'),               // brand story, max 500 chars (validated)
+
+  // ── Primary contact (step 3) ────────────────────────────────────
+  primaryContactName: text('primary_contact_name'),
+  primaryContactRole: text('primary_contact_role'),
+  primaryContactPhone: text('primary_contact_phone'),
+
+  // ── Billing (step 4, all optional / skippable) ──────────────────
+  billingEntity: text('billing_entity'),          // legal name for invoice
+  billingAddress: jsonb('billing_address').$type<{
+    street?: string
+    city?: string
+    state?: string
+    postalCode?: string
+    country?: string
+  } | null>(),
+  billingGstin: text('billing_gstin'),            // optional, GSTIN format validated when provided
+
+  // ── Brand assets + targeting (step 5) ───────────────────────────
+  brandLogoUrl: text('brand_logo_url'),           // @vercel/blob URL, optional
+  targetAudience: jsonb('target_audience').$type<{
+    categories?: string[]                          // e.g. ['Electronics', 'Fashion']
+    regions?: string[]                             // ['India', 'Global', etc.]
+  } | null>(),
+
+  // ── Lifecycle ───────────────────────────────────────────────────
+  onboardingCompleted: boolean('onboarding_completed').notNull().default(false),
+  onboardingCompletedAt: timestamp('onboarding_completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export type BrandProfile = typeof brandProfiles.$inferSelect
+export type NewBrandProfile = typeof brandProfiles.$inferInsert
+
