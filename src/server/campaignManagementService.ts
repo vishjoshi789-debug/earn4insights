@@ -39,6 +39,8 @@ import {
   getTotalEscrowedForCampaign,
 } from '@/db/repositories/campaignPaymentRepository'
 import { getProfileByUserId } from '@/db/repositories/influencerProfileRepository'
+import { db } from '@/db'
+import { auditLog } from '@/db/schema'
 import type { InfluencerCampaign, NewInfluencerCampaign } from '@/db/schema'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -145,10 +147,33 @@ export { getCampaignsByBrand, getCampaignsByInfluencer }
 
 // ── Status transitions ───────────────────────────────────────────
 
+/**
+ * Required fields a campaign must populate before it can leave the
+ * 'draft' state. The wizard / detail UI mirrors this list so brands
+ * see "complete these to publish: title, budget, brief" inline before
+ * the click. Stripe pattern — fail fast, list what's missing.
+ *
+ * Q4 (3C plan): minimum viable — title + budget + brief.
+ */
+function getMissingPublishFields(campaign: InfluencerCampaign): string[] {
+  const missing: string[] = []
+  if (!campaign.title || campaign.title.trim() === '') missing.push('title')
+  if (!campaign.budgetTotal || campaign.budgetTotal <= 0) missing.push('budget')
+  if (!campaign.brief || campaign.brief.trim() === '') missing.push('brief')
+  return missing
+}
+
+/**
+ * Validate + perform a status transition, then write an audit_log row.
+ * cancelReason is passed through to the audit metadata when present
+ * (cancellations are the highest-stakes transition — influencers may
+ * be mid-work, milestones may be escrowed).
+ */
 export async function transitionCampaignStatus(
   campaignId: string,
   newStatus: string,
-  brandId: string
+  brandId: string,
+  opts: { cancelReason?: string } = {},
 ): Promise<InfluencerCampaign> {
   const campaign = await getCampaignById(campaignId)
   if (!campaign) throw new Error(`Campaign not found: ${campaignId}`)
@@ -159,7 +184,59 @@ export async function transitionCampaignStatus(
     throw new Error(`Cannot transition from "${campaign.status}" to "${newStatus}"`)
   }
 
-  return updateCampaignStatus(campaignId, newStatus)
+  // Pre-publish required-field validation. Fires on draft → proposed
+  // (the actual "publish" moment that makes the campaign visible in
+  // the marketplace). Subsequent transitions (negotiating → active
+  // etc.) don't re-validate — by the time the campaign is past draft,
+  // the brand has had ample chance to fill in details.
+  if (campaign.status === 'draft' && newStatus === 'proposed') {
+    const missing = getMissingPublishFields(campaign)
+    if (missing.length > 0) {
+      throw new Error(`Complete these fields to publish: ${missing.join(', ')}`)
+    }
+  }
+
+  const updated = await updateCampaignStatus(campaignId, newStatus)
+
+  // Audit log — every transition. Captures who, when, what state move,
+  // and any reason metadata. Useful for investigating cancellations
+  // (when payments are involved) and for compliance trails.
+  await db.insert(auditLog).values({
+    userId: brandId,
+    action: 'campaign_status_transition',
+    dataType: 'influencer_campaign',
+    accessedBy: brandId,
+    metadata: {
+      campaignId,
+      fromStatus: campaign.status,
+      toStatus: newStatus,
+      cancelReason: opts.cancelReason ?? null,
+      campaignTitle: campaign.title,
+      budgetTotal: campaign.budgetTotal,
+    },
+    reason:
+      newStatus === 'cancelled' && opts.cancelReason
+        ? `Cancelled: ${opts.cancelReason.slice(0, 200)}`
+        : `Status moved ${campaign.status} → ${newStatus}`,
+  })
+
+  return updated
+}
+
+/**
+ * Helper exposed for the campaign detail page client component so the
+ * UI can preview what's missing BEFORE the user clicks Publish — same
+ * source of truth as the server validation above.
+ */
+export async function getCampaignPublishability(
+  campaignId: string,
+  brandId: string,
+): Promise<{ ready: boolean; missing: string[] }> {
+  const campaign = await getCampaignById(campaignId)
+  if (!campaign) throw new Error(`Campaign not found: ${campaignId}`)
+  if (campaign.brandId !== brandId) throw new Error('Not authorized to view this campaign')
+  const missing = getMissingPublishFields(campaign)
+  return { ready: missing.length === 0, missing }
 }
 
 export async function updateCampaignDetails(

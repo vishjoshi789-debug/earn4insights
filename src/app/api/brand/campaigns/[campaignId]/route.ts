@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import {
   getCampaignSummary,
   updateCampaignDetails,
@@ -50,6 +51,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
+  // CSRF gate — PATCH is state-mutating and reaches the status state
+  // machine + payment-relevant transitions. Pre-fix this route had no
+  // CSRF check, an oversight that A11's analytics fix didn't reach.
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const authResult = await getBrandUser()
     if (authResult instanceof NextResponse) return authResult
@@ -58,9 +63,15 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     const body = await req.json().catch(() => null)
     if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
 
-    // Status transition
+    // Status transition. `cancelReason` is optional; passed through
+    // when present so the service can attach it to the audit log row.
     if (body.status) {
-      const campaign = await transitionCampaignStatus(campaignId, body.status, authResult.userId)
+      const campaign = await transitionCampaignStatus(
+        campaignId,
+        body.status,
+        authResult.userId,
+        { cancelReason: typeof body.cancelReason === 'string' ? body.cancelReason : undefined },
+      )
       return NextResponse.json({ campaign })
     }
 
@@ -74,6 +85,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
+  if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
     const authResult = await getBrandUser()
     if (authResult instanceof NextResponse) return authResult

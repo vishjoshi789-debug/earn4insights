@@ -21,7 +21,7 @@ import { toast } from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RazorpayCheckout } from '@/components/payments/RazorpayCheckout'
 import { formatCurrency } from '@/lib/currency'
-import { apiPost } from '@/lib/api-client'
+import { apiPost, apiPatch } from '@/lib/api-client'
 
 export default function BrandCampaignDetailPage() {
   const { data: session, status } = useSession()
@@ -62,6 +62,13 @@ export default function BrandCampaignDetailPage() {
   const [refundOpen, setRefundOpen] = useState(false)
   const [refundReason, setRefundReason] = useState('')
   const [refunding, setRefunding] = useState(false)
+
+  // Status-transition confirm modal (3C). One modal serves all four
+  // transitions (publish / activate / complete / cancel) — content is
+  // keyed by `pendingStatus`. cancelReason is wired only for the
+  // 'cancelled' path.
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/auth/signin')
@@ -172,19 +179,60 @@ export default function BrandCampaignDetailPage() {
     }
   }
 
-  const changeStatus = async (newStatus: string) => {
+  // ── Status transitions (3C) ───────────────────────────────────
+  //
+  // Two-step: button opens the confirm modal, modal's primary action
+  // calls executeStatusChange. apiPatch auto-attaches the CSRF token
+  // from the e4i-csrf cookie — pre-3C this used raw fetch and the
+  // PATCH route had no CSRF gate (now both fixed).
+
+  const openStatusConfirm = (newStatus: string) => {
+    setCancelReason('')
+    setPendingStatus(newStatus)
+  }
+
+  const executeStatusChange = async () => {
+    if (!pendingStatus) return
+    const target = pendingStatus
     setActing(true)
     try {
-      const res = await fetch(`/api/brand/campaigns/${campaignId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+      const res = await apiPatch(`/api/brand/campaigns/${campaignId}`, {
+        status: target,
+        cancelReason: target === 'cancelled' && cancelReason.trim()
+          ? cancelReason.trim()
+          : undefined,
       })
-      if (!res.ok) throw new Error((await res.json()).error)
-      toast.success(`Campaign ${newStatus}`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? `Failed to ${target}`)
+      }
+      const verb =
+        target === 'proposed' ? 'published'
+        : target === 'active' ? 'activated'
+        : target === 'completed' ? 'marked complete'
+        : target === 'cancelled' ? 'cancelled'
+        : target
+      toast.success(`Campaign ${verb}`)
+      setPendingStatus(null)
+      setCancelReason('')
       loadData()
-    } catch (err: any) { toast.error(err.message) }
-    finally { setActing(false) }
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setActing(false)
+    }
+  }
+
+  // Client-side mirror of getMissingPublishFields() in
+  // campaignManagementService. Used to disable Publish + show
+  // inline "complete these to publish" tooltip BEFORE the click.
+  const getMissingPublishFields = (c: any): string[] => {
+    if (!c) return []
+    const missing: string[] = []
+    if (!c.title || c.title.trim() === '') missing.push('title')
+    if (!c.budgetTotal || c.budgetTotal <= 0) missing.push('budget')
+    if (!c.brief || c.brief.trim() === '') missing.push('brief')
+    return missing
   }
 
   const inviteInfluencer = async () => {
@@ -281,27 +329,51 @@ export default function BrandCampaignDetailPage() {
             </span>
           </div>
         </div>
-        <div className="flex gap-2">
-          {campaign.status === 'draft' && (
-            <Button size="sm" onClick={() => changeStatus('proposed')} disabled={acting}>
-              <Play className="h-3.5 w-3.5 mr-1" /> Publish
-            </Button>
-          )}
-          {['proposed', 'negotiating'].includes(campaign.status) && (
-            <Button size="sm" onClick={() => changeStatus('active')} disabled={acting}>
-              <CheckCircle className="h-3.5 w-3.5 mr-1" /> Activate
-            </Button>
-          )}
-          {campaign.status === 'active' && (
-            <Button size="sm" variant="outline" onClick={() => changeStatus('completed')} disabled={acting}>
-              <Trophy className="h-3.5 w-3.5 mr-1" /> Complete
-            </Button>
-          )}
-          {!['completed', 'cancelled'].includes(campaign.status) && (
-            <Button size="sm" variant="destructive" onClick={() => changeStatus('cancelled')} disabled={acting}>
-              <Ban className="h-3.5 w-3.5 mr-1" /> Cancel
-            </Button>
-          )}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex gap-2">
+            {campaign.status === 'draft' && (() => {
+              const missing = getMissingPublishFields(campaign)
+              const canPublish = missing.length === 0
+              return (
+                <Button
+                  size="sm"
+                  onClick={() => openStatusConfirm('proposed')}
+                  disabled={acting || !canPublish}
+                  title={
+                    canPublish
+                      ? 'Publish to the marketplace'
+                      : `Complete these fields to publish: ${missing.join(', ')}`
+                  }
+                >
+                  <Play className="h-3.5 w-3.5 mr-1" /> Publish
+                </Button>
+              )
+            })()}
+            {['proposed', 'negotiating'].includes(campaign.status) && (
+              <Button size="sm" onClick={() => openStatusConfirm('active')} disabled={acting}>
+                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Activate
+              </Button>
+            )}
+            {campaign.status === 'active' && (
+              <Button size="sm" variant="outline" onClick={() => openStatusConfirm('completed')} disabled={acting}>
+                <Trophy className="h-3.5 w-3.5 mr-1" /> Complete
+              </Button>
+            )}
+            {!['completed', 'cancelled'].includes(campaign.status) && (
+              <Button size="sm" variant="destructive" onClick={() => openStatusConfirm('cancelled')} disabled={acting}>
+                <Ban className="h-3.5 w-3.5 mr-1" /> Cancel
+              </Button>
+            )}
+          </div>
+          {campaign.status === 'draft' && (() => {
+            const missing = getMissingPublishFields(campaign)
+            if (missing.length === 0) return null
+            return (
+              <p className="text-xs text-amber-500 text-right">
+                Complete to publish: {missing.join(', ')}
+              </p>
+            )
+          })()}
         </div>
       </div>
 
@@ -929,6 +1001,126 @@ export default function BrandCampaignDetailPage() {
           })()}
         </TabsContent>
       </Tabs>
+
+      {/* ───────── Status-transition confirm modal (3C) ───────── */}
+      <Dialog open={!!pendingStatus} onOpenChange={(open) => { if (!open) setPendingStatus(null) }}>
+        <DialogContent className="sm:max-w-md">
+          {pendingStatus === 'proposed' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Publish this campaign?</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-2 text-sm">
+                <p className="text-muted-foreground">
+                  It will be visible to influencers in the marketplace
+                  and you&apos;ll start receiving applications. You can
+                  always cancel later if plans change.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" onClick={() => setPendingStatus(null)} disabled={acting}>
+                  Not yet
+                </Button>
+                <Button onClick={executeStatusChange} disabled={acting}>
+                  {acting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                  Publish
+                </Button>
+              </div>
+            </>
+          )}
+
+          {pendingStatus === 'active' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Activate this campaign?</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground py-2">
+                Moves the campaign to <b>active</b>. Influencers you&apos;ve
+                accepted can start submitting deliverables, and payments
+                can be escrowed against milestones.
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" onClick={() => setPendingStatus(null)} disabled={acting}>
+                  Cancel
+                </Button>
+                <Button onClick={executeStatusChange} disabled={acting}>
+                  {acting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+                  Activate
+                </Button>
+              </div>
+            </>
+          )}
+
+          {pendingStatus === 'completed' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Mark this campaign complete?</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground py-2">
+                Marks the campaign as finished. Influencers and brands
+                can leave reviews. This is irreversible — make sure all
+                milestones are paid out first.
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" onClick={() => setPendingStatus(null)} disabled={acting}>
+                  Not yet
+                </Button>
+                <Button onClick={executeStatusChange} disabled={acting}>
+                  {acting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trophy className="mr-2 h-4 w-4" />}
+                  Mark complete
+                </Button>
+              </div>
+            </>
+          )}
+
+          {pendingStatus === 'cancelled' && (() => {
+            // Count active influencer assignments — cancellation will
+            // notify them (eventBus side-effects). Warn explicitly.
+            const activeInfluencers = (influencers ?? []).filter(
+              (i: any) => ['accepted', 'active', 'invited'].includes(i.status)
+            ).length
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Cancel this campaign?</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  {activeInfluencers > 0 && (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-600">
+                      <b>{activeInfluencers}</b> influencer
+                      {activeInfluencers === 1 ? '' : 's'} {activeInfluencers === 1 ? 'is' : 'are'} currently
+                      working on this campaign. Cancelling will notify
+                      them.
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="cancelReason" className="text-sm">
+                      Reason <span className="text-muted-foreground text-xs">(optional, recommended)</span>
+                    </Label>
+                    <Textarea
+                      id="cancelReason"
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="e.g. Budget changes, scope reduction, project paused"
+                      rows={3}
+                      maxLength={500}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="ghost" onClick={() => setPendingStatus(null)} disabled={acting}>
+                    Keep campaign
+                  </Button>
+                  <Button variant="destructive" onClick={executeStatusChange} disabled={acting}>
+                    {acting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />}
+                    Cancel campaign
+                  </Button>
+                </div>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
