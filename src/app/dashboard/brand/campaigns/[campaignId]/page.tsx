@@ -12,16 +12,60 @@ import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import {
   Loader2, Megaphone, Users, Target, IndianRupee, CheckCircle, XCircle,
   Plus, Play, Ban, Trophy, AlertTriangle, BarChart3, FileText,
-  CreditCard, ShieldCheck, ArrowDownToLine, ChevronDown,
+  CreditCard, ShieldCheck, ArrowDownToLine, ChevronDown, Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RazorpayCheckout } from '@/components/payments/RazorpayCheckout'
 import { formatCurrency } from '@/lib/currency'
 import { apiPost, apiPatch } from '@/lib/api-client'
+
+// Statuses where a brand may edit campaign details (3D, Q1).
+// Mirrors EDITABLE_STATUSES in campaignManagementService so the UI
+// hides Edit before the server has to refuse it.
+const EDITABLE_STATUSES = new Set(['draft', 'proposed', 'negotiating'])
+const DRAFT_STORAGE_PREFIX = 'e4i_campaign_edit_draft:'
+
+// Q5 / smoke: the form shape — string-flavoured for <input> ergonomics.
+// Numeric + array fields convert at submit time so the API receives
+// the same shape as the create dialog.
+type EditFormState = {
+  title: string
+  brief: string
+  budgetTotal: string             // INR rupees as string (×100 on submit)
+  deliverables: string            // comma-separated for ergonomics
+  targetPlatforms: string         // comma-separated
+  startDate: string               // YYYY-MM-DD
+  endDate: string                 // YYYY-MM-DD
+  paymentType: 'escrow' | 'milestone' | 'direct'
+  reviewSlaHours: string          // '' | '24' | '48' | '72' | custom number
+  autoApproveEnabled: boolean
+  isPublic: boolean
+  maxInfluencers: string
+  applicationDeadline: string
+}
+
+function campaignToForm(c: any): EditFormState {
+  return {
+    title: c?.title ?? '',
+    brief: c?.brief ?? '',
+    budgetTotal: c?.budgetTotal ? String(c.budgetTotal / 100) : '',
+    deliverables: Array.isArray(c?.deliverables) ? c.deliverables.join(', ') : '',
+    targetPlatforms: Array.isArray(c?.targetPlatforms) ? c.targetPlatforms.join(', ') : '',
+    startDate: c?.startDate ?? '',
+    endDate: c?.endDate ?? '',
+    paymentType: (c?.paymentType ?? 'escrow') as 'escrow' | 'milestone' | 'direct',
+    reviewSlaHours: c?.reviewSlaHours != null ? String(c.reviewSlaHours) : '',
+    autoApproveEnabled: !!c?.autoApproveEnabled,
+    isPublic: !!c?.isPublic,
+    maxInfluencers: c?.maxInfluencers != null ? String(c.maxInfluencers) : '',
+    applicationDeadline: c?.applicationDeadline ?? '',
+  }
+}
 
 export default function BrandCampaignDetailPage() {
   const { data: session, status } = useSession()
@@ -69,6 +113,14 @@ export default function BrandCampaignDetailPage() {
   // 'cancelled' path.
   const [pendingStatus, setPendingStatus] = useState<string | null>(null)
   const [cancelReason, setCancelReason] = useState('')
+
+  // Edit dialog (3D). Brand-edit lifecycle for draft / proposed /
+  // negotiating campaigns. sessionStorage-keyed by campaignId so a
+  // navigate-away-and-back doesn't lose typed changes.
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState<EditFormState>(() => campaignToForm(null))
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({})
+  const [editSaving, setEditSaving] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/auth/signin')
@@ -223,6 +275,131 @@ export default function BrandCampaignDetailPage() {
     }
   }
 
+  // ── Edit dialog (3D) ──────────────────────────────────────────
+  //
+  // Hydration order on open:
+  //   1. sessionStorage draft for this campaignId (preserves typing
+  //      across navigation/refresh)
+  //   2. fall back to the loaded campaign row
+  // Cleared on successful save or explicit Cancel.
+
+  const openEditDialog = () => {
+    if (!data?.campaign) return
+    const draftKey = `${DRAFT_STORAGE_PREFIX}${campaignId}`
+    let initial = campaignToForm(data.campaign)
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = window.sessionStorage.getItem(draftKey)
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<EditFormState>
+          initial = { ...initial, ...parsed }
+        }
+      } catch {
+        // sessionStorage disabled / quota — fall through with DB values.
+      }
+    }
+    setEditForm(initial)
+    setEditErrors({})
+    setEditOpen(true)
+  }
+
+  // Persist the in-progress edit on every change so navigating away
+  // mid-edit doesn't lose typing. Keyed by campaignId so two campaigns
+  // don't share drafts.
+  useEffect(() => {
+    if (!editOpen || typeof window === 'undefined') return
+    const draftKey = `${DRAFT_STORAGE_PREFIX}${campaignId}`
+    try {
+      window.sessionStorage.setItem(draftKey, JSON.stringify(editForm))
+    } catch {
+      // Quota / disabled — ignore.
+    }
+  }, [editForm, editOpen, campaignId])
+
+  const closeEditDialog = (clearDraft: boolean) => {
+    setEditOpen(false)
+    setEditErrors({})
+    if (clearDraft && typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.removeItem(`${DRAFT_STORAGE_PREFIX}${campaignId}`)
+      } catch { /* noop */ }
+    }
+  }
+
+  const validateEditForm = (): Record<string, string> => {
+    const errs: Record<string, string> = {}
+    if (!editForm.title.trim()) {
+      errs.title = 'Title is required.'
+    } else if (editForm.title.trim().length > 200) {
+      errs.title = 'Title must be 200 characters or fewer.'
+    }
+    const budgetNum = parseFloat(editForm.budgetTotal)
+    if (!editForm.budgetTotal || Number.isNaN(budgetNum) || budgetNum <= 0) {
+      errs.budgetTotal = 'Budget must be greater than 0.'
+    }
+    if (editForm.brief && editForm.brief.length > 5000) {
+      errs.brief = 'Brief must be 5000 characters or fewer.'
+    }
+    if (editForm.startDate && editForm.endDate && editForm.endDate < editForm.startDate) {
+      errs.endDate = 'End date must be on or after start date.'
+    }
+    if (editForm.reviewSlaHours) {
+      const n = parseInt(editForm.reviewSlaHours, 10)
+      if (Number.isNaN(n) || n <= 0) errs.reviewSlaHours = 'SLA hours must be a positive number.'
+    }
+    if (editForm.maxInfluencers) {
+      const n = parseInt(editForm.maxInfluencers, 10)
+      if (Number.isNaN(n) || n <= 0) errs.maxInfluencers = 'Max influencers must be a positive number.'
+    }
+    return errs
+  }
+
+  const submitEdit = async () => {
+    if (!data?.campaign) return
+    const errs = validateEditForm()
+    if (Object.keys(errs).length > 0) {
+      setEditErrors(errs)
+      return
+    }
+    setEditSaving(true)
+    try {
+      const body: Record<string, unknown> = {
+        title: editForm.title.trim(),
+        brief: editForm.brief.trim() || null,
+        budgetTotal: Math.round(parseFloat(editForm.budgetTotal) * 100),
+        deliverables: editForm.deliverables.split(',').map(s => s.trim()).filter(Boolean),
+        targetPlatforms: editForm.targetPlatforms.split(',').map(s => s.trim()).filter(Boolean),
+        startDate: editForm.startDate || null,
+        endDate: editForm.endDate || null,
+        reviewSlaHours: editForm.reviewSlaHours
+          ? parseInt(editForm.reviewSlaHours, 10)
+          : null,
+        autoApproveEnabled: editForm.autoApproveEnabled,
+        isPublic: editForm.isPublic,
+        maxInfluencers: editForm.maxInfluencers
+          ? parseInt(editForm.maxInfluencers, 10)
+          : null,
+        applicationDeadline: editForm.applicationDeadline || null,
+      }
+      // Q2 — paymentType only travels for draft. Server also enforces.
+      if (data.campaign.status === 'draft') {
+        body.paymentType = editForm.paymentType
+      }
+      const res = await apiPatch(`/api/brand/campaigns/${campaignId}`, body)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error ?? 'Failed to save changes')
+      }
+      toast.success('Campaign updated')
+      closeEditDialog(true)
+      loadData()
+    } catch (err: any) {
+      toast.error(err.message ?? 'Failed to save changes')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   // Client-side mirror of getMissingPublishFields() in
   // campaignManagementService. Used to disable Publish + show
   // inline "complete these to publish" tooltip BEFORE the click.
@@ -330,7 +507,18 @@ export default function BrandCampaignDetailPage() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
+            {EDITABLE_STATUSES.has(campaign.status) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={openEditDialog}
+                disabled={acting}
+                title="Edit campaign details"
+              >
+                <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+              </Button>
+            )}
             {campaign.status === 'draft' && (() => {
               const missing = getMissingPublishFields(campaign)
               const canPublish = missing.length === 0
@@ -1001,6 +1189,235 @@ export default function BrandCampaignDetailPage() {
           })()}
         </TabsContent>
       </Tabs>
+
+      {/* ───────── Edit campaign dialog (3D) ───────── */}
+      <Dialog
+        open={editOpen}
+        onOpenChange={(open) => {
+          if (!open) closeEditDialog(false)  // X / outside-click: keep the draft
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit campaign</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            {/* Title */}
+            <div className="space-y-1.5">
+              <Label>Title *</Label>
+              <Input
+                value={editForm.title}
+                onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Summer Beauty Collab"
+              />
+              {editErrors.title && (
+                <p className="text-xs text-destructive">{editErrors.title}</p>
+              )}
+            </div>
+
+            {/* Brief */}
+            <div className="space-y-1.5">
+              <Label>Brief</Label>
+              <Textarea
+                value={editForm.brief}
+                onChange={e => setEditForm(f => ({ ...f, brief: e.target.value }))}
+                rows={3}
+                placeholder="What this campaign is about, the tone, the target audience…"
+              />
+              {editErrors.brief && (
+                <p className="text-xs text-destructive">{editErrors.brief}</p>
+              )}
+            </div>
+
+            {/* Budget + Payment type */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Budget (INR) *</Label>
+                <Input
+                  type="number"
+                  value={editForm.budgetTotal}
+                  onChange={e => setEditForm(f => ({ ...f, budgetTotal: e.target.value }))}
+                  placeholder="50000"
+                />
+                {editErrors.budgetTotal && (
+                  <p className="text-xs text-destructive">{editErrors.budgetTotal}</p>
+                )}
+                {/* Q3 — warn (don't block) when applications exist and
+                    the budget is being changed. Brand still has full
+                    authority to mutate. */}
+                {(data?.applicationCount ?? 0) > 0 &&
+                  editForm.budgetTotal &&
+                  Math.round(parseFloat(editForm.budgetTotal) * 100) !== campaign.budgetTotal && (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 text-xs text-amber-600 dark:text-amber-400 flex gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                    <span>
+                      <b>{data.applicationCount}</b> influencer application
+                      {data.applicationCount === 1 ? '' : 's'} exist.
+                      Changing the budget may affect their assumptions.
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Payment Type</Label>
+                <Select
+                  value={editForm.paymentType}
+                  onValueChange={(v) => setEditForm(f => ({ ...f, paymentType: v as EditFormState['paymentType'] }))}
+                  disabled={campaign.status !== 'draft'}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="escrow">Escrow</SelectItem>
+                    <SelectItem value="milestone">Milestone</SelectItem>
+                    <SelectItem value="direct">Direct</SelectItem>
+                  </SelectContent>
+                </Select>
+                {/* Q2 — explain why this is locked once past draft */}
+                {campaign.status !== 'draft' && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Payment type can only be changed while the campaign
+                    is a draft. Locked once published.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Deliverables */}
+            <div className="space-y-1.5">
+              <Label>Deliverables (comma-separated)</Label>
+              <Input
+                value={editForm.deliverables}
+                onChange={e => setEditForm(f => ({ ...f, deliverables: e.target.value }))}
+                placeholder="1 reel, 2 stories, 1 blog post"
+              />
+            </div>
+
+            {/* Target platforms */}
+            <div className="space-y-1.5">
+              <Label>Target Platforms (comma-separated)</Label>
+              <Input
+                value={editForm.targetPlatforms}
+                onChange={e => setEditForm(f => ({ ...f, targetPlatforms: e.target.value }))}
+                placeholder="instagram, youtube"
+              />
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Start Date</Label>
+                <Input
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={e => setEditForm(f => ({ ...f, startDate: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>End Date</Label>
+                <Input
+                  type="date"
+                  value={editForm.endDate}
+                  onChange={e => setEditForm(f => ({ ...f, endDate: e.target.value }))}
+                />
+                {editErrors.endDate && (
+                  <p className="text-xs text-destructive">{editErrors.endDate}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Marketplace settings */}
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-sm font-medium">Marketplace Settings</p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm">Make Public</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Allow influencers to discover and apply from the marketplace.
+                  </p>
+                </div>
+                <Switch
+                  checked={editForm.isPublic}
+                  onCheckedChange={(checked) => setEditForm(f => ({ ...f, isPublic: checked }))}
+                />
+              </div>
+              {editForm.isPublic && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Max Influencers</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      placeholder="Unlimited"
+                      value={editForm.maxInfluencers}
+                      onChange={e => setEditForm(f => ({ ...f, maxInfluencers: e.target.value }))}
+                    />
+                    {editErrors.maxInfluencers && (
+                      <p className="text-xs text-destructive">{editErrors.maxInfluencers}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Application Deadline</Label>
+                    <Input
+                      type="date"
+                      value={editForm.applicationDeadline}
+                      onChange={e => setEditForm(f => ({ ...f, applicationDeadline: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Content Review SLA */}
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-sm font-medium">Content Review SLA</p>
+              <div className="space-y-1.5">
+                <Label>Review SLA (hours)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 48"
+                  value={editForm.reviewSlaHours}
+                  onChange={e => setEditForm(f => ({ ...f, reviewSlaHours: e.target.value }))}
+                />
+                {editErrors.reviewSlaHours && (
+                  <p className="text-xs text-destructive">{editErrors.reviewSlaHours}</p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Leave empty for no SLA. Submitted content is auto-approved when this time passes if &ldquo;Auto-approve&rdquo; is on.
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm">Auto-approve on SLA expiry</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Automatically approve content if you don&apos;t review before the SLA expires.
+                  </p>
+                </div>
+                <Switch
+                  checked={editForm.autoApproveEnabled}
+                  onCheckedChange={(checked) => setEditForm(f => ({ ...f, autoApproveEnabled: checked }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Button
+                variant="ghost"
+                onClick={() => closeEditDialog(true)}
+                disabled={editSaving}
+              >
+                Discard
+              </Button>
+              <Button onClick={submitEdit} disabled={editSaving}>
+                {editSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ───────── Status-transition confirm modal (3C) ───────── */}
       <Dialog open={!!pendingStatus} onOpenChange={(open) => { if (!open) setPendingStatus(null) }}>

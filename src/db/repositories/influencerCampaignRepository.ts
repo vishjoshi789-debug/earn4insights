@@ -95,7 +95,9 @@ export async function updateCampaign(
     NewInfluencerCampaign,
     'title' | 'brief' | 'requirements' | 'deliverables' |
     'targetGeography' | 'targetPlatforms' | 'budgetTotal' | 'budgetCurrency' |
-    'paymentType' | 'startDate' | 'endDate' | 'platformFeePct' | 'productId' | 'icpId'
+    'paymentType' | 'startDate' | 'endDate' | 'platformFeePct' | 'productId' | 'icpId' |
+    'isPublic' | 'maxInfluencers' | 'applicationDeadline' |
+    'reviewSlaHours' | 'autoApproveEnabled'
   >>
 ): Promise<InfluencerCampaign> {
   const [updated] = await db

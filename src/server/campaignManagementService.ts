@@ -38,6 +38,7 @@ import {
   getTotalPaidForCampaign,
   getTotalEscrowedForCampaign,
 } from '@/db/repositories/campaignPaymentRepository'
+import { getApplicationCount } from '@/db/repositories/campaignMarketplaceRepository'
 import { getProfileByUserId } from '@/db/repositories/influencerProfileRepository'
 import { db } from '@/db'
 import { auditLog } from '@/db/schema'
@@ -54,6 +55,9 @@ export type CampaignSummary = {
     totalPaid: number
     totalEscrowed: number
   }
+  // 3D — surfaced so the edit dialog can warn before a brand mutates
+  // budget on a campaign that has already received applications.
+  applicationCount: number
 }
 
 // ── Valid status transitions ─────────────────────────────────────
@@ -127,12 +131,13 @@ export async function getCampaignSummary(campaignId: string): Promise<CampaignSu
   const campaign = await getCampaignById(campaignId)
   if (!campaign) return null
 
-  const [influencers, milestones, payments, totalPaid, totalEscrowed] = await Promise.all([
+  const [influencers, milestones, payments, totalPaid, totalEscrowed, applicationCount] = await Promise.all([
     getInfluencersByCampaign(campaignId),
     getMilestonesByCampaign(campaignId),
     getPaymentsByCampaign(campaignId),
     getTotalPaidForCampaign(campaignId),
     getTotalEscrowedForCampaign(campaignId),
+    getApplicationCount(campaignId),
   ])
 
   return {
@@ -140,6 +145,7 @@ export async function getCampaignSummary(campaignId: string): Promise<CampaignSu
     influencers,
     milestones,
     payments: { records: payments, totalPaid, totalEscrowed },
+    applicationCount,
   }
 }
 
@@ -239,6 +245,24 @@ export async function getCampaignPublishability(
   return { ready: missing.length === 0, missing }
 }
 
+// 3D — fields a brand can edit. Anything outside this allowlist is
+// silently dropped on the server even if the client sends it, so a
+// malicious or stale client can't move platformFeePct / brandId / etc.
+const EDITABLE_FIELDS = [
+  'title', 'brief', 'requirements', 'deliverables',
+  'targetGeography', 'targetPlatforms',
+  'budgetTotal', 'budgetCurrency', 'paymentType',
+  'startDate', 'endDate', 'productId', 'icpId',
+  'isPublic', 'maxInfluencers', 'applicationDeadline',
+  'reviewSlaHours', 'autoApproveEnabled',
+] as const
+
+// Statuses where a brand can edit campaign details (3D, Q1).
+// Active/completed/cancelled/disputed all have downstream side-effects
+// (escrowed funds, accepted influencers, ledger entries) that an edit
+// could blindside — those need a separate spec.
+const EDITABLE_STATUSES = new Set(['draft', 'proposed', 'negotiating'])
+
 export async function updateCampaignDetails(
   campaignId: string,
   brandId: string,
@@ -248,11 +272,74 @@ export async function updateCampaignDetails(
   if (!campaign) throw new Error(`Campaign not found: ${campaignId}`)
   if (campaign.brandId !== brandId) throw new Error('Not authorized to modify this campaign')
 
-  if (campaign.status !== 'draft' && campaign.status !== 'proposed') {
-    throw new Error('Can only edit campaigns in draft or proposed status')
+  if (!EDITABLE_STATUSES.has(campaign.status)) {
+    throw new Error(`Cannot edit a campaign in "${campaign.status}" status — editing is only available for draft, proposed, or negotiating campaigns.`)
   }
 
-  return updateCampaign(campaignId, data)
+  // Allowlist filter — quietly drop any field the client sent that we
+  // don't classify as editable. Defence-in-depth on top of the Drizzle
+  // Pick<> on the repo signature.
+  const filtered: Record<string, unknown> = {}
+  for (const key of EDITABLE_FIELDS) {
+    if (key in (data as object)) {
+      filtered[key] = (data as Record<string, unknown>)[key]
+    }
+  }
+
+  // Q2 — paymentType is editable on draft ONLY. Once a campaign has
+  // been published (status = proposed) influencers may have applied
+  // against the stated payment terms; changing them after the fact is
+  // Stripe-pattern frowned-upon. Drop the field rather than throw so
+  // the rest of the save still goes through.
+  if ('paymentType' in filtered && campaign.status !== 'draft') {
+    delete filtered.paymentType
+  }
+
+  // Compute the diff that lands in audit_log. Compare against the
+  // pre-update campaign row. Arrays use shallow JSON equality which is
+  // good enough for the brand-facing deliverable / platform / geography
+  // lists. Dates from <input type="date"> arrive as 'YYYY-MM-DD' strings.
+  const changedFields: string[] = []
+  const fromValues: Record<string, unknown> = {}
+  const toValues: Record<string, unknown> = {}
+  for (const key of Object.keys(filtered)) {
+    const before = (campaign as Record<string, unknown>)[key]
+    const after = filtered[key]
+    const beforeKey = JSON.stringify(before ?? null)
+    const afterKey = JSON.stringify(after ?? null)
+    if (beforeKey !== afterKey) {
+      changedFields.push(key)
+      fromValues[key] = before ?? null
+      toValues[key] = after ?? null
+    }
+  }
+
+  const updated = await updateCampaign(
+    campaignId,
+    filtered as Parameters<typeof updateCampaign>[1],
+  )
+
+  // Q5 — write an audit_log row on EVERY save, even when nothing
+  // actually changed. Operational trail beats storage savings.
+  await db.insert(auditLog).values({
+    userId: brandId,
+    action: 'campaign_details_updated',
+    dataType: 'influencer_campaign',
+    accessedBy: brandId,
+    metadata: {
+      campaignId,
+      status: campaign.status,
+      changedFields,
+      from: fromValues,
+      to: toValues,
+      noOp: changedFields.length === 0,
+    },
+    reason: changedFields.length === 0
+      ? 'No fields changed'
+      : `Updated: ${changedFields.join(', ')}`,
+  })
+
+  return updated
 }
 
 export async function removeCampaign(campaignId: string, brandId: string): Promise<void> {
