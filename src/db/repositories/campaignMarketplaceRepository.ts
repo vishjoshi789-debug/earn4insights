@@ -127,8 +127,9 @@ export async function getPublicCampaigns(
 
   const conditions: any[] = [
     eq(influencerCampaigns.isPublic, true),
+    // A13 — drafts are still being edited; do not surface them in the
+    // marketplace even if the brand has flipped isPublic on early.
     or(
-      eq(influencerCampaigns.status, 'draft'),
       eq(influencerCampaigns.status, 'proposed'),
       eq(influencerCampaigns.status, 'active'),
     ),
@@ -197,8 +198,8 @@ export async function getRecommendedCampaigns(
 
   const conditions: any[] = [
     eq(influencerCampaigns.isPublic, true),
+    // A13 — exclude drafts from recommended just like the listing.
     or(
-      eq(influencerCampaigns.status, 'draft'),
       eq(influencerCampaigns.status, 'proposed'),
       eq(influencerCampaigns.status, 'active'),
     ),
@@ -245,7 +246,17 @@ export async function getCampaignMarketplaceDetail(campaignId: string, influence
     .leftJoin(users, eq(influencerCampaigns.brandId, users.id))
     .leftJoin(appSq, eq(influencerCampaigns.id, appSq.campaignId))
     .leftJoin(ratingSq, eq(influencerCampaigns.id, ratingSq.campaignId))
-    .where(and(eq(influencerCampaigns.id, campaignId), eq(influencerCampaigns.isPublic, true)))
+    .where(and(
+      eq(influencerCampaigns.id, campaignId),
+      eq(influencerCampaigns.isPublic, true),
+      // A13 — same draft-exclusion as the listing. A direct URL to a
+      // draft marketplace detail should 404 rather than render a
+      // half-edited campaign.
+      or(
+        eq(influencerCampaigns.status, 'proposed'),
+        eq(influencerCampaigns.status, 'active'),
+      ),
+    ))
     .limit(1)
 
   if (!row) return { campaign: null, application: null, isInvited: false }

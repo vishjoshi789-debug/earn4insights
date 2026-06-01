@@ -129,7 +129,14 @@ export async function applyToCampaign(
   const campaign = await getCampaignById(campaignId)
   if (!campaign) throw new Error('Campaign not found')
   if (!campaign.isPublic) throw new Error('Campaign is not accepting public applications')
-  if (!['draft', 'proposed', 'active'].includes(campaign.status)) {
+  // A13 — drafts are still being edited by the brand and must not
+  // accept applications. Split the error from the general allowlist
+  // miss so the influencer sees the accurate reason ("not yet open"
+  // for drafts vs "no longer accepting" for completed/cancelled).
+  if (campaign.status === 'draft') {
+    throw new Error('This campaign is not yet open for applications')
+  }
+  if (!['proposed', 'active'].includes(campaign.status)) {
     throw new Error('Campaign is no longer accepting applications')
   }
 
