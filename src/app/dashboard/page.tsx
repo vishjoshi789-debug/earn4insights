@@ -7,15 +7,39 @@ import { Badge } from '@/components/ui/badge';
 import { auth } from '@/lib/auth/auth.config';
 import { db } from '@/db';
 import { userProfiles, products, feedback, userPoints } from '@/db/schema';
-import { eq, sql, count, and } from 'drizzle-orm';
+import { eq, sql, count, and, inArray } from 'drizzle-orm';
+// getPersonalizedRecommendations + RecommendationCard are imported by the
+// CONSUMER dashboard branch below — keep them in. The brand path no longer
+// calls them (3B fix: consumer-only function, was polluting brand surface).
 import { getPersonalizedRecommendations } from '@/server/personalizationEngine';
 import { RecommendationCard } from '@/components/recommendation-card';
 import { BrandOnboardingBanner } from '@/components/BrandOnboardingBanner';
 import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepository';
 import { Sparkles, ArrowRight, MessageSquare, TrendingUp, BarChart3, ExternalLink, Award, PenSquare, Trophy, ClipboardList } from 'lucide-react';
 
-// Quick feedback totals for the dashboard (brand view — all feedback)
-async function getDashboardFeedbackStats() {
+// ── Brand's product ids (scoping helper) ─────────────────────────
+// Same pattern used in /dashboard/feedback/page.tsx. Falls back to []
+// on error so the empty-state branch fires rather than 500-ing the
+// whole dashboard.
+async function getBrandProductIdsForDashboard(brandUserId: string): Promise<string[]> {
+  try {
+    const rows = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(eq(products.ownerId, brandUserId));
+    return rows.map((r) => r.id);
+  } catch {
+    return [];
+  }
+}
+
+// Quick feedback totals — SCOPED by brand's product ids. Pre-fix this
+// function had no WHERE clause and showed platform-wide feedback to
+// brands. Audit ref: Pass 3 B-C2.
+async function getDashboardFeedbackStats(brandProductIds: string[]) {
+  if (brandProductIds.length === 0) {
+    return { totalCount: 0, newCount: 0, positiveCount: 0, negativeCount: 0, avgRating: 0 };
+  }
   try {
     const [row] = await db
       .select({
@@ -25,7 +49,8 @@ async function getDashboardFeedbackStats() {
         negativeCount: sql<number>`COUNT(*) FILTER (WHERE ${feedback.sentiment} = 'negative')`,
         avgRating: sql<number>`COALESCE(AVG(${feedback.rating}), 0)`,
       })
-      .from(feedback);
+      .from(feedback)
+      .where(inArray(feedback.productId, brandProductIds));
     return row;
   } catch {
     return { totalCount: 0, newCount: 0, positiveCount: 0, negativeCount: 0, avgRating: 0 };
@@ -83,33 +108,25 @@ export default async function DashboardPage() {
 // ── Brand Dashboard ──────────────────────────────────────────────
 
 async function BrandDashboard({ userId }: { userId?: string }) {
-  const [feedbackStats, recommendations, brandOnboardingDone] = await Promise.all([
-    getDashboardFeedbackStats(),
-    userId ? getPersonalizedRecommendations(userId, 3).catch(() => []) : Promise.resolve([]),
+  // Resolve the brand's product ids first — feedback stats + the "no
+  // products yet" empty-state branch both depend on it. Pre-fix this
+  // function passed no scope to getDashboardFeedbackStats and showed
+  // platform-wide totals; new code fans out from the product list.
+  const brandProductIds = userId ? await getBrandProductIdsForDashboard(userId) : [];
+  const hasProducts = brandProductIds.length > 0;
+
+  const [feedbackStats, brandOnboardingDone] = await Promise.all([
+    getDashboardFeedbackStats(brandProductIds),
     // Banner gating: shown when brand has NOT yet completed the wizard.
     // OnboardingGuard force-redirects new brands; existing brands fall
     // through to here and see the banner.
     userId ? hasCompletedBrandOnboarding(userId).catch(() => true) : Promise.resolve(true),
   ]);
 
-  let topRecommendations: Array<{
-    productId: string;
-    score: number;
-    reasons: string[];
-    product?: any;
-  }> = [];
-
-  if (recommendations.length > 0) {
-    try {
-      const allProducts = await db.select().from(products);
-      const productMap = new Map(allProducts.map(p => [p.id, p]));
-      topRecommendations = recommendations
-        .map(rec => ({ ...rec, product: productMap.get(rec.productId) }))
-        .filter(rec => rec.product);
-    } catch (error) {
-      console.error('[Dashboard] Error fetching products for recommendations:', error);
-    }
-  }
+  // NOTE: getPersonalizedRecommendations is a consumer-only function
+  // (gated by personalization consent on the user_profiles row). It
+  // was previously called for brands here — wasted query, returned
+  // empty or threw, polluted the brand surface. Removed in 3B.
 
   return (
     <div className="space-y-6">
@@ -126,90 +143,88 @@ async function BrandDashboard({ userId }: { userId?: string }) {
           New brands are force-redirected by OnboardingGuard. */}
       <BrandOnboardingBanner show={!brandOnboardingDone} />
 
-      {topRecommendations.length > 0 && (
-        <section className="bg-slate-900 rounded-lg p-6 border border-slate-700">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-purple-400" />
-              <h2 className="text-2xl font-semibold text-white">For You</h2>
-            </div>
-            <Button asChild variant="ghost" size="sm" className="text-slate-200 hover:text-white">
-              <Link href="/dashboard/recommendations" className="flex items-center gap-1">
-                View all
-                <ArrowRight className="h-4 w-4" />
+      {/* Feedback Snapshot — or empty-state for brands with no
+          products yet. We refuse to render zero numbers because they
+          imply "no feedback on your products" which is misleading
+          when the brand has no products at all. Stripe-style empty
+          state instead. */}
+      {hasProducts ? (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              Consumer Feedback
+            </h2>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard/feedback" className="flex items-center gap-1 text-sm">
+                View all <ArrowRight className="w-3 h-3" />
               </Link>
             </Button>
           </div>
-          <p className="text-sm text-slate-300 mb-4">
-            Products we think you&apos;ll love based on your interests
-          </p>
-          <div className="grid gap-4 md:grid-cols-3">
-            {topRecommendations.map((rec) => (
-              <RecommendationCard
-                key={rec.productId}
-                product={rec.product!}
-                score={rec.score}
-                reasons={rec.reasons}
-                compact
-              />
-            ))}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold">{feedbackStats?.totalCount ?? 0}</div>
+                <p className="text-xs text-muted-foreground">Total Feedback</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-blue-600">
+                    {feedbackStats?.newCount ?? 0}
+                  </span>
+                  {Number(feedbackStats?.newCount) > 0 && (
+                    <Badge className="bg-blue-600 text-white text-[10px]">needs review</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">Unreviewed</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold">
+                  {Number(feedbackStats?.avgRating ?? 0).toFixed(1)} <span className="text-sm text-muted-foreground">/ 5</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Avg Rating</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-1 text-lg">
+                  <span className="text-green-600 font-bold">{feedbackStats?.positiveCount ?? 0}</span>
+                  <span className="text-muted-foreground text-sm">/</span>
+                  <span className="text-red-600 font-bold">{feedbackStats?.negativeCount ?? 0}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Positive / Negative</p>
+              </CardContent>
+            </Card>
           </div>
         </section>
+      ) : (
+        <Card className="border-dashed">
+          <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <MessageSquare className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">
+                You haven&apos;t added any products yet
+              </p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                Add your first product to start collecting feedback,
+                running surveys, and matching with influencers.
+              </p>
+            </div>
+            <Button asChild size="sm">
+              <Link href="/dashboard/launch">
+                Add your first product
+                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       )}
-
-      {/* Feedback Snapshot */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-primary" />
-            Consumer Feedback
-          </h2>
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/dashboard/feedback" className="flex items-center gap-1 text-sm">
-              View all <ArrowRight className="w-3 h-3" />
-            </Link>
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{feedbackStats?.totalCount ?? 0}</div>
-              <p className="text-xs text-muted-foreground">Total Feedback</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-blue-600">
-                  {feedbackStats?.newCount ?? 0}
-                </span>
-                {Number(feedbackStats?.newCount) > 0 && (
-                  <Badge className="bg-blue-600 text-white text-[10px]">needs review</Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">Unreviewed</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold">
-                {Number(feedbackStats?.avgRating ?? 0).toFixed(1)} <span className="text-sm text-muted-foreground">/ 5</span>
-              </div>
-              <p className="text-xs text-muted-foreground">Avg Rating</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-1 text-lg">
-                <span className="text-green-600 font-bold">{feedbackStats?.positiveCount ?? 0}</span>
-                <span className="text-muted-foreground text-sm">/</span>
-                <span className="text-red-600 font-bold">{feedbackStats?.negativeCount ?? 0}</span>
-              </div>
-              <p className="text-xs text-muted-foreground">Positive / Negative</p>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
 
       {/* Quick Actions */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

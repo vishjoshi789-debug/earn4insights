@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/db'
-import { surveys, surveyResponses } from '@/db/schema'
+import { surveys, surveyResponses, products } from '@/db/schema'
 import type { Survey as DBSurvey, NewSurvey, SurveyResponse as DBSurveyResponse, NewSurveyResponse } from '@/db/schema'
 import type { Survey, SurveyResponse } from '@/lib/survey-types'
 
@@ -49,10 +49,43 @@ function toSurveyResponse(dbResponse: DBSurveyResponse): SurveyResponse {
 }
 
 /**
- * Get all surveys
+ * Get all surveys — PLATFORM-WIDE. Use only for admin / cron contexts.
+ * For brand-facing pages use getSurveysByOwner() so brands don't see
+ * other brands' surveys. Audit ref: Pass 3 B-C2.
  */
 export async function getAllSurveys(): Promise<Survey[]> {
   const dbSurveys = await db.select().from(surveys)
+  return dbSurveys.map(toSurvey)
+}
+
+/**
+ * Get surveys belonging to a brand — scoped via products.owner_id.
+ *
+ * Two-step pattern:
+ *   1. Resolve the brand's product ids (single column read).
+ *   2. SELECT surveys WHERE product_id IN (...).
+ *
+ * Mirrors getBrandProductIds() in /dashboard/feedback/page.tsx —
+ * same scoping approach is already in use elsewhere and produces
+ * consistent results across brand-facing pages.
+ *
+ * Returns an empty array when the brand has no products yet
+ * (callers should show an empty state).
+ */
+export async function getSurveysByOwner(brandUserId: string): Promise<Survey[]> {
+  const productRows = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(eq(products.ownerId, brandUserId))
+
+  if (productRows.length === 0) return []
+
+  const productIds = productRows.map((p) => p.id)
+  const dbSurveys = await db
+    .select()
+    .from(surveys)
+    .where(inArray(surveys.productId, productIds))
+
   return dbSurveys.map(toSurvey)
 }
 

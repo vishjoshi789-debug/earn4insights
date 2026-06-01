@@ -2,14 +2,73 @@ import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, BarChart3, Calendar } from 'lucide-react'
-import { fetchAllSurveys } from '@/server/surveys/surveyService'
+import { Plus, BarChart3, Calendar, ArrowRight, MessageSquare } from 'lucide-react'
+import { auth } from '@/lib/auth/auth.config'
+import { redirect } from 'next/navigation'
+import { db } from '@/db'
+import { products, surveys as surveysTable } from '@/db/schema'
+import { eq, inArray } from 'drizzle-orm'
+import { getAllSurveys } from '@/db/repositories/surveyRepository'
 import { formatDistanceToNow } from 'date-fns'
 import type { Survey } from '@/lib/survey-types'
 
-// This needs to be async to call server actions
+/**
+ * Brand-scoped surveys list. Pre-fix this page called fetchAllSurveys()
+ * which returned PLATFORM-WIDE surveys to every brand. Audit ref: Pass
+ * 3 B-C2.
+ *
+ * Role behaviour:
+ *   brand   → own surveys (filtered by owned products.id IN ...)
+ *   admin   → all surveys (legitimate platform-wide admin view)
+ *   other   → bounced to /top-products (not a consumer surface)
+ *
+ * For brands we also distinguish "no surveys yet" from "no products
+ * yet" — both yield an empty list but the CTA differs (create survey
+ * vs launch a product first).
+ */
 export default async function SurveysPage() {
-  const allSurveys = await fetchAllSurveys()
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
+  const role = (session.user as any).role as string | undefined
+  const userId = (session.user as any).id as string
+
+  let allSurveys: Survey[] = []
+  let hasNoProducts = false
+
+  if (role === 'brand') {
+    // Resolve owned product ids inline; if none, we know to show the
+    // "launch a product first" empty state without making a second query.
+    const productRows = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(eq(products.ownerId, userId))
+    const productIds = productRows.map((p) => p.id)
+    hasNoProducts = productIds.length === 0
+
+    if (!hasNoProducts) {
+      const rows = await db
+        .select()
+        .from(surveysTable)
+        .where(inArray(surveysTable.productId, productIds))
+      allSurveys = rows.map((r) => ({
+        id: r.id,
+        productId: r.productId,
+        title: r.title,
+        description: r.description || undefined,
+        type: r.type as Survey['type'],
+        isActive: r.status === 'active',
+        status: r.status as Survey['status'],
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+        questions: r.questions as Survey['questions'],
+        settings: r.settings as Survey['settings'],
+      }))
+    }
+  } else if (role === 'admin') {
+    allSurveys = await getAllSurveys()
+  } else {
+    redirect('/top-products')
+  }
 
   // Group surveys by type
   const npsSurveys = allSurveys.filter((s) => s.type === 'nps')
@@ -32,6 +91,35 @@ export default async function SurveysPage() {
           </Link>
         </Button>
       </div>
+
+      {/* No-products empty state for brands (precedes the per-type
+          sections so we don't show three "no surveys yet" cards in
+          succession when the brand has zero products). */}
+      {role === 'brand' && hasNoProducts && (
+        <Card className="border-dashed">
+          <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <MessageSquare className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">
+                Add a product before creating a survey
+              </p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                Surveys collect feedback on a specific product. Launch
+                your first product, then come back here to create
+                NPS, CSAT, or custom surveys for it.
+              </p>
+            </div>
+            <Button asChild size="sm">
+              <Link href="/dashboard/launch">
+                Launch a product
+                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* NPS Surveys */}
       <section className="space-y-4">
