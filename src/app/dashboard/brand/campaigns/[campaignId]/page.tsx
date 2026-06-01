@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch'
 import {
   Loader2, Megaphone, Users, Target, IndianRupee, CheckCircle, XCircle,
   Plus, Play, Ban, Trophy, AlertTriangle, BarChart3, FileText,
-  CreditCard, ShieldCheck, ArrowDownToLine, ChevronDown, Pencil,
+  CreditCard, ShieldCheck, ArrowDownToLine, ChevronDown, Pencil, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -315,6 +315,22 @@ export default function BrandCampaignDetailPage() {
       // Quota / disabled — ignore.
     }
   }, [editForm, editOpen, campaignId])
+
+  // Escape closes the edit dialog without discarding the draft. The
+  // project's custom Dialog has no built-in keyboard handler — wire
+  // it ourselves so users have a standard close affordance alongside
+  // the header X button.
+  useEffect(() => {
+    if (!editOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !editSaving) {
+        closeEditDialog(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editOpen, editSaving])
 
   const closeEditDialog = (clearDraft: boolean) => {
     setEditOpen(false)
@@ -1199,7 +1215,23 @@ export default function BrandCampaignDetailPage() {
       >
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit campaign</DialogTitle>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <DialogTitle>Edit campaign</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Close to keep your changes for later · Discard throws them away
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close (keeps your draft)"
+                onClick={() => closeEditDialog(false)}
+                disabled={editSaving}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-50 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </DialogHeader>
           <div className="space-y-3 pt-2">
             {/* Title */}
