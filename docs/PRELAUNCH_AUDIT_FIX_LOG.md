@@ -6,6 +6,7 @@
 > **Audit started:** 2026-05-28
 > **Phase 1 completed:** 2026-05-30
 > **Phase 2 completed:** 2026-05-31
+> **Phase 3 completed:** 2026-06-01
 
 ---
 
@@ -18,7 +19,12 @@
 | 2 | 2A | Security quick wins — delete orphan signup route + admin key URL leak | `5080d87` | ✅ 2026-05-30 | ⏳ deferred |
 | 2 | 2B | Points system — atomic deductPoints + unified UI minimum | `573da7e` | ⏳ deferred (zero-balance test consumer) | ⏳ deferred |
 | 2 | 2C | Scheduled launch timezone — TZ-aware via date-fns-tz | `b2749a3` | ✅ 2026-05-31 (banner shows wall-clock) | ⏳ deferred |
-| 3+ | — | TBD (user picks scope from web-Claude master list) | — | — | — |
+| 3 | 3A.1 | Brand onboarding — schema (`brand_profiles`) + actions + Zod | `4de21c8` | ✅ 2026-05-31 (wizard in use during 3B–3D) | ⏳ deferred |
+| 3 | 3A.2 | Brand onboarding — wizard UI + OnboardingGuard role split + backfill banner | `186442f` | ✅ 2026-05-31 (wizard in use during 3B–3D) | ⏳ deferred |
+| 3 | 3B | Brand dashboard — scope feedback + surveys by owner; brand empty states | `ead68f9` | ✅ 2026-06-01 (verified during 3D smoke) | ⏳ deferred |
+| 3 | 3C | Campaign publish — CSRF + confirm modals + pre-publish validation + transition audit | `40d443d` | ✅ 2026-06-01 (C1 disabled state verified, see "tooltip-on-disabled-button" finding below) | ⏳ deferred |
+| 3 | 3D | Brand campaign edit — Edit dialog + status gate + paymentType lock + per-save audit | `6ea441c` | ✅ 2026-06-01 (D1–D2, D11, D12 verified; D7 surfaced custom-Dialog gap → fixed in `ee9fe98`) | ⏳ deferred |
+| 3 | 3D-fu | Edit dialog X close + Escape key (custom Dialog has no built-in dismiss) | `ee9fe98` | ✅ 2026-06-01 | ⏳ deferred |
 
 ---
 
@@ -319,22 +325,253 @@ Brand picks "May 31, 09:00" expecting their wall-clock. The form value from `<in
 
 ---
 
-## Phase 3+ — Pending
+## Phase 3 — Brand surface (COMPLETE)
 
-To be defined when user picks scope from their web-Claude master list.
+Theme: close the brand-side gaps that would have shipped a half-built brand experience. Onboarding wizard, dashboard correctness, campaign publish polish, and campaign-edit dialog. All four sub-phases plus one follow-up landed between 2026-05-31 and 2026-06-01.
+
+### Sub-Phase 3A — Brand onboarding (3A.1 schema + 3A.2 UI)
+
+**Audit reference:** Pass 3 B-C1, Pass 5 (confirmed UI gap)
+
+#### Bug
+There was no brand onboarding flow at all. A new brand signed up via `/signup?role=brand` (or Google), `auth.config` created the row at `role='brand'`, the `OnboardingGuard` was consumer-flavoured (called `ensureUserProfile` + `hasCompletedOnboarding` against `user_profiles`), and the brand was redirected to `/dashboard` with:
+- no company name, industry, or size
+- no billing entity (can't invoice them)
+- no logo (campaign cards looked broken)
+- no target audience captured (ICP UX assumed it)
+
+The brand could USE the platform but the dashboard had no "who are you" data, the marketplace surfaces had no logo, and there was no compliance path for billing/GSTIN capture.
+
+#### Root cause
+The brand path through OnboardingGuard was a stub — only consumer onboarding had been built. The consumer-shaped `user_profiles` JSONB schema was wrong for brand data (would force schema churn every time either side evolved).
+
+#### Fix — Separate `brand_profiles` table + 5-step wizard
+
+Split into two commits for review-ability:
+
+**3A.1 — Schema + Actions + Zod (`4de21c8`)**
+- Migration 021 — new `brand_profiles` table, FK CASCADE → users, partial index `idx_brand_profiles_pending` on the not-yet-completed rows so the dashboard backfill-banner lookup is cheap
+- Repository `src/db/repositories/brandProfileRepository.ts`: `getBrandProfile`, `hasCompletedBrandOnboarding`, `upsertBrandProfile`, `markBrandOnboardingComplete`
+- Zod schemas `src/lib/validation/brand-onboarding.ts`: 4 step schemas + combined complete-onboarding. `INDUSTRY_OPTIONS` bounded to 15 values to keep downstream analytics clean. `COMPANY_SIZE_OPTIONS = ['1-10','11-50','51-200','200+']`. GSTIN regex enforces real Indian format when provided
+- Server actions `src/app/onboarding/brand-onboarding.actions.ts`: per-step save actions + `getBrandOnboardingState` hydrator. `requireBrand()` re-verifies session + role on EVERY call. Validation failures return `{ ok: false, fieldErrors: {...} }` for inline display. `completeBrandOnboardingAction` writes `audit_log` row (`action='brand_onboarding_completed'`) — financial/compliance moment when the brand becomes invoiceable + marketplace-visible. Next.js server actions carry framework-level origin-checked CSRF; no app-level CSRF needed
+
+**3A.2 — UI + Guard + Backfill banner (`186442f`)**
+- `BrandOnboardingClient.tsx` (~600 LOC): 5-step wizard mirroring consumer onboarding visual quality. Step 1 welcome, Step 2 company basics (name + industry required), Step 3 primary contact (all optional, pre-fills name from session), Step 4 billing (entity, address, GSTIN — fully skippable), Step 5 logo + target audience. ProgressIndicator across all steps. sessionStorage draft persistence (`e4i_brand_onboarding_draft`). DB-initial hydration on cold reload wins over draft. All shadcn primitives, dark theme tokens, mobile responsive
+- Logo upload route `src/app/api/uploads/brand-logo/route.ts` (mirrors `feedback-media` pattern): brand-auth gated BEFORE `handleUpload` runs (anonymous + consumer requests rejected before any token issued), content-type allowlist PNG/JPG/WEBP only (no SVG — XSS risk on inline render), 2 MB cap, pathname locked to `brand-logos/`, `addRandomSuffix=true` prevents cross-brand collisions
+- `src/app/onboarding/page.tsx` routing: brand → hydrate from DB + render wizard (or redirect to `/dashboard` if already completed); admin → `/dashboard`; consumer → existing flow
+- `OnboardingGuard` refactored to route by role: admin bypass, brand → `hasCompletedBrandOnboarding` check, consumer → existing flow. Brand path does NOT call `ensureUserProfile` (that helper creates consumer-shaped JSONB)
+- `BrandOnboardingBanner.tsx`: soft prompt on `/dashboard` for brands who pre-date this fix; dismissible per browser session via sessionStorage; reappears on next login; hydration-safe
+
+#### Files changed
+- 3A.1: `src/app/api/admin/run-migration-021/route.ts` (new), `src/app/onboarding/brand-onboarding.actions.ts` (new), `src/db/repositories/brandProfileRepository.ts` (new), `src/db/schema.ts` (+61 — brand_profiles table), `src/lib/validation/brand-onboarding.ts` (new)
+- 3A.2: `src/app/api/uploads/brand-logo/route.ts` (new), `src/app/dashboard/page.tsx`, `src/app/onboarding/BrandOnboardingClient.tsx` (new, ~600 LOC), `src/app/onboarding/page.tsx`, `src/components/BrandOnboardingBanner.tsx` (new), `src/components/OnboardingGuard.tsx`
+
+#### Commits
+- `4de21c8` — `feat(brand-onboarding): schema + actions + Zod (3A.1)`
+- `186442f` — `feat(brand-onboarding): wizard UI + guard + backfill banner (3A.2)`
+
+#### Migration 021
+Production status: applied (pre-3B/3C/3D smoke tests required `brand_profiles` to exist; subsequent phases confirmed at runtime). Idempotent `POST /api/admin/run-migration-021` if a re-apply is ever needed.
+
+#### Smoke test (2026-05-31)
+Wizard exercised end-to-end during the original phase shipping session. Confirmed working in production by the fact that 3B/3C/3D smoke tests (the test brand was actively using the dashboard) succeeded — without 3A applied, the test brand would have been stuck in the onboarding loop.
+
+#### Follow-ups for canonical docs (queue for end-of-phase-6)
+- **CLAUDE.md** — Phase Status table: add brand onboarding row. Key Decisions: "brand profile lives in separate `brand_profiles` table (not `user_profiles`) so consumer schema evolution doesn't churn brand data and vice versa"; "OnboardingGuard routes by role (admin bypass, brand → `hasCompletedBrandOnboarding`, consumer → existing flow)"
+- **SCHEMA.md** — Add `brand_profiles` table definition
+- **ARCHITECTURE.md** — Document the role-split OnboardingGuard alongside admin bypass note
+- Settings page to edit brand profile fields after onboarding (NOT in 3A scope — wizard is set-once today)
+- Orphan brand-logo blob cleanup (uploaded but never saved during wizard) — currently relies on existing media-retention sweep
+
+---
+
+### Sub-Phase 3B — Brand dashboard scoping (`ead68f9`)
+
+**Audit reference:** Pass 3 B-C2
+
+#### Bug
+Two related scoping leaks on the brand dashboard surface, both giving brands a misleading view of platform-wide data labeled as theirs:
+
+1. **`getDashboardFeedbackStats` had no WHERE clause.** Every brand saw platform-wide COUNT(*), AVG(rating), etc. The "Avg Rating" card was the worst offender — brands saw the platform average (typically ~3.8/5) and assumed their product was rated 3.8 when their actual feedback might be zero.
+2. **`fetchAllSurveys` on `/dashboard/surveys` had no WHERE clause.** A brand opening this page saw other brands' NPS/CSAT/custom surveys mixed with their own. Privacy + UX both broken.
+
+#### Root cause
+Repo helpers were originally written for admin/cron usage (legitimate platform-wide reads) and were then reused on brand-facing pages without adding a brand filter.
+
+#### Fix
+1. `getDashboardFeedbackStats` now accepts `brandProductIds: string[]` and filters `feedback WHERE product_id IN (...)`. New helper `getBrandProductIdsForDashboard(brandUserId)` resolves the brand's products first (mirrors the scoping pattern already used in `/dashboard/feedback`)
+2. `/dashboard/surveys` page role-routes:
+   - brand → owned surveys only (joined via `products.owner_id`)
+   - admin → all surveys (legitimate platform view)
+   - other → redirect to `/top-products`
+3. `getAllSurveys` docstring updated to flag admin/cron-only usage so this pattern doesn't reappear
+4. **Empty states for new brands** (Stripe pattern — don't show zero numbers that imply "no feedback on your products" when the brand has no products at all):
+   - Dashboard: "You haven't added any products yet. Add your first product to start collecting feedback…" with [Add your first product] CTA
+   - Surveys: distinguishes "no products yet" → "Launch a product first" CTA from "no surveys yet" → three empty NPS/CSAT/Custom cards
+5. **Cleanup**: removed `getPersonalizedRecommendations` call from brand dashboard. That function is consumer-only (gated by personalization consent on `user_profiles`); calling it for brands either threw or returned [], adding wasted DB query + visual noise. Consumer dashboard branch unchanged
+
+#### Files changed
+- `src/app/dashboard/page.tsx` (+221 / -109)
+- `src/app/dashboard/surveys/page.tsx` (+96 reworked)
+- `src/db/repositories/surveyRepository.ts` (+39 / -2)
+
+#### Commit
+`ead68f9` — `fix(brand-dashboard): scope feedback + surveys by owner (3B)`
+
+#### Smoke test (2026-06-01)
+Verified during 3D session — brand dashboard showed only its own products' feedback stats; surveys page listed only the brand's own surveys; new-brand empty states rendered correctly.
+
+#### Follow-ups for canonical docs (queue for end-of-phase-6)
+- **CLAUDE.md** — Key Decisions: "brand dashboard feedback stats scoped via `getBrandProductIdsForDashboard` (no platform-wide leak); `getAllSurveys` is admin/cron-only — brand UI uses owned-surveys helper"
+
+---
+
+### Sub-Phase 3C — Campaign publish polish (`40d443d`)
+
+**Audit reference:** Pass 3 B-W1
+
+#### Bug
+The buttons + API + state machine for campaign transitions existed before 3C, but the polish was missing:
+- `PATCH /api/brand/campaigns/[id]` had no CSRF gate (A11's analytics fix never reached this route)
+- Publish was a raw `confirm()` browser dialog
+- Cancel had no reason capture and no warning when accepted/active/invited influencers existed
+- A brand could click Publish on a draft missing title/budget/brief and only learn about the missing fields via a 400 error AFTER the click
+- No audit log on transitions — high-stakes moves (cancel with escrowed payments) left no trail
+
+#### Fix
+**API — `src/app/api/brand/campaigns/[campaignId]/route.ts`:**
+- `validateCsrfToken(req)` at the head of PATCH + DELETE
+- `cancelReason` in body passes through to the service
+
+**Service — `src/server/campaignManagementService.ts`:**
+- `transitionCampaignStatus()` now takes `opts.cancelReason`
+- New `getMissingPublishFields()` returns required-but-missing fields for draft → proposed. Q4 decision: minimum viable = title + budget + brief. Other fields stay suggested
+- Pre-publish guard throws `Complete these fields to publish: X, Y` when fields are missing
+- `audit_log` row written on EVERY transition (`action='campaign_status_transition'`, metadata = `{campaignId, fromStatus, toStatus, cancelReason, campaignTitle, budgetTotal}`)
+- New `getCampaignPublishability(campaignId, brandId)` helper — same source of truth, exposed so UI can render the "complete these to publish" list before the click
+
+**UI — `src/app/dashboard/brand/campaigns/[campaignId]/page.tsx`:**
+- `changeStatus()` rewritten as `openStatusConfirm()` → `executeStatusChange()` two-step flow
+- `apiPatch` auto-attaches `X-CSRF-Token` from the `e4i-csrf` cookie (replaces raw fetch)
+- One Dialog serves all four transitions (publish / activate / complete / cancel); content keyed by `pendingStatus`
+- Publish modal: simple "It will be visible in the marketplace" confirmation
+- Cancel modal: `cancelReason` Textarea (500-char cap) + amber warning when accepted/active/invited influencers exist (counted from loaded summary)
+- **Pre-publish UX**: Publish button disabled when required fields missing, tooltip + inline amber "Complete to publish: title, brief" — client-side `getMissingPublishFields` mirrors the server
+
+#### Files changed
+- `src/app/api/brand/campaigns/[campaignId]/route.ts` (+16 / -1)
+- `src/app/dashboard/brand/campaigns/[campaignId]/page.tsx` (+254 / -25)
+- `src/server/campaignManagementService.ts` (+81 / -7)
+
+#### Commit
+`40d443d` — `fix(campaigns): CSRF + confirm modals + publish validation + audit (3C)`
+
+#### Design decisions made
+- **Q4 (minimum publish requirements)** — title + budget + brief. Other fields stay suggested
+- **Audit-every-transition** — Cancellations with escrowed payments are the highest-stakes move; an audit row per transition is the cheap compliance trail
+
+#### Smoke test (2026-06-01)
+- C1 (disabled Publish state with missing brief): verified ✅
+- Inline amber "Complete to publish: brief" message visible ✅
+- **Finding surfaced during C1**: the disabled-button tooltip does not fire on hover (browser quirk — disabled buttons with `pointer-events-none` don't dispatch hover events). The inline amber message is the user-facing fallback that always shows, so the UX is fine. Documented in the mid-work table below.
+- C2 onwards covered by 3D smoke (the Publish path was re-exercised after 3D shipped)
+
+#### Follow-ups for canonical docs (queue for end-of-phase-6)
+- **CLAUDE.md** — Key Decisions: "every campaign status transition writes an `audit_log` row (`action='campaign_status_transition'`) — cancellations with escrowed payments are the highest-stakes move and the audit trail is the cheap compliance lever"; "PATCH on campaign routes is CSRF-gated alongside DELETE — state-mutating endpoints touching state machine + payment transitions all validate the double-submit token"
+- **FEATURE2_INFLUENCERS_ADDA.md** — Document the publish-readiness validation contract (`getMissingPublishFields` server-side mirror of client check)
+
+---
+
+### Sub-Phase 3D — Brand campaign edit dialog (`6ea441c` + follow-up `ee9fe98`)
+
+**Audit reference:** Pass 3 B-W1, mid-work item #4
+
+#### Bug
+Item #4 from the mid-work findings: a brand who created a draft via the New Campaign dialog with only the required fields (`title` + `budgetTotal`) landed on the detail page with Publish disabled (per 3C's missing-fields gate) and had **no UI to add the brief or any other field**. The only escape was delete + recreate. The same trap applied to dates, deliverables, marketplace toggle, SLA settings — none editable post-create.
+
+#### Root cause
+Backend was fully in place from earlier phases:
+- `PATCH /api/brand/campaigns/[campaignId]` route (CSRF + ownership gates added in 3C)
+- `updateCampaignDetails(campaignId, userId, body)` service function existed
+- No UI ever wired to it
+
+#### Design Q&A (approved before code)
+1. **Status gate** — `draft` + `proposed` + `negotiating`. Block on `active` / `completed` / `cancelled` / `disputed` (escrow + accepted-influencer commitments)
+2. **paymentType editability** — `draft` only. Lock once published. Influencers apply against payment terms; Stripe pattern freeze-pricing-once-customer-in-funnel
+3. **`budgetTotal` editability with applications** — warn (don't block). Amber callout with application count in the dialog. Brands need flexibility, applicants can re-evaluate
+4. **Notification on edit** — out of scope for 3D. Logged as follow-up for an influencer-side phase
+5. **Audit log on every save** — every save (even no-change). Operational trail beats storage savings
+
+#### Fix
+**Repo — `src/db/repositories/influencerCampaignRepository.ts`:**
+- `updateCampaign` Pick<> extended to include `isPublic`, `maxInfluencers`, `applicationDeadline`, `reviewSlaHours`, `autoApproveEnabled` (previously only the create path could set these)
+
+**Service — `src/server/campaignManagementService.ts`:**
+- `EDITABLE_STATUSES = {draft, proposed, negotiating}` (Q1). Throws on anything else with explicit error message
+- `EDITABLE_FIELDS` allowlist — anything outside is silently dropped even if the client sends it (defence in depth on top of the repo `Pick<>`). Prevents stale/malicious clients moving `platformFeePct`, `brandId`, etc.
+- `paymentType` silently dropped when `status !== 'draft'` (Q2). Rest of the save still goes through
+- `audit_log` row on EVERY save with diff metadata (Q5): `{changedFields[], from{}, to{}, noOp}`. JSON-equality diff so arrays + dates compare correctly. Reason: `Updated: brief` or `No fields changed`. noOp saves still log
+- `getCampaignSummary` now also returns `applicationCount: number` so the UI can show the Q3 budget-change warning without an extra round trip
+
+**UI — `src/app/dashboard/brand/campaigns/[campaignId]/page.tsx`:**
+- Pencil-icon **Edit** button in header, gated on `EDITABLE_STATUSES` (invisible on active and beyond)
+- Dialog mirrors New Campaign field layout, `max-h-[85vh] overflow-y-auto`, mobile-stacked grids (`sm:grid-cols-2`)
+- sessionStorage draft persistence keyed by campaignId (`e4i_campaign_edit_draft:<id>`): hydrates on open, persists on every change, cleared on save success or explicit Discard
+- Inline validation: title required (≤200 chars), budget > 0, brief ≤5000, end ≥ start, positive SLA hours, positive max influencers
+- `paymentType` Select disabled when `status !== 'draft'` with hint copy (Q2)
+- Amber `AlertTriangle` warning when `applicationCount > 0` AND the budget value has been altered (Q3 — warn-don't-block)
+
+**Follow-up — `ee9fe98` (D7 smoke fix):**
+D7 smoke surfaced that the project's custom `Dialog` (`src/components/ui/dialog.tsx`) is hand-rolled and intentionally has no built-in X button, no outside-click handler, and no Escape listener. The sessionStorage "resume mid-edit" path was unreachable through the UI — Discard cleared the draft, Save committed it, nothing else closed the dialog.
+
+Added (on the edit dialog only — other dialogs in this page are short-lived confirms where this trade-off is irrelevant):
+- X icon button in the top-right of the dialog header → `closeEditDialog(false)` (keeps draft). aria-label spells out the keep-draft behaviour
+- Subtitle under the title: "Close to keep your changes for later · Discard throws them away"
+- Window-level Escape keydown listener while `editOpen` → also `closeEditDialog(false)`. Suppressed during `editSaving` so a stray Escape can't abandon an in-flight save
+
+#### Files changed
+- 3D: `src/db/repositories/influencerCampaignRepository.ts` (+4 / -2), `src/server/campaignManagementService.ts` (+90 / -5), `src/app/dashboard/brand/campaigns/[campaignId]/page.tsx` (+419 / -2)
+- 3D-fu: `src/app/dashboard/brand/campaigns/[campaignId]/page.tsx` (+34 / -2)
+
+#### Commits
+- `6ea441c` — `feat(campaigns): edit dialog for draft/proposed/negotiating (3D)`
+- `ee9fe98` — `fix(campaigns): X close + Escape on edit dialog (3D follow-up)`
+
+#### Smoke test (2026-06-01)
+- D1 — Open missing-brief draft → click Edit → dialog opens prefilled ✅
+- D2 — Type brief, Save → toast success, dialog closes, Publish enables ✅
+- D7 — surfaced the no-X / no-outside-click issue → fixed in `ee9fe98`
+- D11 — Force-edit an active campaign via DevTools fetch → 400 with `Cannot edit a campaign in "active" status — editing is only available for draft, proposed, or negotiating campaigns.` ✅
+- D12 — `SELECT … FROM audit_log WHERE action='campaign_details_updated'` → rows present, `metadata.changedFields` populated correctly, `reason` reads `Updated: <fields>` ✅
+- D3 / D4 / D5 / D6 / D8 / D9 / D13 / D14 — not explicitly confirmed but functional based on UI exercise during D1/D2/D7
+
+#### Out of scope (logged as follow-ups)
+- Edit on `active`/`completed`/`cancelled` campaigns — needs escrow validation + notification fan-out spec
+- Notification to existing applicants when a brand edits a `proposed`/`negotiating` campaign (Q4)
+- Inline diff display in the dialog ("you've changed: title, budget")
+- Bulk-edit across campaigns
+- Field-level validation enhancements (brief min/max, deliverable count caps)
+
+#### Follow-ups for canonical docs (queue for end-of-phase-6)
+- **CLAUDE.md** — Key Decisions:
+  - "Campaign edit is gated to `draft`/`proposed`/`negotiating` — post-activation editing is out of scope until escrow + notification fan-out spec exists"
+  - "`paymentType` is editable on `draft` only — Stripe-pattern freeze-pricing-once-customer-in-funnel; silently dropped from PATCH body on non-draft so the rest of the save still goes through"
+  - "Every campaign edit save writes an `audit_log` row (`action='campaign_details_updated'`) — even no-op saves; metadata carries `{changedFields[], from{}, to{}, noOp}` for diff trace"
+  - "Custom `Dialog` (src/components/ui/dialog.tsx) has no built-in X / outside-click / Escape — opt-in per dialog where dismissal-without-action is desirable (edit dialog has its own X + Escape; status-transition modals deliberately don't)"
+- **FEATURE2_INFLUENCERS_ADDA.md** — Document the EDITABLE_STATUSES set + paymentType lock + per-save audit trail
 
 ---
 
 ## Items discovered mid-work (queued, not yet phased)
 
-Real findings that surfaced during Phase 1 + 2 execution. Each is a candidate for the master fix list / future phase scoping. Newest entries at the bottom.
+Real findings that surfaced during Phase 1 / 2 / 3 execution. Each is a candidate for the master fix list / future phase scoping. Newest entries at the bottom.
 
 | # | Item | Source | Priority hint |
 |---|---|---|---|
 | 1 | Influencer profile: location field needs autocomplete (Google Places or static city/country list) | 1A smoke test setup | UX polish — Phase 3+ |
 | 2 | Influencer profile: niche field needs chip-input with autocomplete (LinkedIn-style: type + comma/Tab → chip) | 1A smoke test setup | UX polish — Phase 3+ |
 | 3 | `/api/influencer/profile` save latency — took noticeably long, possibly synchronous downstream fanout blocking the response | 1A smoke test setup | Investigate — Phase 2+ perf bucket |
-| 4 | Brand campaign edit flow — no PATCH UI exists, brand cannot edit dates/budget/marketplace settings after create | 1A smoke test setup | Real bug — Phase 2 likely |
+| 4 | Brand campaign edit flow — no PATCH UI exists, brand cannot edit dates/budget/marketplace settings after create — **CLOSED IN 3D** | 1A smoke test setup | ✅ Done (3D, `6ea441c` + `ee9fe98`) |
 | 5 | Login UX: misleading "Invalid email or password" for password-less (Google-only) users. Better: "This account uses Google sign-in. Please use the Google button." | 1A smoke test (vishweshwar98765 login attempt) | Auth UX polish — Phase 2 cluster with 1B |
 | 6 | `ADMIN_DIAGNOSTICS_ENABLED=true` env var didn't take effect on production despite redeploy — diagnostic route returned 404. Root cause not yet investigated. Worked around by querying Neon SQL directly. | 1A Phase A smoke test | Investigate — Vercel ops, minor priority |
 | 7 | Orphan `/signup/complete` page + `/api/auth/complete-signup` route (now structurally unreachable after 1B) — **CLOSED IN 2A** | 1B planning | ✅ Done (2A) |
@@ -345,6 +582,12 @@ Real findings that surfaced during Phase 1 + 2 execution. Each is a candidate fo
 | 12 | Brand scheduled-launches list at `/dashboard/launch` shows times in UTC ("Goes live May 31, 09:00 AM UTC"). Should render in brand's wall-clock without needing a per-product tz column. Fix: convert to small client component using `toLocaleString` in browser. | 2C scope decision | UX polish — Phase 3+ |
 | 13 | **Migration drift** — migration 016 was documented as "COMPLETE" in CLAUDE.md but had not been applied to production. Discovered when `scheduled_launch_at` column was missing. Need to verify migrations 015–020 status; the "COMPLETE" label describes code-shipped, not DB-applied. | 2C SQL backfill check | Investigate — Phase 3 ops cleanup |
 | 14 | `users.role` enum is plain TEXT in schema — `role IN ('brand','consumer','admin')` is enforced only at TypeScript level and in `auth.config.ts` role-assignment branches. A direct SQL insert or stray admin script could write any string. CHECK constraint or PG enum would catch. | Mid-1B investigation (admin role detection in OnboardingGuard) | Hardening — Phase 4+ data integrity |
+| 15 | Browser quirk — native `title` tooltip does NOT fire on hover of a disabled button (shadcn `Button` sets `disabled:pointer-events-none`, so mouse events never reach the disabled element). The inline amber message below the button is the always-visible fallback in 3C, so the UX is fine. If we ever want the tooltip too, wrap the disabled button in a `<span>` and put the `title` on the wrapper. | 3C C1 smoke | Cosmetic polish — Tier C |
+| 16 | Cancel button on a `draft` campaign is intentionally visible (any non-completed/non-cancelled status). Confirmed by-design in the 3C state machine — a brand who created a draft they no longer want should be able to cancel it without first publishing. Not a bug; documented here in case future Claude sessions re-discover. | 3C C1 smoke | Documentation only |
+| 17 | Brand settings page to edit `brand_profiles` fields after onboarding — wizard is set-once today. Logo, billing entity, GSTIN, target audience all locked once the wizard is completed. Brands may need to update industry, address, or logo over the lifetime of the account. | 3A.2 follow-up | UX gap — Phase 4+ brand-side polish |
+| 18 | Orphan brand-logo blob cleanup — wizard uploads to Vercel Blob via `/api/uploads/brand-logo` and then writes the URL into `brand_profiles.logoUrl` on submit; if the brand abandons the wizard mid-Step-5, the blob is orphaned. Currently relies on the existing media-retention sweep to catch it. Could add an explicit per-brand reconcile cron if abandonment rate is high. | 3A.2 design | Investigate — Phase 4+ ops |
+| 19 | Custom `Dialog` (`src/components/ui/dialog.tsx`) has no built-in X button, outside-click handler, or Escape listener. Affects every dialog in the app (Invite Influencer, Add Milestone, Release Payment, Refund, all four status-transition modals, etc.). 3D's edit dialog got its own X + Escape (commit `ee9fe98`) because the sessionStorage resume path was otherwise unreachable. Other dialogs are short-lived confirms where the trade-off is irrelevant. A future architectural cleanup could add these to the shared component, but it would change the dismissal behaviour of every consumer — needs deliberate review. | 3D D7 smoke | Architectural — defer; per-dialog opt-in is fine for now |
+| 20 | Migration 021 — confirmed applied in production via 3A wizard usage during 3B/3C/3D smoke (would have failed at runtime without `brand_profiles` table). Belt-and-suspenders: future Claude sessions can re-verify via `SELECT to_regclass('public.brand_profiles')` in Neon SQL. Closes the migration-drift concern from item #13 for migration 021 specifically; items 015–020 still need explicit verification. | 3A status check | ✅ Confirmed via runtime — items 015–020 still pending verify |
 
 ---
 
