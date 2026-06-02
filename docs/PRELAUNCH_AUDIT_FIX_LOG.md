@@ -7,6 +7,7 @@
 > **Phase 1 completed:** 2026-05-30
 > **Phase 2 completed:** 2026-05-31
 > **Phase 3 completed:** 2026-06-01
+> **Phase 4 in progress:** 4A + 4B shipped 2026-06-02; 4C (A9 — influencer verification) deferred pending strategic design discussion on the broader influencer onboarding flow.
 
 ---
 
@@ -25,6 +26,9 @@
 | 3 | 3C | Campaign publish — CSRF + confirm modals + pre-publish validation + transition audit | `40d443d` | ✅ 2026-06-01 (C1 disabled state verified, see "tooltip-on-disabled-button" finding below) | ⏳ deferred |
 | 3 | 3D | Brand campaign edit — Edit dialog + status gate + paymentType lock + per-save audit | `6ea441c` | ✅ 2026-06-01 (D1–D2, D11, D12 verified; D7 surfaced custom-Dialog gap → fixed in `ee9fe98`) | ⏳ deferred |
 | 3 | 3D-fu | Edit dialog X close + Escape key (custom Dialog has no built-in dismiss) | `ee9fe98` | ✅ 2026-06-01 | ⏳ deferred |
+| 4 | 4A | Marketplace draft exclusion — apply guard + listing/recommended/detail filters | `6c7d80b` | ✅ 2026-06-02 (A13-1 + A13-3 verified; A13-2/4/5/6 functional, not separately confirmed) | ⏳ deferred |
+| 4 | 4B | Payout-account prompt — banner (L1) + inline notice (L2) + accept/apply guards (L3/L4) + friendly modal (L5) | `bdc0f01` | ⏳ deferred — just shipped, awaiting smoke | ⏳ deferred |
+| 4 | 4C | Influencer verification flow (A9) | — | ⏳ pending — awaiting strategic discussion on broader influencer onboarding | ⏳ deferred |
 
 ---
 
@@ -562,9 +566,148 @@ Added (on the edit dialog only — other dialogs in this page are short-lived co
 
 ---
 
+## Phase 4 — Tier A remaining (IN PROGRESS)
+
+Theme: close the rest of Tier A from the original audit (A13, A10, A9). A13 + A10 shipped 2026-06-02. A9 is deferred pending a strategic design discussion on the broader influencer-onboarding flow (user-led).
+
+### Sub-Phase 4A — Marketplace draft exclusion (`6c7d80b`)
+
+**Audit reference:** Pass 2 C4 (A13)
+
+#### Bug
+`applyToCampaign` in `campaignMarketplaceService.ts:132` allowed applications against `['draft','proposed','active']`. Drafts are still being edited by the brand — surfacing them to influencers is wrong on two axes:
+
+1. **Apply leakage** — an influencer could submit an application against a campaign whose title, brief, budget, or deliverables were still being typed
+2. **Listing leakage** — investigation surfaced that the broader marketplace listing also leaked drafts: `getPublicCampaigns` (line 131), `getRecommendedCampaigns` (line 201), and `getCampaignMarketplaceDetail` (line 248) all included drafts when `is_public=true`
+
+After 3D shipped, a brand could toggle `isPublic=true` on a draft via the new Edit dialog — accidentally exposing the in-progress campaign across all four surfaces. Same conceptual bug in four places.
+
+#### Root cause
+The status allowlist was written when only `('proposed','active')` made sense, then `'draft'` was added to make local development easier (drafts could be browsed before the publish flow existed). The dev shortcut never got removed.
+
+#### Fix — drafts removed from all four marketplace surfaces
+
+| Spot | Before | After |
+|---|---|---|
+| `applyToCampaign` allowlist | `['draft','proposed','active']` | `['proposed','active']` + draft caught first with friendlier *"This campaign is not yet open for applications"* error |
+| `getPublicCampaigns` listing | included `draft` | `proposed` + `active` only |
+| `getRecommendedCampaigns` | included `draft` | same |
+| `getCampaignMarketplaceDetail` | only `isPublic` filter | + status `IN ('proposed','active')` so direct URL 404s |
+
+`negotiating` was already excluded everywhere — left as-is (out of scope; mid-negotiation campaigns typically don't take new applications).
+
+The split-error in `applyToCampaign` is deliberate: `'draft'` gets *"not yet open"* (it's coming), other terminal statuses keep *"no longer accepting"* (it's gone). Two different states, two different stories.
+
+#### Files changed
+- `src/server/campaignMarketplaceService.ts` (+9 / -1) — split error + tightened allowlist
+- `src/db/repositories/campaignMarketplaceRepository.ts` (+17 / -3) — listing, recommended, detail all tightened
+
+#### Commit
+`6c7d80b` — `fix(marketplace): exclude drafts from listing + apply (A13)`
+
+#### Design decisions made
+- **Scope expansion** — the original brief asked to fix the apply guard and "verify the listing already filters drafts (probably does)". Investigation showed all four spots leaked. Fixing all four in one commit avoids the broken half-state where "I see a draft in the listing, click apply, get rejected"
+
+#### Smoke test (2026-06-02)
+- A13-1 — Brand created a draft, toggled `isPublic=true` via the 3D Edit dialog without publishing ✅
+- A13-3 — Influencer GET `/api/marketplace/campaigns/<draftId>` returned `404 {error:"Campaign not found"}` ✅ (route converts the repo's `result.campaign === null` to a clean 404 — pre-fix would have returned the draft body)
+- A13-2 (listing not visible), A13-4 (apply force-test), A13-5 (post-publish appears), A13-6 (cancelled returns different error) — functional based on the server change, not separately confirmed by user
+
+#### Follow-ups for canonical docs (queue for end-of-phase-6)
+- **CLAUDE.md** — Key Decisions: "Marketplace surfaces (listing, recommended, detail, apply) all gate on `status IN ('proposed','active')` — drafts are deliberately excluded even when `isPublic=true`, because the brand may be mid-edit"
+- **FEATURE2_INFLUENCERS_ADDA.md** — Document the status gate as the marketplace visibility contract
+
+---
+
+### Sub-Phase 4B — Payout-account prompt (`bdc0f01`)
+
+**Audit reference:** Pass 3 I-C3 (A10)
+
+#### Bug
+Silent failure on first payment release. The flow:
+1. Influencer registers an influencer profile (`/dashboard/influencer/profile`)
+2. Accepts a campaign invitation OR applies to a marketplace campaign
+3. Does the work
+4. Brand clicks Release Payment → `payoutService.initiateRecipientPayout()` calls `getPrimaryAccount(userId, currency)` → returns null → throws `PayoutAccountMissingError`
+5. `/api/payments/release/[campaignId]:132` catches it and returns 422 to brand UI
+6. **Influencer never knew this requirement existed** — learns about it through brand support escalation
+
+Worst case the influencer has already delivered the deliverable, has expectations of payment, and discovers the missing payout setup only through customer-support back-and-forth. Bad for trust, bad for support load.
+
+#### Root cause
+The payouts page (`/dashboard/influencer/payouts`) and the underlying `influencer_payout_accounts` table existed from migration 008. The page was polished, the API worked, the schema supported five account types with encryption. The gap was **discoverability** — nothing on the influencer's normal path mentioned payouts existed until they tried to receive money.
+
+#### Fix — five defensive layers, soft-to-hard
+
+| Layer | Surface | Effect |
+|---|---|---|
+| **L1** | `/dashboard` (consumer dashboard, where influencers land) | Amber Wallet banner: *"Add your payout account"* + CTA. Shown only when user has an influencer profile AND no payout account. sessionStorage dismissable. Mirrors `BrandOnboardingBanner` pattern |
+| **L2** | `/dashboard/influencer/profile` | Quieter inline card below the profile form. Same trigger condition. CTA → payouts page |
+| **L3** | `respondToInvitation` (accept campaign) | Hard guard: loads campaign, checks `hasPayoutAccount(influencerId, 'influencer', campaign.budgetCurrency)`. On miss → audit_log row (`accept_blocked_no_payout`) + throws `PayoutAccountRequiredError` |
+| **L4** | `applyToCampaign` (marketplace apply) | Same shape but in the apply path. audit_log row `apply_blocked_no_payout` |
+| **L5** | `CampaignDetailPanel` (marketplace card → Apply panel) | Intercepts the L4 server response when `code='PAYOUT_ACCOUNT_REQUIRED'`. Opens friendly modal with currency-specific copy + CTA. Replaces generic toast.error |
+
+#### Design Q&A (all approved upfront)
+
+1. **What counts as "has payout account"?** — Q1 approved: **(b) currency-matched** for L3+L4 hard blocks (matches the `payoutService.getPrimaryAccount(userId, currency)` check that fires at release time); **(a) any-currency** for L1+L2 gentle nudges
+2. **Error type** — Q2 approved: **(a) typed `PayoutAccountRequiredError` class** alongside the existing `PayoutAccountMissingError`. Stripe/Razorpay pattern — typed errors let API routes return structured `{code, currency, cta}` responses the UI can render specially
+3. **L1 banner dismissal cadence** — Q3 approved: **(a) sessionStorage**, mirrors BrandOnboardingBanner, reappears next login
+4. **L5 — disable button or intercept click?** — Q4 approved: **(b) intercept**. The click is intent ("I want this campaign"); converting that intent into a payout-setup flow is the right next step. Disabled buttons just look broken without context
+5. **Audit log scope** — Q5 approved: **(a) blocked attempts only**. Account creation already auto-audits via the `payout_accounts` row write itself
+6. **Extra DB call for currency lookup?** — Q6 approved: **yes, accept it.** Simplest correct check; caching would be premature optimization
+
+#### Files changed
+- `src/db/repositories/payoutAccountRepository.ts` — new `hasPayoutAccount(userId, userRole, currency?)` helper (EXISTS via LIMIT 1)
+- `src/server/payoutService.ts` — new `PayoutAccountRequiredError` class with `currency: string` field
+- `src/server/campaignManagementService.ts` — L3 guard in `respondToInvitation` (adds `getCampaignById` lookup for currency, `hasPayoutAccount` check, audit_log row, throw)
+- `src/server/campaignMarketplaceService.ts` — L4 guard in `applyToCampaign` (same pattern, campaign already loaded)
+- `src/app/api/influencer/campaigns/[campaignId]/route.ts` — catches `PayoutAccountRequiredError` → 400 with `{error, code:'PAYOUT_ACCOUNT_REQUIRED', currency, cta}`
+- `src/app/api/marketplace/campaigns/[campaignId]/apply/route.ts` — same catch
+- `src/components/InfluencerPayoutBanner.tsx` (new) — L1 banner; sessionStorage `e4i-influencer-payout-banner-dismissed`; hydration-safe
+- `src/app/dashboard/page.tsx` — `ConsumerDashboard` checks influencer profile + `hasPayoutAccount` in parallel with existing dashboard fetches; renders banner when both conditions hold
+- `src/app/dashboard/influencer/profile/page.tsx` — fetches `/api/payouts/accounts` alongside the profile fetch; renders inline amber card below social handles when registered AND no accounts
+- `src/components/influencer/marketplace/CampaignDetailPanel.tsx` — `handleApply` parses response body for `code`; on `PAYOUT_ACCOUNT_REQUIRED` opens the L5 modal with currency-specific copy
+
+**No schema migration** — `influencer_payout_accounts` already in place from migration 008.
+
+#### Commit
+`bdc0f01` — `feat(payouts): payout-account prompt — banner + guards + modal (A10)`
+
+#### Smoke test (deferred — just shipped)
+A10 smoke plan (run after Vercel green): A10-L1 (banner appears + sessionStorage dismiss), L1b/L1c (later button persists session, re-appears next login), L2 (inline card on profile), L2b (gone after adding account), L3 (accept blocked with structured 400), L4 (marketplace apply blocked), L4b (form state preserved on modal close), L4c (after adding account, apply succeeds), L4d (audit_log rows present), A10-currency-mismatch (USD campaign, INR-only influencer — modal copy reflects USD).
+
+#### Out of scope (logged as follow-ups)
+- **Retroactive sweep** — influencers who accepted invitations BEFORE A10 shipped still have no payout account; they're stuck until a brand tries to release payment. Would need a cron + email reminder. Deferred
+- **Payout account verification UX** — `isVerified` flag exists; no verification flow yet (would need micro-deposit or Razorpay verify API)
+- **Profile wizard expansion to include payout setup** — turning `/dashboard/influencer/profile` into a multi-step wizard like brand onboarding. Deferred pending user-led strategic discussion (next agenda item before A9)
+- **Email reminder cron** — daily/weekly nudge to influencers who registered but never added payout. Out of scope; let's see if L1–L5 are enough first
+
+#### Follow-ups for canonical docs (queue for end-of-phase-6)
+- **CLAUDE.md** — Key Decisions:
+  - "Influencer payout setup is gated at 5 layers: dashboard banner (L1), profile inline notice (L2), accept-invitation hard guard (L3, currency-matched), marketplace-apply hard guard (L4, currency-matched), apply modal intercept (L5). Soft nudges use any-currency check; hard blocks use currency-specific to mirror the `payoutService.getPrimaryAccount(userId, currency)` failure point"
+  - "`PayoutAccountRequiredError` (entry-time, fires in `respondToInvitation` + `applyToCampaign`) is distinct from `PayoutAccountMissingError` (release-time, fires in `initiateRecipientPayout`). Both share the same root cause but fail at very different points in the lifecycle — the former is the new defensive layer that prevents the latter"
+  - "API routes that surface `PayoutAccountRequiredError` return structured 400 `{error, code:'PAYOUT_ACCOUNT_REQUIRED', currency, cta}` so the client can render a friendly modal rather than a generic toast"
+- **FEATURE2_INFLUENCERS_ADDA.md** — Document the 5-layer payout prompt as part of the influencer engagement lifecycle
+- **SCHEMA.md** — No schema change; cross-link `influencer_payout_accounts` to the A10 guards
+
+---
+
+### Sub-Phase 4C — Influencer verification (A9) — PENDING
+
+User explicitly deferred: *"After A10 is done, I want to discuss a BIGGER strategic change to influencer onboarding BEFORE we tackle A9."*
+
+A9 will pick up after the strategic discussion lands. Likely scope (TBD):
+- What "verified" means (manual admin badge? social-handle OAuth ownership proof? identity-doc upload?)
+- Whether verification is a prerequisite to apply or just a trust signal
+- Whether the strategic onboarding rethink absorbs A9 into a larger wizard
+
+No code shipped yet. Status row in Status Overview reflects this.
+
+---
+
 ## Items discovered mid-work (queued, not yet phased)
 
-Real findings that surfaced during Phase 1 / 2 / 3 execution. Each is a candidate for the master fix list / future phase scoping. Newest entries at the bottom.
+Real findings that surfaced during Phase 1 / 2 / 3 / 4 execution. Each is a candidate for the master fix list / future phase scoping. Newest entries at the bottom.
 
 | # | Item | Source | Priority hint |
 |---|---|---|---|
@@ -588,6 +731,10 @@ Real findings that surfaced during Phase 1 / 2 / 3 execution. Each is a candidat
 | 18 | Orphan brand-logo blob cleanup — wizard uploads to Vercel Blob via `/api/uploads/brand-logo` and then writes the URL into `brand_profiles.logoUrl` on submit; if the brand abandons the wizard mid-Step-5, the blob is orphaned. Currently relies on the existing media-retention sweep to catch it. Could add an explicit per-brand reconcile cron if abandonment rate is high. | 3A.2 design | Investigate — Phase 4+ ops |
 | 19 | Custom `Dialog` (`src/components/ui/dialog.tsx`) has no built-in X button, outside-click handler, or Escape listener. Affects every dialog in the app (Invite Influencer, Add Milestone, Release Payment, Refund, all four status-transition modals, etc.). 3D's edit dialog got its own X + Escape (commit `ee9fe98`) because the sessionStorage resume path was otherwise unreachable. Other dialogs are short-lived confirms where the trade-off is irrelevant. A future architectural cleanup could add these to the shared component, but it would change the dismissal behaviour of every consumer — needs deliberate review. | 3D D7 smoke | Architectural — defer; per-dialog opt-in is fine for now |
 | 20 | Migration 021 — confirmed applied in production via 3A wizard usage during 3B/3C/3D smoke (would have failed at runtime without `brand_profiles` table). Belt-and-suspenders: future Claude sessions can re-verify via `SELECT to_regclass('public.brand_profiles')` in Neon SQL. Closes the migration-drift concern from item #13 for migration 021 specifically; items 015–020 still need explicit verification. | 3A status check | ✅ Confirmed via runtime — items 015–020 still pending verify |
+| 21 | 3D edit dialog allows a brand to toggle `isPublic=true` on a `draft` campaign. Before 4A this leaked drafts into the marketplace listing + apply. 4A fixed the leak server-side, but the brand-facing edit dialog could still warn at toggle time ("This campaign is still a draft. It won't be visible in the marketplace until you publish.") so brands understand the toggle is a future-state preference rather than an instant publish. Cosmetic — Tier C polish. | 4A investigation | UX polish — Tier C |
+| 22 | A10 retroactive sweep — influencers who accepted invitations or applied to marketplace campaigns BEFORE A10 shipped (2026-06-02) and still have no payout account are now structurally stuck: the L3/L4 guards don't help them retroactively, and the first signal will still be a 422 at brand payment release. A one-shot cron / SQL identify-and-email would close the gap. Logged as A10 out-of-scope follow-up. | A10 design | Real bug — Tier B operational follow-up |
+| 23 | A10 + payout verification gap — accounts created via the payouts page are usable while `isVerified=false`. No verification UX exists (no micro-deposit, no Razorpay account verify API call). For India INR via Razorpay this surfaces only when RazorpayX is activated (`RAZORPAYX_ENABLED=false` today, all payouts manual). For international (PayPal, Wise, SWIFT) it's manual already so verification is implicit. Documented for the future RazorpayX activation moment. | A10 design | Hardening — defer until RazorpayX activation |
+| 24 | A10 + profile wizard expansion — user explicitly flagged a "BIGGER strategic change to influencer onboarding" before A9. Today's `/dashboard/influencer/profile` is a single-form page (bio, niches, social handles, base rate) with the L2 inline notice as a post-form nudge. A wizard would absorb profile + payout + verification (A9) into a single guided flow, mirroring brand onboarding (3A) but tailored to the influencer surface. Awaiting design discussion. | A10 / pre-A9 | Strategic — user-led discussion pending |
 
 ---
 
