@@ -20,9 +20,21 @@ export default function SignupPage() {
   const router = useRouter()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [role, setRole] = useState<'brand' | 'consumer'>('consumer')
+  // 3.5B — three first-class signup roles. Admin is intentionally not
+  // self-assignable (enforced by signupIntent.ts ALLOWED_SIGNUP_ROLES).
+  const [role, setRole] = useState<'brand' | 'consumer' | 'influencer'>('consumer')
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false)
+
+  // Single source of truth for the post-signup landing path. Brand
+  // lands on the brand dashboard; consumer browses products; influencer
+  // is sent to the existing influencer profile registration page (which
+  // will be replaced by the dedicated wizard in 3.5C).
+  const getRedirectUrl = (r: typeof role): string => {
+    if (r === 'brand') return '/dashboard'
+    if (r === 'influencer') return '/dashboard/influencer/profile'
+    return '/top-products'
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -54,8 +66,7 @@ export default function SignupPage() {
       })
 
       if (signInResult?.ok) {
-        const redirectUrl = role === 'brand' ? '/dashboard' : '/top-products'
-        router.push(redirectUrl)
+        router.push(getRedirectUrl(role))
         router.refresh()
       } else {
         // Account created but sign-in failed — send to login page
@@ -89,10 +100,10 @@ export default function SignupPage() {
       return
     }
 
-    // Redirect a brand to /dashboard, a consumer to /top-products (matches the
-    // email/password path's per-role redirect above).
-    const callbackUrl = role === 'brand' ? '/dashboard' : '/top-products'
-    signIn('google', { callbackUrl })
+    // Per-role redirect — same destinations as the email/password path.
+    // Influencer lands on the existing profile registration page until
+    // 3.5C ships the dedicated onboarding wizard.
+    signIn('google', { callbackUrl: getRedirectUrl(role) })
   }
 
   return (
@@ -113,41 +124,66 @@ export default function SignupPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Role Selection */}
+            {/* Role Selection — 3 first-class options (3.5B) */}
             <div className="space-y-2">
               <Label>I am a...</Label>
-              <RadioGroup value={role} onValueChange={(value) => setRole(value as 'brand' | 'consumer')}>
-                <div className="flex items-start space-x-2 rounded-lg border p-3">
+              <RadioGroup
+                value={role}
+                onValueChange={(value) =>
+                  setRole(value as 'brand' | 'consumer' | 'influencer')
+                }
+              >
+                <div
+                  className={`flex items-start space-x-2 rounded-lg border p-3 transition-colors ${
+                    role === 'brand' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'
+                  }`}
+                >
                   <RadioGroupItem value="brand" id="brand" className="mt-1" />
                   <Label htmlFor="brand" className="flex-1 cursor-pointer">
-                    <div className="font-medium">Brand</div>
+                    <div className="font-medium flex items-center gap-1.5">
+                      <span>🏢</span>
+                      <span>I&apos;m a Brand</span>
+                    </div>
                     <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                      Get real consumer intelligence, launch influencer campaigns, track competitor insights and grow with data-driven decisions.
+                      Get hyper-personalized feedback and intelligence on your products.
                     </div>
                   </Label>
                 </div>
-                <div className="flex items-start space-x-2 rounded-lg border p-3">
+                <div
+                  className={`flex items-start space-x-2 rounded-lg border p-3 transition-colors ${
+                    role === 'consumer' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'
+                  }`}
+                >
                   <RadioGroupItem value="consumer" id="consumer" className="mt-1" />
                   <Label htmlFor="consumer" className="flex-1 cursor-pointer">
-                    <div className="font-medium">Consumer</div>
+                    <div className="font-medium flex items-center gap-1.5">
+                      <span>🛍️</span>
+                      <span>I&apos;m a Consumer</span>
+                    </div>
                     <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                      Share feedback, earn rewards, discover exclusive deals and connect with brands that match your interests.
+                      Earn rewards by sharing honest feedback on products you love.
+                    </div>
+                  </Label>
+                </div>
+                <div
+                  className={`flex items-start space-x-2 rounded-lg border p-3 transition-colors ${
+                    role === 'influencer'
+                      ? 'border-violet-500 bg-violet-500/5'
+                      : 'hover:bg-muted/40'
+                  }`}
+                >
+                  <RadioGroupItem value="influencer" id="influencer" className="mt-1" />
+                  <Label htmlFor="influencer" className="flex-1 cursor-pointer">
+                    <div className="font-medium flex items-center gap-1.5">
+                      <span>🎯</span>
+                      <span>I&apos;m an Influencer</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                      Get paid for genuine campaigns with brands that match your audience.
                     </div>
                   </Label>
                 </div>
               </RadioGroup>
-
-              {/* Informational — not selectable. Influencers sign up as
-                  consumers, then complete an influencer profile post-onboarding. */}
-              <div className="rounded-lg border-2 border-dashed border-violet-500/30 bg-violet-500/5 p-3">
-                <div className="font-medium text-sm flex items-center gap-1.5">
-                  <span>🎯</span>
-                  <span>I&apos;m an Influencer</span>
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                  Sign up as a Consumer, then complete your Influencer profile to start monetizing your reach through brand campaigns.
-                </div>
-              </div>
             </div>
 
             {/* Name */}
