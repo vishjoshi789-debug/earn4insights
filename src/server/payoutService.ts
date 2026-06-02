@@ -44,6 +44,29 @@ export class PayoutAccountMissingError extends Error {
   }
 }
 
+/**
+ * A10 — thrown when an influencer attempts to accept an invitation OR
+ * apply to a marketplace campaign without a payout account that matches
+ * the campaign's currency. Caught at the API route layer and translated
+ * into a structured 400 the client can render as a friendly modal.
+ *
+ * Distinct from PayoutAccountMissingError, which fires later (at brand
+ * payment release time) — by the time the brand sees that, the
+ * influencer has already done work. PayoutAccountRequiredError fires
+ * at the entry to the engagement so the influencer can fix it before
+ * any work begins.
+ */
+export class PayoutAccountRequiredError extends Error {
+  public readonly currency: string
+  constructor(currency: string) {
+    super(
+      `Add a payout account that accepts ${currency} before accepting or applying to this campaign. Set up in Dashboard → Payouts.`,
+    )
+    this.name = 'PayoutAccountRequiredError'
+    this.currency = currency
+  }
+}
+
 // ── Configuration ─────────────────────────────────────────────────
 
 const MAX_RETRY_COUNT = 3

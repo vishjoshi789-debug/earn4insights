@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { applyToCampaign, withdrawApplicationService } from '@/server/campaignMarketplaceService'
+import { PayoutAccountRequiredError } from '@/server/payoutService'
 import { db } from '@/db'
 import { campaignApplications } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
@@ -42,6 +43,20 @@ export async function POST(
 
     return NextResponse.json({ application }, { status: 201 })
   } catch (error: any) {
+    // A10 — structured response when the influencer has no payout
+    // account for the campaign currency. UI intercepts this code and
+    // renders a friendly "set up payouts" modal.
+    if (error instanceof PayoutAccountRequiredError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: 'PAYOUT_ACCOUNT_REQUIRED',
+          currency: error.currency,
+          cta: '/dashboard/influencer/payouts',
+        },
+        { status: 400 },
+      )
+    }
     console.error('[Apply POST]', error)
     const msg = error.message || 'Internal server error'
     const status = msg.includes('already applied') || msg.includes('deadline') || msg.includes('maximum') ? 409 : 500

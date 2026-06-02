@@ -12,6 +12,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { getCampaignSummary, respondToInvitation } from '@/server/campaignManagementService'
 import { submitMilestone } from '@/server/campaignPaymentService'
 import { getInvitation } from '@/db/repositories/campaignInfluencerRepository'
+import { PayoutAccountRequiredError } from '@/server/payoutService'
 
 type RouteParams = { params: Promise<{ campaignId: string }> }
 
@@ -65,6 +66,20 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error: any) {
+    // A10 — structured response when the influencer has no payout
+    // account for the campaign currency. UI renders this as a
+    // friendly "set up payouts" modal rather than a generic toast.
+    if (error instanceof PayoutAccountRequiredError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: 'PAYOUT_ACCOUNT_REQUIRED',
+          currency: error.currency,
+          cta: '/dashboard/influencer/payouts',
+        },
+        { status: 400 },
+      )
+    }
     console.error('[InfluencerCampaignDetail PATCH]', error)
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 400 })
   }

@@ -65,6 +65,36 @@ export async function getAccountById(
   return rows[0] ?? null
 }
 
+/**
+ * A10 — does this user have ANY active payout account? Optionally
+ * narrowed to a currency (used by hard guards in respondToInvitation /
+ * applyToCampaign, where the influencer must have an account matching
+ * the campaign's budget currency or the eventual payment release will
+ * fail with PayoutAccountMissingError).
+ *
+ * Single-row EXISTS check via LIMIT 1; cheaper than getPayoutAccounts.
+ */
+export async function hasPayoutAccount(
+  userId: string,
+  userRole: 'influencer' | 'consumer' = 'influencer',
+  currency?: string,
+): Promise<boolean> {
+  const conditions = [
+    eq(payoutAccounts.userId, userId),
+    eq(payoutAccounts.userRole, userRole),
+    eq(payoutAccounts.isActive, true),
+  ]
+  if (currency) {
+    conditions.push(eq(payoutAccounts.currency, currency))
+  }
+  const rows = await db
+    .select({ id: payoutAccounts.id })
+    .from(payoutAccounts)
+    .where(and(...conditions))
+    .limit(1)
+  return rows.length > 0
+}
+
 // ── Create ───────────────────────────────────────────────────────
 
 export async function createPayoutAccount(

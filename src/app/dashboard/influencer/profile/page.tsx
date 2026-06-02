@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Loader2, User, CheckCircle, AlertCircle, Instagram, Youtube, Twitter, Linkedin } from 'lucide-react'
+import { Loader2, User, CheckCircle, AlertCircle, Instagram, Youtube, Twitter, Linkedin, Wallet, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function InfluencerProfilePage() {
@@ -21,6 +22,10 @@ export default function InfluencerProfilePage() {
   const [registered, setRegistered] = useState(false)
   const [profile, setProfile] = useState<any>(null)
   const [socialStats, setSocialStats] = useState<any[]>([])
+  // A10 L2 — inline payout notice when the influencer has no payout
+  // account on file. Fetched alongside the profile so we don't show
+  // a flicker between "loaded with no notice" and "notice appears".
+  const [hasPayoutAccount, setHasPayoutAccount] = useState<boolean | null>(null)
 
   const [form, setForm] = useState({
     displayName: '',
@@ -41,26 +46,30 @@ export default function InfluencerProfilePage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    fetch('/api/influencer/profile')
-      .then(r => r.json())
-      .then(data => {
-        if (data.registered && data.profile) {
+    // Fetch profile + payout accounts in parallel.
+    Promise.all([
+      fetch('/api/influencer/profile').then(r => r.json()).catch(() => ({})),
+      fetch('/api/payouts/accounts').then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
+    ])
+      .then(([profileData, payoutsData]) => {
+        if (profileData?.registered && profileData?.profile) {
           setRegistered(true)
-          setProfile(data.profile)
-          setSocialStats(data.socialStats ?? [])
+          setProfile(profileData.profile)
+          setSocialStats(profileData.socialStats ?? [])
           setForm({
-            displayName: data.profile.displayName ?? '',
-            bio: data.profile.bio ?? '',
-            niche: (data.profile.niche ?? []).join(', '),
-            location: data.profile.location ?? '',
-            instagramHandle: data.profile.instagramHandle ?? '',
-            youtubeHandle: data.profile.youtubeHandle ?? '',
-            twitterHandle: data.profile.twitterHandle ?? '',
-            linkedinHandle: data.profile.linkedinHandle ?? '',
-            baseRate: data.profile.baseRate ? String(data.profile.baseRate / 100) : '',
-            currency: data.profile.currency ?? 'INR',
+            displayName: profileData.profile.displayName ?? '',
+            bio: profileData.profile.bio ?? '',
+            niche: (profileData.profile.niche ?? []).join(', '),
+            location: profileData.profile.location ?? '',
+            instagramHandle: profileData.profile.instagramHandle ?? '',
+            youtubeHandle: profileData.profile.youtubeHandle ?? '',
+            twitterHandle: profileData.profile.twitterHandle ?? '',
+            linkedinHandle: profileData.profile.linkedinHandle ?? '',
+            baseRate: profileData.profile.baseRate ? String(profileData.profile.baseRate / 100) : '',
+            currency: profileData.profile.currency ?? 'INR',
           })
         }
+        setHasPayoutAccount((payoutsData?.accounts ?? []).length > 0)
       })
       .finally(() => setLoading(false))
   }, [status])
@@ -204,6 +213,34 @@ export default function InfluencerProfilePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* A10 L2 — inline payout notice. Only relevant once the
+          influencer is registered; before that, payouts aren't yet
+          a concern. Quiet, instructional tone — the dashboard banner
+          (L1) is the louder nudge. */}
+      {registered && hasPayoutAccount === false && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="pt-4 pb-4 flex items-start gap-3">
+            <div className="h-9 w-9 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+              <Wallet className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                Add a payout account so you can get paid
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Brands cannot release payments to you until at least one
+                payout account is set up. Takes ~30 seconds.
+              </p>
+              <Button asChild size="sm" className="h-8 mt-2">
+                <Link href="/dashboard/influencer/payouts">
+                  Set up payout <ArrowRight className="ml-1.5 h-3 w-3" />
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Button onClick={handleSubmit} disabled={saving} className="w-full sm:w-auto">
         {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

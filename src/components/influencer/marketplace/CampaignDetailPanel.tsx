@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,7 +9,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { Loader2, X, Star, Calendar, Users, CheckCircle, ArrowLeft } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Loader2, X, Star, Calendar, Users, CheckCircle, ArrowLeft, Wallet, ArrowRight } from 'lucide-react'
 import { formatCurrency, getSupportedCurrencies } from '@/lib/currency'
 import { toast } from 'sonner'
 
@@ -27,6 +34,14 @@ export default function CampaignDetailPanel({ campaignId, onClose, onApplication
   const [proposal, setProposal] = useState('')
   const [rate, setRate] = useState('')
   const [currency, setCurrency] = useState('INR')
+
+  // A10 L5 — payout-required modal. Fires when the server (L4 guard
+  // in applyToCampaign) rejects with code='PAYOUT_ACCOUNT_REQUIRED'.
+  // We intercept that specific code rather than showing a generic
+  // toast — the user's intent is "I want to apply", so converting
+  // that into a payout-setup flow is the right next step.
+  const [payoutBlockOpen, setPayoutBlockOpen] = useState(false)
+  const [payoutBlockCurrency, setPayoutBlockCurrency] = useState<string>('')
 
   useEffect(() => {
     fetch(`/api/marketplace/campaigns/${campaignId}`)
@@ -51,7 +66,18 @@ export default function CampaignDetailPanel({ campaignId, onClose, onApplication
           proposedCurrency: currency,
         }),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        // A10 L5 — payout-required: open the friendly modal instead
+        // of a generic toast. The server includes the currency the
+        // influencer needs to add an account for.
+        if (body?.code === 'PAYOUT_ACCOUNT_REQUIRED') {
+          setPayoutBlockCurrency(body.currency ?? data?.campaign?.budgetCurrency ?? 'INR')
+          setPayoutBlockOpen(true)
+          return
+        }
+        throw new Error(body?.error ?? 'Failed to submit application')
+      }
       toast.success('Application submitted!')
       onApplicationChange()
       // Reload detail
@@ -277,6 +303,51 @@ export default function CampaignDetailPanel({ campaignId, onClose, onApplication
           )}
         </div>
       </div>
+
+      {/* A10 L5 — payout-required friendly modal */}
+      <Dialog open={payoutBlockOpen} onOpenChange={(open) => { if (!open) setPayoutBlockOpen(false) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3">
+              <DialogTitle className="flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                Add a payout account first
+              </DialogTitle>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setPayoutBlockOpen(false)}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </DialogHeader>
+          <div className="space-y-3 pt-2 text-sm">
+            <p className="text-muted-foreground">
+              You need a payout account that accepts{' '}
+              <span className="font-semibold text-foreground">{payoutBlockCurrency}</span>{' '}
+              before you can apply to this campaign. Otherwise the brand
+              won&apos;t be able to pay you when your work is approved.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Takes about 30 seconds. Your application proposal will be
+              preserved in this form — come back and submit after you&apos;ve
+              set up payouts.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setPayoutBlockOpen(false)}>
+                Not now
+              </Button>
+              <Button asChild>
+                <Link href="/dashboard/influencer/payouts">
+                  Set up payout <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

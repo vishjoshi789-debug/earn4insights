@@ -40,6 +40,8 @@ import {
 } from '@/db/repositories/campaignPaymentRepository'
 import { getApplicationCount } from '@/db/repositories/campaignMarketplaceRepository'
 import { getProfileByUserId } from '@/db/repositories/influencerProfileRepository'
+import { hasPayoutAccount } from '@/db/repositories/payoutAccountRepository'
+import { PayoutAccountRequiredError } from '@/server/payoutService'
 import { db } from '@/db'
 import { auditLog } from '@/db/schema'
 import type { InfluencerCampaign, NewInfluencerCampaign } from '@/db/schema'
@@ -390,6 +392,34 @@ export async function respondToInvitation(
   if (invitation.status !== 'invited') throw new Error('Invitation already responded to')
 
   if (accept) {
+    // A10 L3 — hard guard: influencer must have a payout account
+    // matching the campaign's currency before accepting. The payment
+    // release path checks getPrimaryAccount(userId, currency) and
+    // throws PayoutAccountMissingError if absent — by which time the
+    // influencer has already done the work. Catching here fails fast
+    // so the influencer can fix it before any engagement begins.
+    const campaign = await getCampaignById(campaignId)
+    if (!campaign) throw new Error('Campaign not found')
+    const ok = await hasPayoutAccount(influencerId, 'influencer', campaign.budgetCurrency)
+    if (!ok) {
+      // Audit blocked attempt — operational signal for support
+      // ("I tried to accept and got an error"). Account creation
+      // itself auto-audits via the row write in payout_accounts.
+      await db.insert(auditLog).values({
+        userId: influencerId,
+        action: 'accept_blocked_no_payout',
+        dataType: 'campaign_invitation',
+        accessedBy: influencerId,
+        metadata: {
+          campaignId,
+          campaignTitle: campaign.title,
+          currency: campaign.budgetCurrency,
+        },
+        reason: `Accept blocked — no payout account for ${campaign.budgetCurrency}`,
+      })
+      throw new PayoutAccountRequiredError(campaign.budgetCurrency)
+    }
+
     await updateInvitationStatus(campaignId, influencerId, 'accepted', {
       acceptedAt: new Date(),
       agreedRate,

@@ -14,7 +14,10 @@ import { eq, sql, count, and, inArray } from 'drizzle-orm';
 import { getPersonalizedRecommendations } from '@/server/personalizationEngine';
 import { RecommendationCard } from '@/components/recommendation-card';
 import { BrandOnboardingBanner } from '@/components/BrandOnboardingBanner';
+import { InfluencerPayoutBanner } from '@/components/InfluencerPayoutBanner';
 import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepository';
+import { getProfileByUserId as getInfluencerProfileByUserId } from '@/db/repositories/influencerProfileRepository';
+import { hasPayoutAccount } from '@/db/repositories/payoutAccountRepository';
 import { Sparkles, ArrowRight, MessageSquare, TrendingUp, BarChart3, ExternalLink, Award, PenSquare, Trophy, ClipboardList } from 'lucide-react';
 
 // ── Brand's product ids (scoping helper) ─────────────────────────
@@ -306,11 +309,20 @@ async function BrandDashboard({ userId }: { userId?: string }) {
 // ── Consumer Dashboard ──────────────────────────────────────────
 
 async function ConsumerDashboard({ userId, userEmail }: { userId?: string; userEmail?: string }) {
-  const [myStats, points, recommendations] = await Promise.all([
+  const [myStats, points, recommendations, influencerProfile, hasAnyPayoutAccount] = await Promise.all([
     userEmail ? getConsumerFeedbackStats(userEmail) : Promise.resolve({ totalCount: 0, positiveCount: 0, negativeCount: 0, avgRating: 0 }),
     userId ? getConsumerPoints(userId) : Promise.resolve({ totalPoints: 0, lifetimePoints: 0 }),
     userId ? getPersonalizedRecommendations(userId, 3).catch(() => []) : Promise.resolve([]),
+    // A10 L1 — banner is gated on (has influencer profile) AND (no payout account).
+    // Catch on both so a single failure here can't sink the whole dashboard.
+    userId ? getInfluencerProfileByUserId(userId).catch(() => null) : Promise.resolve(null),
+    userId ? hasPayoutAccount(userId, 'influencer').catch(() => true) : Promise.resolve(true),
   ]);
+  // Show the payout banner only when the user has registered as an
+  // influencer (so payouts will matter) AND hasn't added any payout
+  // account yet. We use the "ANY currency" form here (cheap nudge);
+  // the hard L3/L4 guards check currency-specific.
+  const showInfluencerPayoutBanner = !!influencerProfile && !hasAnyPayoutAccount;
 
   let topRecommendations: Array<{
     productId: string;
@@ -343,6 +355,9 @@ async function ConsumerDashboard({ userId, userEmail }: { userId?: string; userE
           Your hub for earning rewards, sharing feedback, and discovering products.
         </p>
       </div>
+
+      {/* A10 L1 — payout nudge for registered influencers without an account */}
+      <InfluencerPayoutBanner show={showInfluencerPayoutBanner} />
 
       {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

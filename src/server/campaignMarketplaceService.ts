@@ -28,6 +28,10 @@ import {
 } from '@/db/repositories/campaignMarketplaceRepository'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
 import { getProfileByUserId } from '@/db/repositories/influencerProfileRepository'
+import { hasPayoutAccount } from '@/db/repositories/payoutAccountRepository'
+import { PayoutAccountRequiredError } from '@/server/payoutService'
+import { db } from '@/db'
+import { auditLog } from '@/db/schema'
 import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -157,6 +161,29 @@ export async function applyToCampaign(
   // Verify influencer profile exists
   const profile = await getProfileByUserId(influencerId)
   if (!profile) throw new Error('Please complete your influencer profile first')
+
+  // A10 L4 — hard guard: influencer must have a payout account
+  // matching the campaign's currency before applying. Same logic as
+  // L3 in respondToInvitation but the marketplace path. Applying is
+  // an earning intent — better to gate at the door than at brand
+  // payment release where the failure shows up to the brand instead
+  // of the influencer.
+  const payoutOk = await hasPayoutAccount(influencerId, 'influencer', campaign.budgetCurrency)
+  if (!payoutOk) {
+    await db.insert(auditLog).values({
+      userId: influencerId,
+      action: 'apply_blocked_no_payout',
+      dataType: 'campaign_application',
+      accessedBy: influencerId,
+      metadata: {
+        campaignId,
+        campaignTitle: campaign.title,
+        currency: campaign.budgetCurrency,
+      },
+      reason: `Apply blocked — no payout account for ${campaign.budgetCurrency}`,
+    })
+    throw new PayoutAccountRequiredError(campaign.budgetCurrency)
+  }
 
   // Create application (UNIQUE constraint catches duplicates)
   let application
