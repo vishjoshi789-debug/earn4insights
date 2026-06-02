@@ -12,12 +12,15 @@ function getResendClient() {
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
+/** Self-assigned signup roles. Mirrors SignupRole in src/lib/user/types.ts. */
+type WelcomeRole = 'brand' | 'consumer' | 'influencer'
+
 // ── Welcome Email ────────────────────────────────────────────────
 
 export async function sendWelcomeEmail(params: {
   email: string
   name: string
-  role: 'brand' | 'consumer'
+  role: WelcomeRole
 }) {
   const client = getResendClient()
   if (!client) {
@@ -28,14 +31,17 @@ export async function sendWelcomeEmail(params: {
   const { email, name, role } = params
   const firstName = name.split(' ')[0]
 
+  const html =
+    role === 'brand'      ? generateBrandWelcomeHTML(firstName, email) :
+    role === 'influencer' ? generateInfluencerWelcomeHTML(firstName, email) :
+    generateConsumerWelcomeHTML(firstName, email)
+
   try {
     const { data, error } = await client.emails.send({
       from: process.env.EMAIL_FROM || 'welcome@earn4insights.com',
       to: email,
       subject: `🎉 Welcome to Earn4Insights, ${firstName}!`,
-      html: role === 'brand'
-        ? generateBrandWelcomeHTML(firstName, email)
-        : generateConsumerWelcomeHTML(firstName, email),
+      html,
     })
 
     if (error) {
@@ -56,32 +62,42 @@ export async function sendWelcomeEmail(params: {
 export async function sendWelcomeWhatsApp(params: {
   phoneNumber: string
   name: string
-  role: 'brand' | 'consumer'
+  role: WelcomeRole
 }) {
   const { phoneNumber, name, role } = params
   const firstName = name.split(' ')[0]
 
-  const body = role === 'brand'
-    ? [
-        `Welcome aboard, ${firstName}! Your brand dashboard is ready.`,
-        '',
-        '✅ *Quick Start:*',
-        '1️⃣ Add your products to track feedback',
-        '2️⃣ View real consumer sentiment & rankings',
-        '3️⃣ Create surveys to gather targeted insights',
-        '',
-        `🔗 Go to Dashboard: ${APP_URL}/dashboard`,
-      ].join('\n')
+  const body =
+    role === 'brand' ? [
+      `Welcome aboard, ${firstName}! Your brand dashboard is ready.`,
+      '',
+      '✅ *Quick Start:*',
+      '1️⃣ Add your products to track feedback',
+      '2️⃣ View real consumer sentiment & rankings',
+      '3️⃣ Create surveys to gather targeted insights',
+      '',
+      `🔗 Go to Dashboard: ${APP_URL}/dashboard`,
+    ].join('\n')
+    : role === 'influencer' ? [
+      `Welcome aboard, ${firstName}! Let's get you earning.`,
+      '',
+      '✅ *Quick Start:*',
+      '1️⃣ Complete your profile so brands can find you',
+      '2️⃣ Browse the campaign marketplace + apply',
+      '3️⃣ Add a payout account so payments land on time',
+      '',
+      `🔗 Set up your profile: ${APP_URL}/onboarding`,
+    ].join('\n')
     : [
-        `Welcome aboard, ${firstName}! Start earning rewards for your opinions.`,
-        '',
-        '✅ *Quick Start:*',
-        '1️⃣ Browse products and share honest feedback',
-        '2️⃣ Earn points for every review & survey',
-        '3️⃣ Redeem points for real rewards',
-        '',
-        `🔗 Explore Products: ${APP_URL}/dashboard/products`,
-      ].join('\n')
+      `Welcome aboard, ${firstName}! Start earning rewards for your opinions.`,
+      '',
+      '✅ *Quick Start:*',
+      '1️⃣ Browse products and share honest feedback',
+      '2️⃣ Earn points for every review & survey',
+      '3️⃣ Redeem points for real rewards',
+      '',
+      `🔗 Explore Products: ${APP_URL}/dashboard/products`,
+    ].join('\n')
 
   return sendWhatsAppAlertMessage({
     phoneNumber,
@@ -104,7 +120,7 @@ export async function sendWelcomeWhatsApp(params: {
 export async function sendWelcomeNotifications(params: {
   email: string
   name: string
-  role: 'brand' | 'consumer'
+  role: WelcomeRole
   phoneNumber?: string
 }): Promise<void> {
   const { email, name, role, phoneNumber } = params
@@ -199,6 +215,93 @@ function generateConsumerWelcomeHTML(firstName: string, email: string): string {
 
       <p style="color:#64748b;font-size:13px;text-align:center;margin:24px 0 0;">
         Questions? Just reply to this email — we're here to help.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">
+      <p style="margin:0;">Earn4Insights — The Intelligence Operating System for Brands, Consumers and Influencers</p>
+      <p style="margin:4px 0 0;">
+        <a href="${APP_URL}/dashboard/settings" style="color:#94a3b8;">Manage Preferences</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
+function generateInfluencerWelcomeHTML(firstName: string, email: string): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;padding:20px;">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#7c3aed,#ec4899);border-radius:12px 12px 0 0;padding:40px 30px;text-align:center;">
+      <h1 style="color:#fff;margin:0;font-size:28px;">Welcome to Earn4Insights! 🎯</h1>
+      <p style="color:#fce7f3;margin:10px 0 0;font-size:16px;">Hey ${firstName}, let's get you earning from your influence.</p>
+    </div>
+
+    <!-- Body -->
+    <div style="background:#fff;padding:30px;border-radius:0 0 12px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+      <p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 20px;">
+        You've joined a platform where <strong>real audiences meet real brands</strong>. No fake metrics, no padded reach &mdash; honest matches that pay. Here's how to get your first campaign:
+      </p>
+
+      <!-- Step Cards -->
+      <div style="margin:24px 0;">
+        <div style="display:flex;align-items:flex-start;margin-bottom:16px;padding:16px;background:#faf5ff;border-radius:8px;border-left:4px solid #a855f7;">
+          <span style="font-size:24px;margin-right:12px;">1️⃣</span>
+          <div>
+            <strong style="color:#7e22ce;">Complete Your Profile</strong>
+            <p style="margin:4px 0 0;color:#4b5563;font-size:14px;">Add your niches, social handles, audience demographics, and rates so brands can find you.</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-start;margin-bottom:16px;padding:16px;background:#fdf2f8;border-radius:8px;border-left:4px solid #ec4899;">
+          <span style="font-size:24px;margin-right:12px;">2️⃣</span>
+          <div>
+            <strong style="color:#be185d;">Browse the Marketplace</strong>
+            <p style="margin:4px 0 0;color:#4b5563;font-size:14px;">Discover campaigns that match your niche. Apply with a proposal &mdash; brands review and respond.</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-start;margin-bottom:16px;padding:16px;background:#eff6ff;border-radius:8px;border-left:4px solid #3b82f6;">
+          <span style="font-size:24px;margin-right:12px;">3️⃣</span>
+          <div>
+            <strong style="color:#1d4ed8;">Add a Payout Account</strong>
+            <p style="margin:4px 0 0;color:#4b5563;font-size:14px;">Bank, UPI, PayPal, or Wise &mdash; we support all of them. Set this up before your first campaign so payments land on time.</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-start;padding:16px;background:#f0fdf4;border-radius:8px;border-left:4px solid #22c55e;">
+          <span style="font-size:24px;margin-right:12px;">4️⃣</span>
+          <div>
+            <strong style="color:#15803d;">Deliver &amp; Get Paid</strong>
+            <p style="margin:4px 0 0;color:#4b5563;font-size:14px;">Submit content, get brand approval, and receive payment via your chosen method. Track everything in your earnings dashboard.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- CTA Button -->
+      <div style="text-align:center;margin:30px 0;">
+        <a href="${APP_URL}/onboarding" style="background:linear-gradient(135deg,#7c3aed,#ec4899);color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;display:inline-block;">
+          Complete Your Profile →
+        </a>
+      </div>
+
+      <!-- Key Info Box -->
+      <div style="background:#f1f5f9;border-radius:8px;padding:20px;margin:20px 0;">
+        <h3 style="margin:0 0 10px;color:#334155;font-size:15px;">📌 Important Details</h3>
+        <ul style="margin:0;padding:0 0 0 18px;color:#475569;font-size:14px;line-height:1.8;">
+          <li>Your account email: <strong>${email}</strong></li>
+          <li>Brands see <strong>your real audience match score</strong> &mdash; great matches lead to higher acceptance rates</li>
+          <li>Payment is held in escrow &mdash; released when the brand approves your work</li>
+          <li>Platform fees: 8% on milestone campaigns, 10% standard, 12% direct. Transparent always</li>
+          <li>Manage everything in <a href="${APP_URL}/dashboard/settings" style="color:#7c3aed;">Settings</a></li>
+        </ul>
+      </div>
+
+      <p style="color:#64748b;font-size:13px;text-align:center;margin:24px 0 0;">
+        Questions? Just reply to this email &mdash; we're here to help you land your first campaign.
       </p>
     </div>
 

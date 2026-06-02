@@ -23,7 +23,7 @@ import 'server-only'
  * Imported by both the route handler and the auth.config signIn callback.
  */
 
-import type { UserRole } from '@/lib/user/types'
+import type { SignupRole } from '@/lib/user/types'
 
 export const SIGNUP_INTENT_COOKIE = 'e4i-signup-intent'
 
@@ -35,11 +35,18 @@ export const SIGNUP_INTENT_COOKIE = 'e4i-signup-intent'
  */
 export const SIGNUP_INTENT_TTL_MS = 5 * 60 * 1000 // 5 min
 
-/** Roles that can be self-selected at signup. Admin is never self-assignable. */
-const ALLOWED_SIGNUP_ROLES: ReadonlySet<UserRole> = new Set<UserRole>(['brand', 'consumer'])
+/**
+ * Roles that can be self-selected at signup. Admin is never self-assignable.
+ * Influencer was added in Phase 3.5A — first-class signup option.
+ */
+const ALLOWED_SIGNUP_ROLES: ReadonlySet<SignupRole> = new Set<SignupRole>([
+  'brand',
+  'consumer',
+  'influencer',
+])
 
-export function isAllowedSignupRole(value: unknown): value is UserRole {
-  return typeof value === 'string' && ALLOWED_SIGNUP_ROLES.has(value as UserRole)
+export function isAllowedSignupRole(value: unknown): value is SignupRole {
+  return typeof value === 'string' && ALLOWED_SIGNUP_ROLES.has(value as SignupRole)
 }
 
 function getSecret(): string {
@@ -79,7 +86,7 @@ async function getKey(): Promise<CryptoKey> {
  * cookies minted in the same second don't share bytes.
  */
 export async function signSignupIntent(
-  role: UserRole,
+  role: SignupRole,
   ttlMs: number = SIGNUP_INTENT_TTL_MS,
 ): Promise<string> {
   if (!isAllowedSignupRole(role)) {
@@ -99,7 +106,7 @@ export async function signSignupIntent(
 }
 
 export interface VerifiedSignupIntent {
-  role: UserRole
+  role: SignupRole
   /** Unix ms when the cookie expires. */
   expiresAt: number
 }

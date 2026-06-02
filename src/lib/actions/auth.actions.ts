@@ -12,7 +12,9 @@ const signupSchema = z.object({
     .min(8, "Password must be at least 8 characters")
     .regex(/[a-zA-Z]/, "Password must contain at least one letter")
     .regex(/[0-9]/, "Password must contain at least one number"),
-  role: z.enum(['brand', 'consumer']),
+  // 3.5A — influencer is now a first-class signup role alongside
+  // brand + consumer. Admin is still never self-assignable.
+  role: z.enum(['brand', 'consumer', 'influencer']),
   acceptedTerms: z.literal(true, {
     errorMap: () => ({ message: "You must accept the Terms of Service" })
   }),

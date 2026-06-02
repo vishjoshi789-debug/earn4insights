@@ -9,8 +9,17 @@ export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull().unique(),
   name: text('name'),
-  role: text('role').notNull(), // 'brand' | 'consumer'
-  isInfluencer: boolean('is_influencer').notNull().default(false), // true = consumer can access influencer features
+  // Primary view / default dashboard. 'brand' | 'consumer' | 'influencer' | 'admin'.
+  // Admin is runtime-only — never self-assignable at signup. See
+  // src/lib/auth/signupIntent.ts for the signup allowlist.
+  role: text('role').notNull(),
+  // Multi-role capability flags (migration 022, Phase 3.5A). A user can
+  // be more than one of these at once (e.g. consumer + influencer).
+  // Existing role-string checks keep working; new code uses these flags
+  // for "can they access feature X" gates regardless of primary view.
+  isBrand: boolean('is_brand').notNull().default(false),
+  isConsumer: boolean('is_consumer').notNull().default(false),
+  isInfluencer: boolean('is_influencer').notNull().default(false),
   passwordHash: text('password_hash'), // For email/password auth
   googleId: text('google_id'), // For Google OAuth
   consent: jsonb('consent'), // { termsAcceptedAt, privacyAcceptedAt }
@@ -1307,6 +1316,11 @@ export const influencerProfiles = pgTable('influencer_profiles', {
     .$type<'unverified' | 'pending' | 'verified'>(),
   isActive: boolean('is_active').notNull().default(true),
   portfolioUrls: jsonb('portfolio_urls').$type<{ url: string; title?: string; thumbnail?: string }[]>().default([]),
+  // Phase 3.5A wizard completion. Defaults to false so grandfathered
+  // rows (created via the old single-form flow) get caught by the
+  // backfill banner shipped in 3.5G.
+  onboardingCompleted: boolean('onboarding_completed').notNull().default(false),
+  onboardingCompletedAt: timestamp('onboarding_completed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

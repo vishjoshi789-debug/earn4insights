@@ -2,9 +2,32 @@ import 'server-only'
 import { db } from '@/db'
 import { users } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import type { User, CreateUserInput } from './types'
+import type { User, CreateUserInput, UserRole } from './types'
 import { hashPassword } from './password'
 import { sendWelcomeNotifications } from '@/server/welcomeNotifications'
+
+/**
+ * Map a raw DB users row to the User domain type. Centralises the role
+ * cast + boolean-flag exposure so getUserById / getUserByEmail /
+ * getUserByGoogleId stay in lock-step. Phase 3.5A added the boolean
+ * flags; surfacing them here gives downstream code (OnboardingGuard,
+ * dashboard role-switcher, etc.) a single source of truth.
+ */
+function rowToUser(row: typeof users.$inferSelect): User {
+  return {
+    ...row,
+    name: row.name || '',
+    role: row.role as UserRole,
+    isBrand: row.isBrand,
+    isConsumer: row.isConsumer,
+    isInfluencer: row.isInfluencer,
+    passwordHash: row.passwordHash || undefined,
+    googleId: row.googleId || undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    consent: row.consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
+  }
+}
 
 /**
  * Get user by ID
@@ -12,17 +35,7 @@ import { sendWelcomeNotifications } from '@/server/welcomeNotifications'
 export async function getUserById(id: string): Promise<User | null> {
   const result = await db.select().from(users).where(eq(users.id, id)).limit(1)
   if (!result[0]) return null
-  
-  return {
-    ...result[0],
-    name: result[0].name || '',
-    role: result[0].role as 'brand' | 'consumer',
-    passwordHash: result[0].passwordHash || undefined,
-    googleId: result[0].googleId || undefined,
-    createdAt: result[0].createdAt.toISOString(),
-    updatedAt: result[0].updatedAt.toISOString(),
-    consent: result[0].consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
-  }
+  return rowToUser(result[0])
 }
 
 /**
@@ -31,17 +44,7 @@ export async function getUserById(id: string): Promise<User | null> {
 export async function getUserByEmail(email: string): Promise<User | null> {
   const result = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1)
   if (!result[0]) return null
-  
-  return {
-    ...result[0],
-    name: result[0].name || '',
-    role: result[0].role as 'brand' | 'consumer',
-    passwordHash: result[0].passwordHash || undefined,
-    googleId: result[0].googleId || undefined,
-    createdAt: result[0].createdAt.toISOString(),
-    updatedAt: result[0].updatedAt.toISOString(),
-    consent: result[0].consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
-  }
+  return rowToUser(result[0])
 }
 
 /**
@@ -50,17 +53,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 export async function getUserByGoogleId(googleId: string): Promise<User | null> {
   const result = await db.select().from(users).where(eq(users.googleId, googleId)).limit(1)
   if (!result[0]) return null
-  
-  return {
-    ...result[0],
-    name: result[0].name || '',
-    role: result[0].role as 'brand' | 'consumer',
-    passwordHash: result[0].passwordHash || undefined,
-    googleId: result[0].googleId || undefined,
-    createdAt: result[0].createdAt.toISOString(),
-    updatedAt: result[0].updatedAt.toISOString(),
-    consent: result[0].consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
-  }
+  return rowToUser(result[0])
 }
 
 /**
@@ -86,12 +79,23 @@ export async function createUser(input: CreateUserInput): Promise<User> {
 
   const now = new Date()
   const userId = `user_${Date.now()}_${Math.random().toString(36).substring(7)}`
-  
+
+  // 3.5A — set the matching capability flag at create time so a fresh
+  // signup is immediately self-consistent with the multi-role model.
+  // role itself stays the "primary view" — boolean flags are the
+  // cross-cutting feature gates.
+  const isBrand = input.role === 'brand'
+  const isConsumer = input.role === 'consumer'
+  const isInfluencer = input.role === 'influencer'
+
   const newUser = {
     id: userId,
     email: input.email.toLowerCase(),
     name: input.name,
     role: input.role,
+    isBrand,
+    isConsumer,
+    isInfluencer,
     passwordHash: passwordHash || null,
     googleId: input.googleId || null,
     consent: {
@@ -111,14 +115,17 @@ export async function createUser(input: CreateUserInput): Promise<User> {
   await sendWelcomeNotifications({
     email: newUser.email,
     name: newUser.name,
-    role: newUser.role as 'brand' | 'consumer',
+    role: newUser.role,
   })
 
   return {
     id: newUser.id,
     email: newUser.email,
     name: newUser.name,
-    role: newUser.role,
+    role: newUser.role as UserRole,
+    isBrand,
+    isConsumer,
+    isInfluencer,
     passwordHash: newUser.passwordHash || undefined,
     googleId: newUser.googleId || undefined,
     consent: newUser.consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
@@ -156,31 +163,13 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
  */
 export async function getAllUsers(): Promise<User[]> {
   const result = await db.select().from(users)
-  return result.map(u => ({
-    ...u,
-    name: u.name || '',
-    role: u.role as 'brand' | 'consumer',
-    passwordHash: u.passwordHash || undefined,
-    googleId: u.googleId || undefined,
-    createdAt: u.createdAt.toISOString(),
-    updatedAt: u.updatedAt.toISOString(),
-    consent: u.consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
-  }))
+  return result.map(rowToUser)
 }
 
 /**
  * Get users by role
  */
-export async function getUsersByRole(role: 'brand' | 'consumer'): Promise<User[]> {
+export async function getUsersByRole(role: UserRole): Promise<User[]> {
   const result = await db.select().from(users).where(eq(users.role, role))
-  return result.map(u => ({
-    ...u,
-    name: u.name || '',
-    role: u.role as 'brand' | 'consumer',
-    passwordHash: u.passwordHash || undefined,
-    googleId: u.googleId || undefined,
-    createdAt: u.createdAt.toISOString(),
-    updatedAt: u.updatedAt.toISOString(),
-    consent: u.consent as { termsAcceptedAt: string; privacyAcceptedAt: string },
-  }))
+  return result.map(rowToUser)
 }
