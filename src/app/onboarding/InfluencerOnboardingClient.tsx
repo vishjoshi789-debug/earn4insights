@@ -42,7 +42,12 @@ import {
 // ─── Constants ──────────────────────────────────────────────────
 
 const STORAGE_KEY = 'e4i_influencer_onboarding_draft'
-const PHOTO_MAX_BYTES = 2 * 1024 * 1024
+// 5 MB cap — accommodates modern phone photos (iPhone 12+ / Android
+// flagships routinely produce 3–5 MB JPEGs). Matches server-side
+// PHOTO_MAX_BYTES in /api/uploads/influencer-photo/route.ts. Brand
+// logos remain capped at 2 MB on their own route because logos are
+// usually small graphics.
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024
 const PHOTO_ACCEPT = 'image/png,image/jpeg,image/webp'
 
 const PROGRESS_STEPS = [
@@ -252,7 +257,7 @@ export default function InfluencerOnboardingClient({ initial, userName }: Props)
   const handlePhotoUpload = async (file: File) => {
     setPhotoError(null)
     if (file.size > PHOTO_MAX_BYTES) {
-      setPhotoError('Photo must be 2 MB or smaller')
+      setPhotoError('Photo must be 5 MB or smaller')
       return
     }
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
@@ -466,7 +471,7 @@ export default function InfluencerOnboardingClient({ initial, userName }: Props)
                     </Button>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    PNG, JPG, or WEBP. 2 MB max.
+                    PNG, JPG, or WEBP. 5 MB max.
                   </p>
                 </div>
               </div>

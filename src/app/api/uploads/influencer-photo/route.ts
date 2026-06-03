@@ -27,7 +27,11 @@ import { auth } from '@/lib/auth/auth.config'
  */
 
 const PHOTO_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp']
-const PHOTO_MAX_BYTES = 2 * 1024 * 1024 // 2 MB
+// 5 MB — accommodates modern phone photos out of camera (iPhone 12+ and
+// Android flagships routinely produce 3–5 MB JPEGs). Brand logos stay
+// at 2 MB because logos are typically small graphics. Vercel Blob's
+// single-file cap is 5 GB so we have plenty of headroom.
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024 // 5 MB
 
 export async function POST(request: Request): Promise<NextResponse> {
   const session = await auth()
