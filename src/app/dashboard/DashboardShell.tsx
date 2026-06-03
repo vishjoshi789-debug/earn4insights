@@ -64,13 +64,21 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { usePresenceChannel } from '@/hooks/usePusher'
 import { PRESENCE_DASHBOARD } from '@/lib/pusher-client'
 
+type Role = 'brand' | 'consumer' | 'influencer' | 'admin'
+
 type MenuItem = {
   href: string
   label: string
   icon: any
   tourId: string
-  /** If set, only show this item for the given role. Omit for all roles. */
-  role?: 'brand' | 'consumer' | 'admin'
+  /**
+   * If set, only show this item for the given role(s). Omit for all
+   * roles. Array form added in 3.5B-fix to support dual-role items
+   * — e.g. influencer features that should appear for both a pure
+   * `'influencer'` primary role AND a consumer-with-isInfluencer
+   * dual-role user (whose primary role is still `'consumer'`).
+   */
+  role?: Role | Role[]
 }
 
 const menuItems: MenuItem[] = [
@@ -106,12 +114,16 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/privacy', label: 'Privacy & Consent', icon: ShieldCheck, tourId: 'nav-privacy', role: 'consumer' },
   { href: '/dashboard/my-signals', label: 'My Signals', icon: Activity, tourId: 'nav-my-signals', role: 'consumer' },
   { href: '/dashboard/my-data', label: 'My Data Export', icon: Download, tourId: 'nav-my-data', role: 'consumer' },
-  { href: '/dashboard/influencer/profile', label: 'Influencer Profile', icon: UserCheck, tourId: 'nav-influencer-profile', role: 'consumer' },
-  { href: '/dashboard/influencer/marketplace', label: 'Marketplace', icon: Store, tourId: 'nav-influencer-marketplace', role: 'consumer' },
-  { href: '/dashboard/influencer/campaigns', label: 'My Campaigns', icon: Megaphone, tourId: 'nav-influencer-campaigns', role: 'consumer' },
-  { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: 'consumer' },
-  { href: '/dashboard/influencer/earnings', label: 'Earnings', icon: Wallet, tourId: 'nav-influencer-earnings', role: 'consumer' },
-  { href: '/dashboard/influencer/payouts', label: 'Payout Accounts', icon: Wallet, tourId: 'nav-influencer-payouts', role: 'consumer' },
+  // Influencer items: visible for both a pure influencer (role='influencer')
+  // and a dual-role consumer-with-isInfluencer (role='consumer'). The array
+  // form was added in 3.5B-fix; 3.5E will introduce the proper primary-view
+  // + role-switcher pattern so dual-role users can hide one set or the other.
+  { href: '/dashboard/influencer/profile', label: 'Influencer Profile', icon: UserCheck, tourId: 'nav-influencer-profile', role: ['consumer', 'influencer'] },
+  { href: '/dashboard/influencer/marketplace', label: 'Marketplace', icon: Store, tourId: 'nav-influencer-marketplace', role: ['consumer', 'influencer'] },
+  { href: '/dashboard/influencer/campaigns', label: 'My Campaigns', icon: Megaphone, tourId: 'nav-influencer-campaigns', role: ['consumer', 'influencer'] },
+  { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: ['consumer', 'influencer'] },
+  { href: '/dashboard/influencer/earnings', label: 'Earnings', icon: Wallet, tourId: 'nav-influencer-earnings', role: ['consumer', 'influencer'] },
+  { href: '/dashboard/influencer/payouts', label: 'Payout Accounts', icon: Wallet, tourId: 'nav-influencer-payouts', role: ['consumer', 'influencer'] },
   {
     href: '/dashboard/detailed-analytics',
     label: 'Product Deep Dive',
@@ -233,7 +245,7 @@ export default function DashboardShell({
   children: React.ReactNode
 }) {
   const { data: session, status } = useSession()
-  const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | 'admin' | undefined
+  const userRole = (session?.user as any)?.role as Role | undefined
   const userId = (session?.user as any)?.id as string | undefined
   const [unreadAlerts, setUnreadAlerts] = useState(0)
   const isVisible = useRef(true)
@@ -266,9 +278,16 @@ export default function DashboardShell({
     return () => clearInterval(interval)
   }, [userRole])
 
-  // Memoize visible items — only recompute when role changes, not every render
+  // Memoize visible items — only recompute when role changes, not every render.
+  // 3.5B-fix: handle Array<Role> form for items that should appear under
+  // multiple primary roles (e.g. influencer items shown for both 'consumer'
+  // and 'influencer' primary views).
   const visibleItems = useMemo(
-    () => menuItems.filter((item) => !item.role || item.role === (userRole as string)),
+    () => menuItems.filter((item) => {
+      if (!item.role) return true
+      if (Array.isArray(item.role)) return userRole !== undefined && item.role.includes(userRole)
+      return item.role === userRole
+    }),
     [userRole]
   )
 
