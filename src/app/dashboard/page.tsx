@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { auth } from '@/lib/auth/auth.config';
 import { db } from '@/db';
-import { userProfiles, products, feedback, userPoints } from '@/db/schema';
-import { eq, sql, count, and, inArray } from 'drizzle-orm';
+import { userProfiles, products, feedback, userPoints, campaignInfluencers, influencerCampaigns, influencerPayouts } from '@/db/schema';
+import { eq, sql, count, and, inArray, desc } from 'drizzle-orm';
 // getPersonalizedRecommendations + RecommendationCard are imported by the
 // CONSUMER dashboard branch below — keep them in. The brand path no longer
 // calls them (3B fix: consumer-only function, was polluting brand surface).
@@ -18,7 +18,14 @@ import { InfluencerPayoutBanner } from '@/components/InfluencerPayoutBanner';
 import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepository';
 import { getProfileByUserId as getInfluencerProfileByUserId } from '@/db/repositories/influencerProfileRepository';
 import { hasPayoutAccount } from '@/db/repositories/payoutAccountRepository';
-import { Sparkles, ArrowRight, MessageSquare, TrendingUp, BarChart3, ExternalLink, Award, PenSquare, Trophy, ClipboardList } from 'lucide-react';
+import { getRecommendedCampaigns as getRecommendedCampaignsService } from '@/server/campaignMarketplaceService';
+import { formatCurrency } from '@/lib/currency';
+import { NICHE_LABELS } from '@/lib/validation/influencer-onboarding';
+import {
+  Sparkles, ArrowRight, MessageSquare, TrendingUp, BarChart3, ExternalLink,
+  Award, PenSquare, Trophy, ClipboardList,
+  Megaphone, Wallet, User, FileText, ShieldCheck, IndianRupee, Store,
+} from 'lucide-react';
 
 // ── Brand's product ids (scoping helper) ─────────────────────────
 // Same pattern used in /dashboard/feedback/page.tsx. Falls back to []
@@ -99,10 +106,18 @@ export default async function DashboardPage() {
   const session = await auth();
   const userId = session?.user?.id;
   const userEmail = session?.user?.email || undefined;
-  const isBrand = session?.user?.role === 'brand';
+  const role = session?.user?.role;
 
-  if (isBrand) {
+  if (role === 'brand') {
     return <BrandDashboard userId={userId} />;
+  }
+
+  // 3.5D — pure influencer signups (role='influencer') get the
+  // dedicated influencer dashboard. Dual-role consumer-with-isInfluencer
+  // users (role='consumer') keep seeing ConsumerDashboard for now;
+  // 3.5E adds the role-switcher so they can flip view.
+  if (role === 'influencer') {
+    return <InfluencerDashboard userId={userId} userName={session?.user?.name ?? null} />;
   }
 
   return <ConsumerDashboard userId={userId} userEmail={userEmail} />;
@@ -304,6 +319,386 @@ async function BrandDashboard({ userId }: { userId?: string }) {
       </div>
     </div>
   );
+}
+
+// ── Influencer Dashboard (3.5D) ──────────────────────────────────
+//
+// Shown to users with role='influencer' (pure influencer signups
+// from 3.5B). Dual-role consumer-with-isInfluencer users keep
+// seeing ConsumerDashboard until 3.5E lets them toggle view.
+
+interface InfluencerProfileLite {
+  displayName: string | null
+  bio: string | null
+  niche: string[] | null
+  location: string | null
+  profileImageUrl: string | null
+  baseRate: number | null
+  currency: string | null
+  contentTypes: string[] | null
+  audienceDemographics: Record<string, unknown> | null
+  verificationStatus: 'unverified' | 'pending' | 'verified' | null
+  instagramHandle: string | null
+  youtubeHandle: string | null
+  twitterHandle: string | null
+  linkedinHandle: string | null
+  tiktokHandle: string | null
+}
+
+/**
+ * 10-factor profile completeness score. Each filled field contributes
+ * a fixed weight (sum = 100). DisplayName + niche are required by the
+ * wizard so they'll always be set when influencer_profiles row exists.
+ * Heuristic, not perfect — meant to nudge users to fill the optional
+ * fields that improve brand match-rate.
+ */
+function calcProfileCompleteness(p: InfluencerProfileLite | null): number {
+  if (!p) return 0
+  let score = 0
+  if (p.displayName && p.displayName.trim().length > 0) score += 10
+  if ((p.niche?.length ?? 0) > 0) score += 10
+  if (p.bio && p.bio.trim().length > 0) score += 10
+  if (p.profileImageUrl) score += 15
+  if (p.baseRate && p.baseRate > 0) score += 10
+  if ((p.contentTypes?.length ?? 0) > 0) score += 10
+  if (p.instagramHandle || p.youtubeHandle || p.twitterHandle || p.linkedinHandle || p.tiktokHandle) score += 15
+  if (p.audienceDemographics && Object.keys(p.audienceDemographics).length > 0) score += 10
+  if (p.location && p.location.trim().length > 0) score += 5
+  // Portfolio not yet in the wizard; reserve last 5 for future.
+  return score
+}
+
+async function getInfluencerStats(userId: string) {
+  // Active campaigns — accepted + active statuses both count as "ongoing".
+  const [{ activeCount }] = await db
+    .select({ activeCount: count() })
+    .from(campaignInfluencers)
+    .where(and(
+      eq(campaignInfluencers.influencerId, userId),
+      inArray(campaignInfluencers.status, ['accepted', 'active']),
+    ))
+
+  // Pending payouts — sum amount in paise where status is pending or
+  // processing. India-first platform; we display INR-only on the card
+  // and the user goes to /dashboard/influencer/earnings for the
+  // multi-currency breakdown. Other currencies (USD / GBP / etc.)
+  // surface there.
+  const [pendingRow] = await db
+    .select({
+      total: sql<number>`COALESCE(SUM(${influencerPayouts.amount}), 0)::int`,
+    })
+    .from(influencerPayouts)
+    .where(and(
+      eq(influencerPayouts.recipientId, userId),
+      inArray(influencerPayouts.status, ['pending', 'processing']),
+      eq(influencerPayouts.currency, 'INR'),
+    ))
+
+  return {
+    activeCount: Number(activeCount ?? 0),
+    pendingPaiseInr: Number(pendingRow?.total ?? 0),
+  }
+}
+
+async function getRecentInfluencerCampaigns(userId: string, limit = 5) {
+  // Join campaign_influencers with influencer_campaigns to get
+  // last-touched campaign cards on the home page.
+  const rows = await db
+    .select({
+      campaign: influencerCampaigns,
+      invitationStatus: campaignInfluencers.status,
+      acceptedAt: campaignInfluencers.acceptedAt,
+      updatedAt: campaignInfluencers.updatedAt,
+    })
+    .from(campaignInfluencers)
+    .innerJoin(influencerCampaigns, eq(campaignInfluencers.campaignId, influencerCampaigns.id))
+    .where(eq(campaignInfluencers.influencerId, userId))
+    .orderBy(desc(campaignInfluencers.updatedAt))
+    .limit(limit)
+  return rows
+}
+
+async function InfluencerDashboard({ userId, userName }: { userId?: string; userName: string | null }) {
+  // No userId means session was lost mid-render; render empty shell.
+  if (!userId) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-headline font-bold">Loading…</h1>
+      </div>
+    )
+  }
+
+  const [profile, stats, recentCampaigns, recommendedRaw, hasAnyPayoutAccount] = await Promise.all([
+    getInfluencerProfileByUserId(userId).catch(() => null),
+    getInfluencerStats(userId).catch(() => ({ activeCount: 0, pendingPaiseInr: 0 })),
+    getRecentInfluencerCampaigns(userId, 5).catch(() => []),
+    getRecommendedCampaignsService(userId).catch(() => []),
+    hasPayoutAccount(userId, 'influencer').catch(() => true),
+  ])
+
+  const completeness = calcProfileCompleteness(profile as InfluencerProfileLite | null)
+  const firstName = (userName?.split(' ')[0]) || 'there'
+  const verificationStatus = profile?.verificationStatus ?? 'unverified'
+
+  const verificationDisplay =
+    verificationStatus === 'verified'
+      ? { label: 'Verified',   cls: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' }
+      : verificationStatus === 'pending'
+      ? { label: 'Pending',    cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' }
+      : { label: 'Unverified', cls: 'bg-muted text-muted-foreground border-border' }
+
+  // Take top 3 recommended campaigns for the home preview.
+  const recommended = (recommendedRaw ?? []).slice(0, 3)
+
+  return (
+    <div className="space-y-6">
+      {/* Welcome */}
+      <div className="flex items-center gap-4">
+        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white shrink-0">
+          <Sparkles className="h-6 w-6" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-headline font-bold">
+            Welcome back, {firstName}! 🎯
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            Your campaigns, earnings, and reach — all in one place.
+          </p>
+        </div>
+      </div>
+
+      {/* A10 payout nudge — same component, also relevant for influencers */}
+      <InfluencerPayoutBanner show={!hasAnyPayoutAccount} />
+
+      {/* Stats overview */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Megaphone className="w-4 h-4 text-violet-500" />
+              <p className="text-xs text-muted-foreground">Active campaigns</p>
+            </div>
+            <div className="text-2xl font-bold">{stats.activeCount}</div>
+            <p className="text-xs text-muted-foreground">accepted or active</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 mb-1">
+              <IndianRupee className="w-4 h-4 text-emerald-500" />
+              <p className="text-xs text-muted-foreground">Pending earnings</p>
+            </div>
+            <div className="text-2xl font-bold">
+              {stats.pendingPaiseInr > 0 ? formatCurrency(stats.pendingPaiseInr, 'INR') : '—'}
+            </div>
+            <p className="text-xs text-muted-foreground">INR · queued payouts</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 mb-1">
+              <User className="w-4 h-4 text-pink-500" />
+              <p className="text-xs text-muted-foreground">Profile completeness</p>
+            </div>
+            <div className="text-2xl font-bold">{completeness}%</div>
+            <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-violet-500 to-pink-500 transition-all"
+                style={{ width: `${Math.max(0, Math.min(100, completeness))}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 mb-1">
+              <ShieldCheck className="w-4 h-4 text-blue-500" />
+              <p className="text-xs text-muted-foreground">Verification</p>
+            </div>
+            <Badge variant="outline" className={`text-sm ${verificationDisplay.cls}`}>
+              {verificationDisplay.label}
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-2">
+              {verificationStatus === 'verified'
+                ? 'Brands see your verified badge'
+                : 'Verification flow coming soon'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick actions */}
+      <section>
+        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-violet-500" />
+          Quick actions
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Link
+            href="/dashboard/influencer/marketplace"
+            className="rounded-lg border border-border p-4 hover:border-violet-400 hover:bg-violet-500/5 transition-colors group"
+          >
+            <Store className="h-5 w-5 text-violet-500 mb-2" />
+            <p className="text-sm font-medium">Browse marketplace</p>
+            <p className="text-xs text-muted-foreground">Apply to campaigns</p>
+            <ArrowRight className="h-3.5 w-3.5 mt-2 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </Link>
+          <Link
+            href="/dashboard/influencer/content"
+            className="rounded-lg border border-border p-4 hover:border-pink-400 hover:bg-pink-500/5 transition-colors group"
+          >
+            <FileText className="h-5 w-5 text-pink-500 mb-2" />
+            <p className="text-sm font-medium">My content</p>
+            <p className="text-xs text-muted-foreground">Submissions &amp; drafts</p>
+            <ArrowRight className="h-3.5 w-3.5 mt-2 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </Link>
+          <Link
+            href="/dashboard/influencer/earnings"
+            className="rounded-lg border border-border p-4 hover:border-emerald-400 hover:bg-emerald-500/5 transition-colors group"
+          >
+            <Wallet className="h-5 w-5 text-emerald-500 mb-2" />
+            <p className="text-sm font-medium">Earnings</p>
+            <p className="text-xs text-muted-foreground">Multi-currency totals</p>
+            <ArrowRight className="h-3.5 w-3.5 mt-2 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </Link>
+          <Link
+            href="/dashboard/influencer/profile"
+            className="rounded-lg border border-border p-4 hover:border-blue-400 hover:bg-blue-500/5 transition-colors group"
+          >
+            <User className="h-5 w-5 text-blue-500 mb-2" />
+            <p className="text-sm font-medium">Update profile</p>
+            <p className="text-xs text-muted-foreground">Boost discoverability</p>
+            <ArrowRight className="h-3.5 w-3.5 mt-2 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </Link>
+        </div>
+      </section>
+
+      {/* Recommended campaigns */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Megaphone className="w-5 h-5 text-violet-500" />
+            Recommended for you
+          </h2>
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/dashboard/influencer/marketplace" className="flex items-center gap-1 text-sm">
+              See all <ArrowRight className="w-3 h-3" />
+            </Link>
+          </Button>
+        </div>
+        {recommended.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
+              <Store className="h-7 w-7 text-muted-foreground" />
+              <p className="text-sm font-medium">No recommendations yet</p>
+              <p className="text-xs text-muted-foreground max-w-md">
+                {(profile?.niche?.length ?? 0) === 0
+                  ? 'Add niches to your profile so we can match you to relevant campaigns.'
+                  : 'New campaigns matching your niches will appear here as brands publish them.'}
+              </p>
+              <Button asChild size="sm" className="mt-1">
+                <Link href="/dashboard/influencer/marketplace">Browse all campaigns</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {recommended.map((c: any) => (
+              <Card key={c.id} className="hover:border-primary/30 transition-colors">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold line-clamp-1">{c.title}</CardTitle>
+                  <p className="text-xs text-muted-foreground line-clamp-2 min-h-[2.5em]">
+                    {c.brief ?? c.brandName ?? 'Brand campaign'}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <IndianRupee className="h-3 w-3" />
+                      {(c.budgetTotal / 100).toLocaleString()} {c.budgetCurrency}
+                    </span>
+                    {c.applicationDeadline && (
+                      <span>by {new Date(c.applicationDeadline).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                  <Button asChild size="sm" variant="outline" className="w-full">
+                    <Link href="/dashboard/influencer/marketplace">View &amp; apply</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Recent activity */}
+      <section>
+        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+          <ClipboardList className="w-5 h-5 text-pink-500" />
+          Recent activity
+        </h2>
+        {recentCampaigns.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-8 text-center gap-2">
+              <Megaphone className="h-6 w-6 text-muted-foreground" />
+              <p className="text-sm font-medium">No campaign activity yet</p>
+              <p className="text-xs text-muted-foreground">
+                Apply to a campaign or accept an invitation to see updates here.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <ul className="divide-y divide-border">
+                {recentCampaigns.map((row) => {
+                  const c = row.campaign
+                  const status = row.invitationStatus
+                  const niches = Array.isArray(c.targetGeography) ? c.targetGeography : []
+                  return (
+                    <li key={`${c.id}`} className="flex items-center gap-3 p-3 hover:bg-muted/40 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium truncate">{c.title}</p>
+                          <Badge variant="outline" className="text-[10px]">{status}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {formatCurrency(c.budgetTotal, c.budgetCurrency)}
+                          {niches.length > 0 && (
+                            <> · {niches.slice(0, 2).join(', ')}</>
+                          )}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/dashboard/influencer/campaigns/${c.id}`}
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                      >
+                        Open <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      {/* Niche summary footer (small) */}
+      {profile && (profile.niche?.length ?? 0) > 0 && (
+        <section>
+          <p className="text-xs text-muted-foreground mb-1.5">Your niches</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(profile.niche ?? []).map((n: string) => (
+              <Badge key={n} variant="outline" className="text-xs">
+                {NICHE_LABELS[n as keyof typeof NICHE_LABELS] ?? n}
+              </Badge>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
 }
 
 // ── Consumer Dashboard ──────────────────────────────────────────
