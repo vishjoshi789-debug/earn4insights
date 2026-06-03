@@ -346,26 +346,51 @@ interface InfluencerProfileLite {
 }
 
 /**
- * 10-factor profile completeness score. Each filled field contributes
- * a fixed weight (sum = 100). DisplayName + niche are required by the
- * wizard so they'll always be set when influencer_profiles row exists.
- * Heuristic, not perfect — meant to nudge users to fill the optional
- * fields that improve brand match-rate.
+ * Profile completeness factors. Single source of truth for the stat
+ * card percentage AND the "Boost your profile" breakdown below — same
+ * weights drive both, no drift possible.
+ *
+ * Weights sum to 100. Heuristic — meant to nudge users to fill the
+ * optional fields that improve brand match-rate, not a perfect score.
+ *
+ * Portfolio is reserved for the future (wizard doesn't capture it
+ * yet); its 5% sits unreachable today, so a profile can hit a real
+ * max of 95% until that field gets a UI.
  */
+interface CompletenessFactor {
+  key: string
+  label: string
+  weight: number
+  check: (p: InfluencerProfileLite | null) => boolean
+  href: string
+}
+
+const PROFILE_EDIT_HREF = '/dashboard/influencer/profile'
+
+const COMPLETENESS_FACTORS: CompletenessFactor[] = [
+  { key: 'displayName',  label: 'Display name',         weight: 10, check: (p) => !!(p?.displayName?.trim()),                       href: PROFILE_EDIT_HREF },
+  { key: 'niche',        label: 'At least one niche',   weight: 10, check: (p) => (p?.niche?.length ?? 0) > 0,                      href: PROFILE_EDIT_HREF },
+  { key: 'bio',          label: 'Short bio',            weight: 10, check: (p) => !!(p?.bio?.trim()),                               href: PROFILE_EDIT_HREF },
+  { key: 'photo',        label: 'Profile photo',        weight: 15, check: (p) => !!p?.profileImageUrl,                             href: PROFILE_EDIT_HREF },
+  { key: 'rate',         label: 'Base rate',            weight: 10, check: (p) => !!p?.baseRate && p.baseRate > 0,                  href: PROFILE_EDIT_HREF },
+  { key: 'contentTypes', label: 'Content types',        weight: 10, check: (p) => (p?.contentTypes?.length ?? 0) > 0,               href: PROFILE_EDIT_HREF },
+  { key: 'socials',      label: 'Social handles',       weight: 15, check: (p) => !!(p?.instagramHandle || p?.youtubeHandle || p?.twitterHandle || p?.linkedinHandle || p?.tiktokHandle), href: PROFILE_EDIT_HREF },
+  { key: 'audience',     label: 'Audience demographics',weight: 10, check: (p) => !!p?.audienceDemographics && Object.keys(p.audienceDemographics).length > 0, href: PROFILE_EDIT_HREF },
+  { key: 'location',     label: 'Location',             weight:  5, check: (p) => !!(p?.location?.trim()),                          href: PROFILE_EDIT_HREF },
+  { key: 'portfolio',    label: 'Portfolio links',      weight:  5, check: () => false,                                             href: PROFILE_EDIT_HREF },
+]
+
 function calcProfileCompleteness(p: InfluencerProfileLite | null): number {
   if (!p) return 0
-  let score = 0
-  if (p.displayName && p.displayName.trim().length > 0) score += 10
-  if ((p.niche?.length ?? 0) > 0) score += 10
-  if (p.bio && p.bio.trim().length > 0) score += 10
-  if (p.profileImageUrl) score += 15
-  if (p.baseRate && p.baseRate > 0) score += 10
-  if ((p.contentTypes?.length ?? 0) > 0) score += 10
-  if (p.instagramHandle || p.youtubeHandle || p.twitterHandle || p.linkedinHandle || p.tiktokHandle) score += 15
-  if (p.audienceDemographics && Object.keys(p.audienceDemographics).length > 0) score += 10
-  if (p.location && p.location.trim().length > 0) score += 5
-  // Portfolio not yet in the wizard; reserve last 5 for future.
-  return score
+  return COMPLETENESS_FACTORS.reduce(
+    (sum, f) => sum + (f.check(p) ? f.weight : 0),
+    0,
+  )
+}
+
+function getMissingProfileFactors(p: InfluencerProfileLite | null): CompletenessFactor[] {
+  if (!p) return COMPLETENESS_FACTORS.filter(f => f.key !== 'portfolio') // hide the future-reserved factor on a fresh profile
+  return COMPLETENESS_FACTORS.filter(f => !f.check(p))
 }
 
 async function getInfluencerStats(userId: string) {
@@ -437,6 +462,8 @@ async function InfluencerDashboard({ userId, userName }: { userId?: string; user
   ])
 
   const completeness = calcProfileCompleteness(profile as InfluencerProfileLite | null)
+  const missingFactors = getMissingProfileFactors(profile as InfluencerProfileLite | null)
+    .filter(f => f.key !== 'portfolio') // hide the future-reserved factor from the breakdown — it's unreachable today
   const firstName = (userName?.split(' ')[0]) || 'there'
   const verificationStatus = profile?.verificationStatus ?? 'unverified'
 
@@ -526,6 +553,61 @@ async function InfluencerDashboard({ userId, userName }: { userId?: string; user
           </CardContent>
         </Card>
       </div>
+
+      {/* Boost your profile — shows breakdown of missing factors.
+          Hidden when profile is at the practical max (today: 95% with
+          portfolio reserved for the future). */}
+      {missingFactors.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <User className="w-5 h-5 text-pink-500" />
+            Boost your profile
+          </h2>
+          <Card>
+            <CardContent className="pt-5 space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">{completeness}% complete</p>
+                  <p className="text-xs text-muted-foreground">
+                    {100 - completeness}% to go
+                  </p>
+                </div>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-violet-500 to-pink-500 transition-all"
+                    style={{ width: `${Math.max(0, Math.min(100, completeness))}%` }}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">
+                  Add these to your profile — each one improves how brands match you:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {missingFactors.map((f) => (
+                    <Link
+                      key={f.key}
+                      href={f.href}
+                      className="flex items-center justify-between gap-2 text-sm p-2.5 rounded-md border border-dashed border-border hover:border-pink-400 hover:bg-pink-500/5 transition-colors group"
+                    >
+                      <span className="truncate flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-pink-500 shrink-0" />
+                        {f.label}
+                      </span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          +{f.weight}%
+                        </Badge>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* Quick actions */}
       <section>
