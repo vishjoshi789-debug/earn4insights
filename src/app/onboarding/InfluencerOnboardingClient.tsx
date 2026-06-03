@@ -152,6 +152,39 @@ function pct(value: number | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
+// ─── Legacy data sanitisation (3.5C-fix-3) ───────────────────────
+//
+// Legacy influencer_profiles rows pre-date the curated niche list +
+// the strict length caps. Hydrating those values straight into the
+// wizard form lets them sit silently in state until step-2 save
+// hits the server-side Zod validation, which rejects with a generic
+// "Validation failed" toast. Sanitise on the way IN so the wizard
+// only ever holds values the server would accept.
+
+const NICHE_SET = new Set<string>(INFLUENCER_NICHES)
+const CONTENT_TYPE_SET = new Set<string>(INFLUENCER_CONTENT_TYPES)
+
+function sanitiseNiches(raw: unknown): typeof INFLUENCER_NICHES[number][] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (n): n is (typeof INFLUENCER_NICHES)[number] =>
+      typeof n === 'string' && NICHE_SET.has(n),
+  )
+}
+
+function sanitiseContentTypes(raw: unknown): typeof INFLUENCER_CONTENT_TYPES[number][] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (n): n is (typeof INFLUENCER_CONTENT_TYPES)[number] =>
+      typeof n === 'string' && CONTENT_TYPE_SET.has(n),
+  )
+}
+
+function clampString(value: unknown, max: number): string {
+  if (typeof value !== 'string') return ''
+  return value.slice(0, max)
+}
+
 function sumPct(obj: Record<string, number> | undefined): number {
   if (!obj) return 0
   return Object.values(obj).reduce((acc, n) => acc + pct(n), 0)
@@ -234,23 +267,29 @@ export default function InfluencerOnboardingClient({ userId, initial, userName }
       clearDraft(STORAGE_KEY)
     }
     setStep(safeStep)
+    // 3.5C-fix-3: sanitise every field that the new Zod schema is
+    // strict about, so legacy values (free-text niches, oversized
+    // bios from the old single-form influencer profile page) don't
+    // silently sit in state and trigger a "Validation failed" toast
+    // on step 2 save. Clamp lengths to schema max; filter array-of-
+    // enum fields to known values; handle handles defensively too.
     setForm({
-      displayName: initial?.displayName ?? draft.displayName ?? userName ?? '',
-      bio: initial?.bio ?? draft.bio ?? '',
-      niche: initial?.niche ?? draft.niche ?? [],
-      location: initial?.location ?? draft.location ?? '',
+      displayName: clampString(initial?.displayName ?? draft.displayName ?? userName ?? '', 80),
+      bio: clampString(initial?.bio ?? draft.bio ?? '', 200),
+      niche: sanitiseNiches(initial?.niche ?? draft.niche ?? []),
+      location: clampString(initial?.location ?? draft.location ?? '', 100),
       profileImageUrl: initial?.profileImageUrl ?? draft.profileImageUrl ?? '',
-      instagramHandle: initial?.instagramHandle ?? draft.instagramHandle ?? '',
-      youtubeHandle: initial?.youtubeHandle ?? draft.youtubeHandle ?? '',
-      twitterHandle: initial?.twitterHandle ?? draft.twitterHandle ?? '',
-      linkedinHandle: initial?.linkedinHandle ?? draft.linkedinHandle ?? '',
-      tiktokHandle: initial?.tiktokHandle ?? draft.tiktokHandle ?? '',
+      instagramHandle: clampString(initial?.instagramHandle ?? draft.instagramHandle ?? '', 100),
+      youtubeHandle: clampString(initial?.youtubeHandle ?? draft.youtubeHandle ?? '', 100),
+      twitterHandle: clampString(initial?.twitterHandle ?? draft.twitterHandle ?? '', 100),
+      linkedinHandle: clampString(initial?.linkedinHandle ?? draft.linkedinHandle ?? '', 100),
+      tiktokHandle: clampString(initial?.tiktokHandle ?? draft.tiktokHandle ?? '', 100),
       baseRate:
         initial?.baseRate != null
           ? String(initial.baseRate / 100)
           : draft.baseRate ?? '',
       currency: initial?.currency ?? draft.currency ?? 'INR',
-      contentTypes: initial?.contentTypes ?? draft.contentTypes ?? [],
+      contentTypes: sanitiseContentTypes(initial?.contentTypes ?? draft.contentTypes ?? []),
       audienceDemographics:
         initial?.audienceDemographics ?? draft.audienceDemographics ?? {},
       socialStats: draft.socialStats ?? {},
@@ -303,6 +342,21 @@ export default function InfluencerOnboardingClient({ userId, initial, userName }
     }
   }
 
+  // 3.5C-fix-3 — surface the first field-specific message when the
+  // server returns Zod fieldErrors. Bare "Validation failed" toast
+  // gives the user nothing to act on; first-error key + message
+  // points them at the offending field.
+  type ActionResp =
+    | { ok: true; data?: unknown }
+    | { ok: false; error: string; fieldErrors?: Record<string, string> }
+  const describeActionError = (res: ActionResp): string => {
+    if (!res.ok && res.fieldErrors) {
+      const first = Object.entries(res.fieldErrors)[0]
+      if (first) return `${first[0]}: ${first[1]}`
+    }
+    return !res.ok ? res.error : 'Unknown error'
+  }
+
   // ── Step nav handlers ────────────────────────────────────────
   const goToStep3 = () => {
     startTransition(async () => {
@@ -314,7 +368,7 @@ export default function InfluencerOnboardingClient({ userId, initial, userName }
         profileImageUrl: form.profileImageUrl || undefined,
       })
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error(describeActionError(res))
         return
       }
       setStep(3)
@@ -331,7 +385,7 @@ export default function InfluencerOnboardingClient({ userId, initial, userName }
         tiktokHandle: form.tiktokHandle || undefined,
       })
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error(describeActionError(res))
         return
       }
       setStep(4)
@@ -349,7 +403,7 @@ export default function InfluencerOnboardingClient({ userId, initial, userName }
         audienceDemographics: form.audienceDemographics ?? undefined,
       })
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error(describeActionError(res))
         return
       }
       setStep(5)
@@ -360,7 +414,7 @@ export default function InfluencerOnboardingClient({ userId, initial, userName }
     startTransition(async () => {
       const res = await completeInfluencerOnboardingAction({})
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error(describeActionError(res))
         return
       }
       clearDraft(STORAGE_KEY)
