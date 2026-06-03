@@ -19,6 +19,12 @@ declare module "next-auth" {
     user: {
       id: string
       role: UserRole
+      // 3.5E — multi-role capability flags. Drive the RoleSwitcher
+      // visibility + the sidebar primary-view filter. Mirror the
+      // boolean columns on users (migration 022).
+      isBrand?: boolean
+      isConsumer?: boolean
+      isInfluencer?: boolean
     } & DefaultSession["user"]
   }
 
@@ -26,6 +32,9 @@ declare module "next-auth" {
     role: UserRole
     /** Set by authorize() — 2FA is enabled and this device is not trusted. */
     twoFactorPending?: boolean
+    isBrand?: boolean
+    isConsumer?: boolean
+    isInfluencer?: boolean
   }
 }
 
@@ -143,6 +152,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           name: user.name,
           role: user.role,
+          isBrand: user.isBrand,
+          isConsumer: user.isConsumer,
+          isInfluencer: user.isInfluencer,
           twoFactorPending,
         }
       },
@@ -187,6 +199,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             // visit to /signup cannot change a stored role.
             user.role = existingUser.role
             user.id = existingUser.id
+            // 3.5E — propagate capability flags so the session carries
+            // them through to RoleSwitcher + sidebar primary-view filter.
+            user.isBrand = existingUser.isBrand ?? false
+            user.isConsumer = existingUser.isConsumer ?? false
+            user.isInfluencer = existingUser.isInfluencer ?? false
             console.log('[Auth] Google sign-in for existing user:', user.email, 'role:', user.role)
             // Fall through to ensureUserProfile below.
           } else {
@@ -239,6 +256,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             user.role = existingUser.role
             user.id = existingUser.id
+            user.isBrand = existingUser.isBrand ?? false
+            user.isConsumer = existingUser.isConsumer ?? false
+            user.isInfluencer = existingUser.isInfluencer ?? false
             console.log('[Auth] Google sign-up successful:', user.email, 'role:', user.role)
           }
         } catch (error) {
@@ -274,6 +294,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role
         token.name = user.name
         token.email = user.email
+        // 3.5E — capability flags propagated to JWT so they survive
+        // across requests without re-reading from DB.
+        token.isBrand = (user as { isBrand?: boolean }).isBrand === true
+        token.isConsumer = (user as { isConsumer?: boolean }).isConsumer === true
+        token.isInfluencer = (user as { isInfluencer?: boolean }).isInfluencer === true
         // Per-login nonce — the 2FA proof cookie is bound to this so it
         // cannot survive into a later login.
         token.loginNonce = crypto.randomUUID()
@@ -290,6 +315,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token) {
         session.user.id = token.id as string
         session.user.role = token.role as UserRole
+        session.user.isBrand = token.isBrand === true
+        session.user.isConsumer = token.isConsumer === true
+        session.user.isInfluencer = token.isInfluencer === true
         session.loginNonce = token.loginNonce as string | undefined
         session.requires2FA = token.twoFactorPending === true
       }

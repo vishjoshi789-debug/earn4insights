@@ -40,6 +40,7 @@ import {
 import { signOut, useSession } from 'next-auth/react';
 import { formatDistanceToNow } from 'date-fns';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { RoleSwitcher } from '@/components/RoleSwitcher';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -321,6 +322,10 @@ export function DashboardHeader() {
           </TooltipTrigger>
           <TooltipContent>Search pages &amp; products</TooltipContent>
         </Tooltip>
+
+        {/* 3.5E — primary-view switcher; auto-hides for single-role users */}
+        <RoleSwitcher />
+
         <NotificationBell />
 
         <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>

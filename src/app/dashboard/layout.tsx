@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { getUserProfile, getUserProfileByEmail } from '@/db/repositories/userProfileRepository'
 import { ConsentRenewalWrapper } from '@/components/ConsentRenewalWrapper'
 import { ChatWidget } from '@/components/support/ChatWidget'
+import { ActiveViewProvider } from '@/components/ActiveViewProvider'
 
 export default async function DashboardLayout({
   children,
@@ -26,11 +27,19 @@ export default async function DashboardLayout({
     profile = profileById || profileByEmail
   }
 
+  // 3.5E — default view is the session role. ActiveViewProvider
+  // overrides this from sessionStorage AFTER mount for dual-role
+  // users who toggled via the RoleSwitcher.
+  const defaultView =
+    (session?.user?.role as 'brand' | 'consumer' | 'influencer' | 'admin' | undefined) ?? 'consumer'
+
   return (
     <OnboardingGuard>
-      {profile && <ConsentRenewalWrapper profile={profile} userRole={session?.user?.role} />}
-      <DashboardShell>{children}</DashboardShell>
-      <ChatWidget />
+      <ActiveViewProvider defaultView={defaultView}>
+        {profile && <ConsentRenewalWrapper profile={profile} userRole={session?.user?.role} />}
+        <DashboardShell>{children}</DashboardShell>
+        <ChatWidget />
+      </ActiveViewProvider>
     </OnboardingGuard>
   )
 }

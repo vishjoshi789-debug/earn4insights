@@ -60,6 +60,7 @@ import { useSession } from 'next-auth/react'
 import { DashboardHeader } from '@/components/dashboard-header'
 import { ProductTour } from '@/components/ProductTour'
 import { CommandPalette } from '@/components/command-palette'
+import { useActiveView } from '@/components/ActiveViewProvider'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { usePresenceChannel } from '@/hooks/usePusher'
 import { PRESENCE_DASHBOARD } from '@/lib/pusher-client'
@@ -246,6 +247,10 @@ export default function DashboardShell({
 }) {
   const { data: session, status } = useSession()
   const userRole = (session?.user as any)?.role as Role | undefined
+  // 3.5E — sidebar filters on the ACTIVE view (which may be a
+  // session-only toggle, not the stored primary role). Single-role
+  // users always see activeView === userRole.
+  const { activeView } = useActiveView()
   const userId = (session?.user as any)?.id as string | undefined
   const [unreadAlerts, setUnreadAlerts] = useState(0)
   const isVisible = useRef(true)
@@ -278,25 +283,26 @@ export default function DashboardShell({
     return () => clearInterval(interval)
   }, [userRole])
 
-  // Memoize visible items — only recompute when role changes, not every render.
-  // 3.5B-fix: handle Array<Role> form for items that should appear under
-  // multiple primary roles (e.g. influencer items shown for both 'consumer'
-  // and 'influencer' primary views).
+  // Memoize visible items — only recompute when the ACTIVE view
+  // changes (3.5E). Single-role users have activeView === userRole.
+  // Dual-role users get adaptive sidebar via the RoleSwitcher.
+  // Array.<Role>-form items appear under any role they list.
   const visibleItems = useMemo(
     () => menuItems.filter((item) => {
       if (!item.role) return true
-      if (Array.isArray(item.role)) return userRole !== undefined && item.role.includes(userRole)
-      return item.role === userRole
+      if (Array.isArray(item.role)) return item.role.includes(activeView as Role)
+      return item.role === activeView
     }),
-    [userRole]
+    [activeView]
   )
 
-  // While session is loading, show all shared (non-role-specific) items to avoid flicker
+  // While session is loading, show all shared (non-role-specific) items to avoid flicker.
+  // After loading, fall back through visibleItems → role-specific filter on activeView.
   const displayItems = useMemo(
-    () => status === 'loading'
+    () => status === 'loading' || !activeView
       ? menuItems.filter((item) => !item.role)
       : visibleItems,
-    [status, visibleItems]
+    [status, visibleItems, activeView]
   )
 
   return (
