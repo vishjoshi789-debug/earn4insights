@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth/auth.config'
 import { ensureUserProfile, hasCompletedOnboarding } from '@/lib/auth/ensureUserProfile'
 import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepository'
+import { hasCompletedInfluencerOnboarding } from '@/db/repositories/influencerProfileRepository'
 
 /**
  * Wrapper component that ensures user has a profile and has completed onboarding.
@@ -44,16 +45,18 @@ export async function OnboardingGuard({
     return <>{children}</>
   }
 
-  // Influencer — bypass for 3.5B. The 3.5C wizard will replace this
-  // with a hasCompletedInfluencerOnboarding(userId) gate that checks
-  // influencer_profiles.onboarding_completed (column added in
-  // migration 022). For now, let them through so they can register
-  // via /dashboard/influencer/profile.
+  // Influencer path — gate on influencer_profiles.onboarding_completed
+  // (column added in migration 022; wizard ships in 3.5C). Same shape
+  // as the brand gate: no ensureUserProfile call here because the
+  // influencer profile lives in a separate table.
   if (role === 'influencer') {
+    if (skipOnboarding) return <>{children}</>
+    const done = await hasCompletedInfluencerOnboarding(userId)
     console.log(
-      `[OnboardingGuard] email=${session.user.email} role=influencer ` +
-      `result=passed (bypass until 3.5C wizard)`,
+      `[OnboardingGuard] email=${session.user.email} role=influencer done=${done} ` +
+      `result=${done ? 'passed' : 'REDIRECT'}`,
     )
+    if (!done) redirect('/onboarding')
     return <>{children}</>
   }
 

@@ -27,12 +27,11 @@ export default function SignupPage() {
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false)
 
   // Single source of truth for the post-signup landing path. Brand
-  // lands on the brand dashboard; consumer browses products; influencer
-  // is sent to the existing influencer profile registration page (which
-  // will be replaced by the dedicated wizard in 3.5C).
+  // lands on the brand dashboard; consumer browses products;
+  // influencer enters the dedicated wizard at /onboarding (3.5C).
   const getRedirectUrl = (r: typeof role): string => {
     if (r === 'brand') return '/dashboard'
-    if (r === 'influencer') return '/dashboard/influencer/profile'
+    if (r === 'influencer') return '/onboarding'
     return '/top-products'
   }
 

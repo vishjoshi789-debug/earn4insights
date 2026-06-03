@@ -1321,6 +1321,16 @@ export const influencerProfiles = pgTable('influencer_profiles', {
   // backfill banner shipped in 3.5G.
   onboardingCompleted: boolean('onboarding_completed').notNull().default(false),
   onboardingCompletedAt: timestamp('onboarding_completed_at'),
+  // Phase 3.5C wizard additions (migration 024).
+  profileImageUrl: text('profile_image_url'),
+  tiktokHandle: text('tiktok_handle'),
+  contentTypes: text('content_types').array().notNull().default([]),
+  // { ageBrackets: {...}, gender: {...}, topCountries: [...] } — Zod-validated at write, not enforced by PG.
+  audienceDemographics: jsonb('audience_demographics').$type<{
+    ageBrackets?: Record<string, number>
+    gender?: Record<string, number>
+    topCountries?: string[]
+  }>().notNull().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
