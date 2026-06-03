@@ -43,6 +43,7 @@ export default async function OnboardingPage() {
     }
     return (
       <InfluencerOnboardingClient
+        userId={session.user.id}
         initial={existing ?? null}
         userName={session.user.name ?? null}
       />

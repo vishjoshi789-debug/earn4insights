@@ -41,7 +41,12 @@ import {
 
 // ─── Constants ──────────────────────────────────────────────────
 
-const STORAGE_KEY = 'e4i_influencer_onboarding_draft'
+// 3.5C-fix-2: scoped by userId so cross-user wizard state on the same
+// browser can't leak (a different account completing the wizard would
+// otherwise leave step=6 in storage and the next user would land on
+// the "You're all set" screen with the DB disagreeing).
+const STORAGE_KEY_PREFIX = 'e4i_influencer_onboarding_draft'
+const storageKeyFor = (userId: string) => `${STORAGE_KEY_PREFIX}:${userId}`
 // 5 MB cap — accommodates modern phone photos (iPhone 12+ / Android
 // flagships routinely produce 3–5 MB JPEGs). Matches server-side
 // PHOTO_MAX_BYTES in /api/uploads/influencer-photo/route.ts. Brand
@@ -115,27 +120,27 @@ interface DraftState {
   audienceDemographics?: AudienceDemographicsDraft
 }
 
-function loadDraft(): DraftState {
+function loadDraft(key: string): DraftState {
   if (typeof window === 'undefined') return {}
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY)
+    const raw = sessionStorage.getItem(key)
     return raw ? (JSON.parse(raw) as DraftState) : {}
   } catch {
     return {}
   }
 }
 
-function saveDraft(draft: DraftState) {
+function saveDraft(key: string, draft: DraftState) {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(draft))
+    sessionStorage.setItem(key, JSON.stringify(draft))
   } catch {
     /* quota exceeded — ignore */
   }
 }
 
-function clearDraft() {
+function clearDraft(key: string) {
   try {
-    sessionStorage.removeItem(STORAGE_KEY)
+    sessionStorage.removeItem(key)
   } catch {
     /* ignore */
   }
@@ -186,11 +191,15 @@ interface InitialProfile {
 }
 
 interface Props {
+  // 3.5C-fix-2: required, drives the per-user sessionStorage key.
+  userId: string
   initial: InitialProfile | null
   userName?: string | null
 }
 
-export default function InfluencerOnboardingClient({ initial, userName }: Props) {
+export default function InfluencerOnboardingClient({ userId, initial, userName }: Props) {
+  // Per-user storage key — memoised to keep useEffect deps stable.
+  const STORAGE_KEY = storageKeyFor(userId)
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [photoUploading, setPhotoUploading] = useState(false)
@@ -207,8 +216,24 @@ export default function InfluencerOnboardingClient({ initial, userName }: Props)
   // still saves + advances even when no edits are made, so a quick
   // click-through still marks onboarding_completed=true at the end.
   useEffect(() => {
-    const draft = loadDraft()
-    setStep(Math.min(Math.max(draft.step ?? 1, 1), PROGRESS_STEPS.length))
+    const draft = loadDraft(STORAGE_KEY)
+    // 3.5C-fix-2 defensive clamp: if storage says we're at the
+    // "You're all set" screen (step 6) but the DB says onboarding
+    // isn't actually completed (initial.onboardingCompleted false or
+    // initial is null entirely), the UI would let the user click
+    // "Go to dashboard" and hit an OnboardingGuard redirect loop —
+    // /dashboard sees not-completed -> redirect /onboarding -> stale
+    // step=6 hydrates -> same screen. Reset to step 1 so they
+    // actually walk the wizard and the completion action fires.
+    const dbCompleted = initial?.onboardingCompleted === true
+    const requestedStep = Math.min(Math.max(draft.step ?? 1, 1), PROGRESS_STEPS.length)
+    const safeStep = requestedStep === PROGRESS_STEPS.length && !dbCompleted ? 1 : requestedStep
+    if (safeStep !== requestedStep) {
+      // Stale draft inconsistent with DB — clear it so the next save
+      // is a fresh start, not an overlay on a stale step=6 row.
+      clearDraft(STORAGE_KEY)
+    }
+    setStep(safeStep)
     setForm({
       displayName: initial?.displayName ?? draft.displayName ?? userName ?? '',
       bio: initial?.bio ?? draft.bio ?? '',
@@ -236,8 +261,8 @@ export default function InfluencerOnboardingClient({ initial, userName }: Props)
 
   useEffect(() => {
     if (!hydrated) return
-    saveDraft({ ...form, step })
-  }, [form, step, hydrated])
+    saveDraft(STORAGE_KEY, { ...form, step })
+  }, [form, step, hydrated, STORAGE_KEY])
 
   const update = useCallback(<K extends keyof DraftState>(key: K, value: DraftState[K]) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -338,7 +363,7 @@ export default function InfluencerOnboardingClient({ initial, userName }: Props)
         toast.error(res.error)
         return
       }
-      clearDraft()
+      clearDraft(STORAGE_KEY)
       setStep(6)
     })
   }
