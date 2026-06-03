@@ -7,9 +7,15 @@ import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepos
  * Wrapper component that ensures user has a profile and has completed onboarding.
  *
  * Role behaviour:
- *   - consumer → must complete consumer onboarding (user_profiles.onboardingComplete)
- *   - brand    → must complete brand onboarding (brand_profiles.onboarding_completed)
- *   - admin    → no onboarding required
+ *   - consumer   → must complete consumer onboarding (user_profiles.onboardingComplete)
+ *   - brand      → must complete brand onboarding (brand_profiles.onboarding_completed)
+ *   - influencer → bypass (3.5B temp) — the dedicated influencer wizard
+ *                  ships in 3.5C; until then influencers reach
+ *                  /dashboard/influencer/profile to register via the
+ *                  existing single-form path. Without this branch they
+ *                  would fall into the consumer path and get redirected
+ *                  to the consumer wizard at /onboarding
+ *   - admin      → no onboarding required
  *
  * If onboarding isn't complete, redirects to /onboarding (which itself
  * routes the user to the correct wizard based on role).
@@ -35,6 +41,19 @@ export async function OnboardingGuard({
 
   // Admin — no onboarding gate.
   if (role === 'admin') {
+    return <>{children}</>
+  }
+
+  // Influencer — bypass for 3.5B. The 3.5C wizard will replace this
+  // with a hasCompletedInfluencerOnboarding(userId) gate that checks
+  // influencer_profiles.onboarding_completed (column added in
+  // migration 022). For now, let them through so they can register
+  // via /dashboard/influencer/profile.
+  if (role === 'influencer') {
+    console.log(
+      `[OnboardingGuard] email=${session.user.email} role=influencer ` +
+      `result=passed (bypass until 3.5C wizard)`,
+    )
     return <>{children}</>
   }
 
