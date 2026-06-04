@@ -57,10 +57,19 @@ export default async function OnboardingPage({
   // pattern as 2FA setup).
   if ((role as string) === 'influencer' || explicitPath === 'influencer') {
     const existing = await getInfluencerProfileByUserId(session.user.id)
-    if (existing?.onboardingCompleted) {
+    const isCrossRoleUpgrade = (role as string) !== 'influencer'
+    // 3.5F-fix — only bounce to /dashboard when the user is already
+    // a full influencer (primary role) AND has a completed profile.
+    // A cross-role upgrade attempt (path=influencer with role!='influencer')
+    // intentionally re-enters the wizard even if a stale completed
+    // profile row exists from earlier — the legitimate "user is not
+    // currently an influencer per users.is_influencer; they're opting
+    // back in" path. The wizard hydrates the existing data so they
+    // click through quickly (Q7 humane prefill); completion flips
+    // users.is_influencer=true again.
+    if (existing?.onboardingCompleted && !isCrossRoleUpgrade) {
       redirect('/dashboard')
     }
-    const isCrossRoleUpgrade = (role as string) !== 'influencer'
     return (
       <InfluencerOnboardingClient
         userId={session.user.id}
