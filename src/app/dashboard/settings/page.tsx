@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner'
 import { apiPatch, apiPost } from '@/lib/api-client'
 import { SecuritySettingsCard } from '@/components/two-factor/SecuritySettingsCard'
+import { BecomeInfluencerCard } from '@/components/BecomeInfluencerCard'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -446,11 +447,14 @@ export default function NotificationSettingsPage() {
     <div className="max-w-3xl space-y-8">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Notification Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1">
-          Configure how and where you receive real-time alerts.
+          Manage your account, security, and notification preferences.
         </p>
       </div>
+
+      {/* ── Become an Influencer (3.5F) — auto-hides when not relevant ── */}
+      <BecomeInfluencerCard />
 
       {/* ── Security: Two-Factor Authentication (all users) ── */}
       <SecuritySettingsCard />

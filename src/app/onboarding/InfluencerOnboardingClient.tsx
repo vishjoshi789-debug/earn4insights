@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useTransition, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { signOut } from 'next-auth/react'
 import { upload } from '@vercel/blob/client'
 import { toast } from 'sonner'
 import {
@@ -228,9 +229,19 @@ interface Props {
   userId: string
   initial: InitialProfile | null
   userName?: string | null
+  // 3.5F: true when the wizard was reached via ?path=influencer on
+  // settings (consumer upgrading to dual-role). On Step 6 we force
+  // a sign-out so the next login mints a JWT with the new
+  // is_influencer flag — matches the 2FA setup pattern.
+  isCrossRoleUpgrade?: boolean
 }
 
-export default function InfluencerOnboardingClient({ userId, initial, userName }: Props) {
+export default function InfluencerOnboardingClient({
+  userId,
+  initial,
+  userName,
+  isCrossRoleUpgrade = false,
+}: Props) {
   // Per-user storage key — memoised to keep useEffect deps stable.
   const STORAGE_KEY = storageKeyFor(userId)
   const router = useRouter()
@@ -425,6 +436,16 @@ export default function InfluencerOnboardingClient({ userId, initial, userName }
   const goToDashboard = () => {
     router.push('/dashboard')
     router.refresh()
+  }
+
+  // 3.5F — cross-role completion finish handler. Forces a sign-out so
+  // the next login mints a fresh JWT carrying is_influencer=true.
+  // Without this the session retains the stale capability flags and
+  // the RoleSwitcher / influencer sidebar items don't appear until
+  // the user happens to log out anyway. Same pattern as the 2FA setup
+  // wizard's force-signOut.
+  const signOutForReauth = () => {
+    signOut({ callbackUrl: '/login' })
   }
 
   // The wizard renders nothing until hydrated to avoid flicker between
@@ -1038,47 +1059,71 @@ export default function InfluencerOnboardingClient({ userId, initial, userName }
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground text-center">
-              Here&apos;s what to do next:
-            </p>
-            <div className="grid grid-cols-1 gap-2">
-              <Link
-                href="/dashboard/influencer/marketplace"
-                className="rounded-lg border border-border p-3 hover:border-violet-400 hover:bg-violet-500/5 transition-colors flex items-center gap-3"
-              >
-                <Megaphone className="h-5 w-5 text-violet-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Browse the marketplace</p>
-                  <p className="text-xs text-muted-foreground">Apply to active brand campaigns</p>
+            {isCrossRoleUpgrade ? (
+              // 3.5F — cross-role upgrade: force a sign-out so the
+              // next login mints a fresh JWT with the new
+              // is_influencer flag. Without this the RoleSwitcher +
+              // influencer sidebar items would stay hidden until the
+              // user happens to log out anyway.
+              <>
+                <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 p-4 space-y-2">
+                  <p className="text-sm font-medium">One more step</p>
+                  <p className="text-xs text-muted-foreground">
+                    Please sign in again to activate your influencer features.
+                    Your Consumer account is unchanged — you&apos;ll be able to
+                    switch between Consumer and Influencer views from the
+                    header dropdown.
+                  </p>
                 </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
-              <Link
-                href="/dashboard/influencer/profile"
-                className="rounded-lg border border-border p-3 hover:border-pink-400 hover:bg-pink-500/5 transition-colors flex items-center gap-3"
-              >
-                <User className="h-5 w-5 text-pink-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Improve your profile</p>
-                  <p className="text-xs text-muted-foreground">Add portfolio links, verify handles</p>
+                <Button onClick={signOutForReauth} className="w-full" size="lg">
+                  Sign in again to continue <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground text-center">
+                  Here&apos;s what to do next:
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  <Link
+                    href="/dashboard/influencer/marketplace"
+                    className="rounded-lg border border-border p-3 hover:border-violet-400 hover:bg-violet-500/5 transition-colors flex items-center gap-3"
+                  >
+                    <Megaphone className="h-5 w-5 text-violet-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">Browse the marketplace</p>
+                      <p className="text-xs text-muted-foreground">Apply to active brand campaigns</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  </Link>
+                  <Link
+                    href="/dashboard/influencer/profile"
+                    className="rounded-lg border border-border p-3 hover:border-pink-400 hover:bg-pink-500/5 transition-colors flex items-center gap-3"
+                  >
+                    <User className="h-5 w-5 text-pink-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">Improve your profile</p>
+                      <p className="text-xs text-muted-foreground">Add portfolio links, verify handles</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  </Link>
+                  <Link
+                    href="/dashboard/influencer/payouts"
+                    className="rounded-lg border border-border p-3 hover:border-emerald-400 hover:bg-emerald-500/5 transition-colors flex items-center gap-3"
+                  >
+                    <Wallet className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">Set up your payout account</p>
+                      <p className="text-xs text-muted-foreground">Required before your first paid campaign</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  </Link>
                 </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
-              <Link
-                href="/dashboard/influencer/payouts"
-                className="rounded-lg border border-border p-3 hover:border-emerald-400 hover:bg-emerald-500/5 transition-colors flex items-center gap-3"
-              >
-                <Wallet className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Set up your payout account</p>
-                  <p className="text-xs text-muted-foreground">Required before your first paid campaign</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
-            </div>
-            <Button onClick={goToDashboard} className="w-full" size="lg">
-              Go to dashboard <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+                <Button onClick={goToDashboard} className="w-full" size="lg">
+                  Go to dashboard <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
