@@ -8,6 +8,7 @@
 > **Phase 2 completed:** 2026-05-31
 > **Phase 3 completed:** 2026-06-01
 > **Phase 4 in progress:** 4A + 4B shipped 2026-06-02; 4C (A9 — influencer verification) deferred pending strategic design discussion on the broader influencer onboarding flow.
+> **Phase 3.5 completed:** 2026-06-04. Strategic redesign of the influencer surface — first-class signup, 6-step onboarding wizard, dedicated dashboard home, dual-role sidebar with view-switcher, cross-role upgrade path. 6 sub-phases (3.5A–3.5F) + 9 follow-up fixes + 3 migrations (022, 023, 024). 3.5G (grandfather banner) intentionally skipped — humane prefill in 3.5C + cross-role upgrade in 3.5F made it moot for the 1 legacy influencer in DB. A9 verification still pending; remains the natural next Tier A item.
 
 ---
 
@@ -28,7 +29,14 @@
 | 3 | 3D-fu | Edit dialog X close + Escape key (custom Dialog has no built-in dismiss) | `ee9fe98` | ✅ 2026-06-01 | ⏳ deferred |
 | 4 | 4A | Marketplace draft exclusion — apply guard + listing/recommended/detail filters | `6c7d80b` | ✅ 2026-06-02 (A13-1 + A13-3 verified; A13-2/4/5/6 functional, not separately confirmed) | ⏳ deferred |
 | 4 | 4B | Payout-account prompt — banner (L1) + inline notice (L2) + accept/apply guards (L3/L4) + friendly modal (L5) | `bdc0f01` | ⏳ deferred — just shipped, awaiting smoke | ⏳ deferred |
-| 4 | 4C | Influencer verification flow (A9) | — | ⏳ pending — awaiting strategic discussion on broader influencer onboarding | ⏳ deferred |
+| 4 | 4C | Influencer verification flow (A9) | — | ⏳ pending — moved to follow Phase 3.5 (the strategic discussion fed into 3.5, not into A9) | ⏳ deferred |
+| 3.5 | 3.5A | Multi-role flags + influencer in auth (migration 022 + 023 hot-fix) | `23ee50e` + `028c075` | ✅ 2026-06-02 (smoke checks 3.5A-1 through 3.5A-6) | ⏳ deferred |
+| 3.5 | 3.5B | First-class influencer signup option (3 hot-fixes: OnboardingGuard bypass, sidebar role-array form) | `cb66586` + `cf78ea7` + `cd52f57` | ✅ 2026-06-02 (B-1, B-2 verified; B-3 through B-7 skipped per user) | ⏳ deferred |
+| 3.5 | 3.5C | 6-step influencer onboarding wizard (migration 024 + 3 hot-fixes: photo cap, per-user storage, legacy data sanitisation) | `c101bbc` + `31a0f03` + `f6f49a4` + `4348fa5` | ✅ 2026-06-03 (wizard reaches step 6, audit_log row written) | ⏳ deferred |
+| 3.5 | 3.5D | Influencer dashboard home + profile completeness breakdown | `8e963d8` + `c297244` | ✅ 2026-06-03 (D-2 surfaced "show contribution per segment" — addressed in follow-up) | ⏳ deferred |
+| 3.5 | 3.5E | Role-aware sidebar + dual-role view-switcher | `f78f80c` | ✅ 2026-06-04 (E-2 through E-5 verified after data fix-up) | ⏳ deferred |
+| 3.5 | 3.5F | Cross-role upgrade entry from /settings (2 hot-fixes: stale profile bounce, defensive completion action on sign-out) | `7862312` + `9f25adf` + `513d21d` | ✅ 2026-06-04 (RoleSwitcher visible post sign-out + re-login) | ⏳ deferred |
+| 3.5 | 3.5G | Grandfather banner | — | ⏭️ intentionally skipped — moot after 3.5C humane prefill + 3.5F cross-role upgrade | n/a |
 
 ---
 
@@ -705,9 +713,277 @@ No code shipped yet. Status row in Status Overview reflects this.
 
 ---
 
+## Phase 3.5 — Influencer onboarding redesign (COMPLETE)
+
+> User-led strategic phase. Inserted between Phase 4 and the (still pending) A9 because the broader influencer-onboarding rethink the user flagged after A10 absorbed what would have been incremental Tier A polish. Makes influencers first-class citizens: discoverable signup option, polished 6-step wizard, dedicated dashboard home, dual-role sidebar with view-switcher, cross-role upgrade path from settings. 6 sub-phases (3.5A–3.5F) + 9 follow-up fixes + 3 migrations (022, 023, 024). 3.5G grandfather banner intentionally skipped — the humane-prefill in 3.5C and the cross-role upgrade path in 3.5F make it moot for the 1 legacy influencer in the DB.
+
+**Inspiration cited by user**: LinkedIn (multi-role identity), Patreon Creator onboarding, Whop Hub setup, Shopify Partner program.
+
+---
+
+### Sub-Phase 3.5A — Multi-role flags + influencer in auth (`23ee50e` + hot-fix `028c075`)
+
+#### Bug / gap
+Before 3.5A there was no first-class concept of "influencer" in `users.role`. The role column was effectively `'brand' | 'consumer' | 'admin'` (with admin as a runtime-only DB value not in the TS union), and "influencer" was a modular add-on signalled by `users.is_influencer = true` on a consumer-shaped account. That worked when influencers were a niche feature but cracked the moment we wanted:
+- A signup page where influencer is one of three first-class options
+- A dedicated `/dashboard` home for pure-influencer accounts
+- A sidebar that reflects the user's primary surface
+- A role-switcher for dual-role users to toggle views
+
+#### Design (approved upfront — Q1)
+Stripe-Connect-style **dual schema**:
+- `users.role` (single value, `'brand' | 'consumer' | 'influencer' | 'admin'`) — primary view / default dashboard
+- `users.is_brand` / `users.is_consumer` / `users.is_influencer` (booleans) — cross-cutting capability flags
+
+A user can have multiple capability flags true. Existing `role === 'X'` checks throughout the codebase keep working unchanged (they decide primary view). New code uses `isX` flags for cross-role feature gates.
+
+#### Fix
+- **Migration 022** — adds `users.is_brand` + `users.is_consumer` (both NOT NULL DEFAULT false) + backfills from existing `role`. Also adds `influencer_profiles.onboarding_completed` + `onboarding_completed_at` (defaults FALSE — intentionally grandfathers existing influencer rows as "needs wizard" so 3.5G banner could catch them). Partial index `idx_influencer_pending_onboarding` for the lookup. Idempotent.
+- **`UserRole` type** extended: `'brand' | 'consumer' | 'influencer' | 'admin'`. New `SignupRole = 'brand' | 'consumer' | 'influencer'` (admin excluded).
+- **`signupIntent.ts`** allowlist extended to include `'influencer'` (admin still never self-assignable).
+- **`userStore.ts`** — `createUser` sets the matching boolean flag at create time; extracted `rowToUser` helper for db-row → User mapping so getById / getByEmail / getByGoogleId / getAllUsers / getUsersByRole stay lock-step.
+- **`welcomeNotifications.ts`** — new `generateInfluencerWelcomeHTML` mirroring brand template structure with pink/purple gradient. Tone: enthusiastic + professional + "let's get you earning" per Q7 brief. WhatsApp + email both extended to accept `WelcomeRole = 'brand' | 'consumer' | 'influencer'`.
+- **`auth.actions.ts`** — Zod role enum extended to include `'influencer'`.
+
+#### Hot-fix — Migration 023 (`028c075`)
+3.5B smoke immediately surfaced a `users_role_check` CHECK constraint on the production DB that was NOT in `schema.ts` (must have been added directly in Neon at some prior point — the audit log's mid-work item #14 had flagged this surface but believed no CHECK existed). The constraint's allowlist was `('brand','consumer','admin')`. Inserting a new influencer user failed with a constraint-violation 500.
+
+**Fix**: migration 023 drops + recreates the constraint with the expanded allowlist `('brand','consumer','influencer','admin')`. Captures the previous definition in the response for audit clarity. Idempotent. Lives in `src/app/api/admin/run-migration-023/`.
+
+#### Files changed
+- 022: `src/app/api/admin/run-migration-022/route.ts` (new), `src/db/schema.ts` (+10), `src/lib/auth/signupIntent.ts`, `src/lib/user/types.ts` (+18), `src/lib/user/userStore.ts` (rowToUser refactor + flag-setting), `src/server/welcomeNotifications.ts` (+~150 for influencer template), `src/lib/actions/auth.actions.ts`
+- 023: `src/app/api/admin/run-migration-023/route.ts` (new)
+
+#### Smoke test (2026-06-02)
+Six SQL diagnostics on Neon: columns exist (`users.is_brand`, `is_consumer`; `influencer_profiles.onboarding_completed`, `onboarding_completed_at`), backfill correctness (all `role='X'` rows have matching `is_X=true`), partial index present, all existing influencer rows have `onboarding_completed=false` (grandfather default), population counts (Q5 baseline: 1 brand, 7 consumers, 1 legacy influencer = 1 dual-role), application-level sanity via `/api/auth/session`.
+
+#### Design Q&A — Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8 (all approved)
+1. Schema: dual model (single `role` + 3 boolean flags) — chosen over 3-booleans-only OR keeping single role
+2. Existing influencers: grandfather + dismissable banner approach (3.5G later skipped)
+3. Dual-role landing: `users.role` always wins (predictable default + two-tier session/permanent toggle)
+4. `/dashboard/*` paths: keep flat for consumer; `/dashboard/consumer/*` symmetry deferred
+5. Existing influencer count: 1 (low — banner urgency low)
+6. Sub-phase ordering: 3.5A first as foundation
+7. Welcome email copy: Claude drafts + user reviews (delivered in 3.5A)
+8. Role toggle feature flag: NO flag, ship live
+
+#### Follow-ups for canonical docs (queue for end-of-phase-6)
+- **CLAUDE.md** Phase Status: "Multi-role schema (users.role primary view + is_brand/is_consumer/is_influencer capability flags) — Stripe Connect pattern; existing role-string checks unchanged for primary-view decisions"
+- **CLAUDE.md** Key Decisions: "Migration 023 (users_role_check expanded for influencer) added separately as hot-fix when prod-only constraint surfaced; brings schema.ts perception in line with prod"
+- **SCHEMA.md** — Update users table definition with the 3 boolean flags; add `influencer_profiles.onboarding_completed` + `onboarding_completed_at`
+- **ARCHITECTURE.md** — Document the `SignupRole` vs `UserRole` distinction (signup allowlist excludes admin)
+
+---
+
+### Sub-Phase 3.5B — First-class influencer signup (`cb66586` + 2 follow-ups: `cf78ea7`, `cd52f57`)
+
+#### Bug / gap
+The signup page had only Brand and Consumer as radio options. Influencer was an "informational only" dashed tile telling users to sign up as Consumer and then complete an influencer profile — a 2-step path the user never took.
+
+#### Fix (`cb66586`)
+- **`src/app/(auth)/signup/page.tsx`** — 3 selectable RadioGroupItem tiles (Brand 🏢, Consumer 🛍️, Influencer 🎯) with concise value-prop copy per design brief:
+  - Brand: "Get hyper-personalized feedback and intelligence on your products."
+  - Consumer: "Earn rewards by sharing honest feedback on products you love."
+  - Influencer: "Get paid for genuine campaigns with brands that match your audience."
+  - Selected state: role-themed border colour (violet for influencer)
+- Single `getRedirectUrl(role)` helper drives both email+Google paths: brand → `/dashboard`, consumer → `/top-products`, influencer → `/dashboard/influencer/profile` (temp until 3.5C wizard) — later updated to `/onboarding` in 3.5C
+
+#### Hot-fix 1 — OnboardingGuard influencer bypass (`cf78ea7`)
+First influencer signup landed on the CONSUMER onboarding wizard at `/onboarding` instead of `/dashboard/influencer/profile`. Root cause: `OnboardingGuard.tsx` had explicit branches for admin and brand but no influencer branch — `role='influencer'` fell through to the consumer path, which called `ensureUserProfile` + checked `user_profiles.onboardingComplete` (false for a fresh user) and redirected to `/onboarding`.
+
+Fix added a role==='influencer' early branch that bypasses (temp 3.5B behavior; 3.5C flips it to a real `hasCompletedInfluencerOnboarding` check).
+
+#### Hot-fix 2 — Sidebar shows influencer items for pure influencer (`cd52f57`)
+After influencer signup, the user saw only the shared sidebar items (Dashboard, Products, Top 10, Notifications, Social, Community, Community Deals) and none of the 6 influencer items (Marketplace, My Campaigns, My Content, Earnings, Payouts, Influencer Profile). Root cause: those items were tagged `role: 'consumer'` from the historical model where "influencer" was a consumer with `isInfluencer=true`.
+
+Fix extended `MenuItem.role` to accept `Role | Role[]` and retagged the 6 influencer items as `role: ['consumer', 'influencer']` so they appear under both primary views. Filter handles the array form via `item.role.includes(userRole)`.
+
+#### Smoke test (2026-06-02)
+- B-1 (3-tile UI) ✅
+- B-2 (email signup as influencer, DB flags, welcome email) ✅ after OnboardingGuard fix
+- B-3 through B-7 skipped per user — regression tests on unchanged code paths
+
+#### Follow-ups for canonical docs
+- **CLAUDE.md** Key Decisions: "MenuItem.role now accepts string | string[]; multi-role items use the array form so they appear under either primary view"
+
+---
+
+### Sub-Phase 3.5C — 6-step influencer onboarding wizard (`c101bbc` + 3 follow-ups: `31a0f03`, `f6f49a4`, `4348fa5`)
+
+#### Bug / gap
+The existing single-form `/dashboard/influencer/profile` page worked but wasn't a wizard — no progressive disclosure, no per-step save, no draft persistence, no required-fields gate, no payout integration, no audience demographics, no content-type taxonomy. New influencer signups needed a Patreon-grade flow.
+
+#### Design Q&A — 8 decisions approved upfront
+1. Niche taxonomy: curated 16 (`beauty/fashion/tech/food/fitness/travel/lifestyle/gaming/education/finance/parenting/music/art/sports/automotive/health-wellness` — last added per India market)
+2. Content types: curated 9 (`reels/stories/posts/short-form-video/long-form-video/blog-post/podcast/livestream/review`)
+3. Payout step: skip-with-CTA (link to `/dashboard/influencer/payouts`, no duplicate form inside wizard)
+4. Verification status post-wizard: stay `unverified` (A9 owns the transition; don't fake-promote to `pending`)
+5. Audience demographics: number inputs + soft sum validation (≤100, not strict =100); colour-coded "% remaining" pill
+6. Profile photo: PNG/JPG/WEBP, 2 MB → bumped to 5 MB in follow-up (modern phone photos)
+7. Existing influencer: humane prefill + skip-through (Q7 — wizard hydrates from existing data; "Save and continue" with no edits still flips `onboarding_completed=true`)
+8. Single commit (vs. split like 3A.1/3A.2)
+
+#### Fix (`c101bbc`)
+- **Migration 024** — adds 4 columns to `influencer_profiles`: `profile_image_url TEXT`, `tiktok_handle TEXT`, `content_types TEXT[] NOT NULL DEFAULT '{}'`, `audience_demographics JSONB NOT NULL DEFAULT '{}'`. Idempotent. JSONB shape Zod-validated at write time (not enforced by Postgres).
+- **`src/lib/validation/influencer-onboarding.ts`** (new) — 4 Zod schemas (profile basics, social handles, audience+rates, composite). 16-niche enum + 9-content-type enum + age brackets + gender split + top countries + currencies, all curated. `percentageSplitSchema` enforces ≤100 sum with a small float-arithmetic tolerance. Human-readable label maps for the UI multi-selects.
+- **`src/app/onboarding/influencer-onboarding.actions.ts`** (new) — `saveProfileBasicsAction`, `saveSocialHandlesAction`, `saveAudienceAndRatesAction`, `completeInfluencerOnboardingAction`, `getInfluencerOnboardingState`. `requireInfluencerCapable` accepts `role in {influencer, consumer, admin}` (the 3.5F cross-role upgrade path piggy-backs on this). Completion writes `audit_log action='influencer_onboarding_completed'` + sets `users.isInfluencer=true` (covers cross-role upgrade).
+- **`src/app/onboarding/InfluencerOnboardingClient.tsx`** (new, ~720 LOC) — 6 steps: welcome, profile basics, social handles, audience+rates, payouts (skip-with-CTA), done. sessionStorage draft persistence keyed `e4i_influencer_onboarding_draft`. All shadcn primitives, dark theme tokens, mobile responsive, role-coloured pill multi-selects (violet for niches, pink for content types), gradient header avatar.
+- **`src/db/repositories/influencerProfileRepository.ts`** — added `hasCompletedInfluencerOnboarding`, `upsertInfluencerProfile`, `markInfluencerOnboardingComplete`. updateProfile signature widened for new fields.
+- **`src/app/api/uploads/influencer-photo/route.ts`** (new) — mirrors brand-logo: PNG/JPG/WEBP, 2 MB cap, no SVG (XSS), `influencer-photos/` namespace, `addRandomSuffix=true`.
+- **Wiring**: `/onboarding/page.tsx` adds influencer branch routing to wizard; `OnboardingGuard.tsx` flips 3.5B bypass → real `hasCompletedInfluencerOnboarding` check; `signup/page.tsx` `getRedirectUrl` for influencer changes to `/onboarding` (was `/dashboard/influencer/profile` in 3.5B).
+
+#### Hot-fix 1 — Photo cap 2 MB → 5 MB (`31a0f03`)
+Wizard step-2 photo upload failed for a real phone photo. Modern iPhone 12+ / Android flagships routinely produce 3–5 MB JPEGs. Bumped both client-side `PHOTO_MAX_BYTES` and server-side `maximumSizeInBytes` to 5 MB. Brand logo cap stays at 2 MB (logos are typically smaller).
+
+#### Hot-fix 2 — Per-user sessionStorage + defensive step clamp (`f6f49a4`)
+Dual-role user (E-5 smoke) logged back in, got bounced to `/onboarding` showing the "You're all set!" final screen — but clicking "Go to dashboard" did nothing (infinite redirect loop). Root cause: the wizard's draft sessionStorage key was a single global string (`e4i_influencer_onboarding_draft`), NOT scoped to userId. Earlier test runs had left `{ step: 6, ... }` in storage. Different user lands on `/onboarding`, wizard hydrates from sessionStorage, restores `step=6`, shows the done screen even though DB says `onboarding_completed=false`. Clicking "Go to dashboard" → `OnboardingGuard` redirects back → loop.
+
+**Fix layers**:
+1. Per-user storage key: `e4i_influencer_onboarding_draft:<userId>`. Different accounts on the same browser get independent draft state.
+2. Defensive step clamp on hydration: if `draft.step === 6` but `initial?.onboardingCompleted !== true`, reset to step 1 + clear the stale draft. Catches any edge case the per-user key doesn't.
+
+Brand wizard has the same global-key pattern but no surface report — queued as a future Tier C polish.
+
+#### Hot-fix 3 — Sanitise legacy data on hydration (`4348fa5`)
+Legacy dual-role user hit two bugs after the per-user-key fix:
+- "Validation failed" toast on step-2 save — server-side Zod rejected because the legacy `influencer_profiles` row had free-text niches not matching the curated 16-enum
+- Could only select 4 niches instead of 5 — one stale free-text niche sat invisibly in `form.niche.length`, blocking the `length < 5` add gate
+
+**Fix**: `sanitiseNiches()` filters hydrated values against `INFLUENCER_NICHES` set; `sanitiseContentTypes()` does the same; `clampString()` forces displayName/bio/location/each social handle into their schema max lengths on hydration. Plus `describeActionError()` surfaces the first Zod field error in toasts so future validation failures are debuggable ("displayName: Display name must be at least 2 characters" instead of bare "Validation failed").
+
+#### Smoke test (2026-06-03)
+Wizard reaches step 6, `audit_log` row written, `influencer_profiles.onboarding_completed=true`, `users.is_influencer=true`. Photo upload at 4 MB works.
+
+#### Follow-ups for canonical docs
+- **CLAUDE.md** Key Decisions:
+  - "Influencer wizard sessionStorage key is per-user (`e4i_influencer_onboarding_draft:<userId>`); brand wizard still uses the global key — fix queued as Tier C"
+  - "Wizard final-step (step 6) is reachable ONLY via the completion server action by design; defensive step clamp resets stale `step:6` storage when DB says NOT completed"
+  - "Legacy data sanitisation on wizard hydration: free-text values from the pre-3.5C single-form path are filtered against the curated enums; lengths clamped to schema max — prevents 'Validation failed' on save without UI feedback about which field"
+  - "Niche taxonomy bounded to 16 curated values; content types 9 curated. Adding new values is a one-line edit to `INFLUENCER_NICHES` / `INFLUENCER_CONTENT_TYPES` + relevant migration if persistence shape changes"
+- **SCHEMA.md** — `influencer_profiles` columns added in migration 024
+- **FEATURE2_INFLUENCERS_ADDA.md** — Document the wizard end-to-end (6 steps, completion contract, audit row, sanitisation layer)
+
+---
+
+### Sub-Phase 3.5D — Influencer dashboard home (`8e963d8` + follow-up `c297244`)
+
+#### Bug / gap
+A pure-influencer signup (`role='influencer'`) landing on `/dashboard` saw ConsumerDashboard — points balance, feedback stats, product recommendations. Wrong audience.
+
+#### Fix (`8e963d8`)
+- `/dashboard/page.tsx` `DashboardPage` now branches on role in `{brand, influencer, else}`. Pure influencer (`role='influencer'`) gets the new `InfluencerDashboard`. Dual-role consumer-with-`isInfluencer=true` (role='consumer') keeps seeing `ConsumerDashboard` until 3.5E adds the role-switcher.
+- `InfluencerDashboard` (~300 LOC inline) layout:
+  1. Welcome banner with violet-pink gradient avatar matching wizard
+  2. `InfluencerPayoutBanner` (A10 reuse — fires when no payout account)
+  3. Stats row: Active campaigns / Pending earnings / Profile completeness / Verification status
+  4. Quick actions: 4 cards linking to marketplace / content / earnings / profile
+  5. Recommended campaigns (top 3 from `getRecommendedCampaigns`)
+  6. Recent activity (last 5 `campaign_influencers` rows by `updatedAt`)
+  7. Niche badges footer
+- `calcProfileCompleteness` — 10-factor heuristic, weights sum to 100. Heuristic, not perfect.
+- `getInfluencerStats` — active count + pending payouts sum (INR only on the card; multi-currency on /earnings page).
+- All reads via existing repos/services server-side. No new APIs, no new schema, no new migrations.
+
+#### Follow-up — Profile completeness breakdown (`c297244`)
+D-2 smoke: the stat card showed "80% complete" with no indication of which segments were missing. User said "can't see contribution of each segment".
+
+**Fix**: extracted `COMPLETENESS_FACTORS` array (single source of truth for percentage + breakdown — no drift possible). New `getMissingProfileFactors` helper. Added "Boost your profile" section between stats and Quick Actions, visible only when missing factors exist; lists each unfilled item with weight badge (`+15%`, `+10%`) as clickable cards linking to the profile edit page. LinkedIn-style "complete your profile" pattern.
+
+#### Smoke test (2026-06-03)
+- D-1 to D-7 verified including the per-segment breakdown after the follow-up
+- Portfolio reserved as future factor (weight 5, no UI yet); practical max today is 95%
+
+#### Follow-ups for canonical docs
+- **CLAUDE.md** Key Decisions:
+  - "Influencer dashboard home (`/dashboard` when `role='influencer'`) — distinct surface from ConsumerDashboard; stats are campaign+earnings focused, not points/feedback"
+  - "Profile completeness uses a 10-factor weighted heuristic via `COMPLETENESS_FACTORS` single source of truth — same array drives the stat card percentage AND the breakdown card; max reachable today is 95% (portfolio reserved 5% for future)"
+- **FEATURE2_INFLUENCERS_ADDA.md** — document the dashboard layout sections + completeness calculation
+
+---
+
+### Sub-Phase 3.5E — Role-aware sidebar + dual-role view-switcher (`f78f80c`)
+
+#### Bug / gap
+After 3.5B-fix-2, the sidebar tagged influencer items with `role: ['consumer', 'influencer']` so dual-role users saw both consumer items AND influencer items mixed together — ~25+ items, cluttered.
+
+#### Design (Q1, Q2, Q3 approved)
+- **Q1**: two-tier persistence — session-only toggle (sessionStorage, cheap, no DB write) + "Make this my default view" link that updates `users.role` permanently
+- **Q2**: RoleSwitcher hidden for single-role users (no clutter)
+- **Q3**: header top-right (LinkedIn pattern), not sidebar (Patreon pattern)
+
+#### Fix
+- **`auth.config.ts`** — session + JWT now carry the 3 capability flags. authorize() (credentials), Google signIn branches (existing + new user), jwt callback, session callback all propagate. NextAuth type augmentation includes `user.isBrand / isConsumer / isInfluencer`.
+- **`src/components/ActiveViewProvider.tsx`** (new) — React Context wrapping the dashboard subtree. SSR-safe: renders with `defaultView` (= `session.user.role`) first paint, then hydrates to sessionStorage value AFTER mount. `useActiveView()` returns `{ activeView, setActiveView, defaultView }`.
+- **`src/components/RoleSwitcher.tsx`** (new) — dropdown, hidden when user has <2 capability flags. Shows each available role with description + ✓ on active + "(default)" annotation. "Make X my default view" item POSTs to `/api/user/primary-view` and toasts on success; hidden when active view IS the default.
+- **`src/app/api/user/primary-view/route.ts`** (new) — POST endpoint, CSRF-gated. Validates body.role ∈ `{brand, consumer, influencer}` (admin excluded). Re-reads user fresh to check capability flag — can't switch to a role you don't own. UPDATE users.role + audit_log row `action='primary_view_changed'`, metadata `{from, to}`.
+- **`src/app/dashboard/DashboardShell.tsx`** — sidebar filter now consumes `activeView` from `useActiveView()` instead of `session.user.role`. Single-role users have `activeView === userRole` (identical behavior). Dual-role users see only the active view's items.
+- **`src/app/dashboard/layout.tsx`** — wraps shell in `ActiveViewProvider`.
+- **`src/components/dashboard-header.tsx`** — RoleSwitcher mounted top-right between Search and NotificationBell; hidden on mobile (icon-only area is tight).
+
+#### Smoke test (2026-06-04, after data-fix-up)
+E-1 (single-role: no switcher) ✅, E-2 (dual-role: switcher visible) ✅ after a manual SQL fix-up (see mid-work item below for the broader "consumers disappeared" mystery), E-3 (session toggle) ✅, E-4 (sessionStorage persistence) ✅, E-5 (Make default → users.role updated + audit_log row) ✅, E-6 (capability gate — can't switch to a role you don't own) ✅.
+
+#### Follow-ups for canonical docs
+- **CLAUDE.md** Key Decisions:
+  - "RoleSwitcher gates on `>= 2` capability flags being true; admin excluded from dropdown (runtime-only role with its own /admin/* surface)"
+  - "Active view is session-scoped (sessionStorage `e4i_active_view`); 'Make default' updates users.role and requires a fresh JWT (next login) to fully apply"
+  - "Session + JWT carry the 3 capability flags propagated from authorize() (credentials) or signIn callback (Google)"
+- **ARCHITECTURE.md** — Document the `ActiveViewProvider` context as the dashboard's view-state authority
+
+---
+
+### Sub-Phase 3.5F — Cross-role upgrade from /settings (`7862312` + 2 hot-fixes: `9f25adf`, `513d21d`)
+
+#### Bug / gap
+Consumers had no discoverable way to become influencers besides finding `/dashboard/influencer/profile` (the legacy single-form path). Needed an explicit "Become an Influencer" entry on /settings.
+
+#### Fix (`7862312`)
+- **`src/components/BecomeInfluencerCard.tsx`** (new) — gradient violet-pink card matching 3.5C wizard tone. 3-bullet value prop. Primary CTA → `/onboarding?path=influencer`. Auto-hides when `isInfluencer=true` OR `role in (brand, admin)`.
+- **`src/app/dashboard/settings/page.tsx`** — page title widened from "Notification Settings" to "Settings" (it's no longer just notifications). `<BecomeInfluencerCard />` mounted between page header and SecuritySettingsCard.
+- **`src/app/onboarding/page.tsx`** — accepts `searchParams.path`. If `path === 'influencer'` AND user's primary role is not already 'influencer', renders `InfluencerOnboardingClient` with `isCrossRoleUpgrade=true`. Brand-primary role wins over `?path` override.
+- **`src/app/onboarding/InfluencerOnboardingClient.tsx`** — new `isCrossRoleUpgrade` prop. Step 6 branches: cross-role users see "One more step / Sign in again to continue" + `signOut()` button; normal users see the existing 3-action-card list + "Go to dashboard".
+
+#### Hot-fix 1 — Stale profile bounce (`9f25adf`)
+Clicking "Set up Influencer profile" on settings card bounced to /dashboard instead of rendering the wizard. Root cause: the user had a stale `influencer_profiles` row with `onboarding_completed=true` from earlier testing (the fix-up SQL flipped `users.is_influencer` to false but didn't touch the profile row). `/onboarding/page.tsx` short-circuited on `existing?.onboardingCompleted=true` and redirected.
+
+**Fix**: tighten the auto-bounce so it only fires for a full influencer (`role==='influencer'`) with a completed profile. Cross-role upgrade attempt re-enters the wizard regardless of stale profile row.
+
+#### Hot-fix 2 — Defensive completion action on sign-out (`513d21d`)
+Session after force-signOut + re-login showed `isInfluencer: false` despite the user seeing Step 6's "You're all set" screen. Root cause: the user reached Step 6 via stale per-user sessionStorage (`step: 6` cached from earlier session) — the wizard's defensive clamp from `f6f49a4` only resets when `draft.step=6` AND `dbCompleted=false`, but THIS user had `dbCompleted=true` (stale legacy row). Step 6 rendered WITHOUT ever calling `completeInfluencerOnboardingAction`, so `users.is_influencer` never flipped.
+
+**Fix**: `signOutForReauth` now defensively re-runs `completeInfluencerOnboardingAction` BEFORE signing out when `isCrossRoleUpgrade=true`. Idempotent — both internal writes (`markInfluencerOnboardingComplete` + `UPDATE users SET is_influencer=true`) are no-ops if already at target value. audit_log gains a possible duplicate row for users who reached Step 6 via the legitimate path AND clicked "Sign in again" — that's fine; the trail captures both moments.
+
+Future-proofs against any similar race where the wizard's done screen is reached without the completion write actually firing.
+
+#### Smoke test (2026-06-04)
+F-1 (card visible for pure consumer, hidden for influencer/brand/admin) ✅, F-2 through F-4 (wizard renders, walk through, Step 6 cross-role branch) ✅ after the 2 hot-fixes, F-5 (DB shows `role='consumer', is_influencer=true`) ✅, F-6 (RoleSwitcher visible post-relogin) ✅.
+
+#### Out of scope (logged for future)
+- Deprecate the legacy `/dashboard/influencer/profile` single-form path. It still works for consumers who happen to land there; 3.5F just adds the discoverable polished path. Future cleanup.
+- Same per-user sessionStorage key pattern in brand wizard — not surfaced yet but a known parity gap.
+
+#### Follow-ups for canonical docs
+- **CLAUDE.md** Key Decisions:
+  - "Cross-role upgrade from /settings: consumer → influencer keeps users.role='consumer', sets users.is_influencer=true. Wizard step 6 force-signs-out so the next login mints a fresh JWT — same pattern as 2FA setup"
+  - "completeInfluencerOnboardingAction is idempotent; signOutForReauth defensively re-runs it before sign-out for cross-role upgrades so the flag is set even if the user reached step 6 via stale sessionStorage"
+- **ARCHITECTURE.md** — Document the `?path=influencer` override on `/onboarding` as the cross-role entry contract
+
+---
+
+### Sub-Phase 3.5G — Grandfather banner — INTENTIONALLY SKIPPED
+
+User decision at end of 3.5F smoke: the dismissable grandfather banner for legacy influencers is moot now because:
+- 3.5C humane-prefill makes the wizard ride over existing data smoothly
+- 3.5F cross-role upgrade gives them a discoverable opt-in path
+- Only 1 legacy influencer exists in the DB anyway
+
+No code shipped. Documented here for future Claude sessions wondering why the 3.5G slot is empty in the Status Overview.
+
+---
+
 ## Items discovered mid-work (queued, not yet phased)
 
-Real findings that surfaced during Phase 1 / 2 / 3 / 4 execution. Each is a candidate for the master fix list / future phase scoping. Newest entries at the bottom.
+Real findings that surfaced during Phase 1 / 2 / 3 / 3.5 / 4 execution. Each is a candidate for the master fix list / future phase scoping. Newest entries at the bottom.
 
 | # | Item | Source | Priority hint |
 |---|---|---|---|
@@ -734,7 +1010,15 @@ Real findings that surfaced during Phase 1 / 2 / 3 / 4 execution. Each is a cand
 | 21 | 3D edit dialog allows a brand to toggle `isPublic=true` on a `draft` campaign. Before 4A this leaked drafts into the marketplace listing + apply. 4A fixed the leak server-side, but the brand-facing edit dialog could still warn at toggle time ("This campaign is still a draft. It won't be visible in the marketplace until you publish.") so brands understand the toggle is a future-state preference rather than an instant publish. Cosmetic — Tier C polish. | 4A investigation | UX polish — Tier C |
 | 22 | A10 retroactive sweep — influencers who accepted invitations or applied to marketplace campaigns BEFORE A10 shipped (2026-06-02) and still have no payout account are now structurally stuck: the L3/L4 guards don't help them retroactively, and the first signal will still be a 422 at brand payment release. A one-shot cron / SQL identify-and-email would close the gap. Logged as A10 out-of-scope follow-up. | A10 design | Real bug — Tier B operational follow-up |
 | 23 | A10 + payout verification gap — accounts created via the payouts page are usable while `isVerified=false`. No verification UX exists (no micro-deposit, no Razorpay account verify API call). For India INR via Razorpay this surfaces only when RazorpayX is activated (`RAZORPAYX_ENABLED=false` today, all payouts manual). For international (PayPal, Wise, SWIFT) it's manual already so verification is implicit. Documented for the future RazorpayX activation moment. | A10 design | Hardening — defer until RazorpayX activation |
-| 24 | A10 + profile wizard expansion — user explicitly flagged a "BIGGER strategic change to influencer onboarding" before A9. Today's `/dashboard/influencer/profile` is a single-form page (bio, niches, social handles, base rate) with the L2 inline notice as a post-form nudge. A wizard would absorb profile + payout + verification (A9) into a single guided flow, mirroring brand onboarding (3A) but tailored to the influencer surface. Awaiting design discussion. | A10 / pre-A9 | Strategic — user-led discussion pending |
+| 24 | A10 + profile wizard expansion — user explicitly flagged a "BIGGER strategic change to influencer onboarding" before A9. Today's `/dashboard/influencer/profile` is a single-form page (bio, niches, social handles, base rate) with the L2 inline notice as a post-form nudge. A wizard would absorb profile + payout + verification (A9) into a single guided flow, mirroring brand onboarding (3A) but tailored to the influencer surface. Awaiting design discussion. — **CLOSED IN Phase 3.5** | A10 / pre-A9 | ✅ Done (Phase 3.5 absorbed this strategic ask end-to-end) |
+| 25 | Undocumented production `users_role_check` CHECK constraint surfaced during 3.5A — schema.ts had no CHECK; production had one with allowlist `('brand','consumer','admin')`. Inserting 'influencer' on first signup attempt failed with constraint violation. Closes mid-work item #14's "no CHECK constraint" assumption — reality differed. Captured in code via migration 023. | 3.5A first influencer signup | ✅ Done (migration 023) |
+| 26 | Brand wizard `middleware.ts` redirect: `if (role === 'brand') redirect /onboarding → /dashboard`. Brand wizard lives AT /onboarding so the redirect creates an infinite loop in theory. But brand onboarding works in production — somehow. Latent bug that's never been exercised because admins skip OnboardingGuard and existing test brands already have `brand_profiles.onboarding_completed=true`. Worth investigating before any brand-side phase. | 3.5C investigation | Investigate — Phase 4+ brand-side, real bug |
+| 27 | Cross-user sessionStorage leak in onboarding wizards — until 3.5C-fix-2, the influencer wizard's draft key was a single global string. Different users on the same browser could see each other's `step: 6` cached state. Fixed for influencer via per-user key (`e4i_influencer_onboarding_draft:<userId>`). Brand wizard still uses the global key — same surface, hasn't surfaced because brand testing is single-account. | 3.5C-fix-2 | Tier C parity — fix brand wizard the same way |
+| 28 | Defensive step-clamp on wizard hydration covers one direction (`draft.step=6 && !dbCompleted → reset to step 1`) but NOT the opposite (`draft.step=6 && dbCompleted=true && cross-role upgrade`). 3.5F-fix-2 patched the cross-role path by defensively re-running the completion action on Step 6 sign-out instead of patching the clamp. Worth revisiting if a third edge case appears. | 3.5F-fix-2 | Architectural — defensive action re-run is the working pattern |
+| 29 | **Data mystery — 7 consumers → 0 consumers in production DB**. Q5 (2026-06-02) showed `consumers: 7, dual_role_users: 1`. After Phase 3.5E smoke (2026-06-04) Diagnostic 1 showed 0 users with `role='consumer'`. The dual-role user's E-5 "Make Influencer my default view" only changes one row. The `/api/user/primary-view` POST handler uses `eq(users.id, userId)` so it can't bulk-flip. Possible causes: (a) the user clicked "Make default" for multiple accounts across testing; (b) a stray manual SQL during the migration 023 hot-fix; (c) a bug we haven't found. Unblocked 3.5F smoke via a one-line UPDATE fix-up; root cause not chased. Worth a future audit-log query: `SELECT * FROM audit_log WHERE action='primary_view_changed' ORDER BY timestamp` to count primary-view changes and confirm cause (a). | 3.5F smoke setup | Investigate — Phase 4+ data forensics |
+| 30 | Legacy data drift on wizard hydration — pre-3.5C `/dashboard/influencer/profile` single-form path accepted free-text niches + uncapped bio/handle/location lengths. The new wizard's Zod schema is strict (16-niche enum + 200-char bio cap + 80-char display name cap). 3.5C-fix-3 added `sanitiseNiches` / `sanitiseContentTypes` / `clampString` helpers on hydration. Future legacy data validation drift (e.g. adding a niche later that an existing row uses) is covered by the same pattern. | 3.5C-fix-3 | Pattern established — applies forward |
+| 31 | Welcome JWT staleness on cross-role upgrade — completeInfluencerOnboardingAction sets `users.is_influencer=true` server-side but the JWT carries stale capability flags until next sign-in. RoleSwitcher gates on `session.user.isInfluencer`, so it stays hidden until re-login. Solved via force-signOut on Step 6 (same pattern as 2FA setup wizard). NextAuth v5's `useSession().update()` could refresh JWT without sign-out but adds JWT-callback complexity around the `trigger==='update'` branch — deferred. | 3.5F design | Architectural — force-signOut pattern is consistent across role/security changes |
+| 32 | 3.5G grandfather banner intentionally skipped — moot for the 1 legacy influencer in DB after 3.5C humane prefill + 3.5F cross-role upgrade entry. If future data import / migration creates >>1 grandfathered influencers, revisit. | Phase 3.5 wrap | n/a — by design |
 
 ---
 
