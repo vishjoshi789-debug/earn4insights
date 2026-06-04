@@ -444,7 +444,29 @@ export default function InfluencerOnboardingClient({
   // the RoleSwitcher / influencer sidebar items don't appear until
   // the user happens to log out anyway. Same pattern as the 2FA setup
   // wizard's force-signOut.
-  const signOutForReauth = () => {
+  //
+  // 3.5F-fix-2 — defensively re-run the completion action before
+  // sign-out. Step 6 can be reached via stale draft sessionStorage
+  // (per-user key still cached `step: 6` from earlier testing AND
+  // the DB profile row already has onboarding_completed=true so the
+  // 3.5C-fix-2 clamp didn't reset). In that path, the wizard renders
+  // step 6 WITHOUT ever calling completeInfluencerOnboardingAction —
+  // so users.is_influencer never flips to true. User signs out,
+  // re-logs in with a stale is_influencer=false JWT, and the
+  // RoleSwitcher stays hidden. Re-running the action here is
+  // idempotent (markInfluencerOnboardingComplete + UPDATE users SET
+  // is_influencer=true are both no-op writes if the values already
+  // match) and guarantees the flag is set before the JWT is minted.
+  const signOutForReauth = async () => {
+    if (isCrossRoleUpgrade) {
+      try {
+        await completeInfluencerOnboardingAction({})
+      } catch {
+        // Silent — best-effort. If the action somehow errors here
+        // we still sign out; the user can re-enter the wizard via
+        // /dashboard/settings if needed.
+      }
+    }
     signOut({ callbackUrl: '/login' })
   }
 
