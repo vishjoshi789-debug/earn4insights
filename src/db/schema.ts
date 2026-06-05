@@ -22,11 +22,33 @@ export const users = pgTable('users', {
   isInfluencer: boolean('is_influencer').notNull().default(false),
   passwordHash: text('password_hash'), // For email/password auth
   googleId: text('google_id'), // For Google OAuth
+  // Email verification (migration 026, Phase EV.1). NULL = unverified;
+  // timestamp = when the email was verified. Google-OAuth users get
+  // this auto-set to created_at (OAuth providers verify email before
+  // issuing tokens). Email/password users need to click the verification
+  // link from the email triggered at signup or via resend.
+  emailVerifiedAt: timestamp('email_verified_at'),
   consent: jsonb('consent'), // { termsAcceptedAt, privacyAcceptedAt }
   twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false), // TOTP 2FA active (migration 019)
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
+
+// ── Email verification tokens (migration 026, Phase EV.1) ────────
+// Mirrors password_reset_tokens shape. SHA-256 hashed tokens
+// (never store plaintext). 24h expiry. One-time use enforced via
+// used_at field. Cleanup cron deletes rows past expires_at + 7 days.
+export const emailVerificationTokens = pgTable('email_verification_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),                  // → users.id (CASCADE)
+  tokenHash: text('token_hash').notNull(),             // SHA-256 of plaintext token
+  expiresAt: timestamp('expires_at').notNull(),
+  usedAt: timestamp('used_at'),                        // set when consumed
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect
+export type NewEmailVerificationToken = typeof emailVerificationTokens.$inferInsert
 
 // Products table
 export const products = pgTable('products', {

@@ -25,6 +25,11 @@ import {
 } from '@/db/repositories/rewardRedemptionRepository'
 import { getAccountById } from '@/db/repositories/payoutAccountRepository'
 import { initiateRecipientPayout, PayoutAccountMissingError } from '@/server/payoutService'
+import {
+  requireEmailVerified,
+  EmailNotVerifiedError,
+  emailNotVerifiedResponseBody,
+} from '@/server/emailVerificationGuard'
 import { convertToMinor } from '@/lib/currency'
 import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
@@ -43,6 +48,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Consumer access only' }, { status: 403 })
     }
     const consumerId: string = user.id
+
+    // EV.1 hard-block — redeeming points is a financial action.
+    try {
+      await requireEmailVerified(consumerId)
+    } catch (err) {
+      if (err instanceof EmailNotVerifiedError) {
+        return NextResponse.json(emailNotVerifiedResponseBody(), { status: 403 })
+      }
+      throw err
+    }
 
     // ── Parse body ────────────────────────────────────────────────
     const body = await req.json().catch(() => null)

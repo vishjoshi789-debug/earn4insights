@@ -155,6 +155,15 @@ export const resetPasswordRateLimit = createLimiter({
   window: '15 m',
 })
 
+// Resend email verification — keyed by userId (NOT email, to avoid
+// reverse email-enumeration via the rate-limit response). 3 per hour
+// per user matches user spec (EV.1 Q2).
+export const verificationResendRateLimit = createLimiter({
+  name: 'verification-resend',
+  tokens: 3,
+  window: '1 h',
+})
+
 // Payments — keyed by user ID (brand session).
 export const paymentCreateOrderRateLimit = createLimiter({
   name: 'payment-create-order',

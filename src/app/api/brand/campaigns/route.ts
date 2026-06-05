@@ -14,6 +14,11 @@ import {
   getCampaignsByBrand,
 } from '@/server/campaignManagementService'
 import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
+import {
+  requireEmailVerified,
+  EmailNotVerifiedError,
+  emailNotVerifiedResponseBody,
+} from '@/server/emailVerificationGuard'
 
 async function getBrandUser(): Promise<{ userId: string } | NextResponse> {
   const session = await auth()
@@ -49,6 +54,16 @@ export async function POST(req: NextRequest) {
   try {
     const authResult = await getBrandUser()
     if (authResult instanceof NextResponse) return authResult
+
+    // EV.1 hard-block — creating a brand campaign is a financial action.
+    try {
+      await requireEmailVerified(authResult.userId)
+    } catch (err) {
+      if (err instanceof EmailNotVerifiedError) {
+        return NextResponse.json(emailNotVerifiedResponseBody(), { status: 403 })
+      }
+      throw err
+    }
 
     const body = await req.json().catch(() => null)
     if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })

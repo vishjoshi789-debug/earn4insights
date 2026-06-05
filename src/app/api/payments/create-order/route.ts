@@ -18,6 +18,11 @@ import { createOrder } from '@/server/razorpayService'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
 import { getMilestoneById } from '@/db/repositories/campaignMilestoneRepository'
 import { DuplicatePaymentError } from '@/server/razorpayService'
+import {
+  requireEmailVerified,
+  EmailNotVerifiedError,
+  emailNotVerifiedResponseBody,
+} from '@/server/emailVerificationGuard'
 
 export async function POST(req: NextRequest) {
   if (!validateCsrfToken(req)) return csrfErrorResponse()
@@ -32,6 +37,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Brand access only' }, { status: 403 })
     }
     const brandId: string = user.id
+
+    // EV.1 hard-block — creating a Razorpay order is a financial action.
+    try {
+      await requireEmailVerified(brandId)
+    } catch (err) {
+      if (err instanceof EmailNotVerifiedError) {
+        return NextResponse.json(emailNotVerifiedResponseBody(), { status: 403 })
+      }
+      throw err
+    }
 
     // ── Rate limit (10 / min per brand, distributed via Upstash) ────
     const rl = await paymentCreateOrderRateLimit.limit(brandId)

@@ -19,6 +19,11 @@ import {
   getPayoutAccounts,
   createPayoutAccount,
 } from '@/db/repositories/payoutAccountRepository'
+import {
+  requireEmailVerified,
+  EmailNotVerifiedError,
+  emailNotVerifiedResponseBody,
+} from '@/server/emailVerificationGuard'
 
 /**
  * Decrypt an encrypted value and return only the last 4 characters masked.
@@ -131,6 +136,16 @@ export async function POST(req: NextRequest) {
     const user = session.user as any
     const userId: string = user.id
     const userRole: string = user.role === 'brand' ? 'influencer' : user.role // brands shouldn't be adding payout accounts
+
+    // EV.1 hard-block — adding a payout account is a financial action.
+    try {
+      await requireEmailVerified(userId)
+    } catch (err) {
+      if (err instanceof EmailNotVerifiedError) {
+        return NextResponse.json(emailNotVerifiedResponseBody(), { status: 403 })
+      }
+      throw err
+    }
 
     // ── Parse body ────────────────────────────────────────────────
     const body = await req.json().catch(() => null)

@@ -10,6 +10,11 @@ import { extractAndPersistIntents } from '@/server/intentExtractionService'
 import { alertOnNewFeedback, alertOnHighIntent } from '@/server/brandAlertService'
 import { feedbackSubmitRateLimit, ipFromRequest } from '@/lib/rate-limit-upstash'
 import { productExists } from '@/lib/entity-checks'
+import {
+  requireEmailVerified,
+  EmailNotVerifiedError,
+  emailNotVerifiedResponseBody,
+} from '@/server/emailVerificationGuard'
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
 import { recordContribution } from '@/server/contributionPipeline'
 import { notifyPointsEarned, notifyWatchlistUpdate } from '@/server/consumerNotifications'
@@ -110,6 +115,18 @@ export async function POST(request: Request) {
     }
     const userEmail = session.user.email
     const userName = session.user.name || null
+
+    // EV.1 hard-block — email must be verified to submit feedback.
+    // Soft-nudge for everything else; gate at the financial / analytics
+    // input moments. Caught below + returned as structured 403.
+    try {
+      await requireEmailVerified((session.user as { id: string }).id)
+    } catch (err) {
+      if (err instanceof EmailNotVerifiedError) {
+        return NextResponse.json(emailNotVerifiedResponseBody(), { status: 403 })
+      }
+      throw err
+    }
 
     const body = await request.json()
     const {

@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { applyToCampaign, withdrawApplicationService } from '@/server/campaignMarketplaceService'
 import { PayoutAccountRequiredError } from '@/server/payoutService'
+import {
+  requireEmailVerified,
+  EmailNotVerifiedError,
+  emailNotVerifiedResponseBody,
+} from '@/server/emailVerificationGuard'
 import { db } from '@/db'
 import { campaignApplications } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
@@ -22,6 +27,16 @@ export async function POST(
     if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const userId = (session.user as any).id
     const { campaignId } = await params
+
+    // EV.1 hard-block — applying is a legal/contractual action.
+    try {
+      await requireEmailVerified(userId)
+    } catch (err) {
+      if (err instanceof EmailNotVerifiedError) {
+        return NextResponse.json(emailNotVerifiedResponseBody(), { status: 403 })
+      }
+      throw err
+    }
 
     const body = await req.json().catch(() => null)
     if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
