@@ -2,6 +2,7 @@
 
 import { createUser } from "@/lib/user/userStore"
 import { z } from "zod"
+import { PASSWORD_SPECIAL_CHARS_REGEX } from "@/lib/auth/passwordPolicy"
 
 // Validation schemas
 const signupSchema = z.object({
@@ -9,9 +10,11 @@ const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z
     .string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[a-zA-Z]/, "Password must contain at least one letter")
-    .regex(/[0-9]/, "Password must contain at least one number"),
+    .min(8, "Password must have: at least 8 characters")
+    .regex(/[A-Z]/, "Password must have: one uppercase letter")
+    .regex(/[a-z]/, "Password must have: one lowercase letter")
+    .regex(/[0-9]/, "Password must have: one number")
+    .regex(PASSWORD_SPECIAL_CHARS_REGEX, "Password must have: one special symbol (!@#$%^&*)"),
   // 3.5A — influencer is now a first-class signup role alongside
   // brand + consumer. Admin is still never self-assignable.
   role: z.enum(['brand', 'consumer', 'influencer']),

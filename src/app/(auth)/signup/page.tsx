@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -12,9 +12,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { signUpAction } from '@/lib/actions/auth.actions'
 import { signIn } from 'next-auth/react'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle, Check } from 'lucide-react'
 import { Logo } from '@/components/logo'
 import { apiPost } from '@/lib/api-client'
+import { PasswordInput } from '@/components/auth/PasswordInput'
+import { validatePassword } from '@/lib/auth/passwordPolicy'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -25,6 +27,14 @@ export default function SignupPage() {
   const [role, setRole] = useState<'brand' | 'consumer' | 'influencer'>('consumer')
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false)
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  // Submit gate — UI mirrors the server-side Zod schema in auth.actions.ts.
+  // If you tighten one, tighten both via lib/auth/passwordPolicy.ts.
+  const passwordPolicyMet = useMemo(() => validatePassword(password).allMet, [password])
+  const passwordsMatch = password.length > 0 && password === confirmPassword
+  const showMatchIndicator = confirmPassword.length > 0
 
   // Single source of truth for the post-signup landing path. Brand
   // lands on the brand dashboard; consumer browses products;
@@ -213,16 +223,60 @@ export default function SignupPage() {
             {/* Password */}
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 placeholder="••••••••"
+                autoComplete="new-password"
                 minLength={8}
                 required
                 disabled={loading}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                showChecklist
+                showStrength
               />
-              <p className="text-xs text-gray-500">At least 8 characters</p>
+            </div>
+
+            {/* Confirm Password */}
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <PasswordInput
+                id="confirmPassword"
+                name="confirmPassword"
+                placeholder="••••••••"
+                autoComplete="new-password"
+                required
+                disabled={loading}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                errorId={
+                  showMatchIndicator && !passwordsMatch ? 'confirmPassword-error' : undefined
+                }
+              />
+              {showMatchIndicator && (
+                <p
+                  id="confirmPassword-error"
+                  className={`text-xs flex items-center gap-1.5 transition-colors ${
+                    passwordsMatch
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}
+                  aria-live="polite"
+                >
+                  {passwordsMatch ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                      Passwords match
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                      Passwords don&apos;t match
+                    </>
+                  )}
+                </p>
+              )}
             </div>
 
             {/* Consent Checkboxes */}
@@ -270,7 +324,13 @@ export default function SignupPage() {
             <Button
               type="submit"
               className="w-full"
-              disabled={loading || !acceptedTerms || !acceptedPrivacy}
+              disabled={
+                loading ||
+                !acceptedTerms ||
+                !acceptedPrivacy ||
+                !passwordPolicyMet ||
+                !passwordsMatch
+              }
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Account

@@ -5,6 +5,7 @@ import { eq, and, isNull, gt } from 'drizzle-orm'
 import { createHash } from 'crypto'
 import { hashPassword } from '@/lib/user/password'
 import { resetPasswordRateLimit } from '@/lib/rate-limit-upstash'
+import { assertPasswordPolicy } from '@/lib/auth/passwordPolicy'
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
@@ -21,9 +22,10 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!password || typeof password !== 'string' || password.length < 8) {
+    const policy = assertPasswordPolicy(password)
+    if (!policy.ok) {
       return NextResponse.json(
-        { error: 'Password must be at least 8 characters' },
+        { error: policy.reason },
         { status: 400 }
       )
     }

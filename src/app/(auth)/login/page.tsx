@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { Logo } from '@/components/logo'
+import { PasswordInput } from '@/components/auth/PasswordInput'
 
 function isSafeCallbackUrl(value: string | null): value is string {
   if (!value) return false
@@ -128,11 +129,11 @@ function LoginForm() {
                 Forgot password?
               </Link>
             </div>
-            <Input
+            <PasswordInput
               id="password"
               name="password"
-              type="password"
               placeholder="••••••••"
+              autoComplete="current-password"
               required
               disabled={loading}
             />

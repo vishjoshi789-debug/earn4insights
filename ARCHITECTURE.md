@@ -1479,7 +1479,7 @@ All admin routes require `x-api-key: <ADMIN_API_KEY>` header.
 | 14 | HIGH | Media upload routes had no auth — any request could upload | Added session auth to all upload routes |
 | 15 | HIGH | `products.owner_id = null` on legacy launches — brand ownership broken | Migration 013: backfill from `created_by` / `claimed_by`; brand confirmation email now sets `owner_id` at launch |
 | 16 | HIGH | `emailService` imported directly from route files — coupling + hard to mock | Migrated all callers to `notificationService` wrapper |
-| 17 | MEDIUM | Password complexity not enforced — 6-char minimum only | Sign-up route now requires ≥ 8 chars, at least one digit and one uppercase letter |
+| 17 | MEDIUM | Password complexity not enforced — 6-char minimum only | Signup, reset-password, and live UI all share `src/lib/auth/passwordPolicy.ts`: ≥ 8 chars + uppercase + lowercase + number + special (`!@#$%^&*()_+\-=[]{}`). `PasswordInput` component (eye toggle + live checklist + 4-segment strength bar) reused on login (toggle only), signup (full), and signup confirm. |
 | 18 | MEDIUM | Admin role guard in content approval used string literal comparison instead of typed check | Replaced with `role === 'admin'` (consistent pattern) |
 
 ### Security Batch 2 — Upstash Redis distributed rate limiting (May 2026)
