@@ -353,6 +353,19 @@ Race-condition path: if a duplicate-key error fires (concurrent request), fetche
 
 Admin users see 7 role-specific nav items pointing to `/admin/*` pages (Platform Analytics, Payout Queue, Community Deals, Campaign Schedule, Campaign Analytics, Send-Time Optimizer, Send-Time Analytics) plus 8 shared tabs. Consumer and brand nav items are hidden. Implemented via `MenuItem.role: 'admin'` in `DashboardShell.tsx`.
 
+### Password policy & reusable `PasswordInput` (June 2026)
+
+Single source of truth at `src/lib/auth/passwordPolicy.ts`: 5 rules (length ≥ 8, upper, lower, number, special), exposed as `validatePassword`, `getPasswordStrength`, `assertPasswordPolicy`, and a shared `PASSWORD_SPECIAL_CHARS_REGEX` used by client and server.
+
+Reusable `src/components/auth/PasswordInput.tsx`: eye/eye-off toggle (`aria-label` + `aria-pressed`), optional 4-segment strength bar (red → amber → green), optional live checklist that turns each rule green with a check icon as it is met. Forwards refs + standard input props.
+
+Wired into:
+- **Signup** (`src/app/(auth)/signup/page.tsx`) — `PasswordInput` with checklist + meter on the primary field, new confirm-password field below with live red/green match indicator, submit gated on policy met AND passwords match (plus T&C).
+- **Login** (`src/app/(auth)/login/page.tsx`) — `PasswordInput` toggle-only (no nag for returning users).
+- **Server enforcement** — `src/lib/actions/auth.actions.ts` Zod tightened to `≥8 + upper + lower + number + special`; `/api/auth/reset-password` switched from a bare length check to `assertPasswordPolicy()` (closes the gap where reset-password let through 8-char letters-only).
+
+Replaces the older "uppercase + digit" Security Batch 1 #17 wording — the policy is now honest in code and docs.
+
 ---
 
 ## 6. Consent System
