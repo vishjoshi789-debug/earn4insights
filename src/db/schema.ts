@@ -361,7 +361,12 @@ export const brandSubscriptions = pgTable('brand_subscriptions', {
 
 // User profiles table (for personalization)
 export const userProfiles = pgTable('user_profiles', {
-  id: text('id').primaryKey(), // Will match user ID from auth
+  // FK CASCADE → users(id) added in migration 027. Before that, the
+  // column was only conventionally aligned with users.id and deleting
+  // a users row orphaned the user_profiles row, defeating account
+  // resets and leaking PII for "deleted" users. CASCADE makes the
+  // deletion atomic.
+  id: text('id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   email: text('email').notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
