@@ -97,7 +97,7 @@ async function send(
   }
   const token = getCsrfToken()
   if (token) headers.set(CSRF_HEADER_NAME, token)
-  return fetch(url, {
+  const res = await fetch(url, {
     ...init,
     method,
     headers,
@@ -110,6 +110,37 @@ async function send(
           ? (body as BodyInit)
           : JSON.stringify(body),
   })
+  await maybeDispatchEmailNotVerified(res)
+  return res
+}
+
+/**
+ * EV.2 global interceptor — when a hard-blocked route returns
+ * 403 `{ code: 'EMAIL_NOT_VERIFIED' }`, dispatch a window event that
+ * <EmailNotVerifiedModal> (mounted in dashboard/layout.tsx) listens
+ * for. Transparent to callers: the cloned response is consumed here;
+ * the original `res` is returned unchanged so caller's `.json()`
+ * still works.
+ *
+ * Fail-silent — any clone/parse failure just skips the dispatch so
+ * a malformed 403 never breaks the calling code path.
+ */
+async function maybeDispatchEmailNotVerified(res: Response): Promise<void> {
+  if (typeof window === 'undefined') return
+  if (res.status !== 403) return
+  const ct = res.headers.get('content-type') ?? ''
+  if (!ct.includes('application/json')) return
+  try {
+    const cloned = res.clone()
+    const body = await cloned.json()
+    if (body && body.code === 'EMAIL_NOT_VERIFIED') {
+      window.dispatchEvent(
+        new CustomEvent('e4i:email-not-verified', { detail: body }),
+      )
+    }
+  } catch {
+    /* not JSON / drained / parse error — ignore */
+  }
 }
 
 export const apiPost = (url: string, body?: unknown, init?: ExtraInit) =>

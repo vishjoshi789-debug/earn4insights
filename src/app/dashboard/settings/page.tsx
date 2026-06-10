@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { apiPatch, apiPost } from '@/lib/api-client'
 import { SecuritySettingsCard } from '@/components/two-factor/SecuritySettingsCard'
 import { BecomeInfluencerCard } from '@/components/BecomeInfluencerCard'
+import { EmailVerificationCard } from '@/components/EmailVerificationCard'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -452,6 +453,9 @@ export default function NotificationSettingsPage() {
           Manage your account, security, and notification preferences.
         </p>
       </div>
+
+      {/* ── Email verification (EV.2) — auto-hides when verified ── */}
+      <EmailVerificationCard />
 
       {/* ── Become an Influencer (3.5F) — auto-hides when not relevant ── */}
       <BecomeInfluencerCard />
