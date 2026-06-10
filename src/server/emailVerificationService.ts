@@ -116,12 +116,15 @@ export async function generateVerificationToken(userId: string): Promise<{
  * are responsible for translating the result into the route response
  * (typically neutral for enumeration safety).
  */
+export type VerificationTrigger = 'signup_auto' | 'resend' | 'admin'
+
 export async function sendVerificationEmail(params: {
   userId: string
   email: string
   name: string | null
+  trigger?: VerificationTrigger
 }): Promise<{ ok: boolean; reason?: string }> {
-  const { userId, email, name } = params
+  const { userId, email, name, trigger = 'resend' } = params
   const resend = getResend()
   if (!resend) {
     console.warn('[EmailVerification] Resend not configured — skipping send')
@@ -148,7 +151,8 @@ export async function sendVerificationEmail(params: {
     return { ok: false, reason: 'send_failed' }
   }
 
-  // Audit — PII-masked. Useful for the "never got my email" debug path.
+  // Audit — PII-masked. trigger lets us distinguish auto-send at signup
+  // from manual resend from admin backfill in the audit timeline.
   await db
     .insert(auditLog)
     .values({
@@ -156,7 +160,7 @@ export async function sendVerificationEmail(params: {
       action: 'email_verification_sent',
       dataType: 'user',
       accessedBy: userId,
-      metadata: { email: maskEmail(email) },
+      metadata: { email: maskEmail(email), trigger },
       reason: 'Verification link emailed to user',
     })
     .catch((err) => {
@@ -164,6 +168,51 @@ export async function sendVerificationEmail(params: {
     })
 
   return { ok: true }
+}
+
+/**
+ * Mark a user's email as verified without a token round-trip.
+ *
+ * Use for OAuth providers (Google) that have already verified the email
+ * before issuing tokens, or for admin-initiated backfill.
+ *
+ * Safe to call unconditionally — the `isNull(emailVerifiedAt)` guard in
+ * the WHERE clause makes it a no-op when already verified, and the audit
+ * row is only written when an actual flip happened.
+ *
+ * Returns `{ updated: true }` if a row was flipped, `{ updated: false }`
+ * if the user was already verified or not found.
+ */
+export async function markEmailVerified(
+  userId: string,
+  via: 'google_oauth' | 'admin_backfill',
+): Promise<{ updated: boolean }> {
+  const now = new Date()
+  const flipped = await db
+    .update(users)
+    .set({ emailVerifiedAt: now, updatedAt: now })
+    .where(and(eq(users.id, userId), isNull(users.emailVerifiedAt)))
+    .returning({ id: users.id })
+
+  if (flipped.length === 0) {
+    return { updated: false }
+  }
+
+  await db
+    .insert(auditLog)
+    .values({
+      userId,
+      action: 'email_verified',
+      dataType: 'user',
+      accessedBy: userId,
+      metadata: { via },
+      reason: `Email verified via ${via}`,
+    })
+    .catch((err) => {
+      console.error('[EmailVerification] Audit log failed:', err)
+    })
+
+  return { updated: true }
 }
 
 // ── Verify token ─────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import type { UserRole } from "@/lib/user/types"
 import { loginRateLimit } from "@/lib/rate-limit-upstash"
 import { ensureUserProfile } from "@/lib/auth/ensureUserProfile"
 import { SIGNUP_INTENT_COOKIE, verifySignupIntent } from "@/lib/auth/signupIntent"
+import { markEmailVerified } from "@/server/emailVerificationService"
 
 // Extend NextAuth types
 declare module "next-auth" {
@@ -260,6 +261,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             user.isConsumer = existingUser.isConsumer ?? false
             user.isInfluencer = existingUser.isInfluencer ?? false
             console.log('[Auth] Google sign-up successful:', user.email, 'role:', user.role)
+          }
+
+          // Google verifies email before issuing tokens — flip
+          // emailVerifiedAt if still NULL. Covers both fresh Google
+          // signups AND existing credentials users who later linked
+          // Google by signing in at the same email (Q4 edge case).
+          // markEmailVerified is a no-op for already-verified users.
+          if (user.id) {
+            try {
+              await markEmailVerified(user.id, 'google_oauth')
+            } catch (markErr) {
+              console.error('[Auth] markEmailVerified failed for', user.email, markErr)
+            }
           }
         } catch (error) {
           console.error('[Auth] signIn error:', error)
