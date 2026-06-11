@@ -1,37 +1,33 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Mail, X, Loader2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { apiPost } from '@/lib/api-client'
+import { useEmailVerification } from '@/components/EmailVerificationProvider'
 
 /**
- * Soft prompt shown at the top of the dashboard layout when the
+ * Layer 1 — soft prompt at the top of the dashboard layout when the
  * logged-in user has NOT yet verified their email.
  *
- * Behaviour:
- *   - Polls /api/auth/check-verification once on mount + once per
- *     30s while visible — picks up cross-tab verification without
- *     a page reload.
- *   - Dismissible per browser session (sessionStorage); reappears
- *     on next login. Auto-hides permanently once verified.
- *   - Resend button hits /api/auth/resend-verification via apiPost
- *     (auto-CSRF). On 429, displays a cooldown using the
- *     retryAfter seconds in the response body.
+ * EV.3 refactor: consumes the shared EmailVerificationProvider context
+ * rather than polling /api/auth/check-verification on its own. The
+ * provider already handles initial fetch + 60s poll + tab-focus
+ * revalidation; we just read `isVerified` here.
  *
- * Mirrors the BrandOnboardingBanner pattern (sessionStorage dismiss
- * key, mounted gate, ghost dismiss button).
+ * Dismissable per browser session (sessionStorage); reappears on next
+ * login. Auto-hides permanently once verified.
+ *
+ * Mirrors BrandOnboardingBanner pattern (mounted gate, sessionStorage
+ * dismiss key, ghost dismiss button).
  */
 
 const DISMISS_KEY = 'e4i-email-verification-banner-dismissed'
-const POLL_INTERVAL_MS = 30_000
-
-type Status = 'loading' | 'unverified' | 'verified' | 'error'
 
 export function EmailVerificationBanner() {
+  const { isVerified, isLoading, refresh } = useEmailVerification()
   const [mounted, setMounted] = useState(false)
   const [dismissed, setDismissed] = useState(false)
-  const [status, setStatus] = useState<Status>('loading')
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [cooldownSec, setCooldownSec] = useState(0)
@@ -45,32 +41,6 @@ export function EmailVerificationBanner() {
       /* private mode etc. */
     }
   }, [])
-
-  // ── Polling: detect cross-tab verification ───────────────────────
-  const checkStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/auth/check-verification', {
-        credentials: 'same-origin',
-      })
-      if (!res.ok) {
-        // 401 here = not logged in; the dashboard layout would have
-        // redirected. Treat as silent skip.
-        setStatus('error')
-        return
-      }
-      const data = (await res.json()) as { verified: boolean }
-      setStatus(data.verified ? 'verified' : 'unverified')
-    } catch {
-      setStatus('error')
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!mounted || dismissed) return
-    void checkStatus()
-    const id = setInterval(() => void checkStatus(), POLL_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [mounted, dismissed, checkStatus])
 
   // ── Cooldown tick ────────────────────────────────────────────────
   useEffect(() => {
@@ -103,9 +73,8 @@ export function EmailVerificationBanner() {
       }
       if (res.ok) {
         setSent(true)
-        // Reset the "sent" tick after a few seconds so the button
-        // doesn't get stuck looking like a permanent success.
         setTimeout(() => setSent(false), 4000)
+        void refresh()
       }
     } finally {
       setSending(false)
@@ -114,7 +83,7 @@ export function EmailVerificationBanner() {
 
   // ── Render gate ─────────────────────────────────────────────────
   if (!mounted || dismissed) return null
-  if (status !== 'unverified') return null
+  if (isLoading || isVerified) return null
 
   // ── Banner ──────────────────────────────────────────────────────
   return (

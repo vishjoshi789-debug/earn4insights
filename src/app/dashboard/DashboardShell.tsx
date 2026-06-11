@@ -54,6 +54,7 @@ import {
   Timer,
   Banknote,
   HelpCircle,
+  Lock,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -61,6 +62,7 @@ import { DashboardHeader } from '@/components/dashboard-header'
 import { ProductTour } from '@/components/ProductTour'
 import { CommandPalette } from '@/components/command-palette'
 import { useActiveView } from '@/components/ActiveViewProvider'
+import { useEmailVerification } from '@/components/EmailVerificationProvider'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { usePresenceChannel } from '@/hooks/usePusher'
 import { PRESENCE_DASHBOARD } from '@/lib/pusher-client'
@@ -80,6 +82,15 @@ type MenuItem = {
    * dual-role user (whose primary role is still `'consumer'`).
    */
   role?: Role | Role[]
+  /**
+   * EV.3 — when true AND the user is currently unverified, the
+   * sidebar entry renders a small Lock badge with a tooltip ("Verify
+   * email to unlock"). The link still navigates; the per-page Layer-2
+   * banner + Layer-4 button intercept finish the gating story on the
+   * landing page. Hidden once the user verifies (poll via the
+   * EmailVerificationProvider context).
+   */
+  requiresEmailVerified?: boolean
 }
 
 const menuItems: MenuItem[] = [
@@ -89,14 +100,14 @@ const menuItems: MenuItem[] = [
   // Brand: sees aggregated feedback from consumers
   { href: '/dashboard/feedback', label: 'Feedback Hub', icon: MessageSquare, tourId: 'nav-feedback', role: 'brand' },
   // Consumer: submit new feedback + view their history
-  { href: '/dashboard/submit-feedback', label: 'Submit Feedback', icon: PenSquare, tourId: 'nav-submit-feedback', role: 'consumer' },
+  { href: '/dashboard/submit-feedback', label: 'Submit Feedback', icon: PenSquare, tourId: 'nav-submit-feedback', role: 'consumer', requiresEmailVerified: true },
   { href: '/dashboard/my-feedback', label: 'My Feedback', icon: ClipboardList, tourId: 'nav-my-feedback', role: 'consumer' },
   { href: '/dashboard/recommendations', label: 'For You', icon: Sparkles, tourId: 'nav-recommendations', role: 'consumer' },
   { href: '/dashboard/watchlist', label: 'My Watchlist', icon: Bell, tourId: 'nav-watchlist', role: 'consumer' },
   { href: '/dashboard/notifications', label: 'Notifications', icon: Bell, tourId: 'nav-notifications' },
   { href: '/dashboard/social', label: 'Social', icon: Users, tourId: 'nav-social' },
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
-  { href: '/dashboard/deals', label: 'Deals & Offers', icon: Tags, tourId: 'nav-deals', role: 'consumer' },
+  { href: '/dashboard/deals', label: 'Deals & Offers', icon: Tags, tourId: 'nav-deals', role: 'consumer', requiresEmailVerified: true },
   { href: '/dashboard/community-deals', label: 'Community Deals', icon: Flame, tourId: 'nav-community-deals' },
   { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys', role: 'brand' },
   { href: '/dashboard/analytics', label: 'Audience Analytics', icon: TrendingUp, tourId: 'nav-brand-analytics', role: 'brand' },
@@ -106,12 +117,12 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/analytics/category-intelligence', label: 'Category Intelligence', icon: Globe, tourId: 'nav-category-intelligence', role: 'brand' },
   { href: '/dashboard/alerts', label: 'Alerts', icon: AlertCircle, tourId: 'nav-alerts', role: 'brand' },
   { href: '/dashboard/brand/icps', label: 'ICP Profiles', icon: Target, tourId: 'nav-icps', role: 'brand' },
-  { href: '/dashboard/brand/campaigns', label: 'Influencer Campaigns', icon: Megaphone, tourId: 'nav-brand-campaigns', role: 'brand' },
+  { href: '/dashboard/brand/campaigns', label: 'Influencer Campaigns', icon: Megaphone, tourId: 'nav-brand-campaigns', role: 'brand', requiresEmailVerified: true },
   { href: '/dashboard/brand/influencers', label: 'Discover Influencers', icon: UserCheck, tourId: 'nav-discover-influencers', role: 'brand' },
   { href: '/dashboard/brand/content-review', label: 'Content Review', icon: ClipboardCheck, tourId: 'nav-content-review', role: 'brand' },
   { href: '/dashboard/brand/deals', label: 'Manage Deals', icon: Tags, tourId: 'nav-brand-deals', role: 'brand' },
-  { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards', role: 'consumer' },
-  { href: '/dashboard/payouts', label: 'Cash Out Points', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer' },
+  { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards', role: 'consumer', requiresEmailVerified: true },
+  { href: '/dashboard/payouts', label: 'Cash Out Points', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer', requiresEmailVerified: true },
   { href: '/dashboard/privacy', label: 'Privacy & Consent', icon: ShieldCheck, tourId: 'nav-privacy', role: 'consumer' },
   { href: '/dashboard/my-signals', label: 'My Signals', icon: Activity, tourId: 'nav-my-signals', role: 'consumer' },
   { href: '/dashboard/my-data', label: 'My Data Export', icon: Download, tourId: 'nav-my-data', role: 'consumer' },
@@ -120,11 +131,11 @@ const menuItems: MenuItem[] = [
   // form was added in 3.5B-fix; 3.5E will introduce the proper primary-view
   // + role-switcher pattern so dual-role users can hide one set or the other.
   { href: '/dashboard/influencer/profile', label: 'Influencer Profile', icon: UserCheck, tourId: 'nav-influencer-profile', role: ['consumer', 'influencer'] },
-  { href: '/dashboard/influencer/marketplace', label: 'Marketplace', icon: Store, tourId: 'nav-influencer-marketplace', role: ['consumer', 'influencer'] },
+  { href: '/dashboard/influencer/marketplace', label: 'Marketplace', icon: Store, tourId: 'nav-influencer-marketplace', role: ['consumer', 'influencer'], requiresEmailVerified: true },
   { href: '/dashboard/influencer/campaigns', label: 'My Campaigns', icon: Megaphone, tourId: 'nav-influencer-campaigns', role: ['consumer', 'influencer'] },
   { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: ['consumer', 'influencer'] },
   { href: '/dashboard/influencer/earnings', label: 'Earnings', icon: Wallet, tourId: 'nav-influencer-earnings', role: ['consumer', 'influencer'] },
-  { href: '/dashboard/influencer/payouts', label: 'Payout Accounts', icon: Wallet, tourId: 'nav-influencer-payouts', role: ['consumer', 'influencer'] },
+  { href: '/dashboard/influencer/payouts', label: 'Payout Accounts', icon: Wallet, tourId: 'nav-influencer-payouts', role: ['consumer', 'influencer'], requiresEmailVerified: true },
   {
     href: '/dashboard/detailed-analytics',
     label: 'Product Deep Dive',
@@ -178,6 +189,10 @@ function SidebarNav({
 }) {
   const pathname = usePathname()
   const { isMobile, close } = useSidebar()
+  // EV.3 — lock-icon visibility on requiresEmailVerified items.
+  // The shared provider in dashboard/layout.tsx polls + revalidates;
+  // here we just consume the boolean.
+  const { isVerified } = useEmailVerification()
 
   const handleNavClick = () => {
     if (isMobile) close()
@@ -193,26 +208,44 @@ function SidebarNav({
     <>
       <SidebarContent>
         <SidebarMenu>
-          {visibleItems.map((item) => (
-            <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton
-                asChild
-                isActive={isActive(item.href)}
-                tooltip={item.label}
-                data-tour={item.tourId}
-              >
-                <Link href={item.href} onClick={handleNavClick}>
-                  <item.icon />
-                  <span>{item.label}</span>
-                  {item.href === '/dashboard/alerts' && unreadAlerts > 0 && (
-                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-                      {unreadAlerts > 99 ? '99+' : unreadAlerts}
-                    </span>
-                  )}
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+          {visibleItems.map((item) => {
+            const showLock = !!item.requiresEmailVerified && !isVerified
+            const showAlertBadge =
+              item.href === '/dashboard/alerts' && unreadAlerts > 0
+            return (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive(item.href)}
+                  tooltip={
+                    showLock ? `${item.label} — verify email to unlock` : item.label
+                  }
+                  data-tour={item.tourId}
+                >
+                  <Link href={item.href} onClick={handleNavClick}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                    {showLock && (
+                      <Lock
+                        className="ml-auto h-3.5 w-3.5 text-amber-500/80"
+                        aria-label="Email verification required"
+                      />
+                    )}
+                    {showAlertBadge && (
+                      <span
+                        className={
+                          'flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ' +
+                          (showLock ? 'ml-1.5' : 'ml-auto')
+                        }
+                      >
+                        {unreadAlerts > 99 ? '99+' : unreadAlerts}
+                      </span>
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
         </SidebarMenu>
       </SidebarContent>
 

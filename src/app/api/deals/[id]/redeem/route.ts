@@ -8,6 +8,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { redeemDeal } from '@/server/dealsService'
+import {
+  requireEmailVerified,
+  EmailNotVerifiedError,
+  emailNotVerifiedResponseBody,
+} from '@/server/emailVerificationGuard'
 
 export async function POST(
   req: NextRequest,
@@ -25,6 +30,17 @@ export async function POST(
         { error: 'Only consumers can redeem deals.' },
         { status: 403 },
       )
+    }
+
+    // EV.3 — deal redemption joins the 6 EV.1 hard-blocked routes.
+    // Awards points → financial action → must be email-verified.
+    try {
+      await requireEmailVerified(userId)
+    } catch (err) {
+      if (err instanceof EmailNotVerifiedError) {
+        return NextResponse.json(emailNotVerifiedResponseBody(), { status: 403 })
+      }
+      throw err
     }
 
     const { id } = await params

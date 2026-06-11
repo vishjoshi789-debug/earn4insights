@@ -1,28 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, Mail, Loader2, Check } from 'lucide-react'
 import { apiPost } from '@/lib/api-client'
+import { useEmailVerification } from '@/components/EmailVerificationProvider'
 
 /**
  * Account-settings card showing email verification state.
  *
- * Two render branches:
- *   - Verified   → green check, "Verified on <date>"
- *   - Unverified → mail icon, [Resend Verification Email] button with
- *                  cooldown on 429
- *
- * Polls /api/auth/check-verification once on mount + every 30s while
- * mounted. Resend hits /api/auth/resend-verification via apiPost
- * (auto-CSRF). Mirrors the banner's behaviour so the two stay in sync
- * — the cross-tab "did I just verify?" path works from either surface.
+ * EV.3 refactor: consumes the shared EmailVerificationProvider rather
+ * than polling on its own — removes the duplicate
+ * /api/auth/check-verification fetch this card used to fire alongside
+ * the Layer-1 banner.
  */
-
-const POLL_INTERVAL_MS = 30_000
-
-type Status = 'loading' | 'unverified' | 'verified' | 'error'
 
 function formatVerifiedAt(iso: string | null): string {
   if (!iso) return ''
@@ -38,34 +30,10 @@ function formatVerifiedAt(iso: string | null): string {
 }
 
 export function EmailVerificationCard() {
-  const [status, setStatus] = useState<Status>('loading')
-  const [verifiedAt, setVerifiedAt] = useState<string | null>(null)
+  const { isVerified, isLoading, verifiedAt, refresh } = useEmailVerification()
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [cooldownSec, setCooldownSec] = useState(0)
-
-  const checkStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/auth/check-verification', {
-        credentials: 'same-origin',
-      })
-      if (!res.ok) {
-        setStatus('error')
-        return
-      }
-      const data = (await res.json()) as { verified: boolean; verifiedAt: string | null }
-      setStatus(data.verified ? 'verified' : 'unverified')
-      setVerifiedAt(data.verifiedAt)
-    } catch {
-      setStatus('error')
-    }
-  }, [])
-
-  useEffect(() => {
-    void checkStatus()
-    const id = setInterval(() => void checkStatus(), POLL_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [checkStatus])
 
   useEffect(() => {
     if (cooldownSec <= 0) return
@@ -88,6 +56,7 @@ export function EmailVerificationCard() {
       if (res.ok) {
         setSent(true)
         setTimeout(() => setSent(false), 4000)
+        void refresh()
       }
     } finally {
       setSending(false)
@@ -95,7 +64,7 @@ export function EmailVerificationCard() {
   }
 
   // While loading, render a slim skeleton so the layout doesn't jump.
-  if (status === 'loading') {
+  if (isLoading) {
     return (
       <Card>
         <CardHeader>
@@ -106,7 +75,7 @@ export function EmailVerificationCard() {
     )
   }
 
-  if (status === 'verified') {
+  if (isVerified) {
     return (
       <Card>
         <CardHeader>
@@ -124,8 +93,6 @@ export function EmailVerificationCard() {
     )
   }
 
-  // Unverified — and error states fall through here (treat as
-  // "unverified" UX, the resend button is still a sensible action).
   return (
     <Card>
       <CardHeader>
