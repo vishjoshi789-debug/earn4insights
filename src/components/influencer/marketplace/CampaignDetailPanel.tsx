@@ -18,6 +18,8 @@ import {
 import { Loader2, X, Star, Calendar, Users, CheckCircle, ArrowLeft, Wallet, ArrowRight } from 'lucide-react'
 import { formatCurrency, getSupportedCurrencies } from '@/lib/currency'
 import { toast } from 'sonner'
+import { useEmailVerification } from '@/components/EmailVerificationProvider'
+import { openEmailVerificationPrompt } from '@/lib/email-verification-prompt'
 
 interface CampaignDetailPanelProps {
   campaignId: string
@@ -26,6 +28,8 @@ interface CampaignDetailPanelProps {
 }
 
 export default function CampaignDetailPanel({ campaignId, onClose, onApplicationChange }: CampaignDetailPanelProps) {
+  // EV.3 — gate the apply action behind email verification.
+  const { isVerified } = useEmailVerification()
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
@@ -52,6 +56,12 @@ export default function CampaignDetailPanel({ campaignId, onClose, onApplication
   }, [campaignId])
 
   const handleApply = async () => {
+    // EV.3 — Layer 4 gate. Short-circuit to the modal before sending
+    // the proposal to the server only for it to bounce on 403.
+    if (!isVerified) {
+      openEmailVerificationPrompt()
+      return
+    }
     if (proposal.length < 50) { toast.error('Proposal must be at least 50 characters'); return }
     if (!rate || parseFloat(rate) <= 0) { toast.error('Enter a valid rate'); return }
 

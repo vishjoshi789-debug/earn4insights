@@ -20,6 +20,9 @@ import {
   Tag, AlertCircle, IndianRupee, ArrowRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useEmailVerification } from '@/components/EmailVerificationProvider'
+import { EmailVerificationContextBanner } from '@/components/EmailVerificationContextBanner'
+import { openEmailVerificationPrompt } from '@/lib/email-verification-prompt'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -204,6 +207,8 @@ function RedemptionCard({
 // ── Main Page ──────────────────────────────────────────────────────
 
 export default function RewardsPage() {
+  // EV.3 — gates the confirm-redeem action; banner below covers Layer 2.
+  const { isVerified } = useEmailVerification()
   const [balance, setBalance]             = useState(0)
   const [lifetimePoints, setLifetimePoints] = useState(0)
   const [catalog, setCatalog]             = useState<RewardItem[]>([])
@@ -293,6 +298,11 @@ export default function RewardsPage() {
 
   const handleConfirmRedemption = async () => {
     if (!confirmPayload) return
+    // EV.3 — Layer 4 verification gate before the network call.
+    if (!isVerified) {
+      openEmailVerificationPrompt()
+      return
+    }
     setSubmitting(true)
     try {
       const res = await fetch('/api/consumer/rewards/redeem', {
@@ -355,6 +365,9 @@ export default function RewardsPage() {
 
   return (
     <div className="space-y-8">
+      <EmailVerificationContextBanner
+        context="Verify your email to redeem rewards."
+      />
 
       {/* ── Section 1: Points Balance ── */}
       <Card className="bg-gradient-to-br from-indigo-950/40 to-purple-950/40 border-indigo-900/50">

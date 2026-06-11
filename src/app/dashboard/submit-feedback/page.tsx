@@ -13,6 +13,9 @@ import {
 } from 'lucide-react'
 import ProductSearch from '@/components/product-search'
 import Link from 'next/link'
+import { useEmailVerification } from '@/components/EmailVerificationProvider'
+import { EmailVerificationContextBanner } from '@/components/EmailVerificationContextBanner'
+import { openEmailVerificationPrompt } from '@/lib/email-verification-prompt'
 
 type FeedbackCategory = 'general' | 'bug' | 'feature-request' | 'praise' | 'complaint'
 
@@ -67,6 +70,10 @@ function getQualityLabel(score: number): { label: string; color: string; emoji: 
 export default function SubmitFeedbackPage() {
   const searchParams = useSearchParams()
   const { data: session } = useSession()
+  // EV.3 — Layer 4 gate on the submit handler. Banner + sidebar lock
+  // surface the requirement passively; this intercept stops a click
+  // from sending data to the API only to bounce off the 403.
+  const { isVerified } = useEmailVerification()
   const preselectedProductId = searchParams.get('productId')
   const preselectedProductName = searchParams.get('productName')
 
@@ -331,6 +338,12 @@ export default function SubmitFeedbackPage() {
     e.preventDefault()
     setError(null)
 
+    // EV.3 — Layer 4 verification gate.
+    if (!isVerified) {
+      openEmailVerificationPrompt()
+      return
+    }
+
     if (!selectedProduct) {
       setError('Please select a product first.')
       return
@@ -546,6 +559,9 @@ export default function SubmitFeedbackPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      <EmailVerificationContextBanner
+        context="Verify your email to start submitting feedback and earn rewards."
+      />
       {/* Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-3">

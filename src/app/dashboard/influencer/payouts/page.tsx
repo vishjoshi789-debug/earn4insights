@@ -43,6 +43,7 @@ import {
 import { toast } from 'sonner'
 import { formatCurrency, getSupportedCurrencies } from '@/lib/currency'
 import { apiPost, apiDelete } from '@/lib/api-client'
+import { EmailVerificationContextBanner } from '@/components/EmailVerificationContextBanner'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -317,6 +318,9 @@ export default function InfluencerPayoutsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
+      <EmailVerificationContextBanner
+        context="Verify your email to add payout details."
+      />
       <div>
         <h1 className="text-2xl font-bold font-headline flex items-center gap-2">
           <Wallet className="h-6 w-6" /> Payouts

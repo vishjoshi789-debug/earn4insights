@@ -15,6 +15,9 @@ import {
   BookmarkCheck, ExternalLink, Copy, Check, Loader2, ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useEmailVerification } from '@/components/EmailVerificationProvider'
+import { EmailVerificationContextBanner } from '@/components/EmailVerificationContextBanner'
+import { openEmailVerificationPrompt } from '@/lib/email-verification-prompt'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -234,6 +237,10 @@ const SORT_OPTIONS = [
 // ── Main Page ────────────────────────────────────────────────────
 
 export default function DealsClient() {
+  // EV.3 — gate the redeem action behind email verification. The /deals
+  // sidebar carries a lock icon while unverified; this hook + the banner
+  // below + the redeem-handler short-circuit complete the picture.
+  const { isVerified } = useEmailVerification()
   const [tab, setTab] = useState('discover')
   const [feed, setFeed] = useState<FeedData | null>(null)
   const [searchResults, setSearchResults] = useState<Deal[]>([])
@@ -328,6 +335,15 @@ export default function DealsClient() {
   }
 
   const handleRedeem = async (dealId: string) => {
+    // EV.3 — Layer 4 intercept. Short-circuit BEFORE the network call
+    // so the user sees the prompt immediately rather than waiting for
+    // the server 403. raw fetch is used here (not apiPost), so the
+    // api-client 403 interceptor wouldn't fire — manual prompt is the
+    // only path to the modal.
+    if (!isVerified) {
+      openEmailVerificationPrompt()
+      return
+    }
     try {
       const res = await fetch(`/api/deals/${dealId}/redeem`, { method: 'POST' })
       const data = await res.json()
@@ -342,6 +358,9 @@ export default function DealsClient() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
+      <EmailVerificationContextBanner
+        context="Verify your email to claim deals and earn points."
+      />
       <div>
         <h1 className="text-2xl font-bold">Deals & Offers</h1>
         <p className="text-muted-foreground text-sm">Discover exclusive deals, promo codes, and discounts from top brands</p>

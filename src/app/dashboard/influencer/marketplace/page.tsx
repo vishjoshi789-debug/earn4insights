@@ -13,6 +13,7 @@ import { Loader2, Store, ChevronLeft, ChevronRight, SlidersHorizontal, X } from 
 import CampaignCard from '@/components/influencer/marketplace/CampaignCard'
 import CampaignDetailPanel from '@/components/influencer/marketplace/CampaignDetailPanel'
 import ApplicationsTracker from '@/components/influencer/marketplace/ApplicationsTracker'
+import { EmailVerificationContextBanner } from '@/components/EmailVerificationContextBanner'
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest' },
@@ -100,6 +101,9 @@ export default function MarketplacePage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
+      <EmailVerificationContextBanner
+        context="Verify your email to apply for campaigns."
+      />
       <div>
         <h1 className="text-2xl font-bold font-headline flex items-center gap-2">
           <Store className="h-6 w-6" />

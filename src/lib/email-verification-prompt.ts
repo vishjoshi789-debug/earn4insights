@@ -27,3 +27,34 @@ export function openEmailVerificationPrompt(): void {
     }),
   )
 }
+
+/**
+ * Wrap a click/form handler so it short-circuits to the verification
+ * prompt when the user is currently unverified.
+ *
+ * Usage in a client component:
+ *
+ *   const { isVerified } = useEmailVerification()
+ *   const onSubmit = withVerificationGate(isVerified, () => doThing())
+ *
+ *   <button onClick={onSubmit} className={!isVerified ? 'opacity-60' : ''}>
+ *     Submit
+ *   </button>
+ *
+ * The wrapped handler accepts a synthetic event as its first argument
+ * (so it slots cleanly into onClick / onSubmit / form-action props)
+ * and calls `preventDefault()` on it when the gate fires. This avoids
+ * default form-submit / link-follow behaviour after the prompt opens.
+ */
+export function withVerificationGate<
+  H extends (event?: { preventDefault?: () => void }, ...rest: any[]) => any,
+>(isVerified: boolean, handler: H): H {
+  return ((event?: { preventDefault?: () => void }, ...rest: any[]) => {
+    if (!isVerified) {
+      event?.preventDefault?.()
+      openEmailVerificationPrompt()
+      return
+    }
+    return handler(event, ...rest)
+  }) as H
+}

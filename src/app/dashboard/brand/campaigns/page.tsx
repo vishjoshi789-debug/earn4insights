@@ -15,6 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import { Loader2, Megaphone, Plus, IndianRupee, Calendar, Users } from 'lucide-react'
 import { toast } from 'sonner'
+import { useEmailVerification } from '@/components/EmailVerificationProvider'
+import { EmailVerificationContextBanner } from '@/components/EmailVerificationContextBanner'
+import { openEmailVerificationPrompt } from '@/lib/email-verification-prompt'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -29,6 +32,8 @@ const STATUS_COLORS: Record<string, string> = {
 export default function BrandCampaignsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  // EV.3 — gates the create-campaign action.
+  const { isVerified } = useEmailVerification()
   const [campaigns, setCampaigns] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -55,6 +60,11 @@ export default function BrandCampaignsPage() {
   }, [status])
 
   const handleCreate = async () => {
+    // EV.3 — Layer 4 gate before the network call.
+    if (!isVerified) {
+      openEmailVerificationPrompt()
+      return
+    }
     if (!form.title || !form.budgetTotal) { toast.error('Title and budget required'); return }
     setCreating(true)
     try {
@@ -102,6 +112,9 @@ export default function BrandCampaignsPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
+      <EmailVerificationContextBanner
+        context="Verify your email to publish campaigns."
+      />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold font-headline flex items-center gap-2">

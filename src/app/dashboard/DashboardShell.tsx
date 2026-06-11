@@ -122,7 +122,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/brand/content-review', label: 'Content Review', icon: ClipboardCheck, tourId: 'nav-content-review', role: 'brand' },
   { href: '/dashboard/brand/deals', label: 'Manage Deals', icon: Tags, tourId: 'nav-brand-deals', role: 'brand' },
   { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards', role: 'consumer', requiresEmailVerified: true },
-  { href: '/dashboard/payouts', label: 'Cash Out Points', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer', requiresEmailVerified: true },
+  { href: '/dashboard/payouts', label: 'Cash Out Points', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer' },
   { href: '/dashboard/privacy', label: 'Privacy & Consent', icon: ShieldCheck, tourId: 'nav-privacy', role: 'consumer' },
   { href: '/dashboard/my-signals', label: 'My Signals', icon: Activity, tourId: 'nav-my-signals', role: 'consumer' },
   { href: '/dashboard/my-data', label: 'My Data Export', icon: Download, tourId: 'nav-my-data', role: 'consumer' },
