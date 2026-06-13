@@ -27,6 +27,16 @@ import {
   Award, PenSquare, Trophy, ClipboardList,
   Megaphone, Wallet, User, FileText, ShieldCheck, IndianRupee, Store,
 } from 'lucide-react';
+// A9 — single source of truth for profile completeness. The
+// verificationThresholdService also imports from here so the dashboard
+// stat card and the verification gate can't drift.
+import {
+  type InfluencerProfileLite,
+  type CompletenessFactor,
+  COMPLETENESS_FACTORS,
+  calcProfileCompleteness,
+  getMissingProfileFactors,
+} from '@/lib/influencer/profileCompleteness';
 
 // ── Brand's product ids (scoping helper) ─────────────────────────
 // Same pattern used in /dashboard/feedback/page.tsx. Falls back to []
@@ -367,71 +377,11 @@ async function BrandDashboard({ userId }: { userId?: string }) {
 // from 3.5B). Dual-role consumer-with-isInfluencer users keep
 // seeing ConsumerDashboard until 3.5E lets them toggle view.
 
-interface InfluencerProfileLite {
-  displayName: string | null
-  bio: string | null
-  niche: string[] | null
-  location: string | null
-  profileImageUrl: string | null
-  baseRate: number | null
-  currency: string | null
-  contentTypes: string[] | null
-  audienceDemographics: Record<string, unknown> | null
-  verificationStatus: 'unverified' | 'pending' | 'verified' | null
-  instagramHandle: string | null
-  youtubeHandle: string | null
-  twitterHandle: string | null
-  linkedinHandle: string | null
-  tiktokHandle: string | null
-}
-
-/**
- * Profile completeness factors. Single source of truth for the stat
- * card percentage AND the "Boost your profile" breakdown below — same
- * weights drive both, no drift possible.
- *
- * Weights sum to 100. Heuristic — meant to nudge users to fill the
- * optional fields that improve brand match-rate, not a perfect score.
- *
- * Portfolio is reserved for the future (wizard doesn't capture it
- * yet); its 5% sits unreachable today, so a profile can hit a real
- * max of 95% until that field gets a UI.
- */
-interface CompletenessFactor {
-  key: string
-  label: string
-  weight: number
-  check: (p: InfluencerProfileLite | null) => boolean
-  href: string
-}
-
-const PROFILE_EDIT_HREF = '/dashboard/influencer/profile'
-
-const COMPLETENESS_FACTORS: CompletenessFactor[] = [
-  { key: 'displayName',  label: 'Display name',         weight: 10, check: (p) => !!(p?.displayName?.trim()),                       href: PROFILE_EDIT_HREF },
-  { key: 'niche',        label: 'At least one niche',   weight: 10, check: (p) => (p?.niche?.length ?? 0) > 0,                      href: PROFILE_EDIT_HREF },
-  { key: 'bio',          label: 'Short bio',            weight: 10, check: (p) => !!(p?.bio?.trim()),                               href: PROFILE_EDIT_HREF },
-  { key: 'photo',        label: 'Profile photo',        weight: 15, check: (p) => !!p?.profileImageUrl,                             href: PROFILE_EDIT_HREF },
-  { key: 'rate',         label: 'Base rate',            weight: 10, check: (p) => !!p?.baseRate && p.baseRate > 0,                  href: PROFILE_EDIT_HREF },
-  { key: 'contentTypes', label: 'Content types',        weight: 10, check: (p) => (p?.contentTypes?.length ?? 0) > 0,               href: PROFILE_EDIT_HREF },
-  { key: 'socials',      label: 'Social handles',       weight: 15, check: (p) => !!(p?.instagramHandle || p?.youtubeHandle || p?.twitterHandle || p?.linkedinHandle || p?.tiktokHandle), href: PROFILE_EDIT_HREF },
-  { key: 'audience',     label: 'Audience demographics',weight: 10, check: (p) => !!p?.audienceDemographics && Object.keys(p.audienceDemographics).length > 0, href: PROFILE_EDIT_HREF },
-  { key: 'location',     label: 'Location',             weight:  5, check: (p) => !!(p?.location?.trim()),                          href: PROFILE_EDIT_HREF },
-  { key: 'portfolio',    label: 'Portfolio links',      weight:  5, check: () => false,                                             href: PROFILE_EDIT_HREF },
-]
-
-function calcProfileCompleteness(p: InfluencerProfileLite | null): number {
-  if (!p) return 0
-  return COMPLETENESS_FACTORS.reduce(
-    (sum, f) => sum + (f.check(p) ? f.weight : 0),
-    0,
-  )
-}
-
-function getMissingProfileFactors(p: InfluencerProfileLite | null): CompletenessFactor[] {
-  if (!p) return COMPLETENESS_FACTORS.filter(f => f.key !== 'portfolio') // hide the future-reserved factor on a fresh profile
-  return COMPLETENESS_FACTORS.filter(f => !f.check(p))
-}
+// A9 extraction — `InfluencerProfileLite`, `CompletenessFactor`,
+// `COMPLETENESS_FACTORS`, `calcProfileCompleteness`,
+// `getMissingProfileFactors` now live in
+// `src/lib/influencer/profileCompleteness.ts` (imported above) so the
+// dashboard + verification threshold service share one source of truth.
 
 async function getInfluencerStats(userId: string) {
   // Active campaigns — accepted + active statuses both count as "ongoing".

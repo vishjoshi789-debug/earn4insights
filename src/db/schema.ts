@@ -1381,6 +1381,57 @@ export const influencerSocialStats = pgTable('influencer_social_stats', {
   // UNIQUE (influencer_id, platform) enforced in migration
 })
 
+// A9 — influencer verification requests (migration 028). Append-only
+// history of every verification attempt; `influencer_profiles.verification_status`
+// holds the current state (3 values), this table holds the full lifecycle
+// (7 values). Partial UNIQUE index on `user_id WHERE status IN
+// ('pending', 'manual_review', 'needs_info')` enforces one-active-request
+// per user in the migration.
+export const influencerVerificationRequests = pgTable('influencer_verification_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),                      // → users.id CASCADE (migration adds FK)
+  status: text('status').notNull().default('pending')
+    .$type<
+      | 'pending'           // user just submitted, evaluator hasn't run yet
+      | 'auto_approved'     // Tier 1 — all 8 checks passed, status flipped to verified
+      | 'auto_rejected'     // Tier 3 — hard floor failed, with failedChecks list
+      | 'manual_review'     // Tier 2 — basic checks passed but borderline; admin queue
+      | 'approved'          // admin approved a manual_review or needs_info request
+      | 'rejected'          // admin rejected a manual_review request (30-day cooldown)
+      | 'needs_info'        // admin asked for more info; user can re-submit without cooldown
+    >(),
+  applicationMessage: text('application_message'),
+  brandContactNotes: text('brand_contact_notes'),         // free-text referral context (no full referral system in v1)
+  portfolioLinks: jsonb('portfolio_links').$type<string[]>().notNull().default([]),
+  proofDocuments: jsonb('proof_documents').$type<{ url: string; label?: string }[]>().notNull().default([]),
+  // Snapshot of the threshold evaluator's full result at submission time —
+  // which checks passed, follower counts, decision reason. Persisted so
+  // the admin queue can show evaluator context without re-querying live
+  // state (the influencer may have edited their profile since).
+  thresholdCheckResult: jsonb('threshold_check_result').$type<{
+    tier: 1 | 2 | 3
+    autoDecision: 'approve' | 'reject' | 'review'
+    checks: Record<string, { passed: boolean; value?: unknown; threshold?: unknown }>
+    failedChecks: string[]
+    totalFollowers: number
+    reason: string
+  }>(),
+  reviewerId: text('reviewer_id'),                        // → users.id SET NULL (admin who decided)
+  reviewNotes: text('review_notes'),
+  reviewedAt: timestamp('reviewed_at'),
+  /**
+   * On rejection set to NOW() + COOLDOWN_AFTER_REJECTION_DAYS (default 30).
+   * Re-application before this timestamp is blocked by the request route
+   * with a 429-style response. NULL for all other statuses.
+   */
+  eligibleToReapplyAt: timestamp('eligible_to_reapply_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export type InfluencerVerificationRequest = typeof influencerVerificationRequests.$inferSelect
+export type NewInfluencerVerificationRequest = typeof influencerVerificationRequests.$inferInsert
+
 export const influencerContentPosts = pgTable('influencer_content_posts', {
   id: uuid('id').defaultRandom().primaryKey(),
   influencerId: text('influencer_id').notNull(),        // → users.id
