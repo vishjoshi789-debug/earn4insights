@@ -2,6 +2,13 @@ import Link from 'next/link'
 import { CheckCircle2, XCircle, Clock, AlertCircle, Mail } from 'lucide-react'
 import { verifyEmailToken } from '@/server/emailVerificationService'
 
+// Always render fresh — never serve a cached response. Token state
+// changes between requests (used_at gets set), and a cached success
+// HTML would replay a stale "success" or stale "expired" panel for
+// other users. Also defends against the "browser shows old page after
+// deploy" failure mode we hit during EV.3 smoke testing.
+export const dynamic = 'force-dynamic'
+
 /**
  * /verify-email?token=…
  *
@@ -86,12 +93,16 @@ function SuccessPanel() {
           </p>
         </div>
         <div className="pt-2">
-          <Link
+          {/* Plain <a> instead of <Link> — forces full page reload,
+              identical to a direct URL-bar nav (which works). Avoids
+              any client-side router transition that might be the
+              root cause of the original error.tsx render. */}
+          <a
             href="/dashboard"
             className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition w-full sm:w-auto"
           >
             Go to dashboard
-          </Link>
+          </a>
         </div>
       </div>
     </>
@@ -137,12 +148,12 @@ function AlreadyUsedPanel() {
         </p>
       </div>
       <div className="pt-2">
-        <Link
+        <a
           href="/dashboard"
           className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
         >
           Go to dashboard
-        </Link>
+        </a>
       </div>
     </div>
   )
