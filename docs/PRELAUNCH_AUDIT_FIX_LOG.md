@@ -37,6 +37,17 @@
 | 3.5 | 3.5E | Role-aware sidebar + dual-role view-switcher | `f78f80c` | ✅ 2026-06-04 (E-2 through E-5 verified after data fix-up) | ⏳ deferred |
 | 3.5 | 3.5F | Cross-role upgrade entry from /settings (2 hot-fixes: stale profile bounce, defensive completion action on sign-out) | `7862312` + `9f25adf` + `513d21d` | ✅ 2026-06-04 (RoleSwitcher visible post sign-out + re-login) | ⏳ deferred |
 | 3.5 | 3.5G | Grandfather banner | — | ⏭️ intentionally skipped — moot after 3.5C humane prefill + 3.5F cross-role upgrade | n/a |
+| EV | EV.1 | Email verification backend — migration 026, service + guard + 6 hard-blocked routes | `c4b1dce` | ✅ 2026-06-05 (Google backfill confirmed, 6 routes return 403 on unverified) | ✅ 2026-06-13 |
+| Sig | a38f85b | Password UX — SSOT policy, reusable PasswordInput, confirm-password field | `a38f85b` | ✅ 2026-06-07 (signup gate, login toggle) | ✅ 2026-06-13 |
+| EV | EV.2.1 | Auto-send verification at signup + Google auto-verify (both new + existing-NULL) | `da93b39` | ✅ 2026-06-10 (real inbox: welcome + verification both arrived) | ✅ 2026-06-13 |
+| Schema | 027 | `user_profiles.id` FK CASCADE → `users(id)` + orphan cleanup | `11b6840` | ✅ 2026-06-10 (POST migration returned `affected: 1`; second call no-op) | ✅ 2026-06-13 |
+| EV | EV.2.2 | `/verify-email` page + L1 banner + settings card + global modal + api-client 403 interceptor | `622e7fa` | ⚠️ Partial — verify-email transition error surfaced (see Known Issue); banner/card/modal verified working | ✅ 2026-06-13 |
+| EV | EV.3.1 | Shared `EmailVerificationProvider`, context banner, prompt helper, sidebar lock rendering, deal-redeem hard-block | `f00e725` | ✅ 2026-06-11 (provider polls correctly, sidebar locks show/hide on verification toggle) | ✅ 2026-06-13 |
+| EV | EV.3.2 | Layer-2 context banners + Layer-4 click intercepts on 6 surfaces | `cb1d766` | ✅ 2026-06-11 (banners visible on each gated page; click intercepts open modal without network call) | ✅ 2026-06-13 |
+| ER | ER.1 | Sidebar `requiresCapability` filter + influencer / brand server-side layout guards | `faf1bfb` | ✅ 2026-06-13 (pure consumer no longer sees influencer items; direct URLs redirect to `/dashboard?upgrade=…`) | ✅ 2026-06-13 |
+| ER | ER.2 | `UpgradePromptCard` mounted on `/dashboard` reading `searchParams.upgrade` | `4394304` | ✅ 2026-06-13 (both variants render with correct CTAs) | ✅ 2026-06-13 |
+| EV | EV.2 def | Verify-email defensive patches (try/catch, meta refresh, force-dynamic, plain `<a>`) | `dbf5c6b` + `dd4e536` + `799bd52` | ⚠️ End-to-end verification works (AlreadyUsedPanel + meta refresh paths verified); SuccessPanel `router.push` root cause unresolved | ✅ 2026-06-13 |
+| 4 | 4C | Influencer verification flow (A9) | — | ⏳ **NEXT — current sprint.** Strategic deferral resolved by EV.2 + EV.3 + ER.1 + ER.2 landing. The 7th `requireEmailVerified` route + an influencer-specific verification request UI. | ⏳ pending |
 
 ---
 
@@ -1050,7 +1061,145 @@ User confirmed (2026-05-30) that the original session ended before Phase 1 began
 
 ---
 
+## Phase EV — Email verification system (COMPLETE)
+
+> Three-phase build of the end-to-end email-verification surface. EV.1 (`c4b1dce`, 2026-06-05) shipped the backend; EV.2.1 (`da93b39`, 2026-06-10) wired auto-send at signup + Google auto-verify; EV.2.2 (`622e7fa`, 2026-06-10) shipped the user-facing UI; EV.3.1 (`f00e725`, 2026-06-11) added the shared provider + sidebar lock infrastructure + deal-redeem hard-block; EV.3.2 (`cb1d766`, 2026-06-11) wired Layer-2 context banners + Layer-4 click intercepts on the 6 hard-blocked surfaces.
+
+### EV.2.1 — Auto-send + Google auto-verify (`da93b39`)
+
+**Scope:**
+- `signUpAction` (`src/lib/actions/auth.actions.ts`) captures the `createUser` return value and `await`s `sendVerificationEmail({ trigger: 'signup_auto' })` inside a try/catch. Resend outage logs but doesn't block signup.
+- `signIn` callback (`src/lib/auth/auth.config.ts`) calls `markEmailVerified(user.id, 'google_oauth')` for BOTH the new-Google-user branch AND the existing-user branch. The existing-user branch covers the edge case where a credentials user later links Google by signing in with the same email — without this, their `email_verified_at` would stay NULL forever despite Google having verified their address.
+- `sendVerificationEmail` extended with a `trigger: 'signup_auto' | 'resend' | 'admin'` param written into audit metadata so the audit timeline distinguishes auto-send from manual resend from admin backfill.
+- `markEmailVerified(userId, via)` added to `emailVerificationService.ts` — uses `isNull(emailVerifiedAt)` WHERE guard so the call is idempotent for already-verified users; audit row written only when an actual flip occurs.
+
+**Smoke test (2026-06-10):** signed up with real inbox → received both welcome email AND verification email. Google OAuth sign-in on a fresh email → `users.email_verified_at` set to NOW() in Neon.
+
+### Schema migration 027 — `user_profiles` FK CASCADE (`11b6840`)
+
+**Bug discovered during EV.3 smoke testing:** running `DELETE FROM users WHERE lower(email) = '…'` to reset a test account left orphan rows in `user_profiles` because `user_profiles.id` was declared as `text('id').primaryKey()` with no `.references()` to `users(id)`. The next signup with the same email triggered `ensureUserProfile`'s non-destructive reconciliation, which carried over `onboarding_complete=true` from the orphan — making test-account resets impossible AND leaving PII / consent data for "deleted" users.
+
+**Fix:**
+1. Migration 027 route (`POST /api/admin/run-migration-027`) — DELETE orphans (`user_profiles.id NOT IN (SELECT id FROM users)`), then ADD CONSTRAINT FK CASCADE with DO-block idempotency check.
+2. Drizzle schema (`src/db/schema.ts`) updated to declare `.references(() => users.id, { onDelete: 'cascade' })` on `userProfiles.id` so future regenerations match the live DB.
+
+**Smoke test (2026-06-10):** first run reported `affected: 1` (the orphan from the original deletion). Second run reported `affected: 0` confirming idempotency. After migration, `DELETE FROM users WHERE …` correctly cascades to `user_profiles` and all downstream user-content tables.
+
+### EV.2.2 — User-facing UI (`622e7fa`)
+
+**Surface shipped (8 new components / files):**
+- `/verify-email` page (server component, 5 states: success / expired / already-used / invalid / missing-token)
+- `EmailVerificationBanner` mounted on dashboard layout (amber prompt, sessionStorage dismiss)
+- `EmailVerificationCard` mounted on settings page (verified/unverified branches)
+- `EmailNotVerifiedModal` (global modal listening on `e4i:email-not-verified` window event)
+- api-client `send()` interceptor — 403 peek + event dispatch
+- Original SuccessPanel used a client component (`SuccessRedirect`) with `useRouter().push('/dashboard')` after a 3s countdown — this turned out to be the source of the Known Issue below.
+
+### EV.3.1 — Foundation refactor (`f00e725`)
+
+**Provider unification:**
+- `EmailVerificationProvider` (`src/components/EmailVerificationProvider.tsx`) — Context + `useEmailVerification` hook. Single fetch to `/api/auth/check-verification`, 60s background poll, tab-focus revalidation via `visibilitychange` listener, `refresh()` exposed for explicit revalidation after resend. Fail-open semantics — endpoint error treated as verified to avoid spamming nags on transient failures.
+- Existing `EmailVerificationBanner` and `EmailVerificationCard` refactored to consume the shared context (removes ~3x redundant `/api/auth/check-verification` polls).
+
+**Sidebar locks (Layer 3):**
+- `MenuItem` interface gained `requiresEmailVerified?: boolean` in `DashboardShell.tsx`.
+- Sidebar filter reads `useEmailVerification()`, renders an amber 🔒 next to items where `requiresEmailVerified && !isVerified`, with tooltip "<Label> — verify email to unlock".
+- 7 items marked at this stage (later corrected in ER.1 — see below): Submit Feedback, Rewards, Cash Out Points (REMOVED in ER.1 — no underlying API hard-block), Deals & Offers, Marketplace, Payout Accounts, Influencer Campaigns.
+
+**Reusable building blocks:**
+- `EmailVerificationContextBanner` (compact, non-dismissable, amber, with `[Verify now]` resend button) for Layer 2 page-level banners.
+- `openEmailVerificationPrompt()` helper (`src/lib/email-verification-prompt.ts`) — dispatches the same `e4i:email-not-verified` window event the api-client interceptor uses. Lets Layer 4 buttons short-circuit to the modal without making a doomed network call. `withVerificationGate(isVerified, handler)` helper added in EV.3.2 for click-handler wrapping.
+
+**Deal redemption hard-block:**
+- `POST /api/deals/[id]/redeem` joined the 6 EV.1 hard-blocked routes. Deal redemption awards points (financial action) → matches the EV.1 protection scope. Pattern identical to feedback/submit (`requireEmailVerified` + `EmailNotVerifiedError` + `emailNotVerifiedResponseBody`).
+
+### EV.3.2 — Layer-2 + Layer-4 wire-up (`cb1d766`)
+
+**Layer-2 context banners mounted on 6 pages:**
+- `/dashboard/submit-feedback` — "Verify your email to start submitting feedback and earn rewards."
+- `/dashboard/rewards` — "Verify your email to redeem rewards."
+- `/dashboard/deals` (via `DealsClient.tsx`) — "Verify your email to claim deals and earn points."
+- `/dashboard/influencer/marketplace` — "Verify your email to apply for campaigns."
+- `/dashboard/influencer/payouts` — "Verify your email to add payout details."
+- `/dashboard/brand/campaigns` — "Verify your email to publish campaigns."
+
+**Layer-4 click intercepts** added to each page's primary CTA handler. Most pages use raw `fetch` instead of `apiPost`, so the api-client 403 interceptor wouldn't fire — manual `openEmailVerificationPrompt()` call BEFORE the network request is the only path to the modal for those.
+
+**Marketplace apply (`CampaignDetailPanel.tsx`)** got a dedicated intercept because the apply handler lives in a child component, not the marketplace page itself.
+
+**Sidebar correction during EV.3.2:** Cash Out Points (consumer `/dashboard/payouts`) was un-marked from `requiresEmailVerified` because its underlying `/api/payouts` route is NOT hard-blocked (only `/api/payouts/accounts` is). Showing a lock on a feature that wasn't actually gated would be an honest-UI violation.
+
+---
+
+## Phase ER — Role boundaries (COMPLETE)
+
+> Discovered during EV.3 smoke testing: pure consumers were seeing influencer items in the sidebar, and `/dashboard/brand/*` URLs were accessible by direct navigation. The 3.5B-fix array-form `role: ['consumer', 'influencer']` was meant to support dual-role consumer-with-isInfluencer users but the sidebar filter never actually checked the `isInfluencer` capability flag. Brand routes had only inconsistent per-page client-side guards.
+
+### ER.1 — Sidebar capability filter + server-side layout guards (`faf1bfb`)
+
+**Sidebar filter (`DashboardShell.tsx`):**
+- New `MenuItem.requiresCapability?: 'isInfluencer' | 'isBrand'` field.
+- Filter reads `session.user.isInfluencer` / `isBrand` and excludes items whose capability isn't satisfied. Admin bypasses the capability check.
+- 6 influencer items marked `requiresCapability: 'isInfluencer'`.
+- 17 brand items marked `requiresCapability: 'isBrand'` (defensive — brand items use single-role `'brand'` so the role check already filters them, but the capability annotation future-proofs against any later move to array-form).
+
+**Layout guards:**
+- `src/app/dashboard/influencer/layout.tsx` (NEW) — allows `role==='influencer'` OR `isInfluencer===true` OR `role==='admin'`, otherwise `redirect('/dashboard?upgrade=influencer')`.
+- `src/app/dashboard/brand/layout.tsx` (NEW) — allows `role==='brand'` OR `isBrand===true` OR `role==='admin'`, otherwise `redirect('/dashboard?upgrade=brand')`.
+- Server components, so redirect fires before any client paint. Replaces the inconsistent `/dashboard/brand/campaigns/page.tsx` client-side guard.
+
+**Smoke test (2026-06-13):** pure consumer no longer sees Influencer Profile / Marketplace / etc in sidebar. Direct nav to `/dashboard/influencer/marketplace` redirects to `/dashboard?upgrade=influencer`. Direct nav to `/dashboard/brand/campaigns` redirects to `/dashboard?upgrade=brand`. Both without content flash.
+
+### ER.2 — UpgradePromptCard (`4394304`)
+
+**Component (`src/components/UpgradePromptCard.tsx`):**
+- Server component, accepts `variant: 'influencer' | 'brand'`.
+- Influencer variant: amber Sparkles icon, "Become an Influencer" title, primary CTA → `/onboarding?path=influencer` (3.5F cross-role upgrade path).
+- Brand variant: red ShieldAlert icon, "Brand Account Required" title, primary CTA → `mailto:hello@earn4insights.com?subject=Brand%20account%20access`. No auto-upgrade because brand accounts require business verification + billing setup.
+- Both variants have secondary `[Back to dashboard]` CTA that strips the `?upgrade=` param.
+
+**Mount (`src/app/dashboard/page.tsx`):**
+- `DashboardPage` now accepts `searchParams: Promise<{ upgrade?: string }>` (Next.js 15 App Router shape).
+- `UpgradePromptCard` rendered ABOVE the role-specific dashboard component (BrandDashboard / InfluencerDashboard / ConsumerDashboard) so it stays visible without rearranging per-role layouts.
+- `searchParams` await wrapped in try/catch defaulting to `undefined` (shipped in the verify-email defensive patch `dbf5c6b`) — a malformed or rejected Promise can't take down the dashboard render.
+
+**Smoke test (2026-06-13):** both variants render correctly. Clicking primary CTA opens influencer onboarding wizard / brand-access mailto. Secondary CTA returns to clean `/dashboard`.
+
+---
+
+## Phase EV (defensive) — Verify-email transition error mitigations (`dbf5c6b` + `dd4e536` + `799bd52`)
+
+**Symptom (2026-06-12):** clicking the verification email link rendered the SuccessPanel briefly, then the branded `error.tsx` boundary appeared with `Error ref: 2626478451` (Next.js server-error digest). The verification itself succeeded server-side (`email_verified_at` was set), but the user saw an error page instead of being redirected to the dashboard. `/dashboard` accessed directly worked fine — the error was specific to the verify-email → dashboard transition.
+
+**Three mitigations shipped:**
+
+1. **`dbf5c6b` — Defensive try/catch in `SuccessRedirect`:** wrapped `router.push('/dashboard')` in try/catch with `window.location.assign('/dashboard')` fallback. Also wrapped `DashboardPage`'s `searchParams` await in try/catch defaulting to `undefined`. **Result:** error persisted — `router.push` wasn't throwing into the try block.
+
+2. **`dd4e536` — Replaced `SuccessRedirect` client component with HTML meta refresh:** `<meta http-equiv="refresh" content="3;url=/dashboard">` drives the redirect. Pure HTML primitive — no JavaScript, no hydration to fail, no RSC fetch transition. `SuccessRedirect.tsx` left as dead code in the repo. **Result:** the user's first re-test hit the AlreadyUsedPanel path (token already_used from a previous successful but error-displayed click), not the SuccessPanel, so we couldn't confirm the fix cleanly.
+
+3. **`799bd52` — `force-dynamic` + plain `<a>`:** `export const dynamic = 'force-dynamic'` on `/verify-email/page.tsx` eliminates Vercel CDN / browser cache as a suspect (token state changes between requests). Success / AlreadyUsed panels switched from `<Link href="/dashboard">` to plain `<a href="/dashboard">` for full-page-reload nav, identical to direct URL-bar navigation. **Result:** end-to-end verification works through the AlreadyUsedPanel + middleware-redirect-to-login path AND through the meta-refresh path. SuccessPanel path remains untested cleanly because the user's test cycles kept hitting AlreadyUsedPanel (tokens already consumed by earlier broken-but-server-side-succeeded clicks).
+
+**Root cause status:** unknown. The error digest `2626478451` is a Next.js server-side digest, meaning a server component or server action threw an unhandled exception during render. Without Vercel function logs access we can't see the stack trace. **Parked as low-impact** — verification works for users end-to-end via the defensive paths. Investigation queued for whenever Vercel logs become accessible.
+
+**Smoke test (2026-06-13):** user verified end-to-end, dashboard reflects verified state (L1 banner gone, L2 banners gone, sidebar 🔒 locks gone, settings card green check + verified date).
+
+---
+
+## A9 — Influencer verification flow (CURRENT SPRINT)
+
+The 7th `requireEmailVerified` hard-block route from EV.1 (`POST /api/influencer/verification/request`) was deferred pending the broader user-facing email-verification surface. With EV.2 + EV.3 + ER.1 + ER.2 all shipped, A9 slots naturally into the existing 5-layer nudge system. Scope still TBD but likely:
+
+- New table or columns on `influencer_profiles` for verification request lifecycle
+- API route `POST /api/influencer/verification/request` with `requireEmailVerified` + role check (`isInfluencer` capability) + `requiresCapability: 'isInfluencer'` server layout already enforced by ER.1
+- Sidebar lock + Layer-2 banner + Layer-4 intercept on whatever influencer-side surface initiates the request (per EV.3 conventions)
+- Admin queue UI for processing verification requests (mirrors the existing `/admin/payouts` queue pattern from A10)
+- Email notifications via Resend (mirrors EV.1 audit + email pattern)
+
+---
+
 ## Docs to sync when Phase 6 ships
+
+> **Update 2026-06-13:** This sync happened in commit `<TBD>` — CLAUDE.md, ARCHITECTURE.md, SCHEMA.md, CLAUDE_HISTORY.md, this audit log, and new `docs/FEATURE10_EMAIL_VERIFICATION_AND_ROLE_GUARDS.md` all updated together. Phase 1–3.5 sub-rows below still show `⏳ deferred` in the Status Overview because they predate this consolidated sync; the rows for EV / ER are marked `✅ 2026-06-13`. Future doc-sync cycles will sweep the older rows.
 
 One consolidated update pass at the end. Per-doc checklist:
 

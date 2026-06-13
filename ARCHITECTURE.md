@@ -366,6 +366,87 @@ Wired into:
 
 Replaces the older "uppercase + digit" Security Batch 1 #17 wording — the policy is now honest in code and docs.
 
+### Email Verification System (EV.1 + EV.2 + EV.3 — June 2026)
+
+End-to-end email-verification surface across three phases. Backend in EV.1, user-facing UI in EV.2, multi-layer nudge system + sidebar locks + per-page contextual prompts in EV.3.
+
+**Database (migration 026):**
+- `users.email_verified_at TIMESTAMP NULL` — NULL while unverified; set to NOW() on token consumption or by `markEmailVerified()` for OAuth users.
+- `email_verification_tokens` table — UUID PK, `user_id` FK CASCADE → users, `token_hash` (SHA-256 of plaintext), `expires_at` (24h), `used_at`, `created_at`.
+
+**Service layer (`src/server/emailVerificationService.ts`):**
+| Function | Purpose |
+|---|---|
+| `generateVerificationToken(userId)` | Atomic transaction — marks all prior unused tokens for this user as used, then inserts a new unused row. One-active-token-per-user invariant. |
+| `sendVerificationEmail({ userId, email, name, trigger? })` | Sends branded email via Resend. `trigger: 'signup_auto' \| 'resend' \| 'admin'` written into audit `metadata.trigger`. |
+| `verifyEmailToken(plainToken)` | SHA-256 hash + lookup + validate (not used, not expired) → transaction: mark `used_at` + flip `users.email_verified_at` → audit log. Idempotent on already-used (returns `{ ok: false, reason: 'already_used' }`). |
+| `resendVerificationEmail(userId)` | Caller already rate-limited; no-op if already verified. |
+| `markEmailVerified(userId, via)` | OAuth / admin backfill helper. `isNull(emailVerifiedAt)` WHERE guard makes it idempotent. `via: 'google_oauth' \| 'admin_backfill'` captured in audit metadata. |
+| `cleanupExpiredTokens()` | Daily cron 04:00 UTC — deletes tokens past `expires_at + 7d`. |
+| `getEmailVerifiedAt(userId)` | Read helper for the guard + check-verification GET. |
+
+**Guard (`src/server/emailVerificationGuard.ts`):**
+- `requireEmailVerified(userId)` — throws `EmailNotVerifiedError` if not verified
+- `emailNotVerifiedResponseBody()` — structured 403 shape: `{ error, code: 'EMAIL_NOT_VERIFIED', cta: '/dashboard/settings' }`
+
+**7 hard-blocked routes** (return 403 `EMAIL_NOT_VERIFIED` for unverified users):
+1. `POST /api/feedback/submit`
+2. `POST /api/consumer/rewards/redeem`
+3. `POST /api/marketplace/campaigns/[id]/apply`
+4. `POST /api/payouts/accounts`
+5. `POST /api/brand/campaigns`
+6. `POST /api/payments/create-order`
+7. `POST /api/deals/[id]/redeem` (added in EV.3.1)
+
+(An 8th route — `POST /api/influencer/verification/request` — is the current sprint A9.)
+
+**Auto-verification flows:**
+- **Credentials signup** — `signUpAction` (`src/lib/actions/auth.actions.ts`) `await`s `sendVerificationEmail({ trigger: 'signup_auto' })` in a try/catch after `createUser` succeeds. Resend outage logs and continues; signup never blocks.
+- **Google OAuth** — `signIn` callback (`src/lib/auth/auth.config.ts`) calls `markEmailVerified(user.id, 'google_oauth')` for BOTH branches (new Google user AND existing user where `emailVerifiedAt` is NULL). Handles the credentials-user-later-links-Google edge case.
+
+**Client surface (EV.2.2 / EV.3):**
+
+1. **`/verify-email` page** (`src/app/verify-email/page.tsx`) — server component, `export const dynamic = 'force-dynamic'`. Reads `?token=…`, calls `verifyEmailToken`, renders one of 5 panels (success / expired / already-used / invalid / missing-token). Success uses HTML `<meta http-equiv="refresh" content="3;url=/dashboard">` for the post-verification redirect — pure HTML, no client component, no hydration risk. Manual button uses plain `<a>` (not `<Link>`) for full-page reload reliability.
+2. **Shared provider** (`src/components/EmailVerificationProvider.tsx`) — Context + hook (`useEmailVerification`). Single fetch to `/api/auth/check-verification`, 60s background poll, tab-focus revalidation via `visibilitychange`, `refresh()` exposed for explicit revalidation after resend. Fail-open semantics (endpoint error → treat as verified to avoid spamming nags on transient failures).
+3. **Layer 1 — Dashboard banner** (`EmailVerificationBanner.tsx`) — amber prompt at top of dashboard layout. Dismissable per session.
+4. **Layer 2 — Contextual banners** (`EmailVerificationContextBanner.tsx`) — non-dismissable compact banners mounted on each of the 7 hard-blocked surfaces with action-specific copy ("Verify your email to submit feedback…" / "…to claim deals" / etc).
+5. **Layer 3 — Sidebar locks** — `MenuItem.requiresEmailVerified: true` triggers an amber 🔒 icon next to nav items pointing at hard-blocked surfaces. Tooltip "<Label> — verify email to unlock".
+6. **Layer 4 — Click intercepts** — primary action handlers on each gated page call `openEmailVerificationPrompt()` from `src/lib/email-verification-prompt.ts` BEFORE the network request when the user is unverified. Short-circuits to the modal without sending data destined for a 403.
+7. **Layer 5 — Global modal** (`EmailNotVerifiedModal.tsx`) — listens for `e4i:email-not-verified` window event. ESC + backdrop close, focus management, ARIA-modal. Mounted once in dashboard layout.
+8. **Settings card** (`EmailVerificationCard.tsx`) — green check + "Verified on <date>" OR amber Mail icon + resend button.
+9. **api-client interceptor** (`src/lib/api-client.ts`) — `send()` peeks 403 responses, clones the body, dispatches `e4i:email-not-verified` if `body.code === 'EMAIL_NOT_VERIFIED'`. Transparent to callers.
+
+**Two paths to the modal:**
+- Network-driven: api-client's 403 peek dispatches the event automatically
+- UI-driven: Layer 4 button click calls `openEmailVerificationPrompt()` directly (raw-`fetch` callers use this; otherwise the api-client interceptor would not fire)
+
+**Known issue (parked):** the `/verify-email` SuccessPanel previously triggered the `error.tsx` boundary on the `router.push('/dashboard')` transition after a successful token verification. Defensive fixes shipped (meta refresh, `force-dynamic`, plain `<a>`) sidestep the failure mode entirely — verification works end-to-end through the AlreadyUsedPanel + Login-redirect path and through the meta-refresh path. Root cause requires Vercel function logs to investigate the server error digest. Detailed in `docs/FEATURE10_EMAIL_VERIFICATION_AND_ROLE_GUARDS.md §Known issue`.
+
+### Role-Boundary Server Guards (ER.1 — June 2026)
+
+Two new server-component layouts enforce role-based access at the dashboard subtree:
+
+**`src/app/dashboard/influencer/layout.tsx`** — allows `role === 'influencer'`, `users.is_influencer === true` (dual-role consumer-with-isInfluencer), or `role === 'admin'`. Otherwise `redirect('/dashboard?upgrade=influencer')`.
+
+**`src/app/dashboard/brand/layout.tsx`** — allows `role === 'brand'`, `users.is_brand === true`, or `role === 'admin'`. Otherwise `redirect('/dashboard?upgrade=brand')`.
+
+Both layouts run as server components, so the redirect fires before any client paint — no flash. Replaces the inconsistent client-side `router.push('/dashboard')` pattern in `/dashboard/brand/campaigns/page.tsx` that only protected that one page and flashed content.
+
+**Sidebar capability filter** (`src/app/dashboard/DashboardShell.tsx`) — `MenuItem` now carries `requiresCapability?: 'isInfluencer' \| 'isBrand'`. The filter reads `session.user.isInfluencer` / `isBrand`. Items targeting multiple roles via `role: ['consumer', 'influencer']` MUST also declare `requiresCapability: 'isInfluencer'` — without it, the 3.5B-fix array-form filter would show every influencer item to pure consumers. Admin bypasses the capability check.
+
+23 items marked: 6 influencer items (Profile, Marketplace, My Campaigns, My Content, Earnings, Payout Accounts) + 17 brand items.
+
+### Upgrade Prompt UX (ER.2 — June 2026)
+
+`src/components/UpgradePromptCard.tsx` — server component, two variants based on `searchParams.upgrade`:
+
+| Variant | Title | Primary CTA | Conversion intent |
+|---|---|---|---|
+| `?upgrade=influencer` | "Become an Influencer" | `/onboarding?path=influencer` (3.5F cross-role upgrade) | High — many consumers may convert via this prompt after discovering a locked feature |
+| `?upgrade=brand` | "Brand Account Required" | `mailto:hello@earn4insights.com` | No — brand accounts require business verification + billing setup |
+
+Mounted in `src/app/dashboard/page.tsx` ABOVE the role-specific dashboard component (BrandDashboard / InfluencerDashboard / ConsumerDashboard) so it stays visible without rearranging per-role layouts. `searchParams` await wrapped in try/catch defaulting to `undefined` so a Promise-edge-case never sinks the dashboard render.
+
 ---
 
 ## 6. Consent System

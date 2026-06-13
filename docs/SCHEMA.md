@@ -580,6 +580,54 @@ Devices that skip the 2FA challenge for 30 days. Indexes:
 
 ---
 
+## Migration 026 — Email Verification (EV.1) — 1 new column + 1 new table + 3 indexes
+
+| Object | Purpose |
+|--------|---------|
+| `users.email_verified_at` | TIMESTAMP NULL. NULL = unverified; set to NOW() when the user consumes a valid verification token (or by `markEmailVerified` for Google OAuth users). Read by `getEmailVerifiedAt()`, `requireEmailVerified()` guard. |
+| `email_verification_tokens` | Single-use, hashed verification tokens. SHA-256 of the plaintext stored; plaintext only ever lives in the verification URL. One-active-token-per-user enforced atomically in `generateVerificationToken`. |
+| `idx_email_verification_tokens_token_hash` | Hot path — lookup at verify time. |
+| `idx_email_verification_tokens_user_id` | Resend invalidation — mark prior unused tokens used in one query. |
+| `idx_email_verification_tokens_expires_at` | Cleanup cron scan (`cleanup-expired-verification-tokens` daily 04:00 UTC). |
+
+### `email_verification_tokens`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK DEFAULT gen_random_uuid() | |
+| `user_id` | TEXT NOT NULL | FK CASCADE → users(id) |
+| `token_hash` | TEXT NOT NULL | SHA-256 of the plaintext token (never store plaintext) |
+| `expires_at` | TIMESTAMP NOT NULL | 24h from creation (industry-standard cap) |
+| `used_at` | TIMESTAMP NULL | NOT NULL after consumption — flips atomically with `users.email_verified_at` in `verifyEmailToken()` |
+| `created_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+
+**Google backfill (one-time DML in migration 026):**
+```sql
+UPDATE users SET email_verified_at = created_at
+WHERE google_id IS NOT NULL AND email_verified_at IS NULL;
+```
+OAuth providers verify the email before issuing tokens, so `google_id IS NOT NULL` is a sound proxy. The `WHERE email_verified_at IS NULL` clause keeps the update idempotent — re-running migration 026 doesn't thrash already-verified rows.
+
+EV.2.1 (`da93b39`) later extended the auto-verify path: the `signIn` callback in `auth.config.ts` calls `markEmailVerified(user.id, 'google_oauth')` for ANY Google sign-in (new user OR existing-NULL user) so a credentials user who later links Google by signing in with the same email also gets backfilled. `markEmailVerified` uses an `isNull(emailVerifiedAt)` WHERE guard so the call is a no-op for already-verified rows.
+
+---
+
+## Migration 027 — `user_profiles` FK CASCADE → `users(id)` (orphan cleanup + 1 new FK)
+
+| Step | Purpose |
+|------|---------|
+| Orphan DELETE | `DELETE FROM user_profiles WHERE id NOT IN (SELECT id FROM users)`. Cleans up rows from prior `DELETE FROM users` calls where the cascade didn't fire (user_profiles.id had no FK constraint declared). Reports `affected` count for audit. |
+| `user_profiles_id_users_fkey` | New FK constraint `FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE`. Idempotent via DO-block `IF NOT EXISTS` check on `pg_constraint`. |
+
+**Background:** `user_profiles.id` was declared as `text('id').primaryKey()` with the comment "Will match user ID from auth" — but no actual `.references()` to `users(id)`. Deleting a `users` row therefore left an orphaned `user_profiles` row. `ensureUserProfile`'s non-destructive reconciliation then re-attached the orphan to the next signup for the same email, silently carrying over `onboarding_complete` / `demographics` / `interests` — which made deliberate test-account resets impossible and (more importantly) left PII / consent data for "deleted" users in the DB.
+
+Migration 027 retrofits the FK CASCADE onto production. After this lands, `DELETE FROM users WHERE …` properly cascades to `user_profiles` and all downstream user-content tables (consent records, signal snapshots, verification tokens, etc.) that already had CASCADE declared.
+
+Drizzle schema (`src/db/schema.ts`) was updated in the same commit to declare `.references(() => users.id, { onDelete: 'cascade' })` on `userProfiles.id` so future schema regenerations match the live DB.
+
+> Note: migrations 018, 022, 023, 024 are documented in `docs/CLAUDE_HISTORY.md §2` and `docs/PRELAUNCH_AUDIT_FIX_LOG.md` (Phase 3.5A / 3.5C) but not yet split out into their own SCHEMA.md sections — they're either DML-only (013, 018) or single-table additions covered in the audit log. Future SCHEMA.md sweep will fold them in.
+
+---
+
 ## Notes on tables that have evolved since their original migration
 
 ### `whatsapp_otp_verifications` (migrations 014 → 018)
