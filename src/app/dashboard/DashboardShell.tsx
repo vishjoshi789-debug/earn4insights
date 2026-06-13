@@ -83,6 +83,18 @@ type MenuItem = {
    */
   role?: Role | Role[]
   /**
+   * ER.1 — required capability flag in addition to the role match.
+   * Items targeted at multiple roles (e.g. influencer items shown to
+   * either a pure influencer OR a dual-role consumer-with-isInfluencer)
+   * must also gate on the user's actual capability flag, otherwise a
+   * pure consumer with isInfluencer=false would see every influencer
+   * item just because `role: ['consumer', 'influencer']` includes
+   * 'consumer'. The filter reads the corresponding boolean from
+   * session.user (set in auth.config's `authorize` + `signIn` paths).
+   * Admin role bypasses this check.
+   */
+  requiresCapability?: 'isInfluencer' | 'isBrand'
+  /**
    * EV.3 — when true AND the user is currently unverified, the
    * sidebar entry renders a small Lock badge with a tooltip ("Verify
    * email to unlock"). The link still navigates; the per-page Layer-2
@@ -98,7 +110,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/products', label: 'Products', icon: Package, tourId: 'nav-products' },
   { href: '/dashboard/rankings', label: 'Weekly Top 10 products', icon: Trophy, tourId: 'nav-rankings' },
   // Brand: sees aggregated feedback from consumers
-  { href: '/dashboard/feedback', label: 'Feedback Hub', icon: MessageSquare, tourId: 'nav-feedback', role: 'brand' },
+  { href: '/dashboard/feedback', label: 'Feedback Hub', icon: MessageSquare, tourId: 'nav-feedback', role: 'brand', requiresCapability: 'isBrand' },
   // Consumer: submit new feedback + view their history
   { href: '/dashboard/submit-feedback', label: 'Submit Feedback', icon: PenSquare, tourId: 'nav-submit-feedback', role: 'consumer', requiresEmailVerified: true },
   { href: '/dashboard/my-feedback', label: 'My Feedback', icon: ClipboardList, tourId: 'nav-my-feedback', role: 'consumer' },
@@ -109,18 +121,18 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/community', label: 'Community', icon: MessagesSquare, tourId: 'nav-community' },
   { href: '/dashboard/deals', label: 'Deals & Offers', icon: Tags, tourId: 'nav-deals', role: 'consumer', requiresEmailVerified: true },
   { href: '/dashboard/community-deals', label: 'Community Deals', icon: Flame, tourId: 'nav-community-deals' },
-  { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys', role: 'brand' },
-  { href: '/dashboard/analytics', label: 'Audience Analytics', icon: TrendingUp, tourId: 'nav-brand-analytics', role: 'brand' },
-  { href: '/dashboard/analytics/feature-insights', label: 'Feature Insights', icon: Activity, tourId: 'nav-feature-insights', role: 'brand' },
-  { href: '/dashboard/analytics/consumer-intelligence', label: 'Consumer Intelligence', icon: Brain, tourId: 'nav-consumer-intelligence', role: 'brand' },
-  { href: '/dashboard/analytics/weekly-digest', label: 'Weekly Digest', icon: Bell, tourId: 'nav-weekly-digest', role: 'brand' },
-  { href: '/dashboard/analytics/category-intelligence', label: 'Category Intelligence', icon: Globe, tourId: 'nav-category-intelligence', role: 'brand' },
-  { href: '/dashboard/alerts', label: 'Alerts', icon: AlertCircle, tourId: 'nav-alerts', role: 'brand' },
-  { href: '/dashboard/brand/icps', label: 'ICP Profiles', icon: Target, tourId: 'nav-icps', role: 'brand' },
-  { href: '/dashboard/brand/campaigns', label: 'Influencer Campaigns', icon: Megaphone, tourId: 'nav-brand-campaigns', role: 'brand', requiresEmailVerified: true },
-  { href: '/dashboard/brand/influencers', label: 'Discover Influencers', icon: UserCheck, tourId: 'nav-discover-influencers', role: 'brand' },
-  { href: '/dashboard/brand/content-review', label: 'Content Review', icon: ClipboardCheck, tourId: 'nav-content-review', role: 'brand' },
-  { href: '/dashboard/brand/deals', label: 'Manage Deals', icon: Tags, tourId: 'nav-brand-deals', role: 'brand' },
+  { href: '/dashboard/surveys', label: 'Surveys & NPS', icon: BarChart3, tourId: 'nav-surveys', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/analytics', label: 'Audience Analytics', icon: TrendingUp, tourId: 'nav-brand-analytics', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/analytics/feature-insights', label: 'Feature Insights', icon: Activity, tourId: 'nav-feature-insights', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/analytics/consumer-intelligence', label: 'Consumer Intelligence', icon: Brain, tourId: 'nav-consumer-intelligence', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/analytics/weekly-digest', label: 'Weekly Digest', icon: Bell, tourId: 'nav-weekly-digest', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/analytics/category-intelligence', label: 'Category Intelligence', icon: Globe, tourId: 'nav-category-intelligence', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/alerts', label: 'Alerts', icon: AlertCircle, tourId: 'nav-alerts', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/brand/icps', label: 'ICP Profiles', icon: Target, tourId: 'nav-icps', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/brand/campaigns', label: 'Influencer Campaigns', icon: Megaphone, tourId: 'nav-brand-campaigns', role: 'brand', requiresCapability: 'isBrand', requiresEmailVerified: true },
+  { href: '/dashboard/brand/influencers', label: 'Discover Influencers', icon: UserCheck, tourId: 'nav-discover-influencers', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/brand/content-review', label: 'Content Review', icon: ClipboardCheck, tourId: 'nav-content-review', role: 'brand', requiresCapability: 'isBrand' },
+  { href: '/dashboard/brand/deals', label: 'Manage Deals', icon: Tags, tourId: 'nav-brand-deals', role: 'brand', requiresCapability: 'isBrand' },
   { href: '/dashboard/rewards', label: 'Rewards', icon: Award, tourId: 'nav-rewards', role: 'consumer', requiresEmailVerified: true },
   { href: '/dashboard/payouts', label: 'Cash Out Points', icon: HandCoins, tourId: 'nav-payouts', role: 'consumer' },
   { href: '/dashboard/privacy', label: 'Privacy & Consent', icon: ShieldCheck, tourId: 'nav-privacy', role: 'consumer' },
@@ -130,18 +142,19 @@ const menuItems: MenuItem[] = [
   // and a dual-role consumer-with-isInfluencer (role='consumer'). The array
   // form was added in 3.5B-fix; 3.5E will introduce the proper primary-view
   // + role-switcher pattern so dual-role users can hide one set or the other.
-  { href: '/dashboard/influencer/profile', label: 'Influencer Profile', icon: UserCheck, tourId: 'nav-influencer-profile', role: ['consumer', 'influencer'] },
-  { href: '/dashboard/influencer/marketplace', label: 'Marketplace', icon: Store, tourId: 'nav-influencer-marketplace', role: ['consumer', 'influencer'], requiresEmailVerified: true },
-  { href: '/dashboard/influencer/campaigns', label: 'My Campaigns', icon: Megaphone, tourId: 'nav-influencer-campaigns', role: ['consumer', 'influencer'] },
-  { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: ['consumer', 'influencer'] },
-  { href: '/dashboard/influencer/earnings', label: 'Earnings', icon: Wallet, tourId: 'nav-influencer-earnings', role: ['consumer', 'influencer'] },
-  { href: '/dashboard/influencer/payouts', label: 'Payout Accounts', icon: Wallet, tourId: 'nav-influencer-payouts', role: ['consumer', 'influencer'], requiresEmailVerified: true },
+  { href: '/dashboard/influencer/profile', label: 'Influencer Profile', icon: UserCheck, tourId: 'nav-influencer-profile', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer' },
+  { href: '/dashboard/influencer/marketplace', label: 'Marketplace', icon: Store, tourId: 'nav-influencer-marketplace', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer', requiresEmailVerified: true },
+  { href: '/dashboard/influencer/campaigns', label: 'My Campaigns', icon: Megaphone, tourId: 'nav-influencer-campaigns', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer' },
+  { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer' },
+  { href: '/dashboard/influencer/earnings', label: 'Earnings', icon: Wallet, tourId: 'nav-influencer-earnings', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer' },
+  { href: '/dashboard/influencer/payouts', label: 'Payout Accounts', icon: Wallet, tourId: 'nav-influencer-payouts', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer', requiresEmailVerified: true },
   {
     href: '/dashboard/detailed-analytics',
     label: 'Product Deep Dive',
     icon: FileText,
     tourId: 'nav-detailed-analytics',
     role: 'brand',
+    requiresCapability: 'isBrand',
   },
   {
     href: '/dashboard/launch',
@@ -149,6 +162,7 @@ const menuItems: MenuItem[] = [
     icon: PackagePlus,
     tourId: 'nav-launch',
     role: 'brand',
+    requiresCapability: 'isBrand',
   },
   {
     href: '/dashboard/import',
@@ -156,6 +170,7 @@ const menuItems: MenuItem[] = [
     icon: Upload,
     tourId: 'nav-import',
     role: 'brand',
+    requiresCapability: 'isBrand',
   },
   {
     href: '/dashboard/pricing',
@@ -163,6 +178,7 @@ const menuItems: MenuItem[] = [
     icon: CreditCard,
     tourId: 'nav-pricing',
     role: 'brand',
+    requiresCapability: 'isBrand',
   },
   // Admin-only nav items — point to /admin/* routes
   { href: '/admin/platform-analytics', label: 'Platform Analytics', icon: BarChart3, tourId: 'nav-admin-platform-analytics', role: 'admin' },
@@ -280,6 +296,12 @@ export default function DashboardShell({
 }) {
   const { data: session, status } = useSession()
   const userRole = (session?.user as any)?.role as Role | undefined
+  // ER.1 — capability flags drive the requiresCapability gate on items
+  // that target multiple roles via array-form `role`. Without these the
+  // pure consumer who has isInfluencer=false would still see every
+  // influencer item just because the item lists 'consumer' in role[].
+  const isInfluencerCap = (session?.user as any)?.isInfluencer === true
+  const isBrandCap = (session?.user as any)?.isBrand === true
   // 3.5E — sidebar filters on the ACTIVE view (which may be a
   // session-only toggle, not the stored primary role). Single-role
   // users always see activeView === userRole.
@@ -317,16 +339,25 @@ export default function DashboardShell({
   }, [userRole])
 
   // Memoize visible items — only recompute when the ACTIVE view
-  // changes (3.5E). Single-role users have activeView === userRole.
-  // Dual-role users get adaptive sidebar via the RoleSwitcher.
-  // Array.<Role>-form items appear under any role they list.
+  // changes (3.5E) or the capability flags change (ER.1).
+  // Single-role users have activeView === userRole. Dual-role users
+  // get adaptive sidebar via the RoleSwitcher. Array.<Role>-form items
+  // appear under any role they list, BUT items with
+  // `requiresCapability` additionally require the matching boolean
+  // flag on the user — closes the "pure consumer sees influencer
+  // items" leak from 3.5B-fix. Admin bypasses the capability check.
   const visibleItems = useMemo(
     () => menuItems.filter((item) => {
       if (!item.role) return true
-      if (Array.isArray(item.role)) return item.role.includes(activeView as Role)
-      return item.role === activeView
+      const rolesAllowed = Array.isArray(item.role) ? item.role : [item.role]
+      if (!rolesAllowed.includes(activeView as Role)) return false
+      if (item.requiresCapability && activeView !== 'admin') {
+        if (item.requiresCapability === 'isInfluencer' && !isInfluencerCap) return false
+        if (item.requiresCapability === 'isBrand' && !isBrandCap) return false
+      }
+      return true
     }),
-    [activeView]
+    [activeView, isInfluencerCap, isBrandCap]
   )
 
   // While session is loading, show all shared (non-role-specific) items to avoid flicker.
