@@ -157,7 +157,9 @@ A9 was the 7th hard-block route from EV.1 (`POST /api/influencer/verification/re
 
 ---
 
-## 7. Recent Changes
+## 7. What's NEW (since last doc sync)
+
+Single-glance view of every commit since the previous doc sync (`9b3bd1b` on 2026-06-13 captured everything below). Older changes have rolled into `docs/CLAUDE_HISTORY.md §4`.
 
 | Commit | Date | Summary |
 |---|---|---|
