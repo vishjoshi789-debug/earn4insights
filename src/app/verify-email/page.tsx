@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { CheckCircle2, XCircle, Clock, AlertCircle, Mail } from 'lucide-react'
 import { verifyEmailToken } from '@/server/emailVerificationService'
-import { SuccessRedirect } from './SuccessRedirect'
 
 /**
  * /verify-email?token=…
@@ -12,9 +11,13 @@ import { SuccessRedirect } from './SuccessRedirect'
  * States:
  *   A) Loading — handled implicitly (Next.js streams the result;
  *      RSC renders the final state directly, no separate loading UI).
- *   B) Success     — green check, auto-redirects to /dashboard in 3s
- *                    via the SuccessRedirect client child + a manual
- *                    [Go to Dashboard] escape hatch.
+ *   B) Success     — green check + auto-redirect to /dashboard via an
+ *                    HTML `<meta http-equiv="refresh">` (pure
+ *                    declarative, no JS, no hydration to fail). A
+ *                    manual [Go to dashboard] Link is the always-works
+ *                    escape hatch. Replaces an earlier client component
+ *                    that triggered the error.tsx boundary for some
+ *                    users during the router.push transition.
  *   C) Expired     — amber clock, [Send New Link] CTA → settings.
  *   D) Already used — neutral, [Go to Dashboard].
  *   E) Invalid     — red, [Go to Login] / [Sign up].
@@ -64,18 +67,34 @@ export default async function VerifyEmailPage({
 
 function SuccessPanel() {
   return (
-    <div className="text-center space-y-4">
-      <div className="mx-auto h-14 w-14 rounded-full bg-green-500/10 flex items-center justify-center">
-        <CheckCircle2 className="h-8 w-8 text-green-500" aria-hidden="true" />
+    <>
+      <meta httpEquiv="refresh" content="3;url=/dashboard" />
+      <div className="text-center space-y-4">
+        <div className="mx-auto h-14 w-14 rounded-full bg-green-500/10 flex items-center justify-center">
+          <CheckCircle2 className="h-8 w-8 text-green-500" aria-hidden="true" />
+        </div>
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold text-foreground">Email verified</h1>
+          <p className="text-sm text-muted-foreground">
+            Welcome to Earn4Insights — your account is fully unlocked.
+          </p>
+          <p
+            className="text-xs text-muted-foreground pt-2"
+            aria-live="polite"
+          >
+            Redirecting to your dashboard in a few seconds…
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/dashboard"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition w-full sm:w-auto"
+          >
+            Go to dashboard
+          </Link>
+        </div>
       </div>
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold text-foreground">Email verified</h1>
-        <p className="text-sm text-muted-foreground">
-          Welcome to Earn4Insights — your account is fully unlocked.
-        </p>
-      </div>
-      <SuccessRedirect seconds={3} />
-    </div>
+    </>
   )
 }
 
