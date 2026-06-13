@@ -117,7 +117,18 @@ export default async function DashboardPage({
   // user here from a wrong-role URL. The card is mounted ABOVE the
   // role-specific dashboard so it stays visible without rearranging
   // any per-role layout.
-  const sp = searchParams ? await searchParams : undefined;
+  //
+  // Defensive: wrap the searchParams await in a try/catch so a malformed
+  // or rejected Promise (e.g. transient Next.js RSC quirk) doesn't take
+  // down the entire dashboard render. Falling back to `undefined`
+  // simply means no upgrade card — the page still renders.
+  let sp: { upgrade?: string } | undefined
+  try {
+    sp = searchParams ? await searchParams : undefined;
+  } catch (err) {
+    console.error('[DashboardPage] searchParams await failed:', err)
+    sp = undefined
+  }
   const upgrade =
     sp?.upgrade === 'influencer' || sp?.upgrade === 'brand' ? sp.upgrade : null;
   const promptCard = upgrade ? <UpgradePromptCard variant={upgrade} /> : null;
