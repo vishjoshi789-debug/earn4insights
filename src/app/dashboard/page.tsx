@@ -14,6 +14,7 @@ import { eq, sql, count, and, inArray, desc } from 'drizzle-orm';
 import { getPersonalizedRecommendations } from '@/server/personalizationEngine';
 import { RecommendationCard } from '@/components/recommendation-card';
 import { BrandOnboardingBanner } from '@/components/BrandOnboardingBanner';
+import { UpgradePromptCard } from '@/components/UpgradePromptCard';
 import { InfluencerPayoutBanner } from '@/components/InfluencerPayoutBanner';
 import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepository';
 import { getProfileByUserId as getInfluencerProfileByUserId } from '@/db/repositories/influencerProfileRepository';
@@ -102,14 +103,32 @@ async function getConsumerPoints(userId: string) {
   }
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ upgrade?: string }>;
+}) {
   const session = await auth();
   const userId = session?.user?.id;
   const userEmail = session?.user?.email || undefined;
   const role = session?.user?.role;
 
+  // ER.2 — friendly upgrade prompt when a layout guard bounced the
+  // user here from a wrong-role URL. The card is mounted ABOVE the
+  // role-specific dashboard so it stays visible without rearranging
+  // any per-role layout.
+  const sp = searchParams ? await searchParams : undefined;
+  const upgrade =
+    sp?.upgrade === 'influencer' || sp?.upgrade === 'brand' ? sp.upgrade : null;
+  const promptCard = upgrade ? <UpgradePromptCard variant={upgrade} /> : null;
+
   if (role === 'brand') {
-    return <BrandDashboard userId={userId} />;
+    return (
+      <>
+        {promptCard}
+        <BrandDashboard userId={userId} />
+      </>
+    );
   }
 
   // 3.5D — pure influencer signups (role='influencer') get the
@@ -117,10 +136,20 @@ export default async function DashboardPage() {
   // users (role='consumer') keep seeing ConsumerDashboard for now;
   // 3.5E adds the role-switcher so they can flip view.
   if (role === 'influencer') {
-    return <InfluencerDashboard userId={userId} userName={session?.user?.name ?? null} />;
+    return (
+      <>
+        {promptCard}
+        <InfluencerDashboard userId={userId} userName={session?.user?.name ?? null} />
+      </>
+    );
   }
 
-  return <ConsumerDashboard userId={userId} userEmail={userEmail} />;
+  return (
+    <>
+      {promptCard}
+      <ConsumerDashboard userId={userId} userEmail={userEmail} />
+    </>
+  );
 }
 
 // ── Brand Dashboard ──────────────────────────────────────────────
