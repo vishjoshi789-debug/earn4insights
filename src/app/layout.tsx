@@ -22,19 +22,28 @@ const inter = Inter({
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Brand indigo — colours the mobile-Chrome address bar + PWA splash.
+  // (Next.js 15 moved themeColor from metadata → viewport export.)
+  themeColor: '#4F46E5',
 }
 
 export const metadata: Metadata = {
   title: 'Earn4Insights — Intelligence OS for Brands, Consumers & Influencers',
   description: 'The Intelligence Operating System for Brands, Consumers and Influencers.',
   icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
+    // SVG first (any size, sharp). PNG fallbacks for browsers that
+    // don't accept SVG favicons (Safari < 14, some embedded webviews).
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-32.png', type: 'image/png', sizes: '32x32' },
+      { url: '/favicon-16.png', type: 'image/png', sizes: '16x16' },
+    ],
+    apple: '/icon-app-192.png',
   },
   openGraph: {
     title: 'Earn4Insights — Intelligence OS for Brands, Consumers & Influencers',
     description: 'The Intelligence Operating System for Brands, Consumers and Influencers.',
-    images: [{ url: '/logo.png', width: 512, height: 512, alt: 'Earn4Insights' }],
+    images: [{ url: '/icon-app-512.png', width: 512, height: 512, alt: 'Earn4Insights' }],
   },
 }
 

@@ -4,6 +4,20 @@
 
 @layer base {
   :root {
+    /* ── E-Lens brand palette (per public/branding/brand-spec.md §3+§9) ───
+       Direct-access RGB hex variables for callsites that need exact
+       brand colours (CTAs, brand-specific surfaces, gradients).
+       Tailwind tokens below still drive the rest of the theme. */
+    --brand-indigo-start:  #4F46E5;
+    --brand-indigo-end:    #7C3AED;
+    --brand-indigo-light:  #A5B4FC;
+    --brand-gold:          #F59E0B;
+    --brand-gold-bright:   #FBBF24;
+    --brand-gold-deep:     #D97706;
+    --brand-ink:           #1E1B2E;
+    --brand-near-black:    #0F0F1A;
+    --brand-gradient:      linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+
     /* Dark Theme - Professional & Modern */
     --background: 224 71% 4%;
     --foreground: 213 31% 91%;
