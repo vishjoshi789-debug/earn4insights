@@ -3,7 +3,7 @@ import { and, eq, desc, gt, inArray } from 'drizzle-orm'
 
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
-import { influencerProfiles, influencerVerificationRequests, auditLog } from '@/db/schema'
+import { users, influencerProfiles, influencerVerificationRequests, auditLog } from '@/db/schema'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import {
   requireEmailVerified,
@@ -12,6 +12,11 @@ import {
 } from '@/server/emailVerificationGuard'
 import { evaluateVerificationRequest } from '@/server/verificationThresholdService'
 import { VERIFICATION_THRESHOLDS } from '@/lib/config/verificationThresholds'
+import {
+  sendAutoApprovedEmail,
+  sendUnderReviewEmail,
+  sendAdminAlertEmail,
+} from '@/server/influencerVerificationEmailService'
 
 /**
  * A9 — Influencer verification request.
@@ -250,6 +255,34 @@ export async function POST(req: NextRequest) {
       reason: evaluation.reason,
     })
     .catch((err) => console.error('[VerificationRequest] Audit log failed:', err))
+
+  // ── Email notifications (fire-and-forget; never blocks the response) ─
+  // Auto-rejected gets no email — the UI shows the failed checks inline,
+  // and a "you've been rejected" email to someone we just told their
+  // request failed for fixable reasons is noise.
+  const [userRow] = await db
+    .select({ email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+
+  if (userRow && rowStatus === 'auto_approved') {
+    void sendAutoApprovedEmail({ email: userRow.email, name: userRow.name }).catch((err) =>
+      console.error('[VerificationRequest] auto_approved email failed:', err),
+    )
+  } else if (userRow && rowStatus === 'manual_review') {
+    void sendUnderReviewEmail({ email: userRow.email, name: userRow.name }).catch((err) =>
+      console.error('[VerificationRequest] under_review email failed:', err),
+    )
+    void sendAdminAlertEmail({
+      influencerName: userRow.name || userRow.email,
+      influencerEmail: userRow.email,
+      totalFollowers: evaluation.totalFollowers,
+      reason: evaluation.reason,
+    }).catch((err) =>
+      console.error('[VerificationRequest] admin_alert email failed:', err),
+    )
+  }
 
   return NextResponse.json({
     requestId: inserted.id,

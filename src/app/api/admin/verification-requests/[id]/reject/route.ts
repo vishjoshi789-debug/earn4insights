@@ -3,9 +3,10 @@ import { eq } from 'drizzle-orm'
 
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
-import { influencerProfiles, influencerVerificationRequests, auditLog } from '@/db/schema'
+import { users, influencerProfiles, influencerVerificationRequests, auditLog } from '@/db/schema'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { VERIFICATION_THRESHOLDS } from '@/lib/config/verificationThresholds'
+import { sendManualRejectedEmail } from '@/server/influencerVerificationEmailService'
 
 /**
  * A9 — Admin reject a manual_review verification request.
@@ -114,6 +115,20 @@ export async function POST(
       reason: 'Admin rejected manual-review verification',
     })
     .catch((err) => console.error('[VerificationReject] Audit log failed:', err))
+
+  const [userRow] = await db
+    .select({ email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, existing.userId))
+    .limit(1)
+  if (userRow) {
+    void sendManualRejectedEmail({
+      email: userRow.email,
+      name: userRow.name,
+      reviewerNotes: reviewNotes,
+      eligibleToReapplyAt,
+    }).catch((err) => console.error('[VerificationReject] email failed:', err))
+  }
 
   return NextResponse.json({
     requestId,

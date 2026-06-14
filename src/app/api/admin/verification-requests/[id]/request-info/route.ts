@@ -3,8 +3,9 @@ import { eq } from 'drizzle-orm'
 
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
-import { influencerVerificationRequests, auditLog } from '@/db/schema'
+import { users, influencerVerificationRequests, auditLog } from '@/db/schema'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
+import { sendNeedsInfoEmail } from '@/server/influencerVerificationEmailService'
 
 /**
  * A9 — Admin requests additional info from the user.
@@ -101,6 +102,19 @@ export async function POST(
       reason: 'Admin requested additional info from user',
     })
     .catch((err) => console.error('[VerificationNeedsInfo] Audit log failed:', err))
+
+  const [userRow] = await db
+    .select({ email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, existing.userId))
+    .limit(1)
+  if (userRow) {
+    void sendNeedsInfoEmail({
+      email: userRow.email,
+      name: userRow.name,
+      reviewerNotes: reviewNotes,
+    }).catch((err) => console.error('[VerificationNeedsInfo] email failed:', err))
+  }
 
   return NextResponse.json({
     requestId,

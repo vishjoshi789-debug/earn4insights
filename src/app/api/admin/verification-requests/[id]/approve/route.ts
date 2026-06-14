@@ -3,8 +3,9 @@ import { eq } from 'drizzle-orm'
 
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
-import { influencerProfiles, influencerVerificationRequests, auditLog } from '@/db/schema'
+import { users, influencerProfiles, influencerVerificationRequests, auditLog } from '@/db/schema'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
+import { sendManualApprovedEmail } from '@/server/influencerVerificationEmailService'
 
 /**
  * A9 — Admin approve a manual_review verification request.
@@ -98,6 +99,20 @@ export async function POST(
       reason: 'Admin approved manual-review verification',
     })
     .catch((err) => console.error('[VerificationApprove] Audit log failed:', err))
+
+  // Email user (fire-and-forget; admin route never blocks on email outage).
+  const [userRow] = await db
+    .select({ email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, existing.userId))
+    .limit(1)
+  if (userRow) {
+    void sendManualApprovedEmail({
+      email: userRow.email,
+      name: userRow.name,
+      reviewerNotes: reviewNotes,
+    }).catch((err) => console.error('[VerificationApprove] email failed:', err))
+  }
 
   return NextResponse.json({
     requestId,

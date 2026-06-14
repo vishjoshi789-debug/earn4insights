@@ -148,6 +148,11 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard/influencer/content', label: 'My Content', icon: FileText, tourId: 'nav-influencer-content', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer' },
   { href: '/dashboard/influencer/earnings', label: 'Earnings', icon: Wallet, tourId: 'nav-influencer-earnings', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer' },
   { href: '/dashboard/influencer/payouts', label: 'Payout Accounts', icon: Wallet, tourId: 'nav-influencer-payouts', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer', requiresEmailVerified: true },
+  // A9 — Influencer verification page. Email-verified gate carries the 🔒
+  // lock when unverified (since the request route is the 8th
+  // hard-blocked route). Capability flag keeps the entry off pure
+  // consumer sidebars per ER.1.
+  { href: '/dashboard/influencer/verification', label: 'Get Verified', icon: ShieldCheck, tourId: 'nav-influencer-verification', role: ['consumer', 'influencer'], requiresCapability: 'isInfluencer', requiresEmailVerified: true },
   {
     href: '/dashboard/detailed-analytics',
     label: 'Product Deep Dive',
@@ -190,6 +195,8 @@ const menuItems: MenuItem[] = [
   { href: '/admin/send-time-optimization', label: 'Send-Time Optimizer', icon: Timer, tourId: 'nav-admin-send-time', role: 'admin' },
   { href: '/admin/send-time-analytics', label: 'Send-Time Analytics', icon: Activity, tourId: 'nav-admin-send-time-analytics', role: 'admin' },
   { href: '/admin/support', label: 'Support', icon: HelpCircle, tourId: 'nav-admin-support', role: 'admin' },
+  // A9 — Admin verification queue. Mirrors the /admin/payouts pattern.
+  { href: '/admin/verification-requests', label: 'Verification Queue', icon: ShieldCheck, tourId: 'nav-admin-verification', role: 'admin' },
 ]
 
 // Items whose sub-paths have their own sidebar entry — use exact match only
