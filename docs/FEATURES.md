@@ -344,6 +344,19 @@ Public-facing profile with bio, niche, portfolio, audience stats. Surfaces to br
 - **For:** influencers
 - **Where:** `/dashboard/influencer/profile`
 
+## Get Verified (Influencer Verification)
+
+Apply for a verified badge that appears on every campaign application and gives higher visibility in brand search. Three-tier auto-approval:
+
+- **Auto-approved** (instant) — all 8 profile requirements met + 1,000+ followers across platforms
+- **Manual review** (a few business days) — basics met but borderline; our team reviews
+- **Auto-rejected** (no cooldown) — hard-floor checks failed (no photo, very short bio, no social handles, brand-new account); fix and re-submit any time
+- **For:** verified-email influencers (consumer + influencer dual-role also supported)
+- **Where:** `/dashboard/influencer/verification`
+- **What you get:** live 8-check checklist showing your readiness; submit form with optional application message + referral notes + portfolio links; status card with cooldown info if rejected
+- **Decision emails:** auto-approved / under review / approved / rejected (with reason + 30-day reapply date) / needs-info — all branded, mobile-responsive
+- **Cooldown:** rejected manually = 30 days before re-applying. Hard-floor auto-reject = no cooldown (the user knows what to fix)
+
 ---
 
 # Shared / Cross-Cutting Features
@@ -426,6 +439,7 @@ Admin users (single platform-operator role) see seven admin-only nav items plus 
 | `/admin/send-time-optimization` | AI-driven optimal send-time per consumer |
 | `/admin/send-time-analytics` | Send-time A/B results |
 | `/admin/support` | Support ticket queue + analytics |
+| `/admin/verification-requests` | Influencer verification queue — review manual_review submissions; approve / reject (with 30-day cooldown) / request more info. Sidebar shows unread count badge. |
 
 Admin role bypasses role-based layout guards (can view any `/dashboard/*` surface), but is hidden from consumer/brand/influencer sidebars (consistent UI per role).
 
@@ -460,6 +474,7 @@ Per-feature technical docs live under `docs/`:
 - `docs/FEATURE8_PLATFORM_ANALYTICS.md` — DAU/MAU, cohorts, health score, OLS forecast
 - `docs/FEATURE9_TWO_FACTOR_AUTH.md` — TOTP, `requires2FA` interlock, trusted devices
 - `docs/FEATURE10_EMAIL_VERIFICATION_AND_ROLE_GUARDS.md` — Email verification 5-layer system + role guards
+- `docs/FEATURE11_INFLUENCER_VERIFICATION.md` — Influencer verification 3-tier auto-approval + admin queue + 6 email templates
 - `docs/SOCIAL_PLATFORM_SETUP.md` — Per-platform listener setup (status, API, env vars)
 - `docs/CRON_JOBS.md` — All 32 cron entries
 - `docs/SCHEMA.md` — All DB table definitions

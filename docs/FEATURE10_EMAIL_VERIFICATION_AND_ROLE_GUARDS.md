@@ -104,7 +104,7 @@ Drizzle schema mirrors this with `.references(() => users.id, { onDelete: 'casca
 
 ---
 
-## 4. Hard-blocked routes (7 total)
+## 4. Hard-blocked routes (8 total)
 
 All return `403` with structured body `{ error, code: 'EMAIL_NOT_VERIFIED', cta: '/dashboard/settings' }`:
 
@@ -115,8 +115,7 @@ All return `403` with structured body `{ error, code: 'EMAIL_NOT_VERIFIED', cta:
 5. `POST /api/brand/campaigns` — financial
 6. `POST /api/payments/create-order` — financial
 7. `POST /api/deals/[id]/redeem` — financial (added in EV.3.1)
-
-A pending 8th route is `POST /api/influencer/verification/request` (A9 — current sprint).
+8. `POST /api/influencer/verification/request` — legal / identity (added in A9 — see `docs/FEATURE11_INFLUENCER_VERIFICATION.md`)
 
 Pattern in every route, after auth + role check:
 ```ts

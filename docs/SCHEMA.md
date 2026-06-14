@@ -628,6 +628,71 @@ Drizzle schema (`src/db/schema.ts`) was updated in the same commit to declare `.
 
 ---
 
+## Migration 028 — Influencer Verification Requests (A9) — 1 new table + 2 FKs + 3 indexes + 1 CHECK
+
+| Object | Purpose |
+|--------|---------|
+| `influencer_verification_requests` | Append-only history of every influencer verification attempt. Each submission gets a row; the request's `status` walks one of 7 lifecycle values. The user's CURRENT verification state continues to live on `influencer_profiles.verification_status` (3 values: `unverified` / `pending` / `verified`) — flipped atomically when the request row transitions to `auto_approved` / `approved` / `auto_rejected` / `rejected`. |
+| `ivr_status_check` | CHECK constraint enforcing the 7-value status enum at the DB layer (defence in depth — the TS union restricts on insert too). |
+| `fk_ivr_user` | FK CASCADE → `users(id)`. Deleting a user wipes their verification history. |
+| `fk_ivr_reviewer` | FK SET NULL → `users(id)`. Deleting an admin leaves their decision rows intact but unattributed (audit-friendly). |
+| `idx_ivr_status_created` | Admin queue list — `(status, created_at DESC)`. Hot path for the "Awaiting review" filter. |
+| `idx_ivr_user_id` | User-side status lookup — fetch the most recent request for `userId`. |
+| `uq_ivr_user_open_request` | Partial UNIQUE on `(user_id) WHERE status IN ('pending', 'manual_review', 'needs_info')`. Enforces one-open-request-per-user. Closed statuses (`auto_approved`, `auto_rejected`, `approved`, `rejected`) don't block re-application — the post-rejection cooldown is enforced separately by `eligible_to_reapply_at`. |
+
+### `influencer_verification_requests`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK DEFAULT gen_random_uuid() | |
+| `user_id` | TEXT NOT NULL | FK CASCADE → users(id) |
+| `status` | TEXT NOT NULL DEFAULT 'pending' | one of: `pending` / `auto_approved` / `auto_rejected` / `manual_review` / `approved` / `rejected` / `needs_info`. CHECK constraint enforces. |
+| `application_message` | TEXT NULL | Free-text from the user, max 1000 chars enforced at route layer. |
+| `brand_contact_notes` | TEXT NULL | Free-text referral context — "Currently collaborating with X", "Referred by Y". Max 500 chars. No structured referral system in v1; this is a hint to the reviewer. |
+| `portfolio_links` | JSONB NOT NULL DEFAULT `[]` | `string[]` of URLs, up to 5 enforced at route layer. |
+| `proof_documents` | JSONB NOT NULL DEFAULT `[]` | `{ url, label? }[]` — reserved for future (admin reviewer can request uploaded proof). Not yet captured by the user-side UI. |
+| `threshold_check_result` | JSONB NULL | Snapshot of `verificationThresholdService.evaluateVerificationRequest()` at submission time — all 8 checks, total followers, decision reason. Persisted so the admin queue UI doesn't need to re-query live state. |
+| `reviewer_id` | TEXT NULL | FK SET NULL → users(id). The admin who decided the request. |
+| `review_notes` | TEXT NULL | Reviewer's note — required for `reject` / `needs_info`, optional for `approve`. Max 1000 chars. |
+| `reviewed_at` | TIMESTAMP NULL | NOT NULL after a final decision (`approved` / `rejected` / `auto_approved` / `auto_rejected`). NULL while open. |
+| `eligible_to_reapply_at` | TIMESTAMP NULL | On `rejected` set to `NOW() + COOLDOWN_AFTER_REJECTION_DAYS` (default 30). Re-application before this timestamp is blocked by the request route with a 409. NULL for all other statuses. |
+| `created_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+| `updated_at` | TIMESTAMP NOT NULL DEFAULT NOW() | |
+
+**Status lifecycle:**
+
+```
+                                evaluator runs at submission
+                                       │
+                  ┌────────────────────┼────────────────────┐
+                  │                    │                    │
+              Tier 1               Tier 2               Tier 3
+          (all 8 + 1000+         (basic checks       (hard floor
+           followers + age)       borderline)         failed)
+                  │                    │                    │
+                  ▼                    ▼                    ▼
+           auto_approved          manual_review        auto_rejected
+                                       │              (no cooldown —
+                                       │               can re-submit
+                                       │               after fixing)
+                              ┌────────┼────────┐
+                              │        │        │
+                          approved  rejected  needs_info
+                                    (+ 30d         │
+                                     cooldown)     │  user re-submits;
+                                                   │  back to manual_review
+                                                   │  OR replaces with new
+                                                   │  request
+```
+
+`influencer_profiles.verification_status` mirrors the user's CURRENT state:
+- `pending` while a `manual_review` or `needs_info` row exists
+- `verified` after `auto_approved` / `approved`
+- `unverified` otherwise (default + after `rejected`)
+
+The route layer flips it atomically inside the same DB transaction that updates the request row, so a crash between the two can't leave a "verified user with rejected request" inconsistency.
+
+---
+
 ## Notes on tables that have evolved since their original migration
 
 ### `whatsapp_otp_verifications` (migrations 014 → 018)

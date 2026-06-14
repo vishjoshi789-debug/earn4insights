@@ -447,6 +447,78 @@ Both layouts run as server components, so the redirect fires before any client p
 
 Mounted in `src/app/dashboard/page.tsx` ABOVE the role-specific dashboard component (BrandDashboard / InfluencerDashboard / ConsumerDashboard) so it stays visible without rearranging per-role layouts. `searchParams` await wrapped in try/catch defaulting to `undefined` so a Promise-edge-case never sinks the dashboard render.
 
+Admin role redirects from `/dashboard` to `/admin/platform-analytics` (the founder dashboard) so they never see the role-specific landing pages or the upgrade prompt — they have their own admin surface.
+
+### Influencer Verification System (A9 — June 2026)
+
+Three-tier auto-approval evaluator + manual-review admin queue + 6 email templates. Completes the original EV.1 spec (the 7th hard-blocked route that was deferred pending the broader email-verification surface) and adds a full admin workflow.
+
+**Database (migration 028):**
+- `influencer_verification_requests` — append-only history with 7-status lifecycle (`pending` / `auto_approved` / `auto_rejected` / `manual_review` / `approved` / `rejected` / `needs_info`)
+- Partial UNIQUE on `user_id WHERE status IN (open-statuses)` — one open request per user
+- `eligible_to_reapply_at` set to `NOW() + 30 days` on rejection (cooldown enforcement)
+- `influencer_profiles.verification_status` mirrors the current state (3 values) flipped atomically with the request row
+
+**Service layer (`src/server/verificationThresholdService.ts`):**
+- `evaluateVerificationRequest(userId)` — pure read-only. Returns `{ tier, autoDecision, checks, failedChecks, totalFollowers, hasApiVerifiedHandle, reason }`
+- 8 checks: `emailVerified`, `profilePhoto`, `bioLength >= 50`, `niches >= 2`, `socialHandles >= 1`, `accountAge >= 7 days`, `onboardingComplete`, `profileCompleteness >= 80`
+- Plus follower aggregation: sum of `influencer_social_stats.follower_count` across platforms. OAuth-verified handles (`verification_method = 'api_verified'`) bypass the `MAX_AUTO_APPROVE_FOLLOWERS` fraud cap
+
+**Decision tree:**
+- **Tier 1 (auto-approve)** — ALL 8 basic checks pass AND `1000 ≤ totalFollowers ≤ 100,000` (or OAuth-verified above 100K)
+- **Tier 2 (manual review)** — basic checks pass but: `500 ≤ followers < 1000` OR `followers > 100K self-reported` OR any single basic check fails (but no hard-floor)
+- **Tier 3 (auto-reject)** — hard-floor failure: no email verified / no photo / `bio < 20 chars` / no social handles / `accountAge < 1 day` / `profileCompleteness < 50`. No cooldown — user fixes + re-submits
+
+**Configuration (`src/lib/config/verificationThresholds.ts`):** all 12 thresholds in one constants module. Retuning is a single-file edit; service reads directly with no inline magic numbers.
+
+**Shared profile-completeness (`src/lib/influencer/profileCompleteness.ts`):** extracted from the dashboard's inline implementation in A9.1 so the influencer-home stat card AND the verification gate use the same 10-factor weighted score (sum 100; portfolio factor reserved → real max 95 today).
+
+**API surface (6 routes):**
+- `POST /api/influencer/verification/request` — **8th hard-blocked route** (`requireEmailVerified` guard). Role gate + open-request guard + cooldown guard + evaluator + persist + flip profile status + email
+- `GET /api/influencer/verification/status` — current status + open request + last decision + cooldown + live preview (re-evaluates against current profile so checklist UI updates as user edits)
+- `GET /api/admin/verification-requests?status=manual_review` — admin queue list with joined user/profile context
+- `POST /api/admin/verification-requests/[id]/{approve,reject,request-info}` — atomic state transitions; reject sets cooldown; request-info keeps status open so user can re-submit without cooldown
+
+**Client surface:**
+- `/dashboard/influencer/verification` — live 8-check checklist (updates from 30s polling), status card with cooldown banner, submit form with optional `applicationMessage` / `brandContactNotes` / `portfolioLinks` (5) / `requestManualReview` checkbox
+- `/admin/verification-requests` — queue page mirroring `/admin/payouts` UX (status + age badges, dialog-based action confirmations, threshold context panel)
+- `VerifiedBadge` (`src/components/influencer/VerifiedBadge.tsx`) — reusable trust badge for influencer cards anywhere on the platform
+- "Get Verified" sidebar entry (influencer, `requiresEmailVerified` lock) + "Verification Queue" sidebar entry (admin, with unread count badge)
+
+**6 email templates** (`src/lib/email/templates/influencer-verification.ts`):
+- `autoApproved` — Tier 1 success
+- `underManualReview` — Tier 2 submitted
+- `adminAlert` — sent to `SUPPORT_ADMIN_EMAIL` when a new `manual_review` row lands
+- `manualApproved` — admin approved a manual_review request
+- `manualRejected` — admin rejected (with reason + cooldown date)
+- `needsInfo` — admin asked for more info
+
+### Admin Layout (`/admin/layout.tsx` — June 2026)
+
+Before this file existed, `/admin/*` pages fell back to the root layout — no sidebar, no header. Admin landing on `/admin/platform-analytics` (per the dashboard redirect in `dashboard/page.tsx`) had no way to navigate to other admin tools.
+
+**Design** mirrors `/dashboard/layout.tsx` with three deliberate trims:
+- No `OnboardingGuard` — admin bypasses it anyway; we enforce auth + role here directly
+- No `EmailVerificationBanner` — admin doesn't hit any of the 8 email-gated routes
+- No `ConsentRenewalWrapper` — that's a consumer-facing GDPR prompt
+
+**Stack:** `ActiveViewProvider defaultView='admin'` + `EmailVerificationProvider` (for sidebar lock state via context fallback) + `DashboardShell` (provides the sidebar) + `ChatWidget`.
+
+**Role gate:** non-admin signed-in users redirect to `/dashboard` (where the admin redirect in `dashboard/page.tsx` correctly bounces THEM to their role view — no loop because they're not admin). Logged-out visitors redirect to `/login` with `callbackUrl=/admin/platform-analytics`.
+
+### Sidebar count badges
+
+A general pattern for surfacing "you have N things waiting" on a sidebar entry. Two examples in production:
+
+| Item | Source | Pattern |
+|---|---|---|
+| Brand "Alerts" | `GET /api/brand/alerts?countOnly=true` | `userRole === 'brand'` only; 30s poll; pause when tab hidden |
+| Admin "Verification Queue" | `GET /api/admin/verification-requests?status=manual_review` | `userRole === 'admin'` only; 30s poll; pause when tab hidden |
+
+Both poll via `useEffect` in `DashboardShell`, store counts in component state, pass through to `SidebarNav` props. The `SidebarNav` map computes per-item `showAnyBadge` + `badgeCount` and renders the red destructive badge inline next to the nav label.
+
+Adding a third count-badged item = ~15 LoC: state + poller + pass through props + add a branch in the map.
+
 ---
 
 ## 6. Consent System

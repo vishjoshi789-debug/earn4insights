@@ -47,7 +47,118 @@
 | ER | ER.1 | Sidebar `requiresCapability` filter + influencer / brand server-side layout guards | `faf1bfb` | ✅ 2026-06-13 (pure consumer no longer sees influencer items; direct URLs redirect to `/dashboard?upgrade=…`) | ✅ 2026-06-13 |
 | ER | ER.2 | `UpgradePromptCard` mounted on `/dashboard` reading `searchParams.upgrade` | `4394304` | ✅ 2026-06-13 (both variants render with correct CTAs) | ✅ 2026-06-13 |
 | EV | EV.2 def | Verify-email defensive patches (try/catch, meta refresh, force-dynamic, plain `<a>`) | `dbf5c6b` + `dd4e536` + `799bd52` | ⚠️ End-to-end verification works (AlreadyUsedPanel + meta refresh paths verified); SuccessPanel `router.push` root cause unresolved | ✅ 2026-06-13 |
-| 4 | 4C | Influencer verification flow (A9) | — | ⏳ **NEXT — current sprint.** Strategic deferral resolved by EV.2 + EV.3 + ER.1 + ER.2 landing. The 7th `requireEmailVerified` route + an influencer-specific verification request UI. | ⏳ pending |
+| 4 | 4C | Influencer verification flow (A9) | — | ✅ **SHIPPED 2026-06-14** (smoke-tested end-to-end with vishweshwar test account → admin approve). Migration 028 + 3-tier evaluator + admin queue + 6 email templates + admin layout fix + queue badge. See "Phase A9" narrative below. | ✅ 2026-06-14 |
+| A9 | 9.1 | Schema + threshold service + 6 API routes; profileCompleteness extraction; migration 028 | `d4f7c67` | ✅ 2026-06-14 (migration POST returned full results; threshold service typecheck-clean) | ✅ 2026-06-14 |
+| A9 | 9.2 | Verification page + admin queue + VerifiedBadge + 6 email templates + sidebar entries | `417cfa6` | ✅ 2026-06-14 (Tier 2 manual_review path traced influencer → admin queue → approve → user gets approval email → profile badge live) | ✅ 2026-06-14 |
+| Admin | fix-1 | `/dashboard` redirects admin role to `/admin/platform-analytics` | `cd74a79` | ✅ 2026-06-14 (admin lands on founder dashboard instead of consumer view) | ✅ 2026-06-14 |
+| Admin | fix-2 | NEW `/admin/layout.tsx` restores sidebar on all `/admin/*` pages + Verification Queue unread count badge | `4c8864d` | ✅ 2026-06-14 (sidebar visible on every admin page; badge shows pending count, drops to 0 after admin actions) | ✅ 2026-06-14 |
+
+---
+
+## 🎉 ALL TIER A COMPLETE — 2026-06-14
+
+Every ship-blocker from the 6-pass pre-launch audit is now resolved. Tier A roll-up:
+
+| Tier A ID | Subject | Shipped in |
+|---|---|---|
+| A1 | Marketplace handshake — atomic accept + campaign_influencers insert | Sub-Phase 1A (`f4d909d`) |
+| A2 | (Pre-audit Google OAuth race — incidental, fixed during 1B) | Sub-Phase 1B (`c29dad3`) |
+| A3, A11 | Security quick wins — orphan signup route deletion + admin key URL leak | Sub-Phase 2A (`5080d87`) |
+| A4, A6 | Points system — atomic deductPoints + unified UI minimum | Sub-Phase 2B (`573da7e`) |
+| A5 | Scheduled launch timezone — TZ-aware via date-fns-tz | Sub-Phase 2C (`b2749a3`) |
+| A9 | **Influencer verification flow** | Phase A9 (`d4f7c67` + `417cfa6` + `cd74a79` + `4c8864d`) |
+| A10 | Payout-account prompt (5-layer + friendly modal) | Sub-Phase 4B (`bdc0f01`) |
+| A13 | Marketplace draft exclusion — apply guard + listing filters | Sub-Phase 4A (`6c7d80b`) |
+
+Plus the entire Phase 3 brand surface, Phase 3.5 influencer onboarding redesign, EV.1/EV.2/EV.3 email verification, ER.1/ER.2 role boundaries, and the verify-email defensive engineering — all complete.
+
+**Beta-launch status: READY pending the go-to-market checklist below.**
+
+Open items (non-blocking):
+- Verify-email SuccessPanel UX bug (parked, defensive fixes shipped — works end-to-end via meta refresh)
+- Broader admin notification bell (currently typed `'brand' | 'consumer'` only — verification queue badge in sidebar covers the most-important admin signal for now)
+- VerifiedBadge mount in `/dashboard/brand/influencers` — component exists, drop-in mount when next polishing brand discovery surface
+- `proof_documents` capture path on influencer verification form (column reserved in schema, UI not yet built)
+
+---
+
+## Phase A9 — Influencer verification flow (COMPLETE)
+
+> The 7th `requireEmailVerified` hard-blocked route from EV.1 was deferred for "broader strategic discussion on the influencer onboarding flow." That discussion produced Phase 3.5 (which redesigned the entire influencer surface as first-class signup + dedicated wizard + dual-role sidebar). A9 then slotted naturally on top of the existing infrastructure with the EV.1/2/3 + ER.1/2 patterns already in place.
+
+### A9.1 — Schema + threshold service + 6 API routes (`d4f7c67`)
+
+**Migration 028:**
+- New `influencer_verification_requests` table (12 columns, 7-status lifecycle, FK CASCADE → users + SET NULL → reviewer)
+- 3 indexes: `(status, created_at DESC)` for admin queue, `(user_id)` for status lookup, partial UNIQUE on `(user_id) WHERE status IN ('pending', 'manual_review', 'needs_info')` for one-open-request-per-user
+- CHECK constraint enforcing the status enum at the DB layer
+- Idempotent via DO-block checks on `pg_constraint`
+
+**Threshold service (`src/server/verificationThresholdService.ts`):**
+- Pure read-only — does NOT write any state; the route layer persists onto the request row and flips `influencer_profiles.verification_status`
+- 8 checks: `emailVerified` / `profilePhoto` / `bioLength ≥ 50` / `niches ≥ 2` / `socialHandles ≥ 1` / `accountAge ≥ 7 days` / `onboardingComplete` / `profileCompleteness ≥ 80%`
+- Follower aggregation: sum of `influencer_social_stats.follower_count` across platforms. OAuth-verified handles (`verification_method = 'api_verified'`) bypass the `MAX_AUTO_APPROVE_FOLLOWERS = 100,000` fraud cap
+
+**3-tier decision:**
+| Tier | Trigger | Result |
+|---|---|---|
+| 1 | All 8 + `1000 ≤ followers ≤ 100K` (or OAuth-verified above 100K) | `auto_approved` — profile.verification_status flipped to `verified` |
+| 2 | Basic checks pass but borderline: `500 ≤ followers < 1000` OR `followers > 100K self-reported` OR any single basic check fails | `manual_review` — lands in admin queue, profile.verification_status = `pending` |
+| 3 | Hard-floor failure: no email verified / no photo / `bio < 20 chars` / no social handles / `accountAge < 1 day` / `profileCompleteness < 50%` | `auto_rejected` — no cooldown, user fixes + re-submits |
+
+**Profile completeness extraction:**
+- Originally inline at `src/app/dashboard/page.tsx:370-434` — InfluencerProfileLite + COMPLETENESS_FACTORS + calc + getMissing
+- Moved to `src/lib/influencer/profileCompleteness.ts` — both the dashboard stat card AND the verification gate import from here. Without extraction, both would have drifted as factors evolved.
+- Real-world max is 95% (not 100%) — the `portfolio` factor's `check()` always returns false because the wizard doesn't capture portfolio links yet. A9's 80% threshold sits comfortably under that ceiling.
+
+**Configuration:**
+- `src/lib/config/verificationThresholds.ts` — 12 constants in one module. Retuning is a single-file edit.
+
+**6 API routes:**
+- `POST /api/influencer/verification/request` (8th hard-blocked route, CSRF, role gate, evaluator + persist + flip profile status)
+- `GET /api/influencer/verification/status` (current + open + last decision + cooldown + live preview)
+- `GET /api/admin/verification-requests` (admin queue list)
+- `POST /api/admin/verification-requests/[id]/{approve,reject,request-info}` (atomic state transitions + audit + email)
+
+### A9.2 — UI + admin queue + 6 email templates (`417cfa6`)
+
+**Influencer page** (`/dashboard/influencer/verification`):
+- Live 8-check checklist polling `/api/influencer/verification/status` every 30s — updates as user edits their profile in another tab
+- Status card with 4 states (verified / open request / cooldown / never submitted)
+- Submit form with optional `applicationMessage` (1000 chars) / `brandContactNotes` (500 chars) / `portfolioLinks` (5 URLs) / `requestManualReview` checkbox
+
+**Admin queue page** (`/admin/verification-requests`):
+- Status filter tabs (Awaiting review / Needs info / All history)
+- Per-row detail panel: evaluator reason, total followers, 8 check rows (pass/fail with value vs threshold), application message, brand notes, portfolio links
+- 3 action dialogs (Approve / Reject / Request info) with notes textarea (required for reject + request-info, optional for approve)
+- Profile photo + age badge + status badge per row
+
+**6 email templates** (`src/lib/email/templates/influencer-verification.ts`):
+- Mirror the EV.1 visual identity (gradient header + branded body + CTA button)
+- `autoApproved` / `underManualReview` / `adminAlert` / `manualApproved` / `manualRejected` (with cooldown date) / `needsInfo`
+- Admin alert goes to `SUPPORT_ADMIN_EMAIL` (default `contact@earn4insights.com`) — single destination, lower volume than support tickets so no fan-out via `getAdminUserIds()` needed
+
+**`VerifiedBadge` component** (`src/components/influencer/VerifiedBadge.tsx`):
+- Reusable trust badge with `size: 'sm' | 'md'` and optional `withLabel`. Renders nothing when `verified` is false — safe to drop in unconditionally next to a name.
+- Component ready; mount on brand-side influencer cards (`/dashboard/brand/influencers`) deferred as polish.
+
+**Sidebar entries:**
+- "Get Verified" (influencer, with `requiresEmailVerified` lock for unverified users) — between Payout Accounts and Earnings
+- "Verification Queue" (admin) — appended to admin nav block
+
+### Admin fix-1 — `/dashboard` admin redirect (`cd74a79`)
+
+Pre-existing minor UX bug: `dashboard/page.tsx` had no admin branch, so admin role fell through to ConsumerDashboard. Now redirects to `/admin/platform-analytics` (the founder dashboard with KPIs / health score / MRR / runway / predictions). Server-side redirect, no flash. 5 LoC.
+
+### Admin fix-2 — `/admin/layout.tsx` + queue badge (`4c8864d`)
+
+**Bug discovered during A9 smoke test:** admin had no sidebar on `/admin/*` pages because there was no `/admin/layout.tsx` — pages fell back to root layout (no sidebar). After landing on `/admin/platform-analytics` from the redirect above, admin was stranded.
+
+**Fix A — new `src/app/admin/layout.tsx`:** mirrors `dashboard/layout.tsx` with three deliberate trims (no OnboardingGuard, no EmailVerificationBanner, no ConsentRenewalWrapper — admin doesn't need any of those). Stack: `ActiveViewProvider defaultView='admin'` → `EmailVerificationProvider` (for sidebar lock state context fallback) → `DashboardShell` → `ChatWidget`. Role gate redirects non-admins to `/dashboard`.
+
+**Fix B — Verification Queue unread count badge:** mirrors the brand alerts pattern. `DashboardShell` polls `/api/admin/verification-requests?status=manual_review` every 30s when `userRole === 'admin'` AND tab is visible. Renders red destructive badge inline on the "Verification Queue" sidebar item. ~15 LoC, generalises the badge rendering loop to handle any number of count-badged items.
+
+**Diagnostic note:** during ER.1 smoke testing the user reported "admin sidebar shows only shared items." Root cause was a stale `e4i_active_view` sessionStorage value (`"consumer"`) from earlier testing that overrode `defaultView='admin'`. Clearing sessionStorage fixed it. Documented for future similar reports.
 
 ---
 

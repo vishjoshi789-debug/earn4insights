@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> **Last updated:** June 2026 (v10 — EV.2 + EV.3 shipped, ER.1/ER.2 role guards; verify-email UX bug parked; A9 next).
+> **Last updated:** June 2026 (v11 — **ALL TIER A COMPLETE**; A9 influencer verification shipped; admin layout + sidebar badge fixes; beta-ready).
 > Read at the start of every session. Designed to fit in context without crowding daily-work prompts.
 
 ---
@@ -123,6 +123,9 @@ These are the daily-work invariants. Full historical rationale for each one is i
 - **Role-specific server layout guards (ER.1).** `/dashboard/influencer/layout.tsx` redirects non-influencers to `/dashboard?upgrade=influencer`; `/dashboard/brand/layout.tsx` redirects non-brands to `/dashboard?upgrade=brand`. Admin bypasses both. Replaces per-page client-side `router.push('/dashboard')` patterns that flashed content.
 - **Email verification provider (EV.3).** Single shared `EmailVerificationProvider` mounted in `dashboard/layout.tsx` powers L1 banner, L2 context banners, L3 sidebar locks, L4 button intercepts, settings card. 60s background poll + tab-focus revalidation + `refresh()` after resend. Fail-open: endpoint errors → treated as verified → no nag (server hard-block is still source of truth).
 - **EV `openEmailVerificationPrompt()` helper.** Dispatches the same `e4i:email-not-verified` window event that the api-client 403 interceptor dispatches. Lets Layer 4 disabled-style buttons short-circuit to the modal WITHOUT making a doomed network call.
+- **Admin pages MUST be wrapped in `/admin/layout.tsx`.** Without it, admin pages fall back to the root layout (no sidebar). The layout mounts `ActiveViewProvider defaultView='admin'` + `DashboardShell` + `EmailVerificationProvider` + `ChatWidget`, plus a role guard redirecting non-admins to `/dashboard`. Mirror of `dashboard/layout.tsx` minus OnboardingGuard / banner / ConsentRenewal (admin doesn't need consumer-onboarding chain).
+- **Sidebar count badges follow one pattern.** Brand alerts (`/dashboard/alerts`) + admin Verification Queue (`/admin/verification-requests`) both poll every 30s, gated on `userRole !== <role>`, paused while tab hidden via `isVisible.current` ref. Read by `SidebarNav` via props. Adding a third count-badged item = add state + poller in `DashboardShell` + pass through to `SidebarNav` + render branch in the map.
+- **Influencer verification = 3-tier auto-decision + 8 checks.** `evaluateVerificationRequest(userId)` is pure read-only. Tier 1 auto-approve flips `influencer_profiles.verification_status = 'verified'` atomically with the request row insert. Tier 2 lands in admin queue. Tier 3 hard-floor failures auto-reject (no cooldown — user fixes + re-submits). Tunable via `VERIFICATION_THRESHOLDS` in `src/lib/config/verificationThresholds.ts`.
 
 ### Encryption
 - **TOTP/account-number/IBAN use versioned encryption.** Store `encryption_key_id` alongside ciphertext so `decryptFromStorage()` finds the right key. Env carries only versioned keys (`ENCRYPTION_KEY_v1`), not a bare `ENCRYPTION_KEY`.
@@ -149,32 +152,35 @@ These are the daily-work invariants. Full historical rationale for each one is i
 
 ## 6. Current Sprint
 
-**Active:** **A9 — Influencer Verification Flow** (next).
+**Active:** None — **ALL TIER A COMPLETE**, beta-ready. Awaiting beta-launch decision + go-to-market work.
 
-A9 was the 7th hard-block route from EV.1 (`POST /api/influencer/verification/request`) that was deferred pending the broader user-facing email-verification surface. With EV.2 + EV.3 + ER.1 + ER.2 all shipped, the influencer verification flow is the natural next item — it slots into the existing 5-layer nudge system (banner / sidebar lock / button intercept / modal / hard-block) and uses the same `requireEmailVerified` + `requiresCapability: 'isInfluencer'` patterns.
+A9 (influencer verification) shipped as the final Tier A item — 3-tier auto-approval evaluator + manual-review admin queue + 6 email templates, plus the missing `/admin/layout.tsx` that restored the sidebar on admin pages.
 
-**Parked (low-impact, no user blocker):** verify-email SuccessPanel UX bug — the `error.tsx` boundary was firing on the `router.push('/dashboard')` transition after a successful verification. Defensive fixes (meta refresh, `force-dynamic`, plain `<a>`) shipped to sidestep the failure mode; verification works end-to-end. Root cause requires Vercel function logs (`digest 2626478451`). See `docs/FEATURE10_EMAIL_VERIFICATION_AND_ROLE_GUARDS.md` for the full debugging trail.
+**Beta-launch open items (non-blocking):**
+- Beta-launch announcement + outreach
+- Brand-side influencer search (`/dashboard/brand/influencers`) — VerifiedBadge component exists, mount on cards as polish
+- Verify-email SuccessPanel UX bug — defensive fixes shipped, verification works end-to-end via meta refresh; root cause `digest 2626478451` parked pending Vercel function-log access
+- Broader admin notification bell (verifications + payouts + revenue alerts + support) — currently typed `'brand' | 'consumer'` only; Tier B candidate
+
+**Parked features (intentional, env-flag controlled):**
+- WhatsApp UI (`NEXT_PUBLIC_WHATSAPP_ENABLED=false`)
+- RazorpayX automatic payouts (`RAZORPAYX_ENABLED=false` — all manual via admin queue)
+- Wise / PayPal integrations (stubs pending API credentials)
 
 ---
 
 ## 7. What's NEW (since last doc sync)
 
-Single-glance view of every commit since the previous doc sync (`9b3bd1b` on 2026-06-13 captured everything below). Older changes have rolled into `docs/CLAUDE_HISTORY.md §4`.
+Single-glance view of every commit since the previous doc sync (`7fd0919` on 2026-06-13 captured FEATURES.md creation; commits below ship A9 + admin layout fixes). All EV/ER/Phase-3.5 work + earlier commits now in `docs/CLAUDE_HISTORY.md §4`.
 
 | Commit | Date | Summary |
 |---|---|---|
-| `799bd52` | 2026-06-13 | **fix(auth):** `force-dynamic` + plain `<a>` on `/verify-email` — eliminates Vercel CDN / browser cache + client-router transitions as suspects for the SuccessPanel error. Verify-email path now works end-to-end via meta refresh + full page reload. |
-| `dd4e536` | 2026-06-13 | **fix(auth):** verify-email success state uses HTML `<meta http-equiv="refresh">`, no client component. Eliminates hydration / `useRouter` failure modes. `SuccessRedirect.tsx` left as dead code pending root-cause investigation. |
-| `dbf5c6b` | 2026-06-13 | **fix(auth):** defensive try/catch in `SuccessRedirect` (`window.location.assign` fallback) + dashboard `searchParams` await guard. First mitigation attempt — did not resolve the issue but added belt-and-suspenders. |
-| `4394304` | 2026-06-13 | **feat(roles): ER.2** — `UpgradePromptCard` with influencer / brand variants, mounted on `/dashboard` reading `searchParams.upgrade`. Influencer variant CTA → `/onboarding?path=influencer`; brand variant → `mailto:hello@earn4insights.com` (no auto-upgrade — paid business sign-up). Server component, no client state. |
-| `faf1bfb` | 2026-06-13 | **fix(roles): ER.1** — sidebar `requiresCapability: 'isInfluencer' \| 'isBrand'` filter (closes "pure consumer sees influencer items" leak from 3.5B-fix); server-side layout guards at `/dashboard/influencer/layout.tsx` + `/dashboard/brand/layout.tsx`. Admin bypasses both. |
-| `cb1d766` | 2026-06-11 | **feat(auth): EV.3.2** — Layer-2 context banners + Layer-4 click intercepts on 6 hard-blocked surfaces (submit-feedback, rewards, deals, marketplace, influencer-payouts, brand-campaigns). Uses shared provider; raw-fetch surfaces gain manual `openEmailVerificationPrompt()` calls. |
-| `f00e725` | 2026-06-11 | **feat(auth): EV.3.1** — shared `EmailVerificationProvider` (60s poll + tab-focus revalidation + `refresh()`), reusable `EmailVerificationContextBanner`, `openEmailVerificationPrompt()` helper, sidebar `requiresEmailVerified` lock icon. Includes deal-redemption hard-block — `POST /api/deals/[id]/redeem` now joins the 6 EV.1 routes (financial action, requires verification). Existing L1 banner + settings card refactored to consume the shared context. |
-| `622e7fa` | 2026-06-10 | **feat(auth): EV.2.2** — `/verify-email` page (5 states), `EmailVerificationBanner` on dashboard, `EmailVerificationCard` on settings, global `EmailNotVerifiedModal` listening on `e4i:email-not-verified` window event, api-client `send()` peeks 403 responses and dispatches the event. |
-| `11b6840` | 2026-06-10 | **fix(schema): migration 027** — `user_profiles.id` FK CASCADE → `users(id)` + orphan cleanup. Closes the "deleted user leaves orphan profile" leak that defeated test-account resets. |
-| `da93b39` | 2026-06-10 | **feat(auth): EV.2.1** — auto-send verification email at signup (try/catch, doesn't block); Google OAuth `signIn` callback flips `email_verified_at` for both new AND existing-NULL users (Q4 edge case — credentials user later linked Google). `markEmailVerified(userId, via)` helper added with `via: 'google_oauth' \| 'admin_backfill'` audit metadata. |
+| `4c8864d` | 2026-06-14 | **fix(admin):** new `src/app/admin/layout.tsx` (restores sidebar on every `/admin/*` page — previously fell back to root layout with no nav) + Verification Queue unread count badge in sidebar (mirrors brand-alerts pattern, polls every 30s). |
+| `cd74a79` | 2026-06-14 | **fix(admin):** `/dashboard` redirects admin role to `/admin/platform-analytics` (founder dashboard) instead of falling through to ConsumerDashboard. |
+| `417cfa6` | 2026-06-14 | **feat(auth): A9.2** — `/dashboard/influencer/verification` page (live 8-check checklist + submit form), `/admin/verification-requests` admin queue (Approve / Reject / Request-info dialogs mirroring `/admin/payouts`), `VerifiedBadge` component, 6 branded email templates (auto-approved / under-review / admin-alert / manual-approved / manual-rejected / needs-info), wired into all 4 routes. Sidebar gains "Get Verified" (influencer, with `requiresEmailVerified` lock) and "Verification Queue" (admin) entries. |
+| `d4f7c67` | 2026-06-13 | **feat(auth): A9.1** — migration 028 (new `influencer_verification_requests` table + 2 FKs + 3 indexes + partial UNIQUE on open requests); `verificationThresholdService` (8-check evaluator + 3-tier decision); `verificationThresholds.ts` config; `profileCompleteness` extracted from dashboard into `src/lib/influencer/profileCompleteness.ts` (shared source of truth); `requireEmailVerified` on the request route (8th hard-blocked surface — completes the original EV.1 spec). |
 
-**Older changes that have moved to history:** the signup UX (`a38f85b`) and EV.1 (`c4b1dce`) entries are now in `docs/CLAUDE_HISTORY.md §4 Recent Feature Notes`.
+**Older changes that have moved to history:** EV.2/EV.3/ER.1/ER.2 commits + the verify-email defensive trio + the doc-sync stage commits are now archived in `docs/CLAUDE_HISTORY.md §4` and `docs/PRELAUNCH_AUDIT_FIX_LOG.md`. The signup UX (`a38f85b`) and EV.1 (`c4b1dce`) entries are in `docs/CLAUDE_HISTORY.md §4.1–4.2`.
 
 ---
 
@@ -210,6 +216,7 @@ All migrations are **idempotent** and gated by `x-api-key: $ADMIN_API_KEY`. Run 
 | 024 | `run-migration-024` | 6-step influencer onboarding wizard (Phase 3.5C) |
 | 026 | `run-migration-026` | Email Verification (EV.1 — `users.email_verified_at` + `email_verification_tokens`) |
 | 027 | `run-migration-027` | `user_profiles.id` FK CASCADE → `users(id)` + orphan cleanup (closes leak that defeated test-account resets + left PII for "deleted" users) |
+| 028 | `run-migration-028` | Influencer Verification (A9 — `influencer_verification_requests` table with 7-status lifecycle, FK CASCADE → users, partial UNIQUE on open requests) |
 
 > Full per-migration detail: `docs/CLAUDE_HISTORY.md §2` and `docs/SCHEMA.md`.
 
@@ -307,7 +314,7 @@ Sub-daily crons (e.g. `publish-scheduled-launches` at 15-min cadence) are driven
 - **`docs/CLAUDE_HISTORY.md`** — full history: Phase Status table, ~80-row Key Decisions archive, feature notes (EV.1, password UX), audit cross-reference
 - **`ARCHITECTURE.md`** — authoritative technical reference (22 sections, all phases)
 - **`docs/PRELAUNCH_AUDIT_FIX_LOG.md`** — 6-pass audit journal, Phase 1–3.5 fix narratives
-- **`docs/SCHEMA.md`** — all DB table definitions (migrations 002–027)
+- **`docs/SCHEMA.md`** — all DB table definitions (migrations 002–028)
 - **`docs/CRON_JOBS.md`** — full cron schedule (32 entries), auth pattern, batch sizes
 - **`docs/SOCIAL_PLATFORM_SETUP.md`** — per-platform listener setup (status, API, cost, approval, env vars)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — encryption, consent, ICP scoring
@@ -320,3 +327,4 @@ Sub-daily crons (e.g. `publish-scheduled-launches` at 15-min cadence) are driven
 - **`docs/FEATURE8_PLATFORM_ANALYTICS.md`** — methodology (DAU/MAU, cohorts, MRR, LTV, ARPU, health score, OLS forecast)
 - **`docs/FEATURE9_TWO_FACTOR_AUTH.md`** — TOTP service, 9 routes, setup wizard, `requires2FA` interlock
 - **`docs/FEATURE10_EMAIL_VERIFICATION_AND_ROLE_GUARDS.md`** — EV.1 backend + EV.2 UI + EV.3 5-layer nudge system + ER.1 role guards + ER.2 upgrade prompt. Architecture + file map + smoke test + known issue (verify-email transition).
+- **`docs/FEATURE11_INFLUENCER_VERIFICATION.md`** — A9 deep dive: 3-tier auto-approval model, 8-check evaluator, admin queue UI, 6 email templates, threshold tuning guide, admin layout pattern, smoke test plan.
