@@ -6,9 +6,9 @@ export default function NotFound() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-950 dark:via-background dark:to-violet-950/30">
       <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-        <div className="flex flex-col items-center gap-1">
-          <Logo size={56} />
-          <span className="font-headline font-bold text-lg">Earn4Insights</span>
+        <div className="flex flex-col items-center gap-2">
+          {/* Stacked lockup includes the wordmark. */}
+          <Logo variant="stacked" width={160} height={120} priority />
           <span className="text-[10px] text-muted-foreground max-w-[16rem] leading-tight">
             The Intelligence Operating System for Brands, Consumers and Influencers
           </span>

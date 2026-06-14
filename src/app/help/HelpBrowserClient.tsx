@@ -131,10 +131,8 @@ export function HelpBrowserClient({
       {/* Hero */}
       <section className="px-4 pt-12 pb-10 md:pt-20 md:pb-14">
         <div className="mx-auto flex max-w-3xl flex-col items-center gap-5 text-center">
-          <div className="flex flex-col items-center gap-1">
-            <Logo size={48} />
-            <span className="font-headline font-bold text-base">Earn4Insights</span>
-          </div>
+          {/* Horizontal lockup includes the wordmark. */}
+          <Logo variant="horizontal" width={200} height={44} priority />
           <h1 className="text-3xl font-bold tracking-tight md:text-5xl">How can we help?</h1>
           <p className="text-sm text-muted-foreground md:text-base">
             Search our knowledge base or browse by category.

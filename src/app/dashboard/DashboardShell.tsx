@@ -413,12 +413,9 @@ export default function DashboardShell({
       <Sidebar>
         <SidebarHeader>
           <div className="flex flex-col gap-1" data-tour="welcome">
-            <div className="flex items-center gap-2">
-              <Logo size={48} />
-              <span className="text-lg font-headline font-semibold">
-                Earn4Insights
-              </span>
-            </div>
+            {/* Horizontal lockup includes the wordmark — no separate
+                text label needed. */}
+            <Logo variant="horizontal" width={180} height={40} />
           </div>
         </SidebarHeader>
 

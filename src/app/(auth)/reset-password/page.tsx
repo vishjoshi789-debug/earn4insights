@@ -153,9 +153,9 @@ export default function ResetPasswordPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-3">
-          <div className="flex flex-col items-center gap-1">
-            <Logo size={56} />
-            <span className="font-headline font-bold text-lg">Earn4Insights</span>
+          <div className="flex flex-col items-center gap-2">
+            {/* Stacked lockup includes the wordmark. */}
+            <Logo variant="stacked" width={160} height={120} priority />
             <span className="text-[10px] text-muted-foreground text-center max-w-[16rem] leading-tight">
               The Intelligence Operating System for Brands, Consumers and Influencers
             </span>

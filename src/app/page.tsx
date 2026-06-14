@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import Image from 'next/image'
+import { Logo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -45,7 +45,8 @@ export default function HomePage() {
             <span className="text-primary font-medium">Now Live</span>
           </div>
           <div className="flex justify-center mb-4">
-            <Image src="/logo.png" alt="Earn4Insights" width={96} height={96} className="rounded-2xl" priority />
+            {/* Primary lockup with tagline — the hero brand moment. */}
+            <Logo variant="primary" width={280} height={112} priority />
           </div>
           <p className="mb-6 text-base sm:text-lg italic text-muted-foreground leading-snug">
             The Intelligence Operating System<br />
