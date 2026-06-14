@@ -1,6 +1,7 @@
 // src/app/dashboard/page.tsx
 
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -142,6 +143,15 @@ export default async function DashboardPage({
   const upgrade =
     sp?.upgrade === 'influencer' || sp?.upgrade === 'brand' ? sp.upgrade : null;
   const promptCard = upgrade ? <UpgradePromptCard variant={upgrade} /> : null;
+
+  // Admin lands on the founder dashboard (DAU/MAU, health score, MRR,
+  // runway, predictions) rather than falling through to ConsumerDashboard
+  // which gave them an irrelevant consumer landing page. Server-side
+  // redirect — no flash. The role check uses the string cast because
+  // `UserRole` TS union doesn't include 'admin' (runtime DB value only).
+  if ((role as string) === 'admin') {
+    redirect('/admin/platform-analytics');
+  }
 
   if (role === 'brand') {
     return (
