@@ -206,9 +206,11 @@ const exactMatchRoutes = new Set(['/dashboard/analytics'])
 function SidebarNav({
   visibleItems,
   unreadAlerts,
+  pendingVerifications,
 }: {
   visibleItems: MenuItem[]
   unreadAlerts: number
+  pendingVerifications: number
 }) {
   const pathname = usePathname()
   const { isMobile, close } = useSidebar()
@@ -235,6 +237,10 @@ function SidebarNav({
             const showLock = !!item.requiresEmailVerified && !isVerified
             const showAlertBadge =
               item.href === '/dashboard/alerts' && unreadAlerts > 0
+            const showVerificationBadge =
+              item.href === '/admin/verification-requests' && pendingVerifications > 0
+            const badgeCount = showAlertBadge ? unreadAlerts : showVerificationBadge ? pendingVerifications : 0
+            const showAnyBadge = showAlertBadge || showVerificationBadge
             return (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
@@ -254,14 +260,14 @@ function SidebarNav({
                         aria-label="Email verification required"
                       />
                     )}
-                    {showAlertBadge && (
+                    {showAnyBadge && (
                       <span
                         className={
                           'flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ' +
                           (showLock ? 'ml-1.5' : 'ml-auto')
                         }
                       >
-                        {unreadAlerts > 99 ? '99+' : unreadAlerts}
+                        {badgeCount > 99 ? '99+' : badgeCount}
                       </span>
                     )}
                   </Link>
@@ -315,6 +321,11 @@ export default function DashboardShell({
   const { activeView } = useActiveView()
   const userId = (session?.user as any)?.id as string | undefined
   const [unreadAlerts, setUnreadAlerts] = useState(0)
+  // A9 — admin verification queue unread count. Mirrors the brand
+  // unread-alerts pattern below; surfaces a red count badge on the
+  // "Verification Queue" sidebar item so admins notice manual_review
+  // rows without having to open the queue page.
+  const [pendingVerifications, setPendingVerifications] = useState(0)
   const isVisible = useRef(true)
 
   // Subscribe to the presence channel so this user appears as "online"
@@ -342,6 +353,27 @@ export default function DashboardShell({
     }
     fetchCount()
     const interval = setInterval(fetchCount, 30_000) // poll every 30s
+    return () => clearInterval(interval)
+  }, [userRole])
+
+  // A9 — Poll pending verification-request count for admins. Mirrors
+  // the brand alerts pattern above. Fetches the admin queue endpoint
+  // (cheap — typically <10 rows) and reads .length. Drives the red
+  // count badge on the "Verification Queue" sidebar item.
+  useEffect(() => {
+    if (userRole !== 'admin') return
+    const fetchCount = async () => {
+      if (!isVisible.current) return
+      try {
+        const res = await fetch('/api/admin/verification-requests?status=manual_review')
+        if (res.ok) {
+          const data = await res.json() as { requests?: unknown[] }
+          setPendingVerifications((data.requests ?? []).length)
+        }
+      } catch { /* silent */ }
+    }
+    fetchCount()
+    const interval = setInterval(fetchCount, 30_000)
     return () => clearInterval(interval)
   }, [userRole])
 
@@ -390,7 +422,7 @@ export default function DashboardShell({
           </div>
         </SidebarHeader>
 
-        <SidebarNav visibleItems={displayItems} unreadAlerts={unreadAlerts} />
+        <SidebarNav visibleItems={displayItems} unreadAlerts={unreadAlerts} pendingVerifications={pendingVerifications} />
       </Sidebar>
 
       <SidebarInset>
