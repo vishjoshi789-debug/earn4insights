@@ -53,7 +53,7 @@ export default function ForgotPasswordPage() {
           <div className="flex flex-col items-center gap-2">
             {/* Stacked lockup includes the wordmark. */}
             <Logo variant="stacked" width={160} height={120} priority />
-            <span className="text-[10px] text-muted-foreground text-center max-w-[16rem] leading-tight">
+            <span className="text-xs text-muted-foreground text-center max-w-[18rem] leading-relaxed">
               The Intelligence Operating System for Brands, Consumers and Influencers
             </span>
           </div>
