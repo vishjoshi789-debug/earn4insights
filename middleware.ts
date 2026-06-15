@@ -103,7 +103,10 @@ async function decideAuth(req: NextRequest & { auth: any }): Promise<NextRespons
   // bound to this login's nonce.
   if (isLoggedIn && req.auth?.requires2FA === true) {
     const proof = req.cookies.get(TWO_FACTOR_PROOF_COOKIE)?.value
-    const passed = await verifyProofCookie(proof, req.auth?.loginNonce ?? null)
+    // Fail closed if the session carries no loginNonce — without it the
+    // proof cookie can't be bound to this login, so treat it as unpassed.
+    const loginNonce = req.auth?.loginNonce ?? null
+    const passed = loginNonce ? await verifyProofCookie(proof, loginNonce) : false
     // Diagnostic — surfaces in Vercel logs as `[2FA-DEBUG]`. Shows the
     // 2FA interlock saw a requires2FA session and whether the proof
     // cookie cleared it for this request.

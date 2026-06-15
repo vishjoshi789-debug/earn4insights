@@ -64,10 +64,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid code', remaining: rl.remaining }, { status: 400 })
   }
 
-  const res = NextResponse.json({ success: true, redirect: '/dashboard' })
+  // Proof cookie is bound to this login's nonce so it can't outlive it.
+  // No userId fallback: a session without a loginNonce can't be safely
+  // pinned to this challenge — fail closed rather than mint a forgeable proof.
+  const loginNonce = session.loginNonce
+  if (!loginNonce) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
-  // Proof cookie — bound to this login's nonce so it can't outlive it.
-  const loginNonce = session.loginNonce || userId
+  const res = NextResponse.json({ success: true, redirect: '/dashboard' })
   res.cookies.set({
     name: TWO_FACTOR_PROOF_COOKIE,
     value: await signProofCookie(loginNonce),

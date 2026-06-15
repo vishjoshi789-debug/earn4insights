@@ -245,14 +245,12 @@ function getKeyMaterialForId(keyId: string): string {
   // Fall back to the base ENCRYPTION_KEY (backward compat for keyId='v1')
   const baseKey = process.env.ENCRYPTION_KEY
   if (!baseKey) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(
-        `No encryption key found for keyId="${keyId}". ` +
-        `Set ENCRYPTION_KEY_${keyId} or ENCRYPTION_KEY in environment.`
-      )
-    }
-    console.warn(`⚠️  WARNING: Using default encryption key for keyId="${keyId}". Set ENCRYPTION_KEY_${keyId} in production!`)
-    return 'dev-key-32-chars-minimum-length-required-for-aes256'
+    // Fail closed in ALL environments — no dev-key fallback. A silent
+    // default key would encrypt real PII under a publicly-known secret.
+    throw new Error(
+      `No encryption key found for keyId="${keyId}". ` +
+      `Set ENCRYPTION_KEY_${keyId} or ENCRYPTION_KEY in environment.`
+    )
   }
 
   if (baseKey.length < 32) {
