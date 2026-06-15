@@ -46,6 +46,9 @@ function classifyResendError(e: unknown): string {
 }
 
 export async function GET(request: NextRequest) {
+  if (process.env.ADMIN_DIAGNOSTICS_ENABLED !== 'true') {
+    return new NextResponse(null, { status: 404 })
+  }
   const apiKey = request.headers.get('x-api-key')
   if (!process.env.ADMIN_API_KEY || apiKey !== process.env.ADMIN_API_KEY) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
