@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> **Last updated:** June 2026 (v11 — **ALL TIER A COMPLETE**; A9 influencer verification shipped; admin layout + sidebar badge fixes; beta-ready).
+> **Last updated:** June 2026 (v12 — E-Lens brand fully wired across app: variant-aware Logo, favicons, PWA manifest, brand CSS tokens; ALL TIER A COMPLETE; beta-ready).
 > Read at the start of every session. Designed to fit in context without crowding daily-work prompts.
 
 ---
@@ -171,16 +171,33 @@ A9 (influencer verification) shipped as the final Tier A item — 3-tier auto-ap
 
 ## 7. What's NEW (since last doc sync)
 
-Single-glance view of every commit since the previous doc sync (`7fd0919` on 2026-06-13 captured FEATURES.md creation; commits below ship A9 + admin layout fixes). All EV/ER/Phase-3.5 work + earlier commits now in `docs/CLAUDE_HISTORY.md §4`.
+Single-glance view of every commit since the previous doc sync (`2051a5c` on 2026-06-14 captured the Tier A complete milestone; commits below ship the E-Lens brand wiring). All earlier A9 / EV / ER / Phase-3.5 work archived in `docs/CLAUDE_HISTORY.md §4`.
 
 | Commit | Date | Summary |
 |---|---|---|
+| `6b941c9` | 2026-06-15 | **fix(brand):** stacked SVG tagline font 9.5→12px + display 160→200 on 6 auth/error/404 callsites — effective on-page tagline ~10px (was ~6.3px), within brand-spec §4 range. |
+| `386055e` | 2026-06-15 | **fix(brand):** replace legacy "Intelligence Operating System" tagline with brand-spec positioning statement ("The consumer intelligence infrastructure where brands, consumers, and influencers meet") + bump tagline to `text-sm` across 6 callsites. |
+| `99f484e` | 2026-06-15 | **fix(brand):** stacked SVG was missing INFRASTRUCTURE — split tagline into 2 lines (`CONSUMER INTELLIGENCE` / `INFRASTRUCTURE`), bumped tagline letter-spacing to keep within 240 viewBox. |
+| `266d291` | 2026-06-15 | **feat(brand):** new E-Lens assets in `public/branding/` — `favicon.svg`, `icon-app-{192,512}.png`, `logo-{horizontal,stacked,primary}-{dark,light}.svg`, `icon-mono-{dark,light}.svg`, `brand-spec.md`. Two-step rename to fix `Branding/` (capital) → `branding/` case mismatch (fatal on Vercel Linux FS, fine locally on Windows). |
+| `f8b198d` | 2026-06-14 | **feat(brand): LOGO.2** — favicons + PWA manifest + brand CSS variables. New `src/app/manifest.ts` (Next 15 `MetadataRoute.Manifest`), `viewport.themeColor = '#4F46E5'`, 8 brand CSS variables in `globals.css` (indigo start/end/light, gold tri-tone, ink, near-black, gradient), full `metadata.icons` with svg + apple-touch + 16/32 png. |
+| `44b0b99` | 2026-06-14 | **feat(brand): LOGO.1** — variant-aware `Logo` component (4 variants: `icon` / `horizontal` / `stacked` / `primary`; 2 themes: dark/light) + 10 callsites flipped to appropriate variant. Uses `<img>` not `next/image` to avoid `dangerouslyAllowSVG`. Back-compat `size` prop preserved for legacy `<Logo size={48}>` callers. |
+| `2051a5c` | 2026-06-14 | **docs:** final sync — A9 + admin layout + Tier A complete milestone. |
 | `4c8864d` | 2026-06-14 | **fix(admin):** new `src/app/admin/layout.tsx` (restores sidebar on every `/admin/*` page — previously fell back to root layout with no nav) + Verification Queue unread count badge in sidebar (mirrors brand-alerts pattern, polls every 30s). |
 | `cd74a79` | 2026-06-14 | **fix(admin):** `/dashboard` redirects admin role to `/admin/platform-analytics` (founder dashboard) instead of falling through to ConsumerDashboard. |
-| `417cfa6` | 2026-06-14 | **feat(auth): A9.2** — `/dashboard/influencer/verification` page (live 8-check checklist + submit form), `/admin/verification-requests` admin queue (Approve / Reject / Request-info dialogs mirroring `/admin/payouts`), `VerifiedBadge` component, 6 branded email templates (auto-approved / under-review / admin-alert / manual-approved / manual-rejected / needs-info), wired into all 4 routes. Sidebar gains "Get Verified" (influencer, with `requiresEmailVerified` lock) and "Verification Queue" (admin) entries. |
-| `d4f7c67` | 2026-06-13 | **feat(auth): A9.1** — migration 028 (new `influencer_verification_requests` table + 2 FKs + 3 indexes + partial UNIQUE on open requests); `verificationThresholdService` (8-check evaluator + 3-tier decision); `verificationThresholds.ts` config; `profileCompleteness` extracted from dashboard into `src/lib/influencer/profileCompleteness.ts` (shared source of truth); `requireEmailVerified` on the request route (8th hard-blocked surface — completes the original EV.1 spec). |
+| `417cfa6` | 2026-06-14 | **feat(auth): A9.2** — `/dashboard/influencer/verification` page (live 8-check checklist + submit form), `/admin/verification-requests` admin queue (Approve / Reject / Request-info dialogs), `VerifiedBadge` component, 6 branded email templates. |
+| `d4f7c67` | 2026-06-13 | **feat(auth): A9.1** — migration 028 (`influencer_verification_requests` table + 3 indexes + partial UNIQUE on open requests); `verificationThresholdService` (8-check evaluator + 3-tier decision); `profileCompleteness` extracted into shared module. |
 
-**Older changes that have moved to history:** EV.2/EV.3/ER.1/ER.2 commits + the verify-email defensive trio + the doc-sync stage commits are now archived in `docs/CLAUDE_HISTORY.md §4` and `docs/PRELAUNCH_AUDIT_FIX_LOG.md`. The signup UX (`a38f85b`) and EV.1 (`c4b1dce`) entries are in `docs/CLAUDE_HISTORY.md §4.1–4.2`.
+**Older changes that have moved to history:** EV.2/EV.3/ER.1/ER.2 commits + the verify-email defensive trio + the doc-sync stage commits are archived in `docs/CLAUDE_HISTORY.md §4` and `docs/PRELAUNCH_AUDIT_FIX_LOG.md`. The signup UX (`a38f85b`) and EV.1 (`c4b1dce`) entries are in `docs/CLAUDE_HISTORY.md §4.1–4.2`.
+
+### Brand wiring at a glance (LOGO.1 + LOGO.2 + fixes)
+
+- **Component:** `src/components/logo.tsx` — `<Logo variant="icon|horizontal|stacked|primary" theme="dark|light" />` + back-compat `size` prop
+- **Assets:** `public/branding/*` (8 SVGs + brand-spec) + `public/favicon.svg` + `public/icon-app-{16,32,192,512}.png` + `public/favicon-{16,32}.png`
+- **Metadata:** `src/app/layout.tsx` icons array + Open Graph + `viewport.themeColor`; `src/app/manifest.ts` for PWA
+- **CSS tokens:** 8 brand variables in `src/app/globals.css` (indigo start/end/light, gold tri-tone, ink, near-black, gradient)
+- **Callsite map:** sidebar header → `horizontal`; landing hero → `primary`; auth (login/signup/forgot/reset) + 404 + 500 → `stacked` (200×167) with positioning tagline below
+- **Tagline:** "The consumer intelligence infrastructure where brands, consumers, and influencers meet" (`text-sm`, max-w-22rem)
+- **Case sensitivity gotcha:** `Branding/` (capital) is fine on Windows but 404s on Vercel Linux — always commit lowercase folder names; case-rename requires 2-step (folder→tmp→folder) on case-insensitive FS
 
 ---
 

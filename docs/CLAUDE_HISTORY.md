@@ -30,6 +30,7 @@
    - 4.7 [Verify-email Transition Error — Defensive Engineering — `dbf5c6b` + `dd4e536` + `799bd52`](#47-verify-email-transition-error--defensive-engineering--dbf5c6b--dd4e536--799bd52)
    - 4.8 [Influencer Verification Flow (A9) — `d4f7c67` + `417cfa6`](#48-influencer-verification-flow-a9--d4f7c67--417cfa6)
    - 4.9 [Admin Layout + Verification Queue Badge — `cd74a79` + `4c8864d`](#49-admin-layout--verification-queue-badge--cd74a79--4c8864d)
+   - 4.10 [E-Lens Brand Wiring — LOGO.1 + LOGO.2 + fixes](#410-e-lens-brand-wiring--44b0b99--f8b198d--266d291--99f484e--386055e--6b941c9)
 5. [Pre-Launch Audit Cross-Reference](#5-pre-launch-audit-cross-reference)
 
 ---
@@ -617,6 +618,106 @@ Generalised the badge-render branch so a third count-badged item is now a small 
 #### Diagnostic note — stale `activeView` sessionStorage
 
 During fix verification, vishjoshi789 admin reported "sidebar shows only shared items, no admin items." Root cause was `e4i_active_view = "consumer"` in sessionStorage from prior testing as a consumer account in the same browser. `ActiveViewProvider` reads sessionStorage on mount and overrides `defaultView='admin'` from session. Filter then ran against `activeView='consumer'` → admin items filtered out → only shared items remained. Clearing the sessionStorage key fixed it immediately. Worth a one-line note for future similar reports.
+
+---
+
+### 4.10 E-Lens Brand Wiring — `44b0b99` + `f8b198d` + `266d291` + `99f484e` + `386055e` + `6b941c9`
+
+Full E-Lens visual identity rolled out across the app in two staged builds (LOGO.1 + LOGO.2) plus three follow-up fixes catching production-only issues. Pure presentation work — no behaviour change, no auth/DB/business-logic touch.
+
+#### LOGO.1 — Variant-aware Logo component (`44b0b99`)
+
+Replaced the single-PNG `<Logo />` with a typed, variant-aware component:
+
+- `variant: 'icon' | 'horizontal' | 'stacked' | 'primary'`
+- `theme: 'dark' | 'light'`
+- Default dimensions per variant: icon 40×40 / horizontal 180×40 / stacked 160×120 / primary 240×96
+- Renders `<img src="/branding/{name}-{theme}.svg" />` — deliberately NOT `next/image`, because Next 15 requires `dangerouslyAllowSVG: true` to render SVGs via the optimised image loader, which we declined on security grounds. Plain `<img>` is fine for static brand assets.
+- Back-compat `size` prop preserved so existing `<Logo size={48}>` callsites still work without edits — internally maps to `variant='icon'` with width/height derived from `size`.
+
+Callsite map (10 callsites, agreed up-front with the user before flipping any):
+
+| Surface | Variant | Notes |
+|---|---|---|
+| Sidebar header (`DashboardShell`) | `horizontal` | width=180 height=40 — wordmark fits the header strip |
+| Landing hero | `primary` | bigger, prominent lockup |
+| Login / Signup / Forgot / Reset | `stacked` | wordmark + tagline lines, 200×167 (bumped from initial 160×120 — see §4.10 follow-up 3) |
+| 404 + 500 (error.tsx + not-found.tsx) | `stacked` | same dims as auth pages — consistent fallback identity |
+| Top-bar logo (mobile) | `icon` | small square only |
+
+#### LOGO.2 — Favicons + manifest + brand CSS (`f8b198d`)
+
+Three coordinated additions:
+
+1. **Favicon stack** in `src/app/layout.tsx`:
+   ```ts
+   icons: {
+     icon: [
+       { url: '/favicon.svg', type: 'image/svg+xml' },
+       { url: '/favicon-32.png', type: 'image/png', sizes: '32x32' },
+       { url: '/favicon-16.png', type: 'image/png', sizes: '16x16' },
+     ],
+     apple: '/icon-app-192.png',
+   }
+   ```
+   Plus `openGraph.images = [{ url: '/icon-app-512.png', width: 512, height: 512, alt: 'Earn4Insights' }]`.
+
+2. **PWA manifest** at `src/app/manifest.ts` (Next 15 `MetadataRoute.Manifest`):
+   ```ts
+   { name, short_name, theme_color: '#4F46E5', background_color: '#0F0F1A',
+     icons: [192, 512, 512-maskable] }
+   ```
+   Plus `export const viewport: Viewport = { themeColor: '#4F46E5' }` for browser chrome tinting.
+
+3. **Brand CSS variables** in `src/app/globals.css` (8 tokens): indigo start/end/light, gold tri-tone, ink, near-black, gradient. Tokens available to all components via `var(--brand-indigo-start)` etc.
+
+#### Follow-up fix 1 — Case-sensitive folder rename (`266d291`)
+
+Local dev on Windows worked perfectly; production 404'd every `/branding/*.svg` request. Root cause: I had committed the folder as `public/Branding/` (capital B), and Vercel runs on Linux where the filesystem is case-sensitive. My code referenced `/branding/...` (lowercase) — fatal mismatch on prod, invisible locally on case-insensitive Windows.
+
+Fix required a 2-step rename on Windows (you can't case-rename in one step on a case-insensitive FS): `Branding/` → `Branding_tmp/` → `branding/`. Verified with `git mv` showing the new lowercase path before commit. Lesson logged: **always commit lowercase asset folder names** + cross-verify on production after the first `/public` deploy. Added a CLAUDE.md note under §7 LOGO.2 entry.
+
+#### Follow-up fix 2 — Stacked SVG missing INFRASTRUCTURE (`99f484e`)
+
+Brand-spec §4 calls for two tagline lines: `CONSUMER INTELLIGENCE` / `INFRASTRUCTURE`. The initial SVG export only contained the first line. Added the second `<text>` element within the existing 240×200 viewBox, repositioned y-coordinates (wordmark y=133, line1 y=162, line2 y=182), tightened `letter-spacing="2.5"` → `2.2"` so `CONSUMER INTELLIGENCE` stayed within the 240 viewBox width.
+
+#### Follow-up fix 3 — Legacy tagline → brand-spec positioning (`386055e`)
+
+The auth pages had been rendering a legacy product tagline ("The Intelligence Operating System for Brands, Consumers and Influencers") in a `<span>` below the stacked SVG. Brand-spec replaced this with: **"The consumer intelligence infrastructure where brands, consumers, and influencers meet."** Bumped from default size to `text-sm` (14px) for readability, max-width `22rem` to keep line breaks pleasant, `leading-relaxed` for breath. Applied to all 4 auth pages + 404 + 500.
+
+Also updated `docs/FEATURES.md` §"What is Earn4Insights?" to drop the same legacy phrase in favour of the new positioning statement, so external-facing docs match the in-product chrome.
+
+#### Follow-up fix 4 — Stacked SVG tagline readability (`6b941c9`)
+
+Even with the INFRASTRUCTURE line restored, the tagline read as ~6.3px on screen due to the initial SVG internal font-size of 9.5px scaled down by display 160/240=0.667. Brand-spec §4 calls for 10-13px effective.
+
+Two changes:
+1. SVG internal `font-size="9.5"` → `font-size="12"` on both tagline lines
+2. Display dimensions bumped 160×120 → 200×167 across all 6 stacked callsites (login / signup / forgot / reset / 404 / 500)
+
+Combined effect: SVG 12px × display scale (200/240=0.833) → effective on-screen ~10px. Comfortably within spec.
+
+User confirmed end-to-end on production after a hard cache-bust: "yes working fine."
+
+#### Cache-bust diagnostic note
+
+After deploy, user reported "still see old favicon + old positioning line + small tagline." Direct production fetch with cache-busting query string (`?cb=$random`) confirmed Vercel was serving the new content. Root cause: browser disk cache. Two factors compounded it:
+
+1. Vercel sets `cache-control: public, max-age=31536000, immutable` on `/public/*` assets — once a browser fetches `/favicon.svg`, it caches for a year and our same-URL update was invisible.
+2. Favicons have an extra OS-level cache that survives even browser restart.
+
+User confirmed fix via Chrome incognito (bypasses disk cache). Production lesson: any same-URL `/public` asset update requires explicit user-side cache-clear instructions, or version-bumped filenames (`favicon-v2.svg`) for guaranteed invalidation. Filed mentally for future asset updates.
+
+#### Files touched (full list)
+
+- New: `src/components/logo.tsx` (rewrite), `src/app/manifest.ts`, `public/branding/*` (8 SVGs + brand-spec.md + brand-kit.zip), `public/favicon.svg`, `public/favicon-{16,32}.png`, `public/icon-app-{16,32,192,512}.png`
+- Modified: `src/app/layout.tsx` (icons + viewport + OG), `src/app/globals.css` (8 brand tokens), `src/app/dashboard/DashboardShell.tsx` (sidebar header), `src/app/(auth)/{login,signup,forgot-password,reset-password}/page.tsx`, `src/app/error.tsx`, `src/app/not-found.tsx`, landing hero
+- Docs: `docs/FEATURES.md` (positioning statement)
+- Removed: `public/logo.png` (legacy single-asset, no longer referenced)
+
+#### Deferred (Phase 2)
+
+Email template branding — Resend templates (welcome, verification, payout-success, etc.) still use plain text headers. Brand-aligned HTML templates with logo header + footer color tokens deferred as optional polish. Not blocking for beta. No tracking issue opened — user explicitly tagged as "optional / deferred."
 
 ---
 

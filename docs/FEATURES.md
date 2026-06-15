@@ -8,7 +8,7 @@
 
 ## What is Earn4Insights?
 
-An **Intelligence Operating System** for three audiences in one platform:
+**The consumer intelligence infrastructure where brands, consumers, and influencers meet.** Three audiences in one platform:
 
 - **Consumers** earn points and rewards by sharing authentic feedback, taking surveys, claiming deals, and engaging with brands they care about.
 - **Brands** turn that feedback into competitive advantage through AI-powered analytics, ideal-customer-profile (ICP) scoring, influencer campaigns, and competitive intelligence.
