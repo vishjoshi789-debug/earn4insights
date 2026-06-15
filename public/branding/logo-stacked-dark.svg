@@ -12,7 +12,7 @@
     <rect x="19" y="51" width="40" height="9" rx="3" fill="#FBBF24"/>
     <circle cx="54" cy="39" r="7.5" fill="#FBBF24"/>
   </g>
-  <text x="120" y="135" text-anchor="middle" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="26" font-weight="600" letter-spacing="-0.5" fill="#FFFFFF">Earn<tspan fill="#F59E0B">4</tspan>Insights</text>
-  <text x="120" y="158" text-anchor="middle" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="9.5" font-weight="500" letter-spacing="2.5" fill="#A5B4FC">CONSUMER INTELLIGENCE</text>
-  <text x="120" y="174" text-anchor="middle" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="9.5" font-weight="500" letter-spacing="2.5" fill="#A5B4FC">INFRASTRUCTURE</text>
+  <text x="120" y="133" text-anchor="middle" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="26" font-weight="600" letter-spacing="-0.5" fill="#FFFFFF">Earn<tspan fill="#F59E0B">4</tspan>Insights</text>
+  <text x="120" y="162" text-anchor="middle" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="500" letter-spacing="2.2" fill="#A5B4FC">CONSUMER INTELLIGENCE</text>
+  <text x="120" y="182" text-anchor="middle" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="500" letter-spacing="2.2" fill="#A5B4FC">INFRASTRUCTURE</text>
 </svg>
