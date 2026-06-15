@@ -120,6 +120,7 @@ export default function NotificationSettingsPage() {
   const [socialConnections, setSocialConnections] = useState<SocialConnection[]>([])
   const [loadingSocial, setLoadingSocial] = useState(false)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState<string | null>(null)
 
   // ── Brand-only state ────────────────────────────────────────────
   const [rules, setRules] = useState<AlertRule[]>([])
@@ -244,25 +245,21 @@ export default function NotificationSettingsPage() {
     }
   }
 
-  function getSocialOAuthUrl(platform: 'linkedin' | 'instagram') {
-    const state = Buffer.from(
-      JSON.stringify({
-        platform,
-        userId: (session?.user as any)?.id ?? '',
-        returnTo: '/dashboard/settings',
-      })
-    ).toString('base64')
-    const redirectUri = encodeURIComponent(
-      `${window.location.origin}/api/consumer/social/callback`
-    )
-    if (platform === 'linkedin') {
-      // OpenID Connect scopes — `r_liteprofile` / `r_emailaddress` are retired
-      // and trigger LinkedIn's "Bummer" error. The Products tab of the
-      // LinkedIn app must have "Sign In with LinkedIn using OpenID Connect"
-      // enabled for these scopes to be granted.
-      return `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID ?? ''}&redirect_uri=${redirectUri}&scope=openid%20profile%20email&state=${state}`
+  // Fetch the provider authorization URL from the server, which mints an
+  // HMAC-signed `state` (the browser never holds AUTH_SECRET), then navigate.
+  async function handleSocialConnect(platform: 'linkedin') {
+    setConnecting(platform)
+    try {
+      const res = await fetch(`/api/consumer/social/oauth-url?platform=${platform}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error ?? 'Could not start the connection')
+      }
+      window.location.href = data.url
+    } catch (err: any) {
+      toast.error(err.message ?? 'Could not start the connection')
+      setConnecting(null)
     }
-    return '#'   // Instagram: pending App Review
   }
 
   // Save WhatsApp preferences. Optional overrides let the toggle persist
@@ -916,12 +913,11 @@ export default function NotificationSettingsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          asChild
+                          disabled={connecting === 'linkedin'}
+                          onClick={() => handleSocialConnect('linkedin')}
                         >
-                          <a href={getSocialOAuthUrl('linkedin')}>
-                            <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                            Connect
-                          </a>
+                          <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                          {connecting === 'linkedin' ? 'Connecting…' : 'Connect'}
                         </Button>
                       )}
                     </div>

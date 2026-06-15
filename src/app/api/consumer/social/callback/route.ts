@@ -40,17 +40,12 @@ import { auth } from '@/lib/auth/auth.config'
 import { enforceConsent } from '@/lib/consent-enforcement'
 import { getConsent, grantConsent } from '@/db/repositories/consentRepository'
 import { encryptForStorage } from '@/lib/encryption'
+import { verifyOAuthState, isSafeReturnTo } from '@/lib/oauthState'
 import {
   createSocialConnection,
   getActiveConnection,
 } from '@/db/repositories/socialConnectionRepository'
 import type { SocialPlatform } from '@/db/repositories/socialConnectionRepository'
-
-type OAuthState = {
-  platform: SocialPlatform
-  userId: string
-  returnTo: string
-}
 
 type LinkedInTokenResponse = {
   access_token: string
@@ -98,11 +93,10 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get('code')
   const rawState = searchParams.get('state')
 
-  // Parse state
-  let state: OAuthState | null = null
-  try {
-    state = rawState ? JSON.parse(Buffer.from(rawState, 'base64').toString('utf8')) : null
-  } catch {
+  // Verify the HMAC-signed state. A forged, tampered, or expired state yields
+  // null → bounce to a safe default, never to an attacker-supplied returnTo.
+  const state = await verifyOAuthState(rawState)
+  if (!state) {
     return NextResponse.redirect(new URL('/dashboard/settings?social=error&reason=invalid_state', req.url))
   }
 
@@ -115,7 +109,8 @@ export async function GET(req: NextRequest) {
     'platform=', state?.platform,
   )
 
-  const returnTo = state?.returnTo ?? '/dashboard/settings'
+  // Signed state is trusted, but guard the redirect target anyway.
+  const returnTo = isSafeReturnTo(state.returnTo) ? state.returnTo : '/dashboard/settings'
 
   // Provider denied or user cancelled
   if (error) {
@@ -144,7 +139,7 @@ export async function GET(req: NextRequest) {
     console.log('[LinkedIn-Callback] session OK userId=', sessionUserId, 'role=', role)
 
     const userId = state.userId
-    const platform = state.platform
+    const platform = state.platform as SocialPlatform
 
     // Consent gate. Admin is the data subject + controller for their own
     // account, so the admin self-grants social consent here — that lets
