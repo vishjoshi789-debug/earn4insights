@@ -9,8 +9,8 @@ export default function NotFound() {
         <div className="flex flex-col items-center gap-2">
           {/* Stacked lockup includes the wordmark. */}
           <Logo variant="stacked" width={160} height={120} priority />
-          <span className="text-xs text-muted-foreground max-w-[18rem] leading-relaxed">
-            The Intelligence Operating System for Brands, Consumers and Influencers
+          <span className="text-sm text-muted-foreground max-w-[22rem] leading-relaxed">
+            The consumer intelligence infrastructure where brands, consumers, and influencers meet.
           </span>
         </div>
         <div className="space-y-2">

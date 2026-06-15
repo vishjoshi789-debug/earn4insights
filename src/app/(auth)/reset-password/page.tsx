@@ -156,8 +156,8 @@ export default function ResetPasswordPage() {
           <div className="flex flex-col items-center gap-2">
             {/* Stacked lockup includes the wordmark. */}
             <Logo variant="stacked" width={160} height={120} priority />
-            <span className="text-xs text-muted-foreground text-center max-w-[18rem] leading-relaxed">
-              The Intelligence Operating System for Brands, Consumers and Influencers
+            <span className="text-sm text-muted-foreground text-center max-w-[22rem] leading-relaxed">
+              The consumer intelligence infrastructure where brands, consumers, and influencers meet.
             </span>
           </div>
           <CardTitle className="text-2xl font-bold text-center">Set new password</CardTitle>
