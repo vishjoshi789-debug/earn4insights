@@ -39,14 +39,45 @@ const PUBLIC_PREFIXES: string[] = [
   '/api/csrf/',
 ]
 
-const PUBLIC_API_ADMIN_PREFIXES: string[] = [
-  '/api/admin/run-migration-',
-]
+// Migration routes self-authenticate via `x-api-key: $ADMIN_API_KEY` (no
+// session), so they must bypass the session gate. Listed explicitly rather
+// than matched by `startsWith('/api/admin/run-migration-')` — an exact
+// allowlist means a future run-migration-* route is NOT silently public
+// until it's deliberately added here (it stays session-protected by default).
+// Add the new path here whenever a migration route is created.
+const PUBLIC_API_ADMIN_PATHS = new Set<string>([
+  '/api/admin/run-migration-002',
+  '/api/admin/run-migration-003',
+  '/api/admin/run-migration-004',
+  '/api/admin/run-migration-005',
+  '/api/admin/run-migration-006',
+  '/api/admin/run-migration-007',
+  '/api/admin/run-migration-008',
+  '/api/admin/run-migration-009',
+  '/api/admin/run-migration-010',
+  '/api/admin/run-migration-011',
+  '/api/admin/run-migration-012',
+  '/api/admin/run-migration-013',
+  '/api/admin/run-migration-014',
+  '/api/admin/run-migration-015',
+  '/api/admin/run-migration-016',
+  '/api/admin/run-migration-017',
+  '/api/admin/run-migration-018',
+  '/api/admin/run-migration-019',
+  '/api/admin/run-migration-020',
+  '/api/admin/run-migration-021',
+  '/api/admin/run-migration-022',
+  '/api/admin/run-migration-023',
+  '/api/admin/run-migration-024',
+  '/api/admin/run-migration-026',
+  '/api/admin/run-migration-027',
+  '/api/admin/run-migration-028',
+])
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return true
-  if (PUBLIC_API_ADMIN_PREFIXES.some((p) => pathname.startsWith(p))) return true
+  if (PUBLIC_API_ADMIN_PATHS.has(pathname)) return true
   return false
 }
 
