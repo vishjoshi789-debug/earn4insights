@@ -1,5 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// Target a remote deploy (e.g. Vercel) by setting PLAYWRIGHT_BASE_URL — avoids
+// the slow local dev server. Falls back to the local dev server otherwise.
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:9002'
+const isRemote = !!process.env.PLAYWRIGHT_BASE_URL
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 120_000,
@@ -9,7 +14,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:9002',
+    baseURL,
     trace: 'on-first-retry',
     navigationTimeout: 90_000,
   },
@@ -39,14 +44,14 @@ export default defineConfig({
       use: { ...devices['Desktop Edge'], channel: 'msedge' },
     },
   ],
-  /* Start dev server manually before running tests:
-     npm run dev
-     Then run: npx playwright test
-  */
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:9002',
-    reuseExistingServer: true,
-    timeout: 180_000,
-  },
+  /* Local: start dev server manually (npm run dev) then `npx playwright test`.
+     Remote: set PLAYWRIGHT_BASE_URL=<deploy-url> — no local server started. */
+  webServer: isRemote
+    ? undefined
+    : {
+        command: 'npm run dev',
+        url: 'http://localhost:9002',
+        reuseExistingServer: true,
+        timeout: 180_000,
+      },
 })
