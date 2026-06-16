@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server"
 import {
   CSRF_COOKIE_NAME,
   CSRF_HEADER_NAME,
+  csrfErrorResponse,
   generateCsrfToken,
   setCsrfCookie,
 } from "@/lib/csrf"
@@ -87,6 +88,56 @@ function isSafeCallbackUrl(value: string | null | undefined): value is string {
   if (value.startsWith('//')) return false
   if (value.startsWith('/login') || value.startsWith('/signup')) return false
   return true
+}
+
+// ── B1: middleware-enforced CSRF (Option 2 — behavioral rule) ──────────
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+// Prefixes whose routes are not a cookie-CSRF surface (NextAuth/password,
+// provider-signed webhooks, Bearer-secret cron/jobs, signed pusher auth,
+// the csrf-init route itself).
+const CSRF_EXEMPT_PREFIXES = [
+  '/api/auth/',
+  '/api/webhooks/',
+  '/api/cron/',
+  '/api/jobs/',
+  '/api/pusher/',
+  '/api/csrf/',
+]
+
+/**
+ * Whether this request must pass the CSRF double-submit check. Only mutating
+ * /api/* requests qualify, minus the exempt prefixes and minus token-authed
+ * requests — a Bearer / x-api-key caller is not cookie-authenticated, so the
+ * browser can't forge it cross-site and there is no CSRF surface.
+ */
+function requiresCsrf(req: NextRequest): boolean {
+  if (!MUTATING_METHODS.has(req.method)) return false
+  const p = req.nextUrl.pathname
+  if (!p.startsWith('/api/')) return false
+  if (CSRF_EXEMPT_PREFIXES.some((pre) => p.startsWith(pre))) return false
+  const authz = req.headers.get('authorization')
+  if (authz && /^Bearer\s+/i.test(authz)) return false
+  if (req.headers.get('x-admin-api-key')) return false
+  if (req.headers.get('x-api-key')) return false
+  return true
+}
+
+/**
+ * Edge-safe double-submit check: the `x-csrf-token` header must match the
+ * `e4i-csrf` cookie. Implemented with a pure-JS constant-time compare — the
+ * shared csrf.ts validator pulls in node:crypto (timingSafeEqual/Buffer),
+ * which is not available in the Edge middleware runtime.
+ */
+function validateCsrfEdge(req: NextRequest): boolean {
+  const header = req.headers.get(CSRF_HEADER_NAME)
+  if (!header) return false
+  const cookie = req.cookies.get(CSRF_COOKIE_NAME)?.value
+  if (!cookie) return false
+  if (header.length !== cookie.length) return false
+  let diff = 0
+  for (let i = 0; i < header.length; i++) diff |= header.charCodeAt(i) ^ cookie.charCodeAt(i)
+  return diff === 0
 }
 
 /**
@@ -222,6 +273,24 @@ export default auth(async (req: NextRequest & { auth: any }) => {
   // Visible in Vercel logs as `[MW] path=...` and on every response
   // as the `x-mw-ran` header so DevTools can verify per-request.
   console.log(`[MW] path=${req.nextUrl.pathname} authed=${!!req.auth}`)
+
+  // ── B1: CSRF check on cookie-authed mutating /api requests ──
+  // Phased rollout: log-only by default; only returns 403 once
+  // CSRF_ENFORCE='true' is set (flip on Vercel after verifying clean logs).
+  // Runs before auth handling so a forged mutation is rejected outright.
+  if (requiresCsrf(req) && !validateCsrfEdge(req)) {
+    if (process.env.CSRF_ENFORCE === 'true') {
+      const res = csrfErrorResponse()
+      // Refresh the cookie so a legit client (e.g. cookie not yet minted) can
+      // read the token and retry successfully.
+      setCsrfCookie(res, req.cookies.get(CSRF_COOKIE_NAME)?.value ?? generateCsrfToken())
+      res.headers.set('x-mw-ran', '1')
+      res.headers.set('x-mw-decision', 'csrf-403')
+      return res
+    }
+    // Log-only: surface what WOULD have been blocked, then fall through.
+    console.warn(`[CSRF_WOULD_BLOCK] ${req.method} ${req.nextUrl.pathname}`)
+  }
 
   const decision = await decideAuth(req)
 

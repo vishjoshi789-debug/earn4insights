@@ -9,6 +9,7 @@ import { SessionProvider } from '@/components/session-provider'
 import { Toaster } from 'sonner'
 import AnalyticsTracker from '@/components/analytics-tracker'
 import { CookieConsent } from '@/components/CookieConsent'
+import { CsrfFetchProvider } from '@/components/CsrfFetchProvider'
 import { CSRF_HEADER_NAME, CSRF_COOKIE_NAME } from '@/lib/csrf'
 
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID
@@ -98,6 +99,7 @@ export default async function RootLayout({
           Skip to main content
         </a>
         <SessionProvider>
+          <CsrfFetchProvider />
           <div className="relative flex min-h-dvh flex-col bg-background">
             <SiteHeader />
             <main id="main-content" className="flex-1">{children}</main>
