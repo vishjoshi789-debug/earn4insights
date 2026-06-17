@@ -1,43 +1,17 @@
-import NextAuth, { type DefaultSession } from "next-auth"
+import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
 import Credentials from "next-auth/providers/credentials"
 import { cookies } from "next/headers"
 import { getUserByEmail, createUser } from "@/lib/user/userStore"
 import { verifyPassword } from "@/lib/user/password"
-import type { UserRole } from "@/lib/user/types"
+import { jwtCallback, sessionCallback } from "@/lib/auth/authCallbacks"
 import { loginRateLimit } from "@/lib/rate-limit-upstash"
 import { ensureUserProfile } from "@/lib/auth/ensureUserProfile"
 import { SIGNUP_INTENT_COOKIE, verifySignupIntent } from "@/lib/auth/signupIntent"
 import { markEmailVerified } from "@/server/emailVerificationService"
 
-// Extend NextAuth types
-declare module "next-auth" {
-  interface Session {
-    /** Per-login random nonce — binds the 2FA proof cookie to this login. */
-    loginNonce?: string
-    /** True while this login still needs to pass the 2FA challenge. */
-    requires2FA?: boolean
-    user: {
-      id: string
-      role: UserRole
-      // 3.5E — multi-role capability flags. Drive the RoleSwitcher
-      // visibility + the sidebar primary-view filter. Mirror the
-      // boolean columns on users (migration 022).
-      isBrand?: boolean
-      isConsumer?: boolean
-      isInfluencer?: boolean
-    } & DefaultSession["user"]
-  }
-
-  interface User {
-    role: UserRole
-    /** Set by authorize() — 2FA is enabled and this device is not trusted. */
-    twoFactorPending?: boolean
-    isBrand?: boolean
-    isConsumer?: boolean
-    isInfluencer?: boolean
-  }
-}
+// NextAuth Session/User type augmentation now lives in ./authCallbacks
+// (co-located with the shared jwt/session callbacks that depend on it).
 
 /** Trusted-device cookie name — mirrors src/lib/twoFactor/devices.ts. */
 const TRUSTED_DEVICE_COOKIE = 'e4i-trusted-device'
@@ -301,42 +275,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true
     },
 
-    async jwt({ token, user, account }) {
-      // Initial sign in — populate token from user object
-      if (user) {
-        token.id = user.id
-        token.role = user.role
-        token.name = user.name
-        token.email = user.email
-        // 3.5E — capability flags propagated to JWT so they survive
-        // across requests without re-reading from DB.
-        token.isBrand = (user as { isBrand?: boolean }).isBrand === true
-        token.isConsumer = (user as { isConsumer?: boolean }).isConsumer === true
-        token.isInfluencer = (user as { isInfluencer?: boolean }).isInfluencer === true
-        // Per-login nonce — the 2FA proof cookie is bound to this so it
-        // cannot survive into a later login.
-        token.loginNonce = crypto.randomUUID()
-        // Whether this login still owes a 2FA challenge (credentials only;
-        // Google sign-ins carry no twoFactorPending → falsy → false).
-        token.twoFactorPending =
-          (user as { twoFactorPending?: boolean }).twoFactorPending === true
-      }
-
-      return token
-    },
-
-    async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string
-        session.user.role = token.role as UserRole
-        session.user.isBrand = token.isBrand === true
-        session.user.isConsumer = token.isConsumer === true
-        session.user.isInfluencer = token.isInfluencer === true
-        session.loginNonce = token.loginNonce as string | undefined
-        session.requires2FA = token.twoFactorPending === true
-      }
-      return session
-    },
+    // Shared with the edge config (auth.edge.ts) so middleware's req.auth
+    // matches exactly — see ./authCallbacks. Both are DB-free.
+    jwt: jwtCallback,
+    session: sessionCallback,
   },
 
   session: {
