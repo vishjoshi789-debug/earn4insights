@@ -1,6 +1,11 @@
 import 'server-only'
-import { randomBytes, timingSafeEqual } from 'crypto'
 import { NextResponse } from 'next/server'
+
+// NB: Web Crypto only (no node:crypto). This module is imported by the Edge
+// middleware, which mints the CSRF cookie via generateCsrfToken() on every
+// request — node:crypto's randomBytes/timingSafeEqual throw on the Edge
+// runtime (MIDDLEWARE_INVOCATION_FAILED). `crypto.getRandomValues` and the
+// pure-JS constant-time compare below work in both Node and Edge.
 
 export const CSRF_COOKIE_NAME = 'e4i-csrf'
 export const CSRF_HEADER_NAME = 'x-csrf-token'
@@ -8,7 +13,9 @@ const TOKEN_LENGTH_BYTES = 32
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 // 24h
 
 export function generateCsrfToken(): string {
-  return randomBytes(TOKEN_LENGTH_BYTES).toString('hex')
+  const bytes = new Uint8Array(TOKEN_LENGTH_BYTES)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 /**
@@ -79,19 +86,18 @@ export function checkCsrf(request: Request): CsrfCheckResult {
     console.warn(`[CSRF_FAIL] length_mismatch url=${pathname} ${detail}`)
     return { ok: false, reason: 'length_mismatch', detail }
   }
-  try {
-    const ok = timingSafeEqual(Buffer.from(headerToken), Buffer.from(cookieToken))
-    if (!ok) {
-      const detail = `headerPrefix=${headerToken.slice(0, 8)} cookiePrefix=${cookieToken.slice(0, 8)}`
-      console.warn(`[CSRF_FAIL] value_mismatch url=${pathname} ${detail}`)
-      return { ok: false, reason: 'value_mismatch', detail }
-    }
-    return { ok: true }
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err)
-    console.warn(`[CSRF_FAIL] comparison_threw url=${pathname} err=${detail}`)
-    return { ok: false, reason: 'comparison_threw', detail }
+  // Constant-time compare (lengths already verified equal above). Pure JS so
+  // the module stays Edge-safe — see the header note.
+  let diff = 0
+  for (let i = 0; i < headerToken.length; i++) {
+    diff |= headerToken.charCodeAt(i) ^ cookieToken.charCodeAt(i)
   }
+  if (diff !== 0) {
+    const detail = `headerPrefix=${headerToken.slice(0, 8)} cookiePrefix=${cookieToken.slice(0, 8)}`
+    console.warn(`[CSRF_FAIL] value_mismatch url=${pathname} ${detail}`)
+    return { ok: false, reason: 'value_mismatch', detail }
+  }
+  return { ok: true }
 }
 
 /**
