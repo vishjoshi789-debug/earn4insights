@@ -103,6 +103,14 @@ const CSRF_EXEMPT_PREFIXES = [
   '/api/jobs/',
   '/api/pusher/',
   '/api/csrf/',
+  // Unauthenticated, fire-and-forget telemetry sent via navigator.sendBeacon
+  // (analytics-tracker.tsx) — beacon can't carry an X-CSRF-Token header, and
+  // the route takes no session and has no per-user side effect (IP
+  // rate-limited anonymous event insert), so it is not a cookie-CSRF surface.
+  // NOTE: this is the ONLY analytics route exempted. /api/track-event is
+  // session-authed (writes user-scoped userEvents) and is called via a normal
+  // fetch the interceptor patches — it stays enforced.
+  '/api/analytics/track',
 ]
 
 /**
