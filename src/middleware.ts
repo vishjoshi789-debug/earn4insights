@@ -74,6 +74,7 @@ const PUBLIC_API_ADMIN_PATHS = new Set<string>([
   '/api/admin/run-migration-027',
   '/api/admin/run-migration-028',
   '/api/admin/run-migration-029',
+  '/api/admin/run-migration-030',
 ])
 
 function isPublic(pathname: string): boolean {
