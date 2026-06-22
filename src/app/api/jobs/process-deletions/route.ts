@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { userProfiles, users, userEvents, surveyResponses, feedback, notificationQueue, icpMatchScores } from '@/db/schema'
+import { userProfiles, users, surveyResponses, feedback, icpMatchScores } from '@/db/schema'
 import { eq, and, lt, sql } from 'drizzle-orm'
 
 // Verify the request is from Vercel Cron or authorized
@@ -77,44 +77,36 @@ async function processAccountDeletions(request: NextRequest) {
       try {
         console.log(`[CRON] Deleting account: ${profile.id}`)
 
-        // Get user email for comprehensive deletion
         const user = await db.query.users.findFirst({
           where: eq(users.id, profile.id)
         })
 
+        // Orphaned profile (no user row) — remove the profile directly and move on.
         if (!user) {
-          console.warn(`[CRON] User not found for profile ${profile.id}`)
+          console.warn(`[CRON] User not found for profile ${profile.id} — removing orphaned profile`)
+          await db.delete(userProfiles).where(eq(userProfiles.id, profile.id))
           continue
         }
 
-        // Delete in reverse order of dependencies
-        // 1. Delete notification queue
-        await db.delete(notificationQueue).where(eq(notificationQueue.userId, profile.id))
-        console.log(`[CRON]   ✓ Deleted notifications`)
-
-        // 2. Delete feedback
-        await db.delete(feedback).where(eq(feedback.userEmail, user.email!))
-        console.log(`[CRON]   ✓ Deleted feedback`)
-
-        // 3. Delete survey responses
-        await db.delete(surveyResponses).where(eq(surveyResponses.userEmail, user.email!))
-        console.log(`[CRON]   ✓ Deleted survey responses`)
-
-        // 4. Delete user events
-        await db.delete(userEvents).where(eq(userEvents.userId, profile.id))
-        console.log(`[CRON]   ✓ Deleted user events`)
-
-        // 4b. Delete ICP match score cache rows (consumerId has no FK — denormalised cache)
+        // ── Tables NOT reachable by a users(id) FK — must delete manually ──
+        // feedback / survey_responses are keyed by userEmail (no user_id FK).
+        if (user.email) {
+          await db.delete(feedback).where(eq(feedback.userEmail, user.email))
+          await db.delete(surveyResponses).where(eq(surveyResponses.userEmail, user.email))
+          console.log(`[CRON]   ✓ Deleted email-keyed feedback + survey responses`)
+        }
+        // icp_match_scores is a denormalised cache (consumerId, intentionally FK-less).
         await db.delete(icpMatchScores).where(eq(icpMatchScores.consumerId, profile.id))
-        console.log(`[CRON]   ✓ Deleted ICP match scores`)
+        console.log(`[CRON]   ✓ Deleted ICP match score cache`)
 
-        // 5. Delete user profile
-        await db.delete(userProfiles).where(eq(userProfiles.id, profile.id))
-        console.log(`[CRON]   ✓ Deleted user profile`)
-
-        // 6. Delete user account (this cascades sessions, accounts, etc via NextAuth)
+        // ── Single delete drives the rest via FK on-delete actions (migration 031) ──
+        //   CASCADE  → user_profiles + all PII/operational children (closes the orphan gap)
+        //   SET NULL → money history (point_transactions / payout_requests / reward_redemptions)
+        //              + analytics (user_events / email_send_events / analytics_events / support_analytics)
+        //              → rows retained, user link severed (anonymised erasure)
+        //   audit_log is FK-less and intentionally retained (deletion audit trail survives).
         await db.delete(users).where(eq(users.id, profile.id))
-        console.log(`[CRON]   ✓ Deleted user account`)
+        console.log(`[CRON]   ✓ Deleted user account (FK actions cascaded / anonymised dependents)`)
 
         deletedAccounts.push({
           userId: profile.id,

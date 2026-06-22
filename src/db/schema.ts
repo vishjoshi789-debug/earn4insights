@@ -415,7 +415,7 @@ export const userProfiles = pgTable('user_profiles', {
 // User events table (for behavior tracking)
 export const userEvents = pgTable('user_events', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: text('user_id').notNull(),
+  userId: text('user_id'),                 // nullable: ON DELETE SET NULL (B33) — anonymised analytics retained
   eventType: text('event_type').notNull(), // 'product_view', 'survey_start', 'survey_complete', 'notification_click', etc.
   productId: text('product_id'),
   surveyId: text('survey_id'),
@@ -475,7 +475,7 @@ export const auditLog = pgTable('audit_log', {
 // Email Send Events table (for send-time optimization)
 export const emailSendEvents = pgTable('email_send_events', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: text('user_id').notNull(),
+  userId: text('user_id'),                 // nullable: ON DELETE SET NULL (B33) — anonymised analytics retained
   notificationId: uuid('notification_id'),
   emailType: text('email_type').notNull(), // 'survey_notification', 'weekly_digest', etc.
   sentAt: timestamp('sent_at').notNull(),
@@ -805,7 +805,7 @@ export const userPoints = pgTable('user_points', {
 // ── Point Transactions ───────────────────────────────────────────
 export const pointTransactions = pgTable('point_transactions', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: text('user_id').notNull(),
+  userId: text('user_id'),                    // nullable: ON DELETE SET NULL (B33) — anonymised on user erasure
   amount: integer('amount').notNull(),        // positive = earn, negative = spend
   type: text('type').notNull(),               // 'earn' | 'spend' | 'refund'
   source: text('source').notNull(),
@@ -831,7 +831,7 @@ export const rewards = pgTable('rewards', {
 // ── Reward Redemptions ───────────────────────────────────────────
 export const rewardRedemptions = pgTable('reward_redemptions', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: text('user_id').notNull(),
+  userId: text('user_id'),                              // nullable: ON DELETE SET NULL (B33)
   rewardId: uuid('reward_id').notNull(),
   pointsSpent: integer('points_spent').notNull(),
   status: text('status').notNull().default('pending'), // 'pending' | 'fulfilled' | 'cancelled'
@@ -842,7 +842,7 @@ export const rewardRedemptions = pgTable('reward_redemptions', {
 // ── Payout Requests ──────────────────────────────────────────────
 export const payoutRequests = pgTable('payout_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: text('user_id').notNull(),
+  userId: text('user_id'),                    // nullable: ON DELETE SET NULL (B33)
   points: integer('points').notNull(),
   amount: decimal('amount', { precision: 10, scale: 2 }).notNull(), // USD
   status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'denied'

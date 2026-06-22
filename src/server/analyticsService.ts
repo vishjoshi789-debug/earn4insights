@@ -253,6 +253,7 @@ export async function batchUpdateBehavioralAttributes(): Promise<void> {
   console.log(`[Analytics] Processing ${activeUsers.length} active users`)
 
   for (const { userId } of activeUsers) {
+    if (!userId) continue // anonymised (erased-user) events — no user to update (B33 SET NULL)
     try {
       await updateUserBehavioralAttributes(userId)
     } catch (error) {

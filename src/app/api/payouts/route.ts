@@ -155,8 +155,10 @@ export async function PATCH(req: NextRequest) {
       })
       .where(eq(payoutRequests.id, payoutId))
 
-    // If denied, refund points
-    if (action === 'denied') {
+    // If denied, refund points — but only if the requester still exists.
+    // user_id is SET NULL once the account is erased (B33); a deleted user has
+    // no user_points row to refund (CASCADE-deleted), so skip.
+    if (action === 'denied' && payout[0].userId) {
       const { awardPoints } = await import('@/server/pointsService')
       await awardPoints(
         payout[0].userId,
