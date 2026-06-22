@@ -61,6 +61,21 @@ export async function POST(request: NextRequest) {
     `)
     results.push({ step: 'drop_not_null (5 columns)', status: 'ensured' })
 
+    // ── Step 1b: fix type mismatch — brand_alerts.rule_id was declared TEXT
+    // but brand_alert_rules.id is UUID, so the fk_brand_alerts_rule FK can't be
+    // created until the column type matches. Idempotent: only runs while it's
+    // still text. (USING ::uuid fails if a value isn't a valid uuid — clean any
+    // such orphan first; pre-launch the table is empty.)
+    await pgClient.unsafe(`
+      DO $$ BEGIN
+        IF (SELECT data_type FROM information_schema.columns
+            WHERE table_name = 'brand_alerts' AND column_name = 'rule_id') = 'text' THEN
+          ALTER TABLE brand_alerts ALTER COLUMN rule_id TYPE uuid USING rule_id::uuid;
+        END IF;
+      END $$
+    `)
+    results.push({ step: 'fix brand_alerts.rule_id type (text→uuid)', status: 'ensured' })
+
     // ── Step 2: add all FKs (idempotent loop over the authoritative map) ──
     // Columns: conname | child_table | child_col | parent_table | parent_col | on_delete
     await pgClient.unsafe(`

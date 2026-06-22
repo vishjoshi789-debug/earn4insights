@@ -630,7 +630,7 @@ export const brandAlertRules = pgTable('brand_alert_rules', {
 export const brandAlerts = pgTable('brand_alerts', {
   id: uuid('id').defaultRandom().primaryKey(),
   brandId: text('brand_id').notNull(),
-  ruleId: text('rule_id'),                   // which alert rule triggered this (nullable for system alerts)
+  ruleId: uuid('rule_id'),                   // which alert rule triggered this (nullable for system alerts)
   alertType: text('alert_type').notNull(),
   productId: text('product_id'),
   consumerId: text('consumer_id'),           // which consumer triggered it (nullable)
