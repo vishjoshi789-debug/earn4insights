@@ -1,6 +1,6 @@
-# SESSION_RESUME — Tier B Group 1 (Security Batch) — COMPLETE
+# SESSION_RESUME — Tier B Group 1 (Security ✅ + Money/Data Phase 1·1b·3 ✅)
 
-> Security batch shipped. Resume from the rollout section below.
+> Security batch + CSRF enforcement shipped. Money + Data Integrity batch: migrations **029/030/031 done** (CHECK constraints + FK integrity + GDPR deletion rework). Phase 2 (B14/B35) is the remaining code-side work. See "Money + Data Integrity batch" below.
 
 ## Status
 
@@ -44,12 +44,37 @@ All steps complete and verified on prod:
 
 Local `npm run dev` has pathological compile times (142–208s) → middleware HTTP tests are unreliable locally (requests hit before middleware compiles; no `x-mw-ran`, NextAuth default redirect, `[CSRF_META_EMPTY]`). **Verify on Vercel, not local.** Static checks (tsc, code review, `tsx` unit scripts) preferred locally. Dev log from PowerShell redirect is UTF-16 — decode with `tr -d '\000'`.
 
-## Carry-forwards (separate, not part of this batch)
+## Money + Data Integrity batch — status
 
-1. **Admin access recovery + prod 2FA-interlock verification.** Currently locked out of admin; regain via saved recovery codes on the 2FA challenge page (2FA is TOTP-only — no SMS). If recovery codes fail, a DB-level 2FA reset is needed — note the local box cannot reach the DB (outbound `:5432` firewalled, `ETIMEDOUT`), so do it via the Neon console or a deploy-time script. Then confirm the middleware 2FA interlock (`[2FA-DEBUG]` logs, `requires2FA` → `/auth/two-factor`) behaves on prod.
-2. **Money + Data Integrity batch — B14, B18, B19, B33, B34, B35.** Next major work item.
+| Phase | Migration | What | Status |
+|---|---|---|---|
+| 1 | 029 | money≥0 CHECKs (campaign_payments amounts, reward_redemptions.points_spent, rewards.points_cost) + B18 proposed_rate range (0..₹10L = 100,000,000 paise cap) + campaign_applications.status enum | ✅ landed + verified |
+| 1b | 030 | status/enum CHECKs (campaign_payments.status + payment_type, reward_redemptions.status) | ✅ landed + verified |
+| 3 | 031 | **FK integrity + GDPR deletion rework (B33)** | ✅ landed + verified |
+| 2 | — | B14 redemption rounding + B35 refund→campaign_payments (code-side) | ⏭ not started |
 
-## Cleanup (post-watch-window)
+**B19 dropped** — audit showed 0 orphan reviewers + `fk_influencer_reviews_reviewer` already exists.
+**Deferred backlog:** `payment_redemptions` status CHECK (separate table from reward_redemptions; its own value set incl. `completed`).
+**Commits:** `43d1169` (029) · `19ce890` (030) · `ad1d2d9` (031 + cron rewrite) · `ee62a36` (rule_id type fix).
 
-- Trim the `[MW] … enforce=` diagnostic readout (added during the enforcement debug) and gate `[MW]`/`[2FA-DEBUG]` behind a debug flag — per-request log noise + cost at steady state.
-- Delete `db-diag.mjs` (untracked temp; can't connect from this box anyway).
+### Phase 3 (migration 031) — what it did
+- Added the audit-confirmed missing FKs with GDPR on-delete policy. Final `confdeltype` across all `fk_%`: **CASCADE=104, SET NULL=38, RESTRICT=7** (RESTRICT=7 is exactly the designed set: `reward_redemptions.reward_id` + the 6 product-content `product_id` FKs).
+- Policy: **CASCADE** = PII/operational + owned children; **SET NULL** = money/ledger history + analytics + admin-actor refs (retain-anonymized erasure); **RESTRICT** = catalog reward + product-content (block accidental loss); **SKIP** = external/opaque + polymorphic + `competitive_insights.generated_by` (system/ai sentinel) + `audit_log.*` (decoupled).
+- 5 `user_id` columns made nullable (`point_transactions`, `payout_requests`, `reward_redemptions`, `user_events`, `email_send_events`) so SET NULL can fire.
+- Fixed `brand_alerts.rule_id` type (text→uuid; it references a uuid PK) via Step 1b in the route + schema.ts.
+- **Rewrote `process-deletions` cron:** single `delete(users)` drives CASCADE + SET NULL; manual deletes reduced to email-keyed (feedback/survey_responses) + FK-less cache (icp_match_scores); audit_log retained. Closes the old admin-deleted-orphan gap. No users-referencing FK is RESTRICT → cron can't brick.
+- **Pre-flight prod cleanup:** orphan scan found 13 sets (deleted-user remnants from the *old* cron gap) → anonymized SET-NULL tables, deleted CASCADE orphans child-first (community_posts + contribution_events), created a `demo` placeholder product for 6 seed surveys (66 responses preserved). Re-scan empty.
+- Null-audit (tsc-driven): 2 guards — payouts denial-refund skips erased users; analytics batch skips null-user events.
+
+## Pre-beta HARD GATES (must pass before launch)
+
+1. **CRON E2E TEST.** Rewritten `process-deletions` is live but has NEVER run against a real deletion. Parked short-term — *acceptable because the 30-day grace period guarantees no erasure fires for 30 days after any request* (delete-account sets `deletionScheduledFor = now+30d`; cron only deletes when that's past), so there's always runway. MUST pass before beta: throwaway user with data → mark for deletion → run cron with expired grace → confirm CASCADE cleared PII + SET NULL anonymized money/analytics + audit_log survived.
+2. **ADMIN 2FA RECOVERY + prod 2FA verification.** vishjoshi789 locked out (TOTP-only; no authenticator/recovery codes; DB has 10 hashed codes, unreadable). Plan: DB-level 2FA reset (clear `user_totp_secrets` + `user_recovery_codes` + `users.two_factor_enabled=false`) → re-enroll fresh authenticator + **SAVE** codes → verify the prod 2FA interlock end-to-end (`[2FA-DEBUG]` logs, `requires2FA` → `/auth/two-factor`). DB unreachable from local box (`:5432` firewalled) — use Neon console or a deploy-time script.
+
+## Next work
+**Phase 2** — B14 redemption rounding + B35 refund→campaign_payments (code-side: read services → plan → implement).
+
+## Housekeeping
+- **`ADMIN_API_KEY` rotation IN PROGRESS** — was `test123` (weak + exposed in chat); rotating to a strong value, Production scope, redeploy-bound.
+- `[MW] enforce=` diagnostic removed (Phase 1 commit). `[MW]`/`[2FA-DEBUG]` still always-on — gate behind a debug flag eventually.
+- `db-diag.mjs` **kept** (untracked; gitignore) — it's the scaffold for the 2FA DB reset above. Can't connect from local box (`:5432` firewalled), but usable from a network with DB egress.
