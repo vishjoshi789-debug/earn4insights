@@ -380,12 +380,13 @@ export async function capturePayment(params: {
 // ═══════════════════════════════════════════════════════════════════
 
 export async function refundPayment(params: {
+  razorpayOrderId: string
   razorpayPaymentId: string
   amount?: number // if omitted → full refund
   reason?: string
   brandId: string
 }): Promise<{ refundId: string; amount: number; status: string }> {
-  const { razorpayPaymentId, amount, reason, brandId } = params
+  const { razorpayOrderId, razorpayPaymentId, amount, reason, brandId } = params
 
   let refundResponse: any
   try {
@@ -430,6 +431,25 @@ export async function refundPayment(params: {
       refundReason: reason ?? 'Not specified',
     },
   })
+
+  // B35: keep campaign_payments in sync (mirror capturePayment, which escrows
+  // milestone payments on capture). On a FULL refund, flip the escrowed
+  // milestone payment to 'refunded' so the ledger doesn't show money still held
+  // after it's been returned. Partial refunds leave status as-is (there is no
+  // 'partially_refunded' state). Non-fatal — the Razorpay refund already
+  // succeeded, so a bookkeeping miss must not surface as a refund failure.
+  try {
+    const order = await getOrderByRazorpayId(razorpayOrderId)
+    const isFullRefund = amount === undefined || (order ? amount >= order.amount : false)
+    if (order && isFullRefund && order.milestoneId) {
+      const payment = await getPaymentByMilestone(order.milestoneId)
+      if (payment && payment.status !== 'refunded') {
+        await updatePaymentStatus(payment.id, 'refunded', { refundedAt: new Date() })
+      }
+    }
+  } catch (err) {
+    console.error('[refundPayment] campaign_payments sync failed (refund itself succeeded):', err)
+  }
 
   return {
     refundId,

@@ -86,6 +86,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     // ── Process refund ───────────────────────────────────────────────
     const refundResult = await refundPayment({
+      razorpayOrderId,
       razorpayPaymentId: order.razorpayPaymentId,
       amount,
       reason,

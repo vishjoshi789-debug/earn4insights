@@ -34,8 +34,8 @@ import { convertToMinor } from '@/lib/currency'
 import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 const MINIMUM_REDEMPTION_POINTS = 500
-// 10 points = ₹1 (₹0.10 per point — matches UI POINTS_TO_INR = 0.10)
-const POINTS_PER_INR = 10
+// 10 points = ₹1 = 100 paise → 1 point = 10 paise (matches UI POINTS_TO_INR = 0.10)
+const PAISE_PER_POINT = 10
 
 export async function POST(req: NextRequest) {
   try {
@@ -112,7 +112,10 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Calculate value in paise ──────────────────────────────────
-    const valueInPaise = Math.round(points / POINTS_PER_INR) * 100 // points → rupees → paise
+    // Exact integer math: 1 point = 10 paise. The old
+    // `Math.round(points / POINTS_PER_INR) * 100` rounded to whole rupees first,
+    // over/under-paying up to 50 paise on points not divisible by 10 (B14).
+    const valueInPaise = points * PAISE_PER_POINT
 
     // ── Validate payout account for cash redemptions ──────────────
     if (redemptionType === 'cash_payout' && payoutAccountId) {
