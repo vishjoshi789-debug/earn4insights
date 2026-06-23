@@ -69,7 +69,7 @@ Local `npm run dev` has pathological compile times (142–208s) → middleware H
 ## Pre-beta HARD GATES (must pass before launch)
 
 1. **CRON E2E TEST — ✅ PASSED (2026-06-23).** Ran the rewritten `process-deletions` against a throwaway user (`zzz-cron-test`) with scattered data + expired grace. Verified: CASCADE erased PII/operational (users, user_profiles via 027, user_points), manual step deleted email-keyed feedback, SET NULL anonymized money/analytics (point_transactions + user_events survived with `user_id` NULL), audit_log retained. The GDPR erasure path works end-to-end on prod.
-2. **ADMIN 2FA RECOVERY + prod 2FA verification.** vishjoshi789 locked out (TOTP-only; no authenticator/recovery codes; DB has 10 hashed codes, unreadable). Plan: DB-level 2FA reset (clear `user_totp_secrets` + `user_recovery_codes` + `users.two_factor_enabled=false`) → re-enroll fresh authenticator + **SAVE** codes → verify the prod 2FA interlock end-to-end (`[2FA-DEBUG]` logs, `requires2FA` → `/auth/two-factor`). DB unreachable from local box (`:5432` firewalled) — use Neon console or a deploy-time script.
+2. **ADMIN 2FA RECOVERY + prod 2FA verification — ✅ DONE (2026-06-23).** vishjoshi789 was locked out (TOTP-only, no authenticator/recovery codes). Did a DB-level reset (cleared `user_totp_secrets` + `user_recovery_codes` + `trusted_devices`, set `two_factor_enabled=false`) → logged in fresh → re-enrolled a new authenticator + **saved the recovery codes** → logged out → completed a real `/auth/two-factor` challenge into admin. Prod 2FA interlock verified end-to-end.
 
 ## Next work
 **Phase 2** — B14 redemption rounding + B35 refund→campaign_payments (code-side: read services → plan → implement).
