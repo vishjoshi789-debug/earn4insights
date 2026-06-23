@@ -203,10 +203,12 @@ async function decideAuth(req: NextRequest & { auth: any }): Promise<NextRespons
     // Diagnostic — surfaces in Vercel logs as `[2FA-DEBUG]`. Shows the
     // 2FA interlock saw a requires2FA session and whether the proof
     // cookie cleared it for this request.
-    console.log(
-      `[2FA-DEBUG] interlock path=${pathname} requires2FA=true`,
-      `hasProofCookie=${!!proof} proofPassed=${passed}`,
-    )
+    if (process.env.MW_DEBUG === 'true') {
+      console.log(
+        `[2FA-DEBUG] interlock path=${pathname} requires2FA=true`,
+        `hasProofCookie=${!!proof} proofPassed=${passed}`,
+      )
+    }
     if (!passed) {
       if (isAllowedDuringTwoFactor(pathname)) return null
       if (pathname.startsWith('/api/')) {
@@ -283,7 +285,7 @@ export default auth(async (req: NextRequest & { auth: any }) => {
   // Diagnostic — proves middleware actually ran for this request.
   // Visible in Vercel logs as `[MW] path=...` and on every response
   // as the `x-mw-ran` header so DevTools can verify per-request.
-  console.log(`[MW] path=${req.nextUrl.pathname} authed=${!!req.auth}`)
+  if (process.env.MW_DEBUG === 'true') console.log(`[MW] path=${req.nextUrl.pathname} authed=${!!req.auth}`)
 
   // ── B1: CSRF check on cookie-authed mutating /api requests ──
   // Phased rollout: log-only by default; only returns 403 once

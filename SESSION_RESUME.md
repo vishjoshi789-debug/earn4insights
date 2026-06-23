@@ -81,5 +81,5 @@ Remaining before beta: `CRON_SECRET`/`AUTH_SECRET` rotation (Housekeeping below)
 ## Housekeeping
 - **`ADMIN_API_KEY` rotated ✅** — was `test123` (weak + exposed); now a strong value, Production scope, redeploy-bound (new key works, old key 401).
 - **`CRON_SECRET` (or `AUTH_SECRET`) — ROTATE:** the Bearer secret used to trigger `process-deletions` during the cron test was pasted into chat → exposed. Rotate in Vercel. ⚠️ if it's `AUTH_SECRET`, rotating invalidates all sessions (everyone re-logs-in — harmless pre-beta).
-- `[MW] enforce=` diagnostic removed (Phase 1 commit). `[MW]`/`[2FA-DEBUG]` still always-on — gate behind a debug flag eventually.
-- `db-diag.mjs` **kept** (untracked; gitignore) — it's the scaffold for the 2FA DB reset above. Can't connect from local box (`:5432` firewalled), but usable from a network with DB egress.
+- `[MW]`/`[2FA-DEBUG]` middleware logs now **gated behind `MW_DEBUG=true`** (off by default — no per-request log noise/cost at steady state; set the Vercel env var to re-enable for debugging). The `enforce=` diagnostic was already removed.
+- `db-diag.mjs` + `playwright-report/` are now gitignored. `db-diag.mjs` kept locally as the 2FA-reset scaffold (reads `.env.local`; can't connect from this box — `:5432` firewalled — but works from a network with DB egress).
