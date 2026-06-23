@@ -68,13 +68,14 @@ Local `npm run dev` has pathological compile times (142–208s) → middleware H
 
 ## Pre-beta HARD GATES (must pass before launch)
 
-1. **CRON E2E TEST.** Rewritten `process-deletions` is live but has NEVER run against a real deletion. Parked short-term — *acceptable because the 30-day grace period guarantees no erasure fires for 30 days after any request* (delete-account sets `deletionScheduledFor = now+30d`; cron only deletes when that's past), so there's always runway. MUST pass before beta: throwaway user with data → mark for deletion → run cron with expired grace → confirm CASCADE cleared PII + SET NULL anonymized money/analytics + audit_log survived.
+1. **CRON E2E TEST — ✅ PASSED (2026-06-23).** Ran the rewritten `process-deletions` against a throwaway user (`zzz-cron-test`) with scattered data + expired grace. Verified: CASCADE erased PII/operational (users, user_profiles via 027, user_points), manual step deleted email-keyed feedback, SET NULL anonymized money/analytics (point_transactions + user_events survived with `user_id` NULL), audit_log retained. The GDPR erasure path works end-to-end on prod.
 2. **ADMIN 2FA RECOVERY + prod 2FA verification.** vishjoshi789 locked out (TOTP-only; no authenticator/recovery codes; DB has 10 hashed codes, unreadable). Plan: DB-level 2FA reset (clear `user_totp_secrets` + `user_recovery_codes` + `users.two_factor_enabled=false`) → re-enroll fresh authenticator + **SAVE** codes → verify the prod 2FA interlock end-to-end (`[2FA-DEBUG]` logs, `requires2FA` → `/auth/two-factor`). DB unreachable from local box (`:5432` firewalled) — use Neon console or a deploy-time script.
 
 ## Next work
 **Phase 2** — B14 redemption rounding + B35 refund→campaign_payments (code-side: read services → plan → implement).
 
 ## Housekeeping
-- **`ADMIN_API_KEY` rotation IN PROGRESS** — was `test123` (weak + exposed in chat); rotating to a strong value, Production scope, redeploy-bound.
+- **`ADMIN_API_KEY` rotated ✅** — was `test123` (weak + exposed); now a strong value, Production scope, redeploy-bound (new key works, old key 401).
+- **`CRON_SECRET` (or `AUTH_SECRET`) — ROTATE:** the Bearer secret used to trigger `process-deletions` during the cron test was pasted into chat → exposed. Rotate in Vercel. ⚠️ if it's `AUTH_SECRET`, rotating invalidates all sessions (everyone re-logs-in — harmless pre-beta).
 - `[MW] enforce=` diagnostic removed (Phase 1 commit). `[MW]`/`[2FA-DEBUG]` still always-on — gate behind a debug flag eventually.
 - `db-diag.mjs` **kept** (untracked; gitignore) — it's the scaffold for the 2FA DB reset above. Can't connect from local box (`:5432` firewalled), but usable from a network with DB egress.
