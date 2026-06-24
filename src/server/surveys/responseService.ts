@@ -9,6 +9,7 @@ import type { SurveyResponse } from '@/lib/survey-types'
 import { sendSurveyResponseNotification } from '@/server/surveys/responseNotificationEmail'
 import { analyzeSentiment } from '@/server/sentimentService'
 import { normalizeTextForAnalytics } from '@/server/textNormalizationService'
+import { auth } from '@/lib/auth/auth.config'
 
 export async function submitSurveyResponse(
   surveyId: string,
@@ -66,33 +67,53 @@ export async function submitSurveyResponse(
 
   await createSurveyResponse(response)
 
-  // ── Award points for survey completion ──────────────────────
-  try {
-    const { awardPoints, POINT_VALUES } = await import('@/server/pointsService')
-    // userEmail is used as the userId since surveys may not have session user id
-    const surveyUserId = response.userEmail || response.userName || ''
-    if (surveyUserId) {
-      await awardPoints(
-        surveyUserId,
-        POINT_VALUES.survey_complete,
-        'survey_complete',
-        response.id || surveyId,
-        `Completed survey: ${survey.title.slice(0, 50)}`,
-      )
+  // ── Award points for survey completion (B23) ─────────────────
+  // Identity comes from the SESSION, server-side — never a client value.
+  // This is a server action; a client-passed id could be forged/farmed, so
+  // we resolve the real users.id via auth(). Anonymous respondents (no
+  // session) earn nothing and must NOT throw.
+  const session = await auth()
+  const pointsUserId = session?.user?.id ?? null
+  if (pointsUserId) {
+    const { awardPoints, POINT_VALUES, hasPointsAwarded } = await import('@/server/pointsService')
+    try {
+      // Award once per (user, survey): sourceId = surveyId (not response.id),
+      // so resubmitting the same survey can't farm points.
+      const already = await hasPointsAwarded(pointsUserId, 'survey_complete', surveyId)
+      if (!already) {
+        await awardPoints(
+          pointsUserId,
+          POINT_VALUES.survey_complete,
+          'survey_complete',
+          surveyId,
+          `Completed survey: ${survey.title.slice(0, 50)}`,
+        )
+      }
+    } catch (err) {
+      // Saving the response is never blocked by a points failure — but log
+      // LOUD so a future failure is visible/alertable (not silently swallowed).
+      console.error('[B23][survey_points] FAILED to credit survey points', {
+        userId: pointsUserId,
+        surveyId,
+        amount: POINT_VALUES.survey_complete,
+        err: err instanceof Error ? err.message : String(err),
+      })
+    }
 
-      // AI contribution scoring (non-blocking)
+    // AI contribution scoring — genuinely best-effort, its own separate catch.
+    try {
       const { recordContribution } = await import('@/server/contributionPipeline')
       recordContribution({
-        userId: surveyUserId,
+        userId: pointsUserId,
         contributionType: 'survey_complete',
         rawContent: combinedText || Object.values(answers).filter((a) => typeof a === 'string').join(' '),
         productId: survey.productId,
-        sourceId: response.id || surveyId,
+        sourceId: surveyId,
         metadata: { surveyTitle: survey.title, npsScore: response.npsScore, sentiment: response.sentiment },
-      }).catch(err => console.error('[ContributionPipeline] survey error:', err))
+      }).catch(err => console.error('[ContributionPipeline] survey error (non-blocking):', err))
+    } catch (err) {
+      console.error('[ContributionPipeline] survey error (non-blocking):', err)
     }
-  } catch (err) {
-    console.error('[SurveyResponse] Points/contribution failed (non-blocking):', err)
   }
 
   // ── Extract intent signals (non-blocking) ────────────────

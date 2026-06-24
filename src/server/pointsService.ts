@@ -188,6 +188,28 @@ export async function getUserBalance(userId: string): Promise<number> {
 }
 
 /**
+ * Whether a points award already exists for this (user, source, sourceId).
+ * Read-only — used to make award-once-per-source idempotent (e.g. survey
+ * completion: one credit per (userId, surveyId), so resubmits can't farm).
+ */
+export async function hasPointsAwarded(
+  userId: string,
+  source: string,
+  sourceId: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: pointTransactions.id })
+    .from(pointTransactions)
+    .where(and(
+      eq(pointTransactions.userId, userId),
+      eq(pointTransactions.source, source),
+      eq(pointTransactions.sourceId, sourceId),
+    ))
+    .limit(1)
+  return rows.length > 0
+}
+
+/**
  * Advance challenge progress when a qualifying action occurs.
  */
 async function advanceChallenges(userId: string, source: string) {

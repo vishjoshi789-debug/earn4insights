@@ -345,7 +345,10 @@ export async function recordContribution(input: ContributionInput): Promise<void
     // Award the DIFFERENCE between AI-calculated tokens and base points
     // because the existing wiring already awards base points via awardPoints()
     // For contribution types that don't already award points, award full amount
-    const alreadyAwardedTypes = ['community_post', 'community_reply', 'community_upvote_received']
+    // 'survey_complete' (responseService, B23) and 'feedback_submit' (feedback/submit)
+    // already award base points before this runs, so the AI path must only top up the
+    // bonus (finalTokens - base), not re-award the base on top of it.
+    const alreadyAwardedTypes = ['community_post', 'community_reply', 'community_upvote_received', 'survey_complete', 'feedback_submit']
     const alreadyAwarded = alreadyAwardedTypes.includes(contributionType)
       ? (POINT_VALUES as Record<string, number>)[contributionType] ?? 0
       : 0
