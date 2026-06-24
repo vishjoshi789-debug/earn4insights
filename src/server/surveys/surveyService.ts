@@ -14,6 +14,8 @@ import {
 import type { Survey, SurveyQuestion, SurveyType, SurveySettings } from '@/lib/survey-types'
 import { createNPSSurvey, createCSATSurvey } from '@/lib/survey-types'
 import { notifyNewSurvey } from '@/server/campaigns/surveyNotificationCampaign'
+import { findIdealConsumers } from '@/lib/personalization/smartDistributionService'
+import { dispatchToUsers } from '@/server/realtimeNotificationService'
 
 export async function fetchAllSurveys() {
   return await getAllSurveys()
@@ -77,10 +79,35 @@ export async function createSurvey(
 
   await createSurveyInDB(survey)
 
-  // Non-blocking: notify targeted consumers about the new survey
-  notifyNewSurvey(survey.id).catch((err) =>
-    console.error('[createSurvey] notifyNewSurvey error:', err)
-  )
+  // Non-blocking: resolve the target audience ONCE (keyed on productId, which is
+  // NOT NULL + create-validated + FK-enforced), then fan out to BOTH channels from
+  // that single result — no second resolve. Empty list → both no-op, no error.
+  // brandId/ownerId is never referenced here (it's nullable), so no null-throw path.
+  ;(async () => {
+    const recipients = await findIdealConsumers(survey.productId, 50)
+    const targetUserIds = recipients.map((r) => r.userId)
+
+    // EMAIL — feed the resolved list as targetUserIds. Previously this fired with
+    // no list and early-returned to ZERO recipients; now it actually sends.
+    notifyNewSurvey(survey.id, { targetUserIds }).catch((err) =>
+      console.error('[createSurvey] notifyNewSurvey error:', err),
+    )
+
+    // IN-APP BELL (+ Pusher) — same audience, same single resolve.
+    dispatchToUsers(
+      recipients.map((r) => ({ userId: r.userId, role: 'consumer' as const })),
+      {
+        eventType: 'survey_available',
+        title: `New survey: ${survey.title}`,
+        body: 'A new survey is waiting for you. Complete it to earn points.',
+        ctaUrl: `/survey/${survey.id}`, // singular — the only real survey route
+        type: 'survey_available',
+        entityType: 'survey',
+        entityId: survey.id,
+        metadata: { productId: survey.productId },
+      },
+    ).catch((err) => console.error('[createSurvey] bell dispatch error:', err))
+  })().catch((err) => console.error('[createSurvey] survey notify error:', err))
 
   // Revalidate the surveys page
   revalidatePath('/dashboard/surveys')

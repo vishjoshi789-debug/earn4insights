@@ -243,21 +243,13 @@ async function routeEvent(
       break
     }
 
-    // ── Brand: survey created → notify matched consumers
-    case PLATFORM_EVENTS.BRAND_SURVEY_CREATED: {
-      const targets = await getConsumersForBrandViaIcps(payload.brandId!, 50)
-      await dispatchToUsers(targets, {
-        eventType,
-        eventId,
-        title:  `New survey: ${payload.surveyTitle ?? 'Earn rewards'}`,
-        body:   `A new survey is waiting for you. Complete it to earn points.`,
-        ctaUrl: payload.surveyId ? `/surveys/${payload.surveyId}` : '/dashboard',
-        type:   'survey_available',
-        entityType: 'survey',
-        entityId:   payload.surveyId,
-      })
-      break
-    }
+    // ── Brand: survey created — handler removed.
+    // "New survey" notifications now fan out DIRECTLY from
+    // surveyService.createSurvey (email + in-app bell), sharing one
+    // findIdealConsumers(productId) resolve. This handler self-resolved a
+    // different (brand-ICP) audience, double-resolved, deref'd payload.brandId!
+    // (throws on null), and used a broken /surveys/ CTA. Nothing emits
+    // BRAND_SURVEY_CREATED anymore.
 
     // ── Brand: campaign launched → notify active influencers
     case PLATFORM_EVENTS.BRAND_CAMPAIGN_LAUNCHED: {
