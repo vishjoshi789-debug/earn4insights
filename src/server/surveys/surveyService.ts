@@ -68,6 +68,13 @@ export async function createSurvey(
   const survey: Survey = {
     ...surveyData,
     id: randomUUID(),
+    // Surveys go live immediately on create. The schema column defaults to
+    // 'draft' and there is no separate publish step in the UI, so without
+    // this every survey was born inactive (badge "Inactive" + the consumer
+    // "responses are for testing only" banner) even though we fan out the
+    // bell + email "complete it to earn points" notifications below.
+    status: 'active',
+    isActive: true,
     createdAt: new Date().toISOString(),
     settings: {
       // Phase 0 flags: default off unless explicitly enabled
