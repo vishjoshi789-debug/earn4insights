@@ -253,9 +253,13 @@ async function decideAuth(req: NextRequest & { auth: any }): Promise<NextRespons
       url.searchParams.set('callbackUrl', pathname + nextUrl.search)
       return NextResponse.redirect(url)
     }
-    if (role === 'brand') {
-      return NextResponse.redirect(new URL('/dashboard', nextUrl))
-    }
+    // Do NOT bounce brands off /onboarding. Brands DO onboard here — the page
+    // renders BrandOnboardingClient, and it already redirects *completed* brands
+    // to /dashboard itself (onboarding/page.tsx:37). OnboardingGuard sends
+    // *incomplete* brands here; bouncing them back caused an infinite
+    // /dashboard ↔ /onboarding loop (ERR_TOO_MANY_REDIRECTS) for new brands once
+    // middleware went live. Let any logged-in role reach /onboarding; the page
+    // routes by role (consumer/brand/influencer wizard, or →/dashboard if done).
     return null
   }
 
