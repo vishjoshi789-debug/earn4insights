@@ -31,6 +31,16 @@ import {
 
 import { CATEGORY_VALUES } from '@/lib/categories'
 
+// Surface field-level validation messages (e.g. an invalid GSTIN) instead
+// of the generic "Validation failed" — the actions return `fieldErrors`
+// keyed by field name when Zod parsing fails.
+function actionErrorMessage(res: { error?: string; fieldErrors?: Record<string, string> }): string {
+  if (res.fieldErrors && Object.keys(res.fieldErrors).length > 0) {
+    return Object.values(res.fieldErrors).join(' · ')
+  }
+  return res.error ?? 'Something went wrong'
+}
+
 // ─── Constants ──────────────────────────────────────────────────
 
 const STORAGE_KEY = 'e4i_brand_onboarding_draft'
@@ -259,7 +269,7 @@ export default function BrandOnboardingClient({ initial, userName }: Props) {
         description: form.description || undefined,
       })
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error(actionErrorMessage(res))
         return
       }
       setStep(3)
@@ -274,7 +284,7 @@ export default function BrandOnboardingClient({ initial, userName }: Props) {
         primaryContactPhone: form.primaryContactPhone || undefined,
       })
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error(actionErrorMessage(res))
         return
       }
       setStep(4)
@@ -295,7 +305,7 @@ export default function BrandOnboardingClient({ initial, userName }: Props) {
         billingGstin: form.billingGstin || undefined,
       })
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error(actionErrorMessage(res))
         return
       }
       setStep(5)
@@ -312,7 +322,7 @@ export default function BrandOnboardingClient({ initial, userName }: Props) {
         },
       })
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error(actionErrorMessage(res))
         return
       }
       clearDraft()

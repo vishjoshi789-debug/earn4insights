@@ -14,12 +14,14 @@ import { createSurvey } from '@/server/surveys/surveyService'
 import type { SurveyQuestion, SurveyType, QuestionType, RatingScale } from '@/lib/survey-types'
 
 type SurveyCreationFormProps = {
-  productId: string
+  products: { id: string; name: string }[]
+  defaultProductId?: string
 }
 
-export default function SurveyCreationForm({ productId }: SurveyCreationFormProps) {
+export default function SurveyCreationForm({ products, defaultProductId }: SurveyCreationFormProps) {
   const router = useRouter()
-  
+
+  const [productId, setProductId] = useState(defaultProductId ?? products[0]?.id ?? '')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [surveyType, setSurveyType] = useState<SurveyType>('nps')
@@ -155,6 +157,25 @@ export default function SurveyCreationForm({ productId }: SurveyCreationFormProp
           <CardTitle>Survey Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="product">Product *</Label>
+            <Select value={productId} onValueChange={setProductId}>
+              <SelectTrigger id="product">
+                <SelectValue placeholder="Select a product" />
+              </SelectTrigger>
+              <SelectContent>
+                {products.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              The survey will be attached to this product.
+            </p>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="title">Survey Title *</Label>
             <Input

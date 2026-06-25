@@ -85,7 +85,7 @@ export default async function SurveysPage() {
           </p>
         </div>
         <Button asChild>
-          <Link href="/dashboard/surveys/create?productId=demo">
+          <Link href="/dashboard/surveys/create">
             <Plus className="w-4 h-4 mr-2" />
             Create Survey
           </Link>

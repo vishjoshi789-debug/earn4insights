@@ -1,8 +1,23 @@
 'use client'
 
 import { useMemo, useState, useEffect } from 'react'
+import { useFormStatus } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { launchProduct } from './launch.actions'
+
+// Disables itself while the server action is in flight so a brand can't
+// double-click and create the product twice. useFormStatus must live in a
+// child of the <form>, hence the separate component.
+function SubmitButton({ launchType }: { launchType: 'instant' | 'scheduled' }) {
+  const { pending } = useFormStatus()
+  return (
+    <Button type="submit" disabled={pending} className="w-full h-11 text-base">
+      {pending
+        ? launchType === 'scheduled' ? 'Scheduling…' : 'Launching…'
+        : launchType === 'scheduled' ? 'Schedule launch' : 'Launch product'}
+    </Button>
+  )
+}
 
 // Local datetime-local value (yyyy-MM-ddTHH:mm) one hour from now —
 // used as the min attribute and as the default when the brand switches
@@ -175,9 +190,7 @@ export default function LaunchForm() {
       </div>
 
       <div className="space-y-3">
-        <Button type="submit" className="w-full h-11 text-base">
-          {launchType === 'scheduled' ? 'Schedule launch' : 'Launch product'}
-        </Button>
+        <SubmitButton launchType={launchType} />
 
         <p className="text-xs text-muted-foreground text-center">
           You can change settings later. Feedback starts once the product is live.
