@@ -171,6 +171,10 @@ export const feedbackMedia = pgTable('feedback_media', {
   id: uuid('id').defaultRandom().primaryKey(),
 
   ownerType: text('owner_type').notNull(),
+  // POLYMORPHIC: owner_id = the parent feedback.id OR survey_responses.id
+  // (discriminated by owner_type), NOT a users.id. Intentionally FK-less —
+  // a single-target FK is wrong here (migration 031 added one to users.id by
+  // mistake and broke all media uploads; dropped in migration 032).
   ownerId: text('owner_id').notNull(),
 
   mediaType: text('media_type').notNull(), // 'audio' | 'video'

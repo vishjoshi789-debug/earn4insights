@@ -257,6 +257,10 @@ All migrations are **idempotent** and gated by `x-api-key: $ADMIN_API_KEY`. Run 
 | 026 | `run-migration-026` | Email Verification (EV.1 — `users.email_verified_at` + `email_verification_tokens`) |
 | 027 | `run-migration-027` | `user_profiles.id` FK CASCADE → `users(id)` + orphan cleanup (closes leak that defeated test-account resets + left PII for "deleted" users) |
 | 028 | `run-migration-028` | Influencer Verification (A9 — `influencer_verification_requests` table with 7-status lifecycle, FK CASCADE → users, partial UNIQUE on open requests) |
+| 029 | `run-migration-029` | Money ≥0 CHECKs (campaign_payments, reward_redemptions, rewards) + B18 proposed_rate range + campaign_applications.status enum |
+| 030 | `run-migration-030` | status/enum CHECKs (campaign_payments.status + payment_type, reward_redemptions.status) |
+| 031 | `run-migration-031` | FK integrity + GDPR-aware on-delete actions (B33) + `process-deletions` cron rewrite. **Polymorphic columns SKIP** (see 032 for the one that slipped through). |
+| 032 | `run-migration-032` | Drop erroneous `fk_feedback_media_owner` — 031 wrongly FK'd the **polymorphic** `feedback_media.owner_id` to `users.id`, which broke ALL audio/video/image uploads. Idempotent `DROP CONSTRAINT IF EXISTS`. |
 
 > Full per-migration detail: `docs/CLAUDE_HISTORY.md §2` and `docs/SCHEMA.md`.
 

@@ -115,7 +115,12 @@ export async function POST(request: NextRequest) {
           ('fk_user_points_user','user_points','user_id','users','id','CASCADE'),
           ('fk_user_reputation_user','user_reputation','user_id','users','id','CASCADE'),
           ('fk_send_time_cohorts_user','send_time_cohorts','user_id','users','id','CASCADE'),
-          ('fk_feedback_media_owner','feedback_media','owner_id','users','id','CASCADE'),
+          -- NOTE: feedback_media.owner_id is POLYMORPHIC (owner_type =
+          -- 'feedback' | 'survey_response'; owner_id = the parent feedback/
+          -- survey_responses row id, NOT a users.id). It was wrongly FK'd to
+          -- users.id here originally, which violated on every media insert and
+          -- broke all audio/video/image uploads. Polymorphic columns are SKIP
+          -- per the on-delete policy. Dropped in prod + migration 032.
           ('fk_consumer_intents_user','consumer_intents','user_id','users','id','CASCADE'),
           ('fk_trust_flags_user','trust_flags','user_id','users','id','CASCADE'),
           ('fk_contribution_events_user','contribution_events','user_id','users','id','CASCADE'),
