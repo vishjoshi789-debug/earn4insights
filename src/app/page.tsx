@@ -327,11 +327,11 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col items-center gap-3">
             <Button size="lg" asChild className="bg-primary hover:bg-primary/90 gap-2">
               <Link href="/signup?role=brand">
-                Start 14-Day Free Trial
+                Get Started Free
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <p className="text-xs text-muted-foreground">No credit card required — just sign up</p>
+            <p className="text-xs text-muted-foreground">Free while we're in beta — no credit card required</p>
           </div>
         </div>
       </section>
@@ -535,11 +535,11 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col items-center gap-3">
             <Button size="lg" asChild className="bg-accent hover:bg-accent/90 gap-2">
               <Link href="/signup?role=consumer">
-                Start 14-Day Free Trial
+                Get Started Free
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <p className="text-xs text-muted-foreground">No credit card required — just sign up</p>
+            <p className="text-xs text-muted-foreground">Free while we're in beta — no credit card required</p>
           </div>
         </div>
       </section>
@@ -667,12 +667,12 @@ export default function HomePage() {
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-foreground">Ready to See It in Action?</h2>
           <p className="mt-4 text-lg">
-            Start your 14-day free trial — no credit card or payment details required. Just sign up and explore everything.
+            Free while we're in beta — paid plans coming soon. No credit card or payment details required; just sign up and start exploring.
           </p>
           <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:justify-center">
             <Button size="lg" asChild className="bg-primary hover:bg-primary/90 gap-2">
               <Link href="/signup">
-                Start Free Trial
+                Get Started Free
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
@@ -681,7 +681,7 @@ export default function HomePage() {
             </Button>
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
-            14 days free · No credit card needed · Cancel anytime
+            Free during beta · No credit card needed · Paid plans coming soon
           </p>
         </div>
       </section>

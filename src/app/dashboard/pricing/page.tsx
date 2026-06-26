@@ -207,7 +207,15 @@ export default async function PricingPage() {
         </h1>
         <p className="text-lg text-muted-foreground">
           Choose the plan that matches how deeply you want to understand your customers.
-          Every plan includes unlimited consumer responses — you only pay for the intelligence layer.
+          Every plan includes unlimited consumer responses — you'll only pay for the intelligence layer.
+        </p>
+      </div>
+
+      {/* Beta notice */}
+      <div className="max-w-3xl mx-auto rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center">
+        <p className="text-sm text-amber-900">
+          🚧 <span className="font-semibold">Free during beta.</span> Everything below is free right now — no card, no billing.
+          The Free / Pro / Enterprise plans show what's coming when paid plans launch; we'll give plenty of notice before anything becomes billable.
         </p>
       </div>
 
@@ -367,7 +375,7 @@ export default async function PricingPage() {
         />
         <FaqItem
           question="Do consumers pay anything?"
-          answer="No. Consumers always submit feedback for free — they earn rewards for quality responses. Brands pay for the analytics and intelligence layer on top."
+          answer="No. Consumers always submit feedback for free — they earn rewards for quality responses. Brands will pay for the analytics and intelligence layer on top once paid plans launch."
         />
         <FaqItem
           question="What's included in transcription minutes?"
@@ -382,8 +390,8 @@ export default async function PricingPage() {
           answer="Yes. Upgrades take effect immediately with prorated billing. Downgrades take effect at the end of your current billing period."
         />
         <FaqItem
-          question="Is there a free trial for Pro?"
-          answer="Yes — contact us for a 14-day Pro trial. All features unlocked, no credit card required."
+          question="How much does it cost during beta?"
+          answer="Everything is free while Earn4Insights is in beta — no credit card, no billing. The plans below show what's coming when paid plans launch; we'll give plenty of notice before anything becomes billable."
         />
       </div>
 
