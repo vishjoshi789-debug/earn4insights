@@ -31,6 +31,7 @@
    - 4.8 [Influencer Verification Flow (A9) — `d4f7c67` + `417cfa6`](#48-influencer-verification-flow-a9--d4f7c67--417cfa6)
    - 4.9 [Admin Layout + Verification Queue Badge — `cd74a79` + `4c8864d`](#49-admin-layout--verification-queue-badge--cd74a79--4c8864d)
    - 4.10 [E-Lens Brand Wiring — LOGO.1 + LOGO.2 + fixes](#410-e-lens-brand-wiring--44b0b99--f8b198d--266d291--99f484e--386055e--6b941c9)
+   - 4.11 [Tier B Beta-Hardening — Brand-Flow + Survey Lifecycle — `9fc8f2d` + `3eefa3a` + `4fd56e2`](#411-tier-b-beta-hardening-wave--brand-flow--survey-lifecycle--9fc8f2d--3eefa3a--4fd56e2)
 5. [Pre-Launch Audit Cross-Reference](#5-pre-launch-audit-cross-reference)
 
 ---
@@ -718,6 +719,31 @@ User confirmed fix via Chrome incognito (bypasses disk cache). Production lesson
 #### Deferred (Phase 2)
 
 Email template branding — Resend templates (welcome, verification, payout-success, etc.) still use plain text headers. Brand-aligned HTML templates with logo header + footer color tokens deferred as optional polish. Not blocking for beta. No tracking issue opened — user explicitly tagged as "optional / deferred."
+
+---
+
+### 4.11 Tier B Beta-Hardening Wave — Brand-Flow + Survey Lifecycle — `9fc8f2d` + `3eefa3a` + `4fd56e2`
+
+> The broad Tier B wave (security batch B1–B9, money + data integrity migrations 029/030/031, middleware revival + CSRF enforcement, secret rotation, admin 2FA recovery) is tracked in detail in `SESSION_RESUME.md`. This note archives the **brand-flow live-test fixes** and the **survey lifecycle fix** — the decisions a future session is most likely to need.
+
+#### Middleware brand redirect loop — `9fc8f2d`
+
+Once the middleware went live (it was previously dead at the project root — see §5 CSRF rules in CLAUDE.md), a latent loop surfaced: `OnboardingGuard` redirects *incomplete* brands → `/onboarding`, but the middleware `/onboarding` handler bounced **all** brands → `/dashboard` → `ERR_TOO_MANY_REDIRECTS`. Fix: removed the `if (role==='brand') → /dashboard` block from the middleware `/onboarding` handler. Brands now reach `BrandOnboardingClient`; `onboarding/page.tsx` still redirects *completed* brands to `/dashboard`. Consumers/influencers/admin were unaffected (block only matched `role==='brand'`).
+
+#### Brand-flow combined commit — `3eefa3a`
+
+Found while live-testing brand flows (no payments — payment HARD GATE in force). One commit, three fixes:
+1. **Survey product picker.** The "Create Survey" CTA hardcoded `?productId=demo`, so every brand survey attached to the unowned `demo` seed product and was invisible in the brand's own list (scoped by `products.owner_id`). Fix: CTA drops `?productId=demo`; `surveys/create/page.tsx` `auth()`s + fetches `getProductsByOwner(userId)`, redirects to the list if the brand owns no product, and passes owned products + a validated `defaultProductId`; `survey-creation-form.tsx` prop `productId: string` → `products[]` + `defaultProductId?` with a `<Select>` feeding `createSurvey`.
+2. **GSTIN field errors.** Brand onboarding showed a generic "Validation failed" on an invalid GSTIN. Fix: shared `actionErrorMessage()` helper in `BrandOnboardingClient` surfaces `res.fieldErrors` (joined) instead of `res.error`, applied to all 4 step handlers (actions already returned `fieldErrors` via `flattenZodErrors`).
+3. **Product double-submit guard.** `LaunchForm` plain submit button → double-click created the product twice. Fix: `SubmitButton` child using `useFormStatus()` → `disabled={pending}` ("Launching…/Scheduling…").
+
+Deferred: survey **objective tagging** (#1b — feature, not a bug).
+
+#### Survey lifecycle — live-on-create — `4fd56e2`
+
+`createSurvey` never set `status`; the `createNPSSurvey`/`createCSATSurvey` type helpers set only `isActive: true`, and the repo insert wrote `status: survey.status || 'draft'` → **every survey was born `draft`** → `toSurvey` derives `isActive = (status==='active')` → permanently "Inactive" badge + the consumer `/survey/[id]` "responses are for testing only" banner, even though `createSurvey` fans out bell + email telling consumers to complete it. **Founder decision: live-on-create** (NPS/CSAT have fixed questions, no review/draft workflow). Fix sets `status:'active' + isActive:true` in `createSurvey`. **Backfill** for pre-fix drafts (run in Neon, idempotent): `UPDATE surveys SET status='active', updated_at=now() WHERE status='draft' AND product_id <> 'demo';`.
+
+**Deferred (Tier-B):** Pause/Activate UI — `toggleSurveyActive` exists with zero callers; add a toggle on the survey detail page + reconcile `isActive` ↔ `status` to one source of truth.
 
 ---
 

@@ -1,6 +1,6 @@
 # CLAUDE.md — Earn4Insights Developer Guide
 
-> **Last updated:** June 2026 (v12 — E-Lens brand fully wired across app: variant-aware Logo, favicons, PWA manifest, brand CSS tokens; ALL TIER A COMPLETE; beta-ready).
+> **Last updated:** June 2026 (v13 — Tier B beta-hardening wave shipped on top of v12: middleware revival + CSRF enforced on prod, security batch B1–B9, money + data integrity migrations 029/030/031, secret rotation, admin 2FA recovery, brand-flow + survey-lifecycle fixes. Live working detail in `SESSION_RESUME.md`. v12 = E-Lens brand fully wired; ALL TIER A COMPLETE).
 > Read at the start of every session. Designed to fit in context without crowding daily-work prompts.
 
 ---
@@ -147,6 +147,13 @@ These are the daily-work invariants. Full historical rationale for each one is i
 - All launch side-effects (brand email, smart distribution, watchlist fan-out) fire **only when the cron publishes** — not at schedule time.
 - Datetime input `min` = now + 1h (cron cadence is ~15 min; 1h floor sets the "planning tool, not delayed-launch button" expectation).
 
+### Surveys
+- **Surveys are live-on-create.** `createSurvey` sets `status:'active'` (+ `isActive:true`). The schema column `surveys.status` defaults to `'draft'`, and the `createNPSSurvey`/`createCSATSurvey` type helpers set only `isActive` — so before the fix every survey was born `draft` → permanently "Inactive" badge + the consumer `/survey/[id]` "responses are for testing only" banner, even though `createSurvey` fans out bell + email telling consumers to complete it. NPS/CSAT have fixed questions and there's no review step, so create = publish.
+- **`status` is the source of truth; `isActive` is a derived read.** `toSurvey` maps `isActive = (status === 'active')`. Writes go through `status` (the repo insert/update only persists `status`). Don't treat `isActive` as independently writable — reconcile to `status` if you touch this.
+- **No Pause/Activate UI yet (Tier-B gap).** `toggleSurveyActive(surveyId, isActive)` exists in `surveyService` but has zero callers — there's no toggle on the survey detail/list pages. Acceptable for beta (live-on-create); adding the toggle is the Tier-B follow-up (see §11).
+- **Survey notifications fan out on create**, not on a separate publish step (there is none). `createSurvey` does one `findIdealConsumers(productId)` resolve → email (`notifyNewSurvey({ targetUserIds })`) + in-app bell (`dispatchToUsers`), CTA `/survey/[id]` (singular — the only real survey route). The dead `BRAND_SURVEY_CREATED` eventBus handler was removed.
+- **Surveys attach to a brand-owned product.** The create page fetches `getProductsByOwner(userId)` and offers a `<Select>`; the brand surveys list scopes by `products.owner_id`. (Was hardcoded to `?productId=demo` → surveys vanished from the brand's list.)
+
 ### Verify-email page (token-callback rendering)
 - **`export const dynamic = 'force-dynamic'`** on `/verify-email/page.tsx` — token state changes between requests (`used_at` flips), and a cached HTML response would replay stale "success" or "expired" panels for other users. Also defends against Vercel CDN / browser cache replaying broken HTML after a deploy.
 - **HTML meta refresh for post-verification redirect.** Uses `<meta http-equiv="refresh" content="3;url=/dashboard">` instead of a `useRouter` client component. Pure HTML primitive — no hydration to fail, no RSC fetch transition. Discovered while debugging an unexplained `error.tsx` digest that fired specifically on the SuccessPanel → `/dashboard` `router.push` transition (root cause TBD; see Known Gaps).
@@ -158,11 +165,17 @@ These are the daily-work invariants. Full historical rationale for each one is i
 
 ## 6. Current Sprint
 
-**Active:** None — **ALL TIER A COMPLETE**, beta-ready. Awaiting beta-launch decision + go-to-market work.
+**Active:** **Tier B beta-hardening — Group 1 COMPLETE** (security + money/data + middleware revival), now closing out live-test follow-ups. See `SESSION_RESUME.md` for the working detail and the remaining gates.
 
-A9 (influencer verification) shipped as the final Tier A item — 3-tier auto-approval evaluator + manual-review admin queue + 6 email templates, plus the missing `/admin/layout.tsx` that restored the sidebar on admin pages.
+Shipped this wave: middleware revival (moved to `src/middleware.ts`, Edge-safe auth/CSRF split, **CSRF enforced on prod**); security batch B1–B9; money + data integrity (migrations 029/030/031 — money CHECKs + FK on-delete GDPR policy + `process-deletions` rewrite); `ADMIN_API_KEY` + `CRON_SECRET` rotation; admin 2FA recovery + prod 2FA interlock verified; brand-flow fixes (survey product picker, GSTIN field errors, product double-submit guard); survey lifecycle (live-on-create). A9 (influencer verification) was the final Tier A item.
+
+**Pre-beta HARD GATES still in force:**
+- **Payment ledger** — campaign-level Razorpay pay creates no `campaign_payments` row; fix deferred to post-launch week-1, **gated**. App is on **LIVE** Razorpay keys (`rzp_live_`) with no test env — **no real brand payment until the ledger fix ships AND an end-to-end rehearsal passes**. (Detail in `SESSION_RESUME.md`.)
 
 **Beta-launch open items (non-blocking):**
+- **Survey Pause/Activate toggle (Tier-B)** — `toggleSurveyActive` exists, no UI caller (see §11)
+- **Existing-survey backfill** — flip pre-fix drafts: `UPDATE surveys SET status='active', updated_at=now() WHERE status='draft' AND product_id <> 'demo';` (Neon console; idempotent)
+- Disk space on C: — clear AppData/anaconda3 bloat (a near-full disk truncated a file mid-write this session)
 - Beta-launch announcement + outreach
 - Brand-side influencer search (`/dashboard/brand/influencers`) — VerifiedBadge component exists, mount on cards as polish
 - Verify-email SuccessPanel UX bug — defensive fixes shipped, verification works end-to-end via meta refresh; root cause `digest 2626478451` parked pending Vercel function-log access
@@ -177,10 +190,14 @@ A9 (influencer verification) shipped as the final Tier A item — 3-tier auto-ap
 
 ## 7. What's NEW (since last doc sync)
 
-Single-glance view of every commit since the previous doc sync (`2051a5c` on 2026-06-14 captured the Tier A complete milestone; commits below ship the E-Lens brand wiring). All earlier A9 / EV / ER / Phase-3.5 work archived in `docs/CLAUDE_HISTORY.md §4`.
+Single-glance view of commits since the previous doc sync. The 2026-06-14/15 rows ship the E-Lens brand wiring; the 2026-06-23→25 rows are the **Tier B beta-hardening** wave (security batch, money + data integrity, middleware revival, brand-flow + survey fixes). Live working detail for the Tier B wave is in **`SESSION_RESUME.md`**; all earlier A9 / EV / ER / Phase-3.5 work is archived in `docs/CLAUDE_HISTORY.md §4`.
 
 | Commit | Date | Summary |
 |---|---|---|
+| `4fd56e2` | 2026-06-25 | **fix(survey):** publish surveys on create (`status='active'`). `createSurvey` never set `status`; helpers set only `isActive`, so every survey was born `draft` → permanently "Inactive" + the consumer "for testing only" banner, despite the bell+email fan-out. Founder decision: live-on-create. Backfill SQL for pre-fix drafts in SESSION_RESUME. |
+| `3eefa3a` | 2026-06-25 | **fix(brand-flow):** combined commit — (1) survey **product picker** (Create CTA no longer hardcodes `?productId=demo`; create page fetches owned products + `<Select>`, so surveys attach to an owned product and show in the brand list); (2) **GSTIN field errors** surfaced via `actionErrorMessage()` (was generic "Validation failed"); (3) **product double-submit guard** via `useFormStatus()` on `LaunchForm`. |
+| `9fc8f2d` | 2026-06-25 | **fix(middleware):** removed the brand-bounce in the `/onboarding` handler that caused `ERR_TOO_MANY_REDIRECTS` for new brands (OnboardingGuard ↔ middleware loop, exposed once middleware went live). |
+| _(multiple)_ | 2026-06-23→24 | **Tier B beta-hardening wave** (commit-by-commit detail in `SESSION_RESUME.md`): middleware revival + Edge-safe auth/CSRF split (moved to `src/middleware.ts`; CSRF now **enforced** on prod, `CSRF_ENFORCE=true`); security batch (B1–B9: fail-closed encryption, 2FA loginNonce, diag gating, signed OAuth state, migration allowlist); money + data integrity (migrations 029/030/031 — money CHECKs, FK on-delete GDPR policy, `process-deletions` rewrite); secret rotation (`ADMIN_API_KEY`, `CRON_SECRET`); admin 2FA recovery. |
 | `6b941c9` | 2026-06-15 | **fix(brand):** stacked SVG tagline font 9.5→12px + display 160→200 on 6 auth/error/404 callsites — effective on-page tagline ~10px (was ~6.3px), within brand-spec §4 range. |
 | `386055e` | 2026-06-15 | **fix(brand):** replace legacy "Intelligence Operating System" tagline with brand-spec positioning statement ("The consumer intelligence infrastructure where brands, consumers, and influencers meet") + bump tagline to `text-sm` across 6 callsites. |
 | `99f484e` | 2026-06-15 | **fix(brand):** stacked SVG was missing INFRASTRUCTURE — split tagline into 2 lines (`CONSUMER INTELLIGENCE` / `INFRASTRUCTURE`), bumped tagline letter-spacing to keep within 240 viewBox. |
@@ -325,6 +342,10 @@ Sub-daily crons (e.g. `publish-scheduled-launches` at 15-min cadence) are driven
 - Brand LTV doesn't weight by churn
 - Feature adoption denominator is today's per-role DAU (need role-split MAU column)
 - No CAC / LTV:CAC ratio (need UTM cohort × payment attribution)
+
+### Surveys
+- **No Pause/Activate UI (Tier-B follow-up).** Surveys are live-on-create (`status='active'`), but `toggleSurveyActive(surveyId, isActive)` in `surveyService` has zero callers — there's no toggle on `/dashboard/surveys` or the detail page, so a brand can't pause/resume a live survey. Post-launch: add an Activate/Pause control on the detail page wired to `toggleSurveyActive`, and **reconcile `isActive` ↔ `status` to one source of truth** (`isActive` is currently a derived read, ignored on write). See §5 Surveys.
+- **`notifyIdealConsumers` / `survey-distribute` route likely dead** — no UI caller; writes the email *queue*, not the bell. Verify + remove in cleanup.
 
 ### Auth
 - **Verify-email SuccessPanel transition error** — `error.tsx` boundary fires on `/verify-email` after a successful token verification when the page tries to `router.push('/dashboard')`. Defensive fixes (HTML meta refresh, `force-dynamic`, plain `<a>`) sidestep the failure mode and verification works end-to-end. Root cause unknown — needs Vercel function logs to investigate digest `2626478451`. Currently parked as low-impact.
