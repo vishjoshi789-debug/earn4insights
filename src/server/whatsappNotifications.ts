@@ -41,7 +41,7 @@ export async function sendWhatsAppAlertMessage(params: {
     '',
     body,
     ctaUrl ? `\n🔗 ${ctaUrl}` : '',
-    '\n_Earn4Insights — The Intelligence Operating System for Brands, Consumers and Influencers_',
+    '\n_Earn4Insights — The consumer intelligence infrastructure where brands, consumers, and influencers meet_',
   ]
     .filter((l) => l !== undefined)
     .join('\n')

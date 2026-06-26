@@ -31,7 +31,7 @@ export function buildVerificationEmailHTML(params: {
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#0f172a,#1e293b);border-radius:12px 12px 0 0;padding:32px 30px;text-align:center;">
       <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">Earn4Insights</h1>
-      <p style="color:#94a3b8;margin:4px 0 0;font-size:12px;">The Intelligence Operating System for Brands, Consumers and Influencers</p>
+      <p style="color:#94a3b8;margin:4px 0 0;font-size:12px;">The consumer intelligence infrastructure where brands, consumers, and influencers meet</p>
     </div>
 
     <!-- Body -->

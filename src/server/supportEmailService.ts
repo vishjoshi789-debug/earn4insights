@@ -96,7 +96,7 @@ function emailShell(title: string, body: string): string {
 <body><div class="card">
   <div class="header">${title}</div>
   <div class="body">${body}</div>
-  <div class="footer">Earn4Insights — The Intelligence Operating System for Brands, Consumers and Influencers</div>
+  <div class="footer">Earn4Insights — The consumer intelligence infrastructure where brands, consumers, and influencers meet</div>
 </div></body></html>`
 }
 

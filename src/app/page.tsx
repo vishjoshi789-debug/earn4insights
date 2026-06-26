@@ -49,8 +49,8 @@ export default function HomePage() {
             <Logo variant="primary" width={280} height={112} priority />
           </div>
           <p className="mb-6 text-base sm:text-lg italic text-muted-foreground leading-snug">
-            The Intelligence Operating System<br />
-            for Brands, Consumers and Influencers
+            The consumer intelligence infrastructure<br />
+            where brands, consumers, and influencers meet
           </p>
           <h1 className="text-balance text-foreground">
             The Platform Where Brands, Consumers and Influencers Connect in Real Time
@@ -693,7 +693,7 @@ export default function HomePage() {
           <div className="text-center mb-10">
             <h4 className="text-sm font-semibold text-foreground">Earn4Insights</h4>
             <p className="mt-1 text-xs italic text-muted-foreground max-w-md mx-auto leading-snug">
-              The Intelligence Operating System for Brands, Consumers and Influencers
+              The consumer intelligence infrastructure where brands, consumers, and influencers meet
             </p>
             <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
               Multimodal feedback. Multilingual intelligence. Real-time analytics and personalized recommendations — structured for brands, rewarding consumers.

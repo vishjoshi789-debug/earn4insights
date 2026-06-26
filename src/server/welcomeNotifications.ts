@@ -220,7 +220,7 @@ function generateConsumerWelcomeHTML(firstName: string, email: string): string {
 
     <!-- Footer -->
     <div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">
-      <p style="margin:0;">Earn4Insights — The Intelligence Operating System for Brands, Consumers and Influencers</p>
+      <p style="margin:0;">Earn4Insights — The consumer intelligence infrastructure where brands, consumers, and influencers meet</p>
       <p style="margin:4px 0 0;">
         <a href="${APP_URL}/dashboard/settings" style="color:#94a3b8;">Manage Preferences</a>
       </p>
@@ -307,7 +307,7 @@ function generateInfluencerWelcomeHTML(firstName: string, email: string): string
 
     <!-- Footer -->
     <div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">
-      <p style="margin:0;">Earn4Insights — The Intelligence Operating System for Brands, Consumers and Influencers</p>
+      <p style="margin:0;">Earn4Insights — The consumer intelligence infrastructure where brands, consumers, and influencers meet</p>
       <p style="margin:4px 0 0;">
         <a href="${APP_URL}/dashboard/settings" style="color:#94a3b8;">Manage Preferences</a>
       </p>
@@ -394,7 +394,7 @@ function generateBrandWelcomeHTML(firstName: string, email: string): string {
 
     <!-- Footer -->
     <div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">
-      <p style="margin:0;">Earn4Insights — The Intelligence Operating System for Brands, Consumers and Influencers</p>
+      <p style="margin:0;">Earn4Insights — The consumer intelligence infrastructure where brands, consumers, and influencers meet</p>
       <p style="margin:4px 0 0;">
         <a href="${APP_URL}/dashboard/settings" style="color:#94a3b8;">Manage Preferences</a>
       </p>
