@@ -118,6 +118,25 @@ Found while live-testing brand flows (no payments — payment HARD GATE still in
 
 Deferred: survey **objective tagging** (#1b — feature, not a bug).
 
+## Pre-launch readiness audit — Tier B blast radius + 4-role smoke (2026-06-26)
+
+**Scope (deliberately narrow — NOT a re-run of the Tier A 6-pass audit).** Verified only what Tier B changed (middleware now live, Edge auth split, CSRF enforced, migration-031 FK policy, EV hard-block) + the 4-role beta critical path. Feature internals already audited in Tier A (analytics math, consent engine, competitive-intel, points) were **intentionally not re-checked** — Tier B didn't touch them.
+
+### Code-side results — ✅ NO launch blocker
+- **Middleware redirects (4 roles):** no loops. Only role logic = `/admin/*` → non-admin → `/dashboard`, and `/login`·`/signup` redirect-if-authed. `/onboarding` open to all logged-in roles (brand-loop fix holds).
+- **OnboardingGuard ↔ `/onboarding` page agree on the completion source per role** (brand→`brand_profiles.onboarding_completed`, influencer→`influencer_profiles.onboarding_completed`, consumer→`user_profiles`, admin→bypass both sides) → no oscillation for any role.
+- **CSRF:** cookie minted on every middleware response; `CsrfFetchProvider` confirmed mounted in root `layout.tsx` (covers ~104 raw-fetch mutations); `apiPost` attaches natively; exempt list = true non-surfaces only. No legit brand mutation should 403 once a page GET has seeded the cookie.
+- **EV hard-block (`emailVerificationGuard.ts`):** graceful structured `403 EMAIL_NOT_VERIFIED` → client modal (no crash). Gates only the 7 money/contractual routes **+ `feedback/submit`**. Core brand journey (launch product, create survey, import, analytics) is **NOT** blocked pre-verification.
+- **Brand dashboard:** graceful no-products empty state + `.catch(()=>true)`, no dead-end.
+
+### Discrepancies found
+1. **Stale public meta tag — ✅ FIXED (this session).** Root `layout.tsx` `<title>` + OpenGraph still used the *retired* "Intelligence OS / The Intelligence Operating System…" tagline (what shows in browser tab, Google, social shares). Reverted to the brand-spec line: title "Earn4Insights — Consumer Intelligence Infrastructure", description "The consumer intelligence infrastructure where brands, consumers, and influencers meet." (Commit pending.)
+2. **⚠️ OPEN — legacy tagline sprawl (copy, not a blocker).** The same retired "The Intelligence Operating System for Brands, Consumers and Influencers" tagline is **still live in ~11 user-facing spots** that commit `386055e` missed: landing **hero** (`page.tsx:52`) + **footer** (`:696`), and **every transactional email** (welcome ×3 in `welcomeNotifications.ts`, `email-verification.ts`, `forgot-password/route.ts`, `supportEmailService.ts`, `productNotifications.ts`, `influencer-verification.ts`) + `whatsappNotifications.ts`. Beta users receive these emails, so the deprecated tagline is in the verification/welcome mail they'll all see. **Decision needed:** is the landing hero "Intelligence Operating System" intentional marketing or stale? If the brand-spec positioning is canonical, a single copy-sweep should replace all ~11. NOT mass-edited yet (scope discipline + needs the brand-copy call). Leave-alone-or-fix is the user's call.
+3. **Minor (note only):** unauth redirect inconsistency — middleware → `/login`, but `OnboardingGuard`/`onboarding/page.tsx` → `/api/auth/signin` (NextAuth default, bounces to `/login`). Cosmetic.
+
+### Prod smoke (Vercel — pending user run; local dev too slow/unreliable for middleware)
+Per-role checklist handed over (all 4 roles). **Highest-value single check: the email-verification email (Resend) actually delivers** — `feedback/submit` is EV-gated, so consumers can't submit feedback in beta without it. Watch DevTools Network for any `403 csrf-403` on brand import/launch/campaign first actions.
+
 ## Brand freemium / subscription — discovery + honest-beta copy fix (2026-06-26)
 
 **Context:** discovery-only pass before designing the free-trial model. Original mental model ("trial = first campaign") doesn't match what's built. NO trial logic was built — copy only.

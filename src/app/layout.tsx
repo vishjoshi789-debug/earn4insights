@@ -29,8 +29,8 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Earn4Insights — Intelligence OS for Brands, Consumers & Influencers',
-  description: 'The Intelligence Operating System for Brands, Consumers and Influencers.',
+  title: 'Earn4Insights — Consumer Intelligence Infrastructure',
+  description: 'The consumer intelligence infrastructure where brands, consumers, and influencers meet.',
   icons: {
     // SVG first (any size, sharp). PNG fallbacks for browsers that
     // don't accept SVG favicons (Safari < 14, some embedded webviews).
@@ -42,8 +42,8 @@ export const metadata: Metadata = {
     apple: '/icon-app-192.png',
   },
   openGraph: {
-    title: 'Earn4Insights — Intelligence OS for Brands, Consumers & Influencers',
-    description: 'The Intelligence Operating System for Brands, Consumers and Influencers.',
+    title: 'Earn4Insights — Consumer Intelligence Infrastructure',
+    description: 'The consumer intelligence infrastructure where brands, consumers, and influencers meet.',
     images: [{ url: '/icon-app-512.png', width: 512, height: 512, alt: 'Earn4Insights' }],
   },
 }
