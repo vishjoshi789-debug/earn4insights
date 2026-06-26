@@ -135,6 +135,8 @@ export default function SubmitFeedbackPage() {
     feedbackId: string
     sentiment: string | null
     originalLanguage: string | null
+    totalPoints: number
+    mediaBonus: number
   } | null>(null)
 
   // Check for audio & video recording support
@@ -399,8 +401,12 @@ export default function SubmitFeedbackPage() {
       const data = await res.json()
       const feedbackId = data.feedbackId
 
-      // Step 2: Upload media — track failures but don't block submission
+      // Step 2: Upload media — track failures but don't block submission.
+      // mediaBonus tallies the presence-bonus points the server actually
+      // awarded per upload (audio/video/image), so the success screen can
+      // show the true total instead of just the base feedback points.
       const mediaFailures: string[] = []
+      let mediaBonus = 0
 
       if (hasAudio && audioBlob) {
         setUploadProgress('Uploading voice recording...')
@@ -414,6 +420,9 @@ export default function SubmitFeedbackPage() {
           if (!audioRes.ok) {
             const err = await audioRes.json().catch(() => ({}))
             mediaFailures.push(`Voice recording: ${err.error || 'upload failed'}`)
+          } else {
+            const ok = await audioRes.json().catch(() => ({}))
+            mediaBonus += ok.bonusAwarded || 0
           }
         } catch (e) {
           mediaFailures.push('Voice recording: network error')
@@ -433,6 +442,9 @@ export default function SubmitFeedbackPage() {
           if (!videoRes.ok) {
             const err = await videoRes.json().catch(() => ({}))
             mediaFailures.push(`Video: ${err.error || 'upload failed'}`)
+          } else {
+            const ok = await videoRes.json().catch(() => ({}))
+            mediaBonus += ok.bonusAwarded || 0
           }
         } catch (e) {
           mediaFailures.push('Video: network error')
@@ -453,6 +465,9 @@ export default function SubmitFeedbackPage() {
             if (!imgRes.ok) {
               const err = await imgRes.json().catch(() => ({}))
               mediaFailures.push(`Image ${i + 1}: ${err.error || 'upload failed'}`)
+            } else {
+              const ok = await imgRes.json().catch(() => ({}))
+              mediaBonus += ok.bonusAwarded || 0
             }
           } catch (e) {
             mediaFailures.push(`Image ${i + 1}: network error`)
@@ -464,7 +479,9 @@ export default function SubmitFeedbackPage() {
         setMediaUploadWarning(`Your text feedback was saved, but some media failed to upload: ${mediaFailures.join('; ')}`)
       }
 
-      setSubmittedData(data)
+      // Base feedback_submit points (POINT_VALUES.feedback_submit on the
+      // server) + the media presence bonus the upload calls reported.
+      setSubmittedData({ ...data, totalPoints: 25 + mediaBonus, mediaBonus })
       setIsSubmitted(true)
     } catch (err) {
       console.error('Feedback submission error:', err)
@@ -525,7 +542,12 @@ export default function SubmitFeedbackPage() {
             </div>
 
             <p className="text-sm text-muted-foreground mb-6">
-              You earned <strong className="text-primary">+25 points</strong> for this feedback! 🌟
+              You earned <strong className="text-primary">+{submittedData.totalPoints} points</strong> for this feedback! 🌟
+              {submittedData.mediaBonus > 0 && (
+                <span className="block text-xs mt-1">
+                  25 for your review + {submittedData.mediaBonus} bonus for voice &amp; photos — richer feedback earns more.
+                </span>
+              )}
             </p>
 
             <div className="flex items-center justify-center gap-3">

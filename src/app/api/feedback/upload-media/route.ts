@@ -211,6 +211,7 @@ export async function POST(request: Request) {
     // (feedbackId, modality[, image index]) so retries / re-uploads of the
     // same slot never double-pay. The feedback owner == session user
     // (verified above), so we award to session.user.id.
+    let bonusAwarded = 0
     try {
       const uid = (session.user as { id?: string }).id
       if (uid) {
@@ -228,13 +229,16 @@ export async function POST(request: Request) {
         }
         if (bonusKey && bonusPoints > 0 && !(await hasPointsAwarded(uid, 'media_bonus', bonusKey))) {
           await awardPoints(uid, bonusPoints, 'media_bonus', bonusKey, `Multimodal feedback bonus (${mediaType})`)
+          bonusAwarded = bonusPoints
         }
       }
     } catch (err) {
       console.error('[upload-media] media presence bonus failed (non-blocking):', err)
     }
 
-    return NextResponse.json({ success: true, mediaType, url: blob.url })
+    // bonusAwarded lets the client tally the true total it earned (0 if this
+    // media slot was already credited / over the image cap).
+    return NextResponse.json({ success: true, mediaType, url: blob.url, bonusAwarded })
   } catch (error) {
     console.error('Feedback media upload error:', error)
     return NextResponse.json({ error: (error as Error).message }, { status: 500 })
