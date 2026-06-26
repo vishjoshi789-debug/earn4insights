@@ -6,6 +6,11 @@ import { feedback } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth/auth.config'
 import { uploadRateLimit, ipFromRequest } from '@/lib/rate-limit-upstash'
+import { awardPoints, hasPointsAwarded, MEDIA_BONUS_POINTS } from '@/server/pointsService'
+
+// Images earn the presence bonus for the first 2 only (matches the
+// submit-feedback quality meter: +5 at 1 image, +5 more at 2).
+const MAX_BONUS_IMAGES = 2
 
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024  // 4MB
 const MAX_VIDEO_BYTES = 10 * 1024 * 1024  // 10MB
@@ -199,6 +204,35 @@ export async function POST(request: Request) {
     await db.update(feedback)
       .set(updateData)
       .where(eq(feedback.id, feedbackId))
+
+    // ── Multimodal presence bonus (non-blocking) ──────────────────
+    // Reward richer feedback on top of the base feedback_submit points,
+    // matching the submit-feedback quality meter. Deduped per
+    // (feedbackId, modality[, image index]) so retries / re-uploads of the
+    // same slot never double-pay. The feedback owner == session user
+    // (verified above), so we award to session.user.id.
+    try {
+      const uid = (session.user as { id?: string }).id
+      if (uid) {
+        let bonusKey: string | null = null
+        let bonusPoints = 0
+        if (mediaType === 'audio') {
+          bonusKey = `${feedbackId}:audio`
+          bonusPoints = MEDIA_BONUS_POINTS.audio
+        } else if (mediaType === 'video') {
+          bonusKey = `${feedbackId}:video`
+          bonusPoints = MEDIA_BONUS_POINTS.video
+        } else if (mediaType === 'image' && imageIndex < MAX_BONUS_IMAGES) {
+          bonusKey = `${feedbackId}:image:${imageIndex + 1}`
+          bonusPoints = MEDIA_BONUS_POINTS.image
+        }
+        if (bonusKey && bonusPoints > 0 && !(await hasPointsAwarded(uid, 'media_bonus', bonusKey))) {
+          await awardPoints(uid, bonusPoints, 'media_bonus', bonusKey, `Multimodal feedback bonus (${mediaType})`)
+        }
+      }
+    } catch (err) {
+      console.error('[upload-media] media presence bonus failed (non-blocking):', err)
+    }
 
     return NextResponse.json({ success: true, mediaType, url: blob.url })
   } catch (error) {

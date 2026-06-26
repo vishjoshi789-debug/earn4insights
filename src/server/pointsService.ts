@@ -11,6 +11,20 @@ export const POINT_VALUES = {
   community_upvote_received: 2,
 } as const
 
+// Multimodal feedback presence bonus — awarded on top of feedback_submit when
+// the consumer attaches richer media. Mirrors the submit-feedback quality-meter
+// rubric (audio +20, video +20, image +5 each, capped at 2 images = +10) so the
+// reward matches what the UI shows the consumer. `image` is PER image; the
+// upload route caps it at 2. Awarded with source 'media_bonus', deduped per
+// (feedbackId, modality[, index]) so retries never double-pay. Phase note: a
+// post-launch pass will feed transcript + image content into the AI quality
+// scorer for a true content-quality top-up on top of this presence bonus.
+export const MEDIA_BONUS_POINTS = {
+  audio: 20,
+  video: 20,
+  image: 5,
+} as const
+
 // Conversion: 100 points = $1 USD
 export const POINTS_PER_DOLLAR = 100
 
