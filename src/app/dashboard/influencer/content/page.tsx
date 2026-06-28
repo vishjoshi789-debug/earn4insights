@@ -335,12 +335,14 @@ export default function InfluencerContentPage() {
     setSubmittingId(postId)
     try {
       const res = await fetch(`/api/influencer/posts/${postId}/submit-review`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const data = await res.json()
         throw new Error(data.error || 'Failed to submit')
       }
-      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'pending_review' } : p))
-      toast.success('Submitted for brand review')
+      // Standalone posts publish directly; campaign-linked go to pending_review.
+      const newStatus = data.post?.status ?? 'pending_review'
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: newStatus } : p))
+      toast.success(newStatus === 'published' ? 'Post published!' : 'Submitted for brand review')
     } catch (err: any) {
       toast.error(err.message)
     } finally {
@@ -466,7 +468,7 @@ export default function InfluencerContentPage() {
                   placeholder="Paste the link(s) to your content — one per line (e.g. your Instagram Reel or YouTube video URL)"
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Link to content you posted on your own channels. One URL per line.
+                  Link to a specific post or video you published (a single Reel, a YouTube video) — not your profile. Set your channel handles in My Profile. One URL per line.
                 </p>
               </div>
 
@@ -566,6 +568,8 @@ export default function InfluencerContentPage() {
             const isDraft = post.status === 'draft'
             const isRejected = post.status === 'rejected'
             const isSubmitting = submittingId === post.id
+            // No brand/campaign = nobody to review it; it publishes directly.
+            const isStandalone = !post.brandId && !post.campaignId
 
             return (
               <Card key={post.id} className="hover:border-primary/20 transition-colors">
@@ -652,7 +656,7 @@ export default function InfluencerContentPage() {
                       disabled={isSubmitting}
                     >
                       {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
-                      Submit for Review
+                      {isStandalone ? 'Publish' : 'Submit for Review'}
                     </Button>
                   )}
 

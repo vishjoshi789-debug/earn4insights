@@ -191,6 +191,9 @@ export default function InfluencerProfilePage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Social Handles</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Your channels — where brands find and verify you. To log individual posts you&apos;ve published, use My Content.
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -15,7 +15,7 @@
 
 import 'server-only'
 
-import { getPostById } from '@/db/repositories/influencerContentPostRepository'
+import { getPostById, updatePostStatus } from '@/db/repositories/influencerContentPostRepository'
 import {
   markPostPendingReview,
   markPostApproved,
@@ -55,6 +55,13 @@ export async function submitForReview(
   if (post.influencerId !== influencerId) return { success: false, error: 'Not your post' }
   if (post.status !== 'draft' && post.status !== 'rejected') {
     return { success: false, error: `Cannot submit post with status "${post.status}" for review` }
+  }
+
+  // Standalone post (no brand, no campaign) has no reviewer — publish it
+  // directly. Brand/campaign-linked posts still go through brand review below.
+  if (!post.campaignId && !post.brandId) {
+    const published = await updatePostStatus(postId, 'published', new Date())
+    return { success: true, post: published }
   }
 
   const updated = await markPostPendingReview(postId)
