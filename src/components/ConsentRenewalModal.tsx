@@ -21,6 +21,7 @@ interface ConsentRenewalModalProps {
   currentConsent: any
   consentGrantedAt: string | null
   userRole?: string
+  isInfluencer?: boolean
   onRenewed: () => void
 }
 
@@ -29,6 +30,7 @@ export function ConsentRenewalModal({
   currentConsent,
   consentGrantedAt,
   userRole,
+  isInfluencer,
   onRenewed
 }: ConsentRenewalModalProps) {
   const isBrand = userRole === 'brand'
@@ -167,8 +169,9 @@ export function ConsentRenewalModal({
                     Activity Tracking
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Track your interactions (page views, clicks, time spent) to show you surveys 
-                    and products that match your interests. This helps personalize your experience.
+                    {isInfluencer
+                      ? 'Track your interactions so we can surface brand campaigns and collaboration opportunities that match your niche and audience.'
+                      : 'Track your interactions (page views, clicks, time spent) to show you surveys and products that match your interests. This helps personalize your experience.'}
                   </p>
                 </div>
               </div>
@@ -189,9 +192,9 @@ export function ConsentRenewalModal({
                     Personalization
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Use your profile data (demographics, interests, preferences) to recommend 
-                    relevant content. This includes personalized product recommendations and 
-                    survey suggestions.
+                    {isInfluencer
+                      ? 'Use your profile data (niche, audience, socials) to match you with relevant brand campaigns and collaboration opportunities.'
+                      : 'Use your profile data (demographics, interests, preferences) to recommend relevant content. This includes personalized product recommendations and survey suggestions.'}
                   </p>
                 </div>
               </div>
@@ -212,7 +215,9 @@ export function ConsentRenewalModal({
                 <p className="text-sm text-muted-foreground">
                   {isBrand
                     ? 'Access aggregated, anonymized consumer trends and insights to understand your target audience and improve your products.'
-                    : 'Allow brands to see aggregated, anonymized trends (never your personal data). This helps companies understand their target audience and improve their products.'}
+                    : isInfluencer
+                      ? 'Let brands discover you through aggregated, anonymized creator and audience trends (never your personal data) — so the right campaigns can find you.'
+                      : 'Allow brands to see aggregated, anonymized trends (never your personal data). This helps companies understand their target audience and improve their products.'}
                 </p>
               </div>
             </div>
@@ -232,7 +237,9 @@ export function ConsentRenewalModal({
                 <p className="text-sm text-muted-foreground">
                   {isBrand
                     ? 'Receive platform updates, new feature announcements, and tips to get the most out of your brand dashboard.'
-                    : 'Receive occasional emails about new features, survey opportunities, promotions, and product launches. You can unsubscribe anytime.'}
+                    : isInfluencer
+                      ? 'Receive occasional emails about new campaign opportunities, payout updates, platform features, and creator tips. You can unsubscribe anytime.'
+                      : 'Receive occasional emails about new features, survey opportunities, promotions, and product launches. You can unsubscribe anytime.'}
                 </p>
               </div>
             </div>

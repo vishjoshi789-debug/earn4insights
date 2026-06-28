@@ -9,9 +9,10 @@ import { toast } from 'sonner'
 interface ConsentRenewalWrapperProps {
   profile: UserProfile
   userRole?: string
+  isInfluencer?: boolean
 }
 
-export function ConsentRenewalWrapper({ profile, userRole }: ConsentRenewalWrapperProps) {
+export function ConsentRenewalWrapper({ profile, userRole, isInfluencer }: ConsentRenewalWrapperProps) {
   const router = useRouter()
   const [hasRenewed, setHasRenewed] = useState(false)
   const [autoGranting, setAutoGranting] = useState(false)
@@ -62,6 +63,7 @@ export function ConsentRenewalWrapper({ profile, userRole }: ConsentRenewalWrapp
       currentConsent={profile.consent || {}}
       consentGrantedAt={consentGrantedAt}
       userRole={userRole}
+      isInfluencer={isInfluencer}
       onRenewed={handleRenewed}
     />
   )
