@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Loader2, FileText, Plus, Image, Video, BookOpen, Send,
-  AlertTriangle, RotateCcw, X, Tag, Building2, Package, User,
+  AlertTriangle, RotateCcw, X, Tag, Building2, Package, User, Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ContentLinkPreview } from '@/components/influencer/ContentLinkPreview'
@@ -308,6 +308,8 @@ export default function InfluencerContentPage() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null) // null = create mode
+  const [savingEdit, setSavingEdit] = useState(false)
   const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [resubmitId, setResubmitId] = useState<string | null>(null)
   const [resubmitForm, setResubmitForm] = useState({ title: '', body: '' })
@@ -365,6 +367,54 @@ export default function InfluencerContentPage() {
       toast.error(err.message)
     } finally {
       setCreating(false)
+    }
+  }
+
+  // Open the (shared) post dialog in EDIT mode, pre-filled from a draft.
+  const openEdit = (post: any) => {
+    setEditingId(post.id)
+    setForm({
+      title: post.title ?? '',
+      body: post.body ?? '',
+      mediaType: post.mediaType ?? 'image',
+      mediaUrls: (post.mediaUrls ?? []).join('\n'),
+      thumbnailUrl: post.thumbnailUrl ?? '',
+      platforms: post.platformsCrossPosted ?? [],
+      tags: post.tags ?? [],
+    })
+    setDialogOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return
+    if (!form.title) { toast.error('Title is required'); return }
+    setSavingEdit(true)
+    try {
+      const mediaUrls = form.mediaUrls.split('\n').map(u => u.trim()).filter(Boolean)
+      const res = await fetch(`/api/influencer/content/${editingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: form.title,
+          body: form.body || undefined,
+          mediaType: form.mediaType,
+          mediaUrls,
+          thumbnailUrl: form.thumbnailUrl || undefined,
+          platformsCrossPosted: form.platforms,
+          tags: form.tags,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to save changes')
+      const data = await res.json()
+      setPosts(prev => prev.map(p => p.id === editingId ? { ...p, ...data.post } : p))
+      setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [] })
+      setEditingId(null)
+      setDialogOpen(false)
+      toast.success('Draft updated')
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -440,15 +490,28 @@ export default function InfluencerContentPage() {
           </p>
         </div>
 
-        {/* Create post dialog */}
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        {/* Create / edit post dialog (shared — editingId switches the mode) */}
+        <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) setEditingId(null) }}>
           <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-3.5 w-3.5 mr-1" /> New Post</Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditingId(null)
+                setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [] })
+              }}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" /> New Post
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create Content Post</DialogTitle>
+              <DialogTitle>{editingId ? 'Edit Draft' : 'Create Content Post'}</DialogTitle>
             </DialogHeader>
+            {editingId && (
+              <p className="text-xs text-muted-foreground -mt-1">
+                Before you publish, you can edit this post — fix the link, change the title, or anything else.
+              </p>
+            )}
             <div className="space-y-4 pt-2">
 
               {/* Title */}
@@ -561,9 +624,13 @@ export default function InfluencerContentPage() {
                 />
               </div>
 
-              <Button onClick={handleCreate} disabled={creating} className="w-full">
-                {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Create Draft
+              <Button
+                onClick={editingId ? handleSaveEdit : handleCreate}
+                disabled={editingId ? savingEdit : creating}
+                className="w-full"
+              >
+                {(editingId ? savingEdit : creating) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {editingId ? 'Save changes' : 'Create Draft'}
               </Button>
             </div>
           </DialogContent>
@@ -691,16 +758,32 @@ export default function InfluencerContentPage() {
                   </p>
 
                   {isDraft && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="mt-2 w-full"
-                      onClick={() => handleSubmitForReview(post.id)}
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
-                      {isStandalone ? 'Publish' : 'Submit for Review'}
-                    </Button>
+                    <div className="mt-2 space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground">
+                        Before you publish, you can still edit this draft.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => openEdit(post)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => handleSubmitForReview(post.id)}
+                          disabled={isSubmitting}
+                        >
+                          {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
+                          {isStandalone ? 'Publish' : 'Submit for Review'}
+                        </Button>
+                      </div>
+                    </div>
                   )}
 
                   {isRejected && (
