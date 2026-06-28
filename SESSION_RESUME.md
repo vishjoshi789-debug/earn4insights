@@ -118,6 +118,16 @@ Found while live-testing brand flows (no payments — payment HARD GATE still in
 
 Deferred: survey **objective tagging** (#1b — feature, not a bug).
 
+## STRATEGY — influencer content value prop / native hosting (idea, 2026-06-28)
+
+**Trigger:** founder questioned whether logging cross-post **URLs** in My Content is a strong value prop — especially for brands. It isn't: a URL is a deliverable *record*; the brand still consumes the reel on Instagram, in the clutter, with Instagram's metrics. Platform's real current value is the **transaction + intelligence layer** (ICP-matched discovery, escrow/milestone payments, managed approval workflow, consumer feedback/sentiment) — which works *without* native content hosting.
+
+**The idea (NOT a generic reels feed):** host brand-promotion content **natively, tied to the platform's unique asset** — show it to that brand's **ICP-matched consumers** and capture **first-party engagement + structured feedback/sentiment on the content itself**. That's something Instagram structurally can't offer ("your promo, in front of your exact target consumers, with real reactions + intent signals"), and it fits the "consumer intelligence infrastructure" positioning. A generic native reels feed is the WEAK version — cold-start audience (consumers come for feedback/rewards, not to watch reels), competes with Insta where creators' followers already are, big cost.
+
+**Build reality (resolves the "is it already built?" question):** the `feedback_media` pipeline gives the **ingestion half** for free — **✅ upload (Vercel Blob `put`), ✅ storage, ✅ Whisper transcription/captions, 🟡 basic in-dashboard player, 🟡 manual moderation metadata + admin moderate action, ✅ retention cron.** The **"big build" / NOT done half** = **transcode (HLS/multi-res), streaming-grade CDN, feed/discovery surface, ranking, automated/scaled moderation** + real long-term video storage/bandwidth cost (feedback_media is tuned for short capped clips, 30–90d retention). Transcription ≠ transcode.
+
+**Recommendation / sequencing:** (1) DON'T pivot pre-launch — beta validates the transaction layer. (2) Position beta brand value prop on intelligence + ICP-matched, payment-protected collaboration, not "we host content." (3) Let the 10–20 beta brands reveal whether they want a native content destination or just find+pay+measure creators. (4) If validated → build a **thin MVP first** (reuse upload/store/player/feedback to show one clip to ICP-matched consumers + collect reactions — proves the loop WITHOUT transcode/feed/ranking), then the heavy half only if it lands. Post-beta, post-runway.
+
 ## Pre-launch readiness audit — Tier B blast radius + 4-role smoke (2026-06-26)
 
 **Scope (deliberately narrow — NOT a re-run of the Tier A 6-pass audit).** Verified only what Tier B changed (middleware now live, Edge auth split, CSRF enforced, migration-031 FK policy, EV hard-block) + the 4-role beta critical path. Feature internals already audited in Tier A (analytics math, consent engine, competitive-intel, points) were **intentionally not re-checked** — Tier B didn't touch them.
