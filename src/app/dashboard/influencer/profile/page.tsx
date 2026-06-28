@@ -141,6 +141,12 @@ export default function InfluencerProfilePage() {
         </p>
       </div>
 
+      {registered && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm text-muted-foreground">
+          ✏️ Your onboarding details live here — edit anytime. To log individual posts you publish, use <span className="font-medium text-foreground">My Content</span>.
+        </div>
+      )}
+
       {profile && (
         <div className="flex items-center gap-2">
           <Badge variant={profile.verificationStatus === 'verified' ? 'default' : 'secondary'}>
