@@ -32,6 +32,10 @@ export function ConsentRenewalModal({
   onRenewed
 }: ConsentRenewalModalProps) {
   const isBrand = userRole === 'brand'
+  // No prior consent timestamp = this is the user's FIRST time setting
+  // preferences (e.g. just finished onboarding), NOT a >1yr renewal. Don't
+  // tell a brand-new user "it's been over a year".
+  const isFirstTime = !consentGrantedAt
   const [isOpen, setIsOpen] = useState(false)
   const [consents, setConsents] = useState({
     tracking: isBrand ? false : (currentConsent?.tracking || false),
@@ -125,21 +129,23 @@ export function ConsentRenewalModal({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Shield className="h-6 w-6 text-primary" />
-              Time to Review Your Privacy Settings
+              {isFirstTime ? 'Set Your Privacy Preferences' : 'Time to Review Your Privacy Settings'}
             </DialogTitle>
             <DialogDescription className="text-base text-muted-foreground">
               {isBrand
                 ? 'Please review the data preferences for your brand account below.'
-                : "It's been over a year since you last updated your privacy preferences. Please review and confirm your choices below."}
+                : isFirstTime
+                  ? 'Welcome! Set your privacy preferences below — you stay in control of how your data is used, and can change these anytime in Settings.'
+                  : "It's been over a year since you last updated your privacy preferences. Please review and confirm your choices below."}
             </DialogDescription>
           </DialogHeader>
 
           <Alert className="mt-4 bg-primary/10 border-primary/30">
             <Info className="h-4 w-4 text-primary" />
             <AlertDescription className="text-muted-foreground">
-              <strong className="text-foreground">Why we're asking:</strong> Under GDPR regulations, we must periodically 
-              re-confirm your consent to process your personal data. This ensures you remain 
-              in control of your information.
+              <strong className="text-foreground">Why we're asking:</strong> Under GDPR &amp; DPDP regulations, we ask for your
+              explicit consent to process your personal data{isFirstTime ? '' : ', and re-confirm it periodically'}. This ensures you
+              stay in control of your information.
             </AlertDescription>
           </Alert>
         </div>
