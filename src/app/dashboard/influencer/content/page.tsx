@@ -81,6 +81,41 @@ const TYPE_LABEL: Record<MentionType, string> = {
 // platformsCrossPosted data model). Not a native uploader.
 const PLATFORMS = ['Instagram', 'YouTube', 'TikTok', 'X', 'Facebook', 'LinkedIn'] as const
 
+// Flags channel/profile links (vs a specific post/video). A profile/channel
+// can't embed inline and belongs under My Profile — so we gently nudge.
+function looksLikeProfileUrl(raw: string): boolean {
+  let u: URL
+  try {
+    u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+  } catch {
+    return false
+  }
+  const host = u.hostname.replace(/^www\./, '')
+  const path = u.pathname.replace(/\/+$/, '')
+
+  if (host.includes('youtube.com')) {
+    if (/^\/(watch|shorts|embed|live)\b/.test(path)) return false
+    return /^\/@[^/]+$/.test(path) || path.startsWith('/channel/') || path.startsWith('/c/') || path.startsWith('/user/')
+  }
+  if (host.includes('instagram.com')) {
+    if (/^\/(p|reel|tv)\//.test(path)) return false
+    return /^\/[^/]+$/.test(path)
+  }
+  if (host.includes('tiktok.com')) {
+    if (/\/video\//.test(path)) return false
+    return /^\/@[^/]+$/.test(path)
+  }
+  if (host === 'x.com' || host.includes('twitter.com')) {
+    if (/\/status\//.test(path)) return false
+    return /^\/[^/]+$/.test(path)
+  }
+  if (host.includes('linkedin.com')) {
+    if (/^\/(posts|feed)\//.test(path)) return false
+    return /^\/in\/[^/]+$/.test(path)
+  }
+  return false
+}
+
 // ─── Tag mention input component ──────────────────────────────────────────────
 
 function TagMentionInput({
@@ -472,6 +507,11 @@ export default function InfluencerContentPage() {
                 <p className="text-[11px] text-muted-foreground">
                   Link to a specific post or video you published (a single Reel, a YouTube video) — not your profile. Set your channel handles in My Profile. One URL per line.
                 </p>
+                {form.mediaUrls.split('\n').map(u => u.trim()).filter(Boolean).some(looksLikeProfileUrl) && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-500">
+                    ⚠️ One of these looks like a channel/profile link. Paste a specific post or video to preview it inline — add your channel under My Profile.
+                  </p>
+                )}
               </div>
 
               {/* Thumbnail URL (optional) */}
