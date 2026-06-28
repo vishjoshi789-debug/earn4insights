@@ -74,6 +74,11 @@ const TYPE_LABEL: Record<MentionType, string> = {
   influencer: 'Influencer',
 }
 
+// "My Content" is a cross-post / portfolio tracker: influencers post on their
+// own channels and log the link(s) here (matches the mediaUrls +
+// platformsCrossPosted data model). Not a native uploader.
+const PLATFORMS = ['Instagram', 'YouTube', 'TikTok', 'X', 'Facebook', 'LinkedIn'] as const
+
 // ─── Tag mention input component ──────────────────────────────────────────────
 
 function TagMentionInput({
@@ -274,6 +279,9 @@ export default function InfluencerContentPage() {
     title: '',
     body: '',
     mediaType: 'image',
+    mediaUrls: '',      // textarea, one URL per line
+    thumbnailUrl: '',
+    platforms: [] as string[],
     tags: [] as string[],
   })
 
@@ -293,6 +301,10 @@ export default function InfluencerContentPage() {
     if (!form.title) { toast.error('Title is required'); return }
     setCreating(true)
     try {
+      const mediaUrls = form.mediaUrls
+        .split('\n')
+        .map(u => u.trim())
+        .filter(Boolean)
       const res = await fetch('/api/influencer/content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -300,13 +312,16 @@ export default function InfluencerContentPage() {
           title: form.title,
           body: form.body || undefined,
           mediaType: form.mediaType,
+          mediaUrls,
+          thumbnailUrl: form.thumbnailUrl || undefined,
+          platformsCrossPosted: form.platforms,
           tags: form.tags,
         }),
       })
       if (!res.ok) throw new Error('Failed to create')
       const data = await res.json()
       setPosts(prev => [data.post, ...prev])
-      setForm({ title: '', body: '', mediaType: 'image', tags: [] })
+      setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [] })
       setDialogOpen(false)
       toast.success('Post created as draft')
     } catch (err: any) {
@@ -440,6 +455,59 @@ export default function InfluencerContentPage() {
                 </select>
               </div>
 
+              {/* Content link(s) — where the actual media lives */}
+              <div className="space-y-2">
+                <Label htmlFor="post-media-urls">Content link(s)</Label>
+                <Textarea
+                  id="post-media-urls"
+                  value={form.mediaUrls}
+                  onChange={e => setForm(f => ({ ...f, mediaUrls: e.target.value }))}
+                  rows={2}
+                  placeholder="Paste the link(s) to your content — one per line (e.g. your Instagram Reel or YouTube video URL)"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Link to content you posted on your own channels. One URL per line.
+                </p>
+              </div>
+
+              {/* Thumbnail URL (optional) */}
+              <div className="space-y-2">
+                <Label htmlFor="post-thumbnail">Thumbnail URL (optional)</Label>
+                <Input
+                  id="post-thumbnail"
+                  value={form.thumbnailUrl}
+                  onChange={e => setForm(f => ({ ...f, thumbnailUrl: e.target.value }))}
+                  placeholder="https://…/thumbnail.jpg"
+                />
+              </div>
+
+              {/* Posted on — cross-post platforms */}
+              <div className="space-y-2">
+                <Label>Posted on</Label>
+                <div className="flex flex-wrap gap-2">
+                  {PLATFORMS.map(p => {
+                    const selected = form.platforms.includes(p)
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setForm(f => ({
+                          ...f,
+                          platforms: selected ? f.platforms.filter(x => x !== p) : [...f.platforms, p],
+                        }))}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          selected
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-muted-foreground border-input hover:bg-accent'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               {/* Tags — FIX 2 & 3: @ mention system */}
               <div className="space-y-2">
                 <Label>Tags</Label>
@@ -546,6 +614,29 @@ export default function InfluencerContentPage() {
                         </span>
                       ))}
                     </div>
+                  )}
+
+                  {/* Cross-post platforms */}
+                  {post.platformsCrossPosted?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {post.platformsCrossPosted.map((p: string) => (
+                        <span key={p} className="inline-flex items-center rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.5 text-[10px] font-medium">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Link to the actual content */}
+                  {post.mediaUrls?.length > 0 && (
+                    <a
+                      href={post.mediaUrls[0]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 mt-2 text-[11px] font-medium text-primary hover:underline"
+                    >
+                      View content ↗
+                    </a>
                   )}
 
                   <p className="text-[10px] text-muted-foreground mt-2">
