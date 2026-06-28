@@ -17,11 +17,13 @@ export interface TourStep {
   /** Description / outcome explanation */
   description: string
   /**
-   * Which role sees this step (omit = all roles).
-   * Influencers use role:'consumer' — they are consumers with is_influencer:true
-   * and see all consumer steps including the influencer sub-section.
+   * Which role sees this step (omit = all roles). The tour maps an
+   * isInfluencer user (incl. dual-role consumer+isInfluencer) to the
+   * 'influencer' set, so influencer steps are tagged role:'influencer'
+   * (NOT 'consumer') — that keeps them off a pure consumer's tour, whose
+   * sidebar doesn't even have the influencer nav items.
    */
-  role?: 'brand' | 'consumer'
+  role?: 'brand' | 'consumer' | 'influencer'
   /** Position of tooltip relative to target */
   position?: 'top' | 'bottom' | 'left' | 'right'
   /** If set, navigate to this path before showing step */
@@ -67,6 +69,13 @@ const TOUR_STEPS: TourStep[] = [
     title: '🏠 Your Dashboard',
     description: 'Your home base. Personalized recommendations, stats, and quick actions — all at a glance.',
     role: 'consumer',
+    position: 'right',
+  },
+  {
+    target: '[data-tour="nav-dashboard"]',
+    title: '🏠 Your Creator Dashboard',
+    description: 'Your home base as a creator — campaign opportunities, earnings, and quick actions, all at a glance.',
+    role: 'influencer',
     position: 'right',
   },
 
@@ -280,34 +289,68 @@ const TOUR_STEPS: TourStep[] = [
     icon: '📥',
   },
 
-  // ── Influencer sub-section (still role:'consumer') ──────────────
-  // These steps introduce the Influencers Adda feature to all consumers.
-  // Consumers who have registered as influencers will see these as their workflow.
-  // Others see them as a prompt to explore the influencer path.
+  // ═══════════════════════════════════════════════════════════════
+  // INFLUENCERS (role:'influencer')
+  // The tour filter maps an isInfluencer user to this set. Tagged
+  // 'influencer' (not 'consumer') so pure consumers — whose sidebar lacks
+  // these nav items — don't get steps pointing at missing elements.
+  // ═══════════════════════════════════════════════════════════════
 
   {
     target: '[data-tour="nav-influencer-profile"]',
-    title: '🌟 Influencer Profile',
-    description: 'You can become an influencer right here — no separate account needed! Set your niche, platforms, base rate, and portfolio. Brands will discover and invite you to paid campaigns.',
-    role: 'consumer',
+    title: '🌟 Your Influencer Profile',
+    description: 'Set your niche, platforms, base rate, and portfolio. The stronger your profile, the more brands discover and invite you to paid campaigns.',
+    role: 'influencer',
     position: 'right',
     icon: '🌟',
   },
   {
+    target: '[data-tour="nav-influencer-marketplace"]',
+    title: '🛍️ Campaign Marketplace',
+    description: 'Browse open brand campaigns matched to your niche and audience. Find collaborations that fit and apply in a couple of clicks.',
+    role: 'influencer',
+    position: 'right',
+    icon: '🛍️',
+  },
+  {
     target: '[data-tour="nav-influencer-campaigns"]',
     title: '📣 My Campaigns',
-    description: 'Receive campaign invitations from brands. Review the brief, accept or reject, submit deliverables milestone by milestone — everything managed in one place.',
-    role: 'consumer',
+    description: 'Manage the campaigns you\'ve joined — review the brief, accept or reject, and submit deliverables milestone by milestone. Funds are escrowed upfront, so you get paid when your work is approved.',
+    role: 'influencer',
     position: 'right',
     icon: '📣',
   },
   {
     target: '[data-tour="nav-influencer-content"]',
     title: '🎬 My Content',
-    description: 'Manage all your content posts across platforms. Link posts to campaigns, track cross-posting, and build a portfolio that makes brands want to work with you again.',
-    role: 'consumer',
+    description: 'Manage your content posts across platforms. Link posts to campaigns, track cross-posting, and build a portfolio that makes brands want to work with you again.',
+    role: 'influencer',
     position: 'right',
     icon: '🎬',
+  },
+  {
+    target: '[data-tour="nav-influencer-earnings"]',
+    title: '💰 Earnings',
+    description: 'Track everything you\'ve earned across campaigns — pending, escrowed, and paid out — in one clear view.',
+    role: 'influencer',
+    position: 'right',
+    icon: '💰',
+  },
+  {
+    target: '[data-tour="nav-influencer-payouts"]',
+    title: '🏦 Payout Accounts',
+    description: 'Set up how you get paid so approved earnings reach you without delay.',
+    role: 'influencer',
+    position: 'right',
+    icon: '🏦',
+  },
+  {
+    target: '[data-tour="nav-influencer-verification"]',
+    title: '✅ Get Verified',
+    description: 'Apply for a verified badge. Verified creators stand out to brands and unlock higher-value campaigns — most applications get an instant decision.',
+    role: 'influencer',
+    position: 'right',
+    icon: '✅',
   },
 
   // ═══════════════════════════════════════════════════════════════
@@ -605,13 +648,16 @@ const { data: session, status } = useSession()
 
   const userRole = (session?.user as any)?.role as 'brand' | 'consumer' | undefined
   const userId = (session?.user as any)?.id as string | undefined
+  const isInfluencer = !!(session?.user as any)?.isInfluencer
+  // Influencers (incl. dual-role consumer+isInfluencer) get the influencer
+  // tour — keyed separately so a prior consumer tour doesn't suppress it.
+  const tourRole: 'brand' | 'consumer' | 'influencer' = isInfluencer ? 'influencer' : (userRole || 'consumer')
 
-  // Filter steps by role
+  // Filter steps by effective tour role
   useEffect(() => {
-    const role = userRole || 'consumer'
-    const steps = TOUR_STEPS.filter(s => !s.role || s.role === role)
+    const steps = TOUR_STEPS.filter(s => !s.role || s.role === tourRole)
     setFilteredSteps(steps)
-  }, [userRole])
+  }, [tourRole])
 
   // Mount check
   useEffect(() => {
@@ -622,7 +668,7 @@ const { data: session, status } = useSession()
   // Storage key is role-scoped — consumers who become influencers get a fresh tour.
   useEffect(() => {
     if (!mounted || status === 'loading') return
-    const state = getTourState(userId, userRole)
+    const state = getTourState(userId, tourRole)
     if (!state.completed && !state.dismissed && pathname.startsWith('/dashboard')) {
       const timer = setTimeout(() => {
         setIsActive(true)
@@ -635,12 +681,12 @@ const { data: session, status } = useSession()
   // Expose global function to restart tour
   useEffect(() => {
     (window as any).__startProductTour = () => {
-      setTourState({ completed: false, dismissed: false }, userId, userRole)
+      setTourState({ completed: false, dismissed: false }, userId, tourRole)
       setCurrentStep(0)
       setIsActive(true)
     }
     return () => { delete (window as any).__startProductTour }
-  }, [userId, userRole])
+  }, [userId, tourRole])
 
   // Position the spotlight on the target element
   const updateTargetRect = useCallback(() => {
@@ -675,7 +721,7 @@ const { data: session, status } = useSession()
   const handleNext = useCallback(() => {
     if (currentStep >= filteredSteps.length - 1) {
       setIsActive(false)
-      setTourState({ completed: true, dismissed: false }, userId, userRole)
+      setTourState({ completed: true, dismissed: false }, userId, tourRole)
       return
     }
     setCurrentStep(prev => prev + 1)
@@ -689,8 +735,8 @@ const { data: session, status } = useSession()
 
   const handleSkip = useCallback(() => {
     setIsActive(false)
-    setTourState({ completed: false, dismissed: true }, userId, userRole)
-  }, [userId, userRole])
+    setTourState({ completed: false, dismissed: true }, userId, tourRole)
+  }, [userId, tourRole])
 
   // Keyboard navigation
   useEffect(() => {
