@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ContentLinkPreview } from '@/components/influencer/ContentLinkPreview'
+import { RoadmapBanner } from '@/components/RoadmapBanner'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -528,6 +529,10 @@ export default function InfluencerContentPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <RoadmapBanner id="native-content-influencer">
+        <strong className="text-foreground">🎬 Coming to Earn4Insights:</strong> native content hosting. Soon you&apos;ll host your reels &amp; shorts right here and get discovered by brands&apos; matched audiences — not just log links. For now, link your cross-posted content below.
+      </RoadmapBanner>
 
       {/* Resubmit dialog */}
       <Dialog open={resubmitId !== null} onOpenChange={open => { if (!open) setResubmitId(null) }}>

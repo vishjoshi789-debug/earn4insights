@@ -17,6 +17,7 @@ import { RecommendationCard } from '@/components/recommendation-card';
 import { BrandOnboardingBanner } from '@/components/BrandOnboardingBanner';
 import { UpgradePromptCard } from '@/components/UpgradePromptCard';
 import { InfluencerPayoutBanner } from '@/components/InfluencerPayoutBanner';
+import { RoadmapBanner } from '@/components/RoadmapBanner';
 import { hasCompletedBrandOnboarding } from '@/db/repositories/brandProfileRepository';
 import { getProfileByUserId as getInfluencerProfileByUserId } from '@/db/repositories/influencerProfileRepository';
 import { hasPayoutAccount } from '@/db/repositories/payoutAccountRepository';
@@ -835,6 +836,10 @@ async function ConsumerDashboard({ userId, userEmail }: { userId?: string; userE
 
       {/* A10 L1 — payout nudge for registered influencers without an account */}
       <InfluencerPayoutBanner show={showInfluencerPayoutBanner} />
+
+      <RoadmapBanner id="native-content-consumer">
+        <strong className="text-foreground">🎬 Coming soon:</strong> discover products through short creator videos from brands matched to you — and earn for your honest reactions.
+      </RoadmapBanner>
 
       {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

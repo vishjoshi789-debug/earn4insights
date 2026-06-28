@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Loader2, ClipboardCheck, Clock, AlertTriangle, CheckCircle, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { RoadmapBanner } from '@/components/RoadmapBanner'
 
 type PendingPost = {
   id: string
@@ -136,6 +137,10 @@ export default function BrandContentReviewPage() {
           Review and approve influencer content before it goes live.
         </p>
       </div>
+
+      <RoadmapBanner id="native-content-brand">
+        <strong className="text-foreground">🎬 On our roadmap:</strong> brand-promo content hosted on Earn4Insights — shown to your ICP-matched consumers, with real first-party reactions and intent signals, not vanity metrics.
+      </RoadmapBanner>
 
       <div className="grid grid-cols-3 gap-3">
         <Card>
