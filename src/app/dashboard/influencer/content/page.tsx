@@ -16,6 +16,7 @@ import {
   AlertTriangle, RotateCcw, X, Tag, Building2, Package, User,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { ContentLinkPreview } from '@/components/influencer/ContentLinkPreview'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -631,16 +632,13 @@ export default function InfluencerContentPage() {
                     </div>
                   )}
 
-                  {/* Link to the actual content */}
+                  {/* Inline preview of the linked content */}
                   {post.mediaUrls?.length > 0 && (
-                    <a
-                      href={post.mediaUrls[0]}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 mt-2 text-[11px] font-medium text-primary hover:underline"
-                    >
-                      View content ↗
-                    </a>
+                    <ContentLinkPreview
+                      url={post.mediaUrls[0]}
+                      thumbnailUrl={post.thumbnailUrl}
+                      platform={post.platformsCrossPosted?.[0]}
+                    />
                   )}
 
                   <p className="text-[10px] text-muted-foreground mt-2">
