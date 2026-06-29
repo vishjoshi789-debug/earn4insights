@@ -285,45 +285,45 @@ export default function TransparencyPage() {
       </Card>
 
       {/* Your Rights (GDPR) */}
-      <Card className="border-green-200 bg-green-50/50">
+      <Card className="border-green-700 bg-green-900/50">
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-green-600" />
-            <CardTitle>Your Privacy Rights (GDPR)</CardTitle>
+            <Shield className="w-5 h-5 text-green-400" />
+            <CardTitle className="text-white">Your Privacy Rights (GDPR)</CardTitle>
           </div>
-          <CardDescription>
+          <CardDescription className="text-green-200">
             You have complete control over your personal data
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3">
-            <div className="flex items-start gap-3 p-3 bg-white rounded-lg">
+            <div className="flex items-start gap-3 p-3 bg-background/40 rounded-lg">
               <div className="mt-0.5 font-bold">1.</div>
               <div>
                 <p className="font-medium">Right to Access</p>
                 <p className="text-sm text-muted-foreground">
                   Export all your data in JSON format from{' '}
-                  <Link href="/settings/privacy" className="text-green-600 hover:underline">
+                  <Link href="/settings/privacy" className="text-green-400 hover:underline">
                     privacy settings
                   </Link>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 bg-white rounded-lg">
+            <div className="flex items-start gap-3 p-3 bg-background/40 rounded-lg">
               <div className="mt-0.5 font-bold">2.</div>
               <div>
                 <p className="font-medium">Right to Rectification</p>
                 <p className="text-sm text-muted-foreground">
                   Update your profile information anytime in{' '}
-                  <Link href="/settings" className="text-green-600 hover:underline">
+                  <Link href="/settings" className="text-green-400 hover:underline">
                     account settings
                   </Link>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 bg-white rounded-lg">
+            <div className="flex items-start gap-3 p-3 bg-background/40 rounded-lg">
               <div className="mt-0.5 font-bold">3.</div>
               <div>
                 <p className="font-medium">Right to Erasure ("Right to be Forgotten")</p>
@@ -333,7 +333,7 @@ export default function TransparencyPage() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 bg-white rounded-lg">
+            <div className="flex items-start gap-3 p-3 bg-background/40 rounded-lg">
               <div className="mt-0.5 font-bold">4.</div>
               <div>
                 <p className="font-medium">Right to Object</p>
@@ -343,7 +343,7 @@ export default function TransparencyPage() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 bg-white rounded-lg">
+            <div className="flex items-start gap-3 p-3 bg-background/40 rounded-lg">
               <div className="mt-0.5 font-bold">5.</div>
               <div>
                 <p className="font-medium">Right to Data Portability</p>
@@ -353,7 +353,7 @@ export default function TransparencyPage() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 bg-white rounded-lg">
+            <div className="flex items-start gap-3 p-3 bg-background/40 rounded-lg">
               <div className="mt-0.5 font-bold">6.</div>
               <div>
                 <p className="font-medium">Right to Withdraw Consent</p>
