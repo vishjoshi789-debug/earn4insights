@@ -138,6 +138,12 @@ These are the daily-work invariants. Full historical rationale for each one is i
 - **TOTP/account-number/IBAN use versioned encryption.** Store `encryption_key_id` alongside ciphertext so `decryptFromStorage()` finds the right key. Env carries only versioned keys (`ENCRYPTION_KEY_v1`), not a bare `ENCRYPTION_KEY`.
 - **Decrypt before slicing.** `accountNumber.slice(-4)` on ciphertext leaks ciphertext, not last-4. Always `decryptFromStorage()` first.
 
+### Styling / Dark theme
+- **The app is FORCE-DARK** — `<html className="...dark">` in `layout.tsx` (no theme toggle). Default text is light. So **never ship a light-theme component** without an explicit dark treatment, or it renders unreadable (light-on-light). Two recurring forms:
+  - **Light card/row backgrounds** (`bg-white`, `bg-*-50`, `bg-*-100`) with no text color → titles/labels fall back to the light default foreground → **white-on-white**. Either give the element explicit dark text (`text-gray-900` etc.) OR — preferred — use the dark card pattern the app already uses: `border-*-700 bg-*-900/50` cards, `bg-muted` / `bg-background/40` rows, default light text, `*-200`/`*-400` accents. (Bit twice: the `/transparency` GDPR card `d60178e`, and the legal `prose` pages — see next bullet.)
+  - **Tailwind Typography `prose`** needs **`dark:prose-invert`** or it sets near-black text on the dark bg → unreadable. Every `prose` block must carry it (privacy/terms/refund/top-products were missing it, fixed in `17216f6`).
+- **Brand palette, not raw colors.** Use `text-primary`/`bg-primary` (indigo), `accent`, and the brand CSS tokens in `globals.css` over hardcoded `purple-700`/`blue-600` where a brand color is meant.
+
 ### VS Code / Session Recovery
 - Session crashed mid-task → restart VS Code, re-run `npm run dev` on port `9002`, run `git status` before continuing.
 - Lock-file / unfamiliar files → investigate before deleting; may be in-progress work.
