@@ -79,7 +79,27 @@ const PUBLIC_API_ADMIN_PATHS = new Set<string>([
   '/api/admin/run-migration-032',
 ])
 
+// Next.js build-generated metadata routes (no file extension in the path) +
+// static public assets. These MUST be publicly fetchable: anonymous browsers
+// and social/link scrapers request them, and gating them behind auth redirected
+// them to /login — which broke OG/Twitter share previews, favicons, and the PWA
+// manifest. None is a cookie-CSRF surface. Latent bug exposed once middleware
+// went live (same class as the brand /onboarding redirect loop).
+const METADATA_ROUTES = new Set<string>([
+  '/opengraph-image',
+  '/twitter-image',
+  '/manifest.webmanifest',
+  '/robots.txt',
+  '/sitemap.xml',
+])
+const STATIC_ASSET_RE = /\.(?:ico|png|svg|jpg|jpeg|gif|webp|avif|webmanifest|txt|xml|woff2?|ttf|otf|eot)$/i
+
+function isStaticOrMetadata(pathname: string): boolean {
+  return METADATA_ROUTES.has(pathname) || STATIC_ASSET_RE.test(pathname)
+}
+
 function isPublic(pathname: string): boolean {
+  if (isStaticOrMetadata(pathname)) return true
   if (PUBLIC_PATHS.has(pathname)) return true
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return true
   if (PUBLIC_API_ADMIN_PATHS.has(pathname)) return true
@@ -178,7 +198,7 @@ function isAllowedDuringTwoFactor(pathname: string): boolean {
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/images/') ||
     pathname.startsWith('/fonts/') ||
-    pathname === '/favicon.ico'
+    isStaticOrMetadata(pathname)
   ) {
     return true
   }
