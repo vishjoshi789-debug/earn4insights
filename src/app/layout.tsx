@@ -5,6 +5,7 @@ import { headers, cookies } from 'next/headers'
 import './globals.css'
 
 import { SiteHeader } from '@/components/site-header'
+import { SiteFooter } from '@/components/site-footer'
 import { SessionProvider } from '@/components/session-provider'
 import { Toaster } from 'sonner'
 import AnalyticsTracker from '@/components/analytics-tracker'
@@ -29,6 +30,8 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
+  // Absolute base so relative OG/Twitter image URLs resolve for link scrapers.
+  metadataBase: new URL('https://www.earn4insights.com'),
   title: 'Earn4Insights — Consumer Intelligence Infrastructure',
   description: 'The consumer intelligence infrastructure where brands, consumers, and influencers meet.',
   icons: {
@@ -42,9 +45,18 @@ export const metadata: Metadata = {
     apple: '/icon-app-192.png',
   },
   openGraph: {
+    type: 'website',
+    siteName: 'Earn4Insights',
+    url: 'https://www.earn4insights.com',
     title: 'Earn4Insights — Consumer Intelligence Infrastructure',
     description: 'The consumer intelligence infrastructure where brands, consumers, and influencers meet.',
-    images: [{ url: '/icon-app-512.png', width: 512, height: 512, alt: 'Earn4Insights' }],
+    // og:image is supplied by app/opengraph-image.tsx (1200×630 card).
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Earn4Insights — Consumer Intelligence Infrastructure',
+    description: 'The consumer intelligence infrastructure where brands, consumers, and influencers meet.',
+    // twitter:image is supplied by app/twitter-image.tsx.
   },
 }
 
@@ -103,6 +115,7 @@ export default async function RootLayout({
           <div className="relative flex min-h-dvh flex-col bg-background">
             <SiteHeader />
             <main id="main-content" className="flex-1">{children}</main>
+            <SiteFooter />
           </div>
           <Toaster />
           <AnalyticsTracker />

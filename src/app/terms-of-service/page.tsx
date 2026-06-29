@@ -2,8 +2,8 @@ export default function TermsOfServicePage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
       <h1 className="mb-6 text-3xl font-bold">Terms of Service</h1>
-      <div className="prose max-w-none">
-        <p className="text-gray-600">Last updated: {new Date().toLocaleDateString()}</p>
+      <div className="prose max-w-none dark:prose-invert">
+        <p className="text-gray-600">Last updated: June 2026</p>
         
         <h2>1. Acceptance of Terms</h2>
         <p>
@@ -51,8 +51,8 @@ export default function TermsOfServicePage() {
         <h2>7. Contact</h2>
         <p>
           Questions about these Terms? Contact us at{' '}
-          <a href="mailto:legal@earn4insights.com" className="text-blue-600">
-            legal@earn4insights.com
+          <a href="mailto:contact@earn4insights.com" className="text-blue-600">
+            contact@earn4insights.com
           </a>
         </p>
       </div>

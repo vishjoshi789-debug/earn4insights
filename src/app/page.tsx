@@ -4,32 +4,191 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   ArrowRight,
-  BarChart3,
-  MessageSquare,
-  TrendingUp,
-  Users,
-  Building2,
   Activity,
-  Globe,
-  FileText,
-  Upload,
-  PenSquare,
   Award,
-  Sparkles,
-  MessagesSquare,
+  BarChart3,
   Bell,
-  Trophy,
   Brain,
-  HandCoins,
-  Target,
-  Megaphone,
-  UserCheck,
-  ShieldCheck,
+  Building2,
+  ClipboardCheck,
+  ClipboardList,
   Download,
+  FileText,
+  Flame,
+  Globe,
+  HandCoins,
+  HelpCircle,
+  KeyRound,
+  Megaphone,
+  MessageSquare,
+  MessagesSquare,
+  Package,
+  PackagePlus,
+  PenSquare,
+  Settings,
+  ShieldCheck,
+  Sparkles,
   Star,
-  CheckSquare,
+  Store,
+  Tags,
+  Target,
+  TrendingUp,
+  Trophy,
+  Upload,
+  UserCheck,
+  Users,
+  Video,
+  Wallet,
   Zap,
+  type LucideIcon,
 } from 'lucide-react'
+
+/**
+ * Small inline badge for features we show as part of the vision but that
+ * aren't live at beta launch (shipping post-launch / after the free beta
+ * window). Lets us list the full roadmap honestly without implying
+ * everything works on day one.
+ *
+ * Founder note: flip a feature's `comingSoon` flag in the arrays below as
+ * it goes live. Reword the label here in one place.
+ */
+function ComingSoon() {
+  return (
+    <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 align-middle text-[10px] font-medium text-amber-600 ring-1 ring-amber-500/20">
+      Coming soon
+    </span>
+  )
+}
+
+type Audience = 'brand' | 'consumer' | 'influencer'
+
+interface Feature {
+  icon: LucideIcon
+  title: string
+  description: string
+  /** Marks a feature that isn't live at beta launch yet. */
+  comingSoon?: boolean
+}
+
+// Full static class strings per audience (Tailwind can't see interpolated
+// class names, so each variant lists complete utilities).
+const THEME: Record<
+  Audience,
+  { card: string; iconWrap: string; icon: string; cta: string; ctaLabel: string; ctaHref: string }
+> = {
+  brand: {
+    card: 'border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all',
+    iconWrap: 'flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20',
+    icon: 'h-5 w-5 text-primary',
+    cta: 'mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors',
+    ctaLabel: 'Book a Demo',
+    ctaHref: '/contact-us',
+  },
+  consumer: {
+    card: 'border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all',
+    iconWrap: 'flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20',
+    icon: 'h-5 w-5 text-accent',
+    cta: 'mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors',
+    ctaLabel: 'Learn More',
+    ctaHref: '/signup?role=consumer',
+  },
+  influencer: {
+    card: 'border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all',
+    iconWrap: 'flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20',
+    icon: 'h-5 w-5 text-violet-600',
+    cta: 'mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors',
+    ctaLabel: 'Get Started',
+    ctaHref: '/signup?role=consumer',
+  },
+}
+
+// ── Feature catalogues ──────────────────────────────────────────────────────
+// Each card maps to a real platform capability (see the dashboard sidebar in
+// src/app/dashboard/DashboardShell.tsx). `comingSoon: true` = not live at beta.
+
+const BRAND_FEATURES: Feature[] = [
+  { icon: MessageSquare, title: 'Feedback Hub', description: 'All consumer feedback in one place — text, audio, and video with AI-powered sentiment analysis.' },
+  { icon: BarChart3, title: 'Surveys & NPS', description: 'Create targeted surveys and track Net Promoter Score to measure customer satisfaction.' },
+  { icon: TrendingUp, title: 'Audience Analytics', description: 'Know who your customers are — demographics, behavior patterns, and preferences at a glance.' },
+  { icon: Activity, title: 'Feature Insights', description: 'See which features delight users and which need work — backed by real feedback data.' },
+  { icon: Brain, title: 'Consumer Intelligence', description: 'Understand how different user segments feel about your product and why.' },
+  { icon: FileText, title: 'Product Deep Dive', description: 'In-depth analytics per product — sentiment trends, scores, and detailed feedback breakdowns.' },
+  { icon: Bell, title: 'Weekly Digest', description: 'Automated weekly summary of new feedback, score changes, and emerging trends.' },
+  { icon: Trophy, title: 'Rankings & Alerts', description: 'Track your weekly category ranking and get instant alerts on position changes.' },
+  { icon: Target, title: 'ICP Builder', description: 'Define your Ideal Consumer Profile with weighted criteria — the platform auto-scores every consumer against it daily.' },
+  { icon: Megaphone, title: 'Influencer Campaigns', description: 'Create campaigns, set budgets, define deliverables, and manage milestone-based escrow payments — all in one dashboard.' },
+  { icon: ClipboardCheck, title: 'Content Review', description: 'Review and approve influencer content against your brief before it goes live.' },
+  { icon: Tags, title: 'Deals & Offers', description: 'Publish deals and offers to consumers and track redemptions.' },
+  { icon: PackagePlus, title: 'Launch Products', description: 'Add products and start collecting feedback in minutes — or schedule a launch for later.' },
+  { icon: Upload, title: 'Import Data', description: 'Bring existing feedback from Google Forms, Typeform, or SurveyMonkey — no re-collection needed.' },
+  { icon: MessagesSquare, title: 'Community', description: 'Engage with your audience directly — join conversations, share updates, and see what consumers are talking about.' },
+  { icon: Users, title: 'Social', description: 'Monitor social discussions around your products and track consumer sentiment publicly.', comingSoon: true },
+  { icon: Globe, title: 'Category Intelligence', description: 'Compare your product against competitors and catch market shifts early.', comingSoon: true },
+  { icon: UserCheck, title: 'Discover Influencers', description: 'Search verified influencers by niche, platform, location, and follower count, and invite them to campaigns.', comingSoon: true },
+]
+
+const CONSUMER_FEATURES: Feature[] = [
+  { icon: PenSquare, title: 'Submit Feedback', description: 'Share your thoughts via text, audio, or video — on the products you actually use.' },
+  { icon: Video, title: 'Voice & Video Feedback', description: "Don't just type — record a quick voice note or video. We transcribe and translate it automatically." },
+  { icon: Globe, title: 'Any Language', description: 'Give feedback in your own language — we auto-detect and translate, so nothing gets lost.' },
+  { icon: BarChart3, title: 'Surveys & NPS', description: 'Answer quick surveys from brands you care about — and get rewarded for sharing your view.' },
+  { icon: Award, title: 'Earn Rewards', description: 'Get rewarded for every review you share. More feedback means more earnings.' },
+  { icon: HandCoins, title: 'Cash Out Points', description: 'Convert your points to cash and withdraw your earnings — simple and transparent.' },
+  { icon: Sparkles, title: 'For You', description: 'Discover products matched to your taste based on your interests and feedback history.' },
+  { icon: Trophy, title: 'Top Products', description: 'Browse the highest-ranked products each week — rated by real consumers like you.' },
+  { icon: Package, title: 'Browse Products', description: 'Explore products across categories and share feedback on the ones you know.' },
+  { icon: Bell, title: 'My Watchlist', description: 'Follow products you love and get notified when reviews or rankings change.' },
+  { icon: Tags, title: 'Deals & Offers', description: 'Unlock exclusive deals and offers from brands on the platform.' },
+  { icon: Flame, title: 'Community Deals', description: 'See the hottest deals shared and upvoted by the community.' },
+  { icon: MessagesSquare, title: 'Community', description: 'Join conversations, share tips, and connect with consumers who share your interests.' },
+  { icon: Users, title: 'Social', description: 'Follow friends, see what they review, and find great products through your network.', comingSoon: true },
+  { icon: Bell, title: 'Notifications', description: 'Stay on top of new surveys, reward updates, and replies — all in one inbox.' },
+  { icon: ShieldCheck, title: 'Privacy & Consent', description: 'Full control over what data you share — toggle each category independently. GDPR and India DPDP Act compliant.' },
+  { icon: Activity, title: 'My Signals', description: 'See exactly what the platform knows about you — behavioral patterns, interests, demographics — with full history.' },
+  { icon: Download, title: 'My Data Export', description: 'Download everything we hold about you as a single file — your right under GDPR and India’s DPDP Act.' },
+  { icon: KeyRound, title: 'Account Security', description: 'Protect your account with a strong password and optional two-factor authentication.' },
+  { icon: HelpCircle, title: 'Help & Support', description: 'Get answers fast from our help center and in-app support chat.' },
+  { icon: Settings, title: 'Settings & Profile', description: 'Manage your profile, notification preferences, and connected channels in one place.' },
+  { icon: ClipboardList, title: 'My Feedback', description: "Track everything you've submitted and see its status, all in one place." },
+  { icon: UserCheck, title: 'Become an Influencer', description: 'Already a consumer? Register as an influencer in one step — same account, extended profile.' },
+]
+
+const INFLUENCER_FEATURES: Feature[] = [
+  { icon: UserCheck, title: 'Influencer Profile', description: 'Create a verified public profile — set your niche, platforms, base rate, and portfolio. Brands discover you through search.' },
+  { icon: Store, title: 'Marketplace', description: 'Browse open brand campaigns in the marketplace and apply to the ones that fit your audience.' },
+  { icon: Megaphone, title: 'My Campaigns', description: 'Receive invitations and manage every campaign end-to-end — brief, terms, deliverables, and status.' },
+  { icon: FileText, title: 'Content Management', description: "Manage all your content posts in one place — link posts to campaigns and keep your portfolio updated." },
+  { icon: HandCoins, title: 'Milestone Payments', description: 'Payments are escrowed before work begins. Complete a milestone, submit for approval — funds release fast.' },
+  { icon: Wallet, title: 'Earnings', description: "Track your earnings across campaigns with a clear breakdown of what's pending, approved, and paid." },
+  { icon: Wallet, title: 'Payout Accounts', description: 'Add and manage your payout accounts to receive earnings securely.' },
+  { icon: ShieldCheck, title: 'Get Verified', description: 'Earn a verified badge through our checks — and win brand trust faster.' },
+  { icon: Zap, title: 'Performance Analytics', description: 'Track views, likes, reach, and engagement per campaign and platform.', comingSoon: true },
+  { icon: Star, title: 'Reviews & Reputation', description: 'Brands leave verified reviews after each campaign. Build a star-rated reputation that earns better deals.' },
+]
+
+function FeatureCard({ feature, audience }: { feature: Feature; audience: Audience }) {
+  const t = THEME[audience]
+  const Icon = feature.icon
+  return (
+    <Card className={t.card}>
+      <CardContent className="pt-5 pb-4">
+        <div className={t.iconWrap}>
+          <Icon className={t.icon} />
+        </div>
+        <h3 className="mt-3 flex flex-wrap items-center gap-y-1 font-semibold text-foreground text-base">
+          {feature.title}
+          {feature.comingSoon && <ComingSoon />}
+        </h3>
+        <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
+          {feature.description}
+        </p>
+        <Link href={t.ctaHref} className={t.cta}>
+          {t.ctaLabel} <ArrowRight className="h-3 w-3" />
+        </Link>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function HomePage() {
   return (
@@ -42,7 +201,7 @@ export default function HomePage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
             </span>
-            <span className="text-primary font-medium">Now Live</span>
+            <span className="text-primary font-medium">Now in Beta</span>
           </div>
           <div className="flex justify-center mb-4">
             {/* Primary lockup with tagline — the hero brand moment. */}
@@ -98,230 +257,9 @@ export default function HomePage() {
           </div>
 
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <MessageSquare className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Feedback Hub</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  All consumer feedback in one place — text, audio, and video with AI-powered sentiment analysis.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <BarChart3 className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Surveys & NPS</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Create targeted surveys and track Net Promoter Score to measure customer satisfaction.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Audience Analytics</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Know who your customers are — demographics, behavior patterns, and preferences at a glance.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Activity className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Feature Insights</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  See which features delight users and which need work — backed by real feedback data.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Brain className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Consumer Intelligence</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Understand how different user segments feel about your product and why.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Globe className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Category Intelligence</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Compare your product against competitors and catch market shifts early.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <FileText className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Product Deep Dive</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  In-depth analytics per product — sentiment trends, scores, and detailed feedback breakdowns.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Trophy className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Rankings & Alerts</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Track your weekly category ranking and get instant alerts on position changes.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Bell className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Weekly Digest</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Automated weekly summary of new feedback, score changes, and emerging trends.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Upload className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Import Data</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Bring existing feedback from Google Forms, Typeform, or SurveyMonkey — no re-collection needed.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <MessagesSquare className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Community</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Engage with your audience directly — join conversations, share updates, and see what consumers are talking about.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Users className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Social</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Monitor social discussions around your products, track consumer sentiment publicly, and build brand presence.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Target className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">ICP Builder</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Define your Ideal Consumer Profile with weighted criteria — age, interests, behavior, psychographics. Platform auto-scores every consumer against it daily.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <Megaphone className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Influencer Campaigns</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Create campaigns, set budgets, define deliverables, and manage milestone-based payments — all in one dashboard. Escrow-backed for trust on both sides.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-                  <UserCheck className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Discover Influencers</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Search verified influencers by niche, platform, location, and follower count. Invite them directly to your campaigns from inside the platform.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
+            {BRAND_FEATURES.map((f) => (
+              <FeatureCard key={f.title} feature={f} audience="brand" />
+            ))}
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
@@ -331,7 +269,7 @@ export default function HomePage() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <p className="text-xs text-muted-foreground">Free while we're in beta — no credit card required</p>
+            <p className="text-xs text-muted-foreground">Free while we&apos;re in beta — no credit card required</p>
           </div>
         </div>
       </section>
@@ -351,185 +289,9 @@ export default function HomePage() {
           </div>
 
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <PenSquare className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Submit Feedback</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Share your thoughts via text, audio, or video — in any language you prefer.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <Award className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Earn Rewards</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Get rewarded for every review you share. More feedback means more earnings.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <HandCoins className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Payouts</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Withdraw your earnings anytime — simple, transparent, and hassle-free.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <Sparkles className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">For You</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Discover products matched to your taste based on your interests and feedback history.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <Trophy className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Top Products</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Browse the highest-ranked products each week — rated by real consumers like you.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <Bell className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">My Watchlist</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Follow products you love and get notified when reviews or rankings change.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <MessagesSquare className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Community</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Join conversations, share tips, and connect with consumers who share your interests.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <Users className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Social</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Follow friends, see what they review, and find great products through your network.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Book a Demo <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <ShieldCheck className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Privacy & Consent</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Full control over what data you share — toggle each category independently. GDPR and India DPDP Act compliant. Revoke any consent in one tap.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Learn More <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <Activity className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">My Signals</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  See exactly what the platform knows about you — behavioral patterns, interests, demographics — with full history of every update.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Learn More <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <Download className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">My Data Export</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Download everything we hold about you as a single JSON file — your right under GDPR Art. 15 and India's DPDP Act. One click, instant export.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Learn More <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 ring-1 ring-accent/20">
-                  <UserCheck className="h-5 w-5 text-accent" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Become an Influencer</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Already a consumer? Register as an influencer in one step — same account, extended profile. Set your niche, rates, and handles to get discovered by brands.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors">
-                  Learn More <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
+            {CONSUMER_FEATURES.map((f) => (
+              <FeatureCard key={f.title} feature={f} audience="consumer" />
+            ))}
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
@@ -539,7 +301,7 @@ export default function HomePage() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <p className="text-xs text-muted-foreground">Free while we're in beta — no credit card required</p>
+            <p className="text-xs text-muted-foreground">Free while we&apos;re in beta — no credit card required</p>
           </div>
         </div>
       </section>
@@ -559,95 +321,9 @@ export default function HomePage() {
           </div>
 
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
-            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
-                  <UserCheck className="h-5 w-5 text-violet-600" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Influencer Profile</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Create a verified public profile — set your niche, platforms, base rate, and portfolio. Brands discover you through search. No cold outreach needed.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
-                  Get Started <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
-                  <Megaphone className="h-5 w-5 text-violet-600" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Campaign Invitations</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Receive campaign invitations from brands, review the brief, negotiate terms, and accept or decline — on your schedule.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
-                  Get Started <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
-                  <HandCoins className="h-5 w-5 text-violet-600" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Milestone Payments</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Payments are escrowed before work begins. Complete a milestone, submit for approval — funds release instantly. No chasing invoices.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
-                  Get Started <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
-                  <FileText className="h-5 w-5 text-violet-600" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Content Management</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Manage all your content posts in one place — link posts to campaigns, track which platforms you've cross-posted to, and keep your portfolio updated.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
-                  Get Started <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
-                  <Zap className="h-5 w-5 text-violet-600" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Performance Analytics</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Track views, likes, reach, and engagement per campaign and platform. Show brands real numbers to build credibility and command better rates.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
-                  Get Started <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
-
-            <Card className="border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
-                  <Star className="h-5 w-5 text-violet-600" />
-                </div>
-                <h3 className="mt-3 font-semibold text-foreground text-base">Reviews & Reputation</h3>
-                <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
-                  Brands leave verified reviews after each campaign. Build a star-rated reputation that makes future brands trust you faster and offer better deals.
-                </p>
-                <Link href="/contact-us" className="mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors">
-                  Get Started <ArrowRight className="h-3 w-3" />
-                </Link>
-              </CardContent>
-            </Card>
+            {INFLUENCER_FEATURES.map((f) => (
+              <FeatureCard key={f.title} feature={f} audience="influencer" />
+            ))}
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
@@ -667,7 +343,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-foreground">Ready to See It in Action?</h2>
           <p className="mt-4 text-lg">
-            Free while we're in beta — paid plans coming soon. No credit card or payment details required; just sign up and start exploring.
+            Free while we&apos;re in beta — paid plans coming soon. No credit card or payment details required; just sign up and start exploring.
           </p>
           <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:justify-center">
             <Button size="lg" asChild className="bg-primary hover:bg-primary/90 gap-2">
@@ -685,61 +361,6 @@ export default function HomePage() {
           </p>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="border-t px-6 py-12">
-        <div className="mx-auto max-w-6xl">
-          {/* Brand tagline — full width on top */}
-          <div className="text-center mb-10">
-            <h4 className="text-sm font-semibold text-foreground">Earn4Insights</h4>
-            <p className="mt-1 text-xs italic text-muted-foreground max-w-md mx-auto leading-snug">
-              The consumer intelligence infrastructure where brands, consumers, and influencers meet
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
-              Multimodal feedback. Multilingual intelligence. Real-time analytics and personalized recommendations — structured for brands, rewarding consumers.
-            </p>
-          </div>
-
-          {/* Links — 2 columns, responsive */}
-          <div className="grid grid-cols-2 gap-6 max-w-md mx-auto text-center sm:text-left">
-            <div>
-              <h4 className="text-sm font-semibold text-foreground">Company</h4>
-              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <li>
-                  <Link href="/about-us" className="hover:text-foreground transition-colors">
-                    About Us
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/contact-us" className="hover:text-foreground transition-colors">
-                    Contact
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="text-sm font-semibold text-foreground">Legal</h4>
-              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <li>
-                  <Link href="/privacy-policy" className="hover:text-foreground transition-colors">
-                    Privacy Policy
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/terms-of-service" className="hover:text-foreground transition-colors">
-                    Terms of Service
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-          
-          <div className="mt-10 border-t pt-6 text-center text-sm text-muted-foreground">
-            © 2026 Earn4Insights. All rights reserved.
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }

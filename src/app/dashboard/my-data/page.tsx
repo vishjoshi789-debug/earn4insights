@@ -530,8 +530,8 @@ export default function MyDataPage() {
             Download Your Data
           </button>{' '}
           section below to receive your full data report, or contact{' '}
-          <a href="mailto:privacy@earn4insights.com" className="underline underline-offset-2">
-            privacy@earn4insights.com
+          <a href="mailto:contact@earn4insights.com" className="underline underline-offset-2">
+            contact@earn4insights.com
           </a>{' '}
           for a manually decrypted copy.
         </p>

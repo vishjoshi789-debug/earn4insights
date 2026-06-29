@@ -187,10 +187,10 @@ const PLANS: PricingPlan[] = [
 
 export default async function PricingPage() {
   const session = await auth()
-  if (!session) redirect('/auth/signin')
+  if (!session) redirect('/login')
 
   const userId = session.user?.id
-  if (!userId) redirect('/auth/signin')
+  if (!userId) redirect('/login')
 
   const subscription = await getBrandSubscription(userId)
   const currentTier = subscription.tier
@@ -341,7 +341,7 @@ export default async function PricingPage() {
                     </Button>
                   ) : plan.id === 'enterprise' ? (
                     <Button variant={plan.ctaVariant as any} className="w-full" asChild>
-                      <a href="mailto:sales@earn4insights.com?subject=Enterprise%20Plan%20Inquiry">
+                      <a href="mailto:contact@earn4insights.com?subject=Enterprise%20Plan%20Inquiry">
                         {plan.ctaLabel}
                         <ArrowUpRight className="w-4 h-4 ml-2" />
                       </a>

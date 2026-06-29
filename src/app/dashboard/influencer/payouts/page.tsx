@@ -580,7 +580,7 @@ export default function InfluencerPayoutsPage() {
                               {p.status === 'failed' && p.failureReason && (
                                 <p className="text-[11px] text-red-600 dark:text-red-400 max-w-[200px] truncate">
                                   {p.failureReason} ·{' '}
-                                  <a href="mailto:support@earn4insights.com" className="underline">
+                                  <a href="mailto:contact@earn4insights.com" className="underline">
                                     Contact support
                                   </a>
                                 </p>

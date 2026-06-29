@@ -178,7 +178,7 @@ export default async function TopProductsPage() {
                 How Rankings Work
               </CardTitle>
             </CardHeader>
-            <CardContent className="prose prose-sm max-w-none">
+            <CardContent className="prose prose-sm max-w-none dark:prose-invert">
               <p className="text-slate-300">
                 Our rankings are 100% data-driven and based on multiple signals:
               </p>
