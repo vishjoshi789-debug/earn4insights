@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Logo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { HeroCtas, SectionCta } from '@/components/landing-ctas'
 import {
   ArrowRight,
   Activity,
@@ -222,26 +223,7 @@ export default function HomePage() {
             <p>Brands get real consumer intelligence tailored to their exact audience. Consumers earn rewards for their genuine voice and discover products made for them. Influencers monetize their authentic reach with campaigns matched to their profile.</p>
             <p className="font-medium text-foreground">Everyone gets what they actually want — in real time, every time.</p>
           </div>
-          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <Button size="lg" asChild className="gap-2 bg-primary hover:bg-primary/90 w-full sm:w-auto">
-              <Link href="/signup?role=brand">
-                I&apos;m a Brand
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button size="lg" asChild className="gap-2 bg-accent hover:bg-accent/90 w-full sm:w-auto">
-              <Link href="/signup?role=consumer">
-                I&apos;m a Consumer
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button size="lg" asChild className="gap-2 bg-violet-600 hover:bg-violet-700 text-white w-full sm:w-auto">
-              <Link href="/signup?role=influencer">
-                I&apos;m an Influencer
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
+          <HeroCtas />
         </div>
       </section>
 
@@ -266,12 +248,7 @@ export default function HomePage() {
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
-            <Button size="lg" asChild className="bg-primary hover:bg-primary/90 gap-2">
-              <Link href="/signup?role=brand">
-                Get Started Free
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <SectionCta role="brand" label="Get Started Free" className="bg-primary hover:bg-primary/90 gap-2" />
             <p className="text-xs text-muted-foreground">Free while we&apos;re in beta — no credit card required</p>
           </div>
         </div>
@@ -298,12 +275,7 @@ export default function HomePage() {
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
-            <Button size="lg" asChild className="bg-accent hover:bg-accent/90 gap-2">
-              <Link href="/signup?role=consumer">
-                Get Started Free
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <SectionCta role="consumer" label="Get Started Free" className="bg-accent hover:bg-accent/90 gap-2" />
             <p className="text-xs text-muted-foreground">Always free for consumers — earn rewards, never pay a thing</p>
           </div>
         </div>
@@ -330,12 +302,7 @@ export default function HomePage() {
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3">
-            <Button size="lg" asChild className="bg-violet-600 hover:bg-violet-700 gap-2 text-white">
-              <Link href="/signup?role=influencer">
-                Join as Influencer
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <SectionCta role="influencer" label="Join as Influencer" className="bg-violet-600 hover:bg-violet-700 gap-2 text-white" />
             <p className="text-xs text-muted-foreground">Free to join — set up your influencer profile in a quick onboarding</p>
           </div>
         </div>
@@ -349,12 +316,7 @@ export default function HomePage() {
             Free while we&apos;re in beta — paid plans coming soon. No credit card or payment details required; just sign up and start exploring.
           </p>
           <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:justify-center">
-            <Button size="lg" asChild className="bg-primary hover:bg-primary/90 gap-2">
-              <Link href="/signup">
-                Get Started Free
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <SectionCta label="Get Started Free" className="bg-primary hover:bg-primary/90 gap-2" />
             <Button size="lg" variant="outline" asChild className="border-primary/20 hover:bg-primary/5 hover:border-primary/40">
               <Link href="/contact-us">Book a Demo</Link>
             </Button>
