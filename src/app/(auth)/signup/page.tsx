@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,13 +18,19 @@ import { apiPost } from '@/lib/api-client'
 import { PasswordInput } from '@/components/auth/PasswordInput'
 import { validatePassword } from '@/lib/auth/passwordPolicy'
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   // 3.5B — three first-class signup roles. Admin is intentionally not
   // self-assignable (enforced by signupIntent.ts ALLOWED_SIGNUP_ROLES).
-  const [role, setRole] = useState<'brand' | 'consumer' | 'influencer'>('consumer')
+  // Preselect from ?role= (the landing-page hero/section CTAs pass it);
+  // anything unrecognised falls back to consumer.
+  const roleParam = searchParams.get('role')
+  const initialRole: 'brand' | 'consumer' | 'influencer' =
+    roleParam === 'brand' || roleParam === 'influencer' ? roleParam : 'consumer'
+  const [role, setRole] = useState<'brand' | 'consumer' | 'influencer'>(initialRole)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false)
   const [password, setPassword] = useState('')
@@ -116,8 +122,7 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-12 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-950 dark:via-background dark:to-violet-950/30">
-      <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md">
         <CardHeader className="space-y-3">
           <div className="flex flex-col items-center gap-2">
             {/* Stacked lockup includes the wordmark. */}
@@ -381,7 +386,16 @@ export default function SignupPage() {
             </Link>
           </p>
         </CardContent>
-      </Card>
+    </Card>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4 py-12 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-950 dark:via-background dark:to-violet-950/30">
+      <Suspense fallback={<Card className="w-full max-w-md p-6"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></Card>}>
+        <SignupForm />
+      </Suspense>
     </div>
   )
 }

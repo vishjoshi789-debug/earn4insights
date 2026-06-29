@@ -236,7 +236,7 @@ export default function HomePage() {
               </Link>
             </Button>
             <Button size="lg" asChild className="gap-2 bg-violet-600 hover:bg-violet-700 text-white w-full sm:w-auto">
-              <Link href="/signup?role=consumer">
+              <Link href="/signup?role=influencer">
                 I&apos;m an Influencer
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -304,7 +304,7 @@ export default function HomePage() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <p className="text-xs text-muted-foreground">Free while we&apos;re in beta — no credit card required</p>
+            <p className="text-xs text-muted-foreground">Always free for consumers — earn rewards, never pay a thing</p>
           </div>
         </div>
       </section>
@@ -331,12 +331,12 @@ export default function HomePage() {
 
           <div className="mt-10 flex flex-col items-center gap-3">
             <Button size="lg" asChild className="bg-violet-600 hover:bg-violet-700 gap-2 text-white">
-              <Link href="/signup?role=consumer">
+              <Link href="/signup?role=influencer">
                 Join as Influencer
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <p className="text-xs text-muted-foreground">Sign up as a consumer — register as an influencer from your dashboard</p>
+            <p className="text-xs text-muted-foreground">Free to join — set up your influencer profile in a quick onboarding</p>
           </div>
         </div>
       </section>
