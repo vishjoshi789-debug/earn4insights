@@ -90,15 +90,18 @@ const THEME: Record<
     icon: 'h-5 w-5 text-accent',
     cta: 'mt-3 inline-flex items-center gap-1 text-xs text-accent/70 hover:text-accent font-medium transition-colors',
     ctaLabel: 'Learn More',
-    ctaHref: '/signup?role=consumer',
+    // Public page so logged-in users (any role) browsing another audience's
+    // features aren't bounced to their dashboard by the middleware /signup
+    // redirect-if-authed. The big section button below is the signup CTA.
+    ctaHref: '/contact-us',
   },
   influencer: {
     card: 'border-violet-500/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-violet-500/40 transition-all',
     iconWrap: 'flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20',
     icon: 'h-5 w-5 text-violet-600',
     cta: 'mt-3 inline-flex items-center gap-1 text-xs text-violet-600/70 hover:text-violet-600 font-medium transition-colors',
-    ctaLabel: 'Get Started',
-    ctaHref: '/signup?role=consumer',
+    ctaLabel: 'Learn More',
+    ctaHref: '/contact-us',
   },
 }
 
