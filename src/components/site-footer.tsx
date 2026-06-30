@@ -26,7 +26,7 @@ export function SiteFooter() {
         {/* Brand tagline — full width on top */}
         <div className="text-center mb-10">
           <h4 className="text-sm font-semibold text-foreground">Earn4Insights</h4>
-          <p className="mt-1 text-xs italic text-muted-foreground max-w-md mx-auto leading-snug">
+          <p className="mt-1 text-sm italic text-muted-foreground max-w-md mx-auto leading-snug">
             The consumer intelligence infrastructure where brands, consumers, and influencers meet
           </p>
           <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">

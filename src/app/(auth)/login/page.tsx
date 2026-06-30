@@ -80,7 +80,7 @@ function LoginForm() {
         <div className="flex flex-col items-center gap-2">
           {/* Stacked lockup includes the wordmark — no separate text label. */}
           <Logo variant="stacked" width={200} height={167} priority />
-          <span className="text-sm text-muted-foreground text-center max-w-[22rem] leading-relaxed">
+          <span className="text-base sm:text-lg text-muted-foreground text-center max-w-[22rem] leading-relaxed">
             The consumer intelligence infrastructure where brands, consumers, and influencers meet.
           </span>
         </div>
