@@ -248,7 +248,7 @@ export default function HomePage() {
             {/* Primary lockup with tagline — the hero brand moment. */}
             <Logo variant="primary" width={280} height={112} priority />
           </div>
-          <p className="mb-6 text-base sm:text-lg italic text-muted-foreground leading-snug">
+          <p className="mb-6 text-lg sm:text-2xl italic text-muted-foreground leading-snug">
             The consumer intelligence infrastructure<br />
             where brands, consumers, and influencers meet
           </p>
