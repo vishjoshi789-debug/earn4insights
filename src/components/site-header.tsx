@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Bell, MessageSquareText, Menu, LayoutDashboard, Package, MessageSquare, BarChart3, Award, Users, HandCoins, MessagesSquare, FileText, Trophy, TrendingUp, PackagePlus, Settings, HelpCircle } from 'lucide-react';
+import { User, Bell, MessageSquareText, Menu, LayoutDashboard, Package, MessageSquare, BarChart3, Award, Users, HandCoins, MessagesSquare, FileText, Trophy, TrendingUp, PackagePlus, Settings, HelpCircle, CalendarDays } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -24,6 +24,9 @@ import {
 } from './ui/tooltip';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { LogoutButton } from './logout-button';
+
+// Demo booking link (Calendly) — opens in a new tab.
+const CALENDLY_URL = 'https://calendly.com/vishjoshi789/30min';
 
 export function SiteHeader() {
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
@@ -60,6 +63,16 @@ export function SiteHeader() {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">Explore</p>
               <MobileNavLink href="/top-products" icon={Trophy} label="Rankings" onClick={() => setMobileMenuOpen(false)} />
               <MobileNavLink href="/help" icon={HelpCircle} label="Help Center" onClick={() => setMobileMenuOpen(false)} />
+              <a
+                href={CALENDLY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 rounded-md px-2 py-2.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                Book a demo
+              </a>
 
               {user && (
                 <>
@@ -136,6 +149,12 @@ export function SiteHeader() {
 
         {/* Auth buttons */}
         <div className="ml-auto flex shrink-0 items-center gap-2 md:gap-3">
+          {/* Book a demo — desktop only; mobile gets it in the hamburger to
+              avoid crowding the compact mobile header. Shown regardless of
+              auth state. */}
+          <Button asChild variant="outline" size="sm" className="hidden md:inline-flex font-semibold px-3 text-xs sm:text-sm">
+            <a href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">Book a demo</a>
+          </Button>
           {status === 'loading' ? null : !user ? (
             <>
               <Button asChild variant="ghost" size="sm" className="font-semibold px-3 text-xs sm:text-sm">

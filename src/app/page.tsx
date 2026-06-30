@@ -44,6 +44,10 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+// Demo booking link (Calendly). Used by the brand feature-card CTA + the
+// bottom "Book a Demo" button; both open in a new tab.
+const CALENDLY_URL = 'https://calendly.com/vishjoshi789/30min'
+
 /**
  * Small inline badge for features we show as part of the vision but that
  * aren't live at beta launch (shipping post-launch / after the free beta
@@ -83,7 +87,7 @@ const THEME: Record<
     icon: 'h-5 w-5 text-primary',
     cta: 'mt-3 inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary font-medium transition-colors',
     ctaLabel: 'Book a Demo',
-    ctaHref: '/contact-us',
+    ctaHref: CALENDLY_URL,
   },
   consumer: {
     card: 'border-accent/20 bg-card/50 backdrop-blur shadow-sm hover:shadow-md hover:border-accent/40 transition-all',
@@ -186,11 +190,44 @@ function FeatureCard({ feature, audience }: { feature: Feature; audience: Audien
         <p className="mt-1.5 text-sm font-medium text-muted-foreground leading-relaxed">
           {feature.description}
         </p>
-        <Link href={t.ctaHref} className={t.cta}>
-          {t.ctaLabel} <ArrowRight className="h-3 w-3" />
-        </Link>
+        {t.ctaHref.startsWith('http') ? (
+          <a href={t.ctaHref} target="_blank" rel="noopener noreferrer" className={t.cta}>
+            {t.ctaLabel} <ArrowRight className="h-3 w-3" />
+          </a>
+        ) : (
+          <Link href={t.ctaHref} className={t.cta}>
+            {t.ctaLabel} <ArrowRight className="h-3 w-3" />
+          </Link>
+        )}
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * Visible, secondary direct-contact line shown beneath the primary demo/CTA
+ * buttons (hero + bottom CTA). Quieter than the buttons by design — a fallback
+ * for visitors who'd rather email/call than book. Email + phone are real
+ * mailto:/tel: links; each is whitespace-nowrap so it never breaks mid-token.
+ */
+function ContactFallback({ className }: { className?: string }) {
+  return (
+    <p className={`text-xs text-muted-foreground ${className ?? ''}`}>
+      Prefer to reach us directly?{' '}
+      <a
+        href="mailto:contact@earn4insights.com"
+        className="whitespace-nowrap underline underline-offset-2 hover:text-foreground"
+      >
+        contact@earn4insights.com
+      </a>
+      {' · '}
+      <a
+        href="tel:+918830403955"
+        className="whitespace-nowrap underline underline-offset-2 hover:text-foreground"
+      >
+        +91-8830403955
+      </a>
+    </p>
   )
 }
 
@@ -224,6 +261,7 @@ export default function HomePage() {
             <p className="font-medium text-foreground">Everyone gets what they actually want — in real time, every time.</p>
           </div>
           <HeroCtas />
+          <ContactFallback className="mt-4" />
         </div>
       </section>
 
@@ -318,12 +356,13 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:justify-center">
             <SectionCta label="Get Started Free" className="bg-primary hover:bg-primary/90 gap-2" />
             <Button size="lg" variant="outline" asChild className="border-primary/20 hover:bg-primary/5 hover:border-primary/40">
-              <Link href="/contact-us">Book a Demo</Link>
+              <a href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">Book a Demo</a>
             </Button>
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
             Free during beta · No credit card needed · Paid plans coming soon
           </p>
+          <ContactFallback className="mt-2" />
         </div>
       </section>
     </div>
