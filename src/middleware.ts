@@ -21,7 +21,6 @@ const PUBLIC_PATHS = new Set<string>([
   '/refund-policy',
   '/contact-us',
   '/transparency',
-  '/rankings',
   '/forgot-password',
   // Logged-out-by-nature auth callbacks reached from emails. A password reset
   // or verification link is clicked by a user who cannot be logged in, so
@@ -30,8 +29,7 @@ const PUBLIC_PATHS = new Set<string>([
   '/reset-password',
   '/verify-email',
   // Public marketing / anonymous-renderable pages (no auth() gate). The header
-  // "Rankings" link points at /top-products (the /rankings entry above is a
-  // stale route that no longer exists). Dynamic children handled by the
+  // "Rankings" link points at /top-products. Dynamic children handled by the
   // prefixes below.
   '/top-products',
   '/public-products',
