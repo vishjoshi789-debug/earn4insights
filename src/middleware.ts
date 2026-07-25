@@ -23,6 +23,19 @@ const PUBLIC_PATHS = new Set<string>([
   '/transparency',
   '/rankings',
   '/forgot-password',
+  // Logged-out-by-nature auth callbacks reached from emails. A password reset
+  // or verification link is clicked by a user who cannot be logged in, so
+  // these MUST be public or the auth gate bounces them to /login (the reported
+  // reset-link bug — same family as the 741583d metadata/asset gap).
+  '/reset-password',
+  '/verify-email',
+  // Public marketing / anonymous-renderable pages (no auth() gate). The header
+  // "Rankings" link points at /top-products (the /rankings entry above is a
+  // stale route that no longer exists). Dynamic children handled by the
+  // prefixes below.
+  '/top-products',
+  '/public-products',
+  '/community-features',
   '/help',
   '/favicon.ico',
 ])
@@ -38,6 +51,13 @@ const PUBLIC_PREFIXES: string[] = [
   '/help/',
   '/api/support/faq',
   '/api/csrf/',
+  // Public pages with a dynamic segment (all render anonymously; user-scoped
+  // writes still self-guard via auth() in their server actions / API routes,
+  // so allowlisting the GET does not expose an authenticated action).
+  '/survey/',            // emailed survey link — /survey/[surveyId]
+  '/top-products/',      // /top-products/[category]
+  '/public-products/',   // /public-products/[id]
+  '/submit-feedback/',   // public feedback link — /submit-feedback/[productId]
 ]
 
 // Migration routes self-authenticate via `x-api-key: $ADMIN_API_KEY` (no
