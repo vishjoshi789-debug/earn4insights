@@ -244,3 +244,49 @@ Wired demo booking to one consistent Calendly path + surfaced direct contact **o
 2. **Feature-card + bottom-CTA "Book a Demo" → Calendly.** `THEME.brand.ctaHref` (drives all **18 brand cards**) + the bottom-CTA outline button now open Calendly in a new tab. `FeatureCard` branches on `t.ctaHref.startsWith('http')` → external `<a target=_blank rel=noopener noreferrer>` vs internal `<Link>`. **Consumer (23) + influencer (10) cards KEPT on `/contact-us`** — they say "Learn More", not "Book a Demo", and the Calendly event is a *brand* demo, so routing a consumer/influencer there is wrong (founder-confirmed).
 3. **`ContactFallback`** line beneath the hero CTAs + the bottom CTA: "Prefer to reach us directly? contact@earn4insights.com · +91-8830403955" (`mailto:` + `tel:+918830403955`, `text-xs text-muted-foreground`, each link `whitespace-nowrap` so email/phone never split mid-token; styled quiet so it doesn't compete with the buttons).
 `contact-us` page + footer "Contact" link untouched. tsc clean. **Eyeball live:** hero contact-line wrap @375px; the desktop "Book a demo · Sign In · Get Started" trio next to the wordmark at the `md` (~768px) breakpoint.
+
+---
+
+## 🔴 Feedback/export access-control security batch (2026-07-28, `61b31af`)
+
+Found by the brand-facing feedback **viewing / filtering / export** audit (diagnose-only pass that preceded this batch). All 4 were **live in production** with real-brand onboarding imminent. Scope was deliberately narrow: **ownership checks only** — no tier/freemium work, no filters, no export build, no refactors. Typecheck clean.
+
+### (a) What this closed — 4 defects
+
+| # | Surface | Defect | Fix |
+|---|---|---|---|
+| 1 | `server/surveys/responseService.ts` → `exportResponsesToCSV` | **`'use server'` action with NO `auth()` and NO ownership check.** Server actions are directly-invokable endpoints, not just the button's callback — any authenticated caller could POST an arbitrary `surveyId` and get every respondent's **name + email**. | Private `assertSurveyOwnedByCaller()`: `auth()` → survey → product → `owner_id`. All failure modes (no session / unknown survey / no product / null owner / mismatch) throw **one generic error** so survey ids can't be probed. |
+| 2 | `/dashboard/products/[productId]/feedback` | Had `auth()` but **no owner check** → any logged-in user (consumer, influencer, competing brand) could read a product's full feedback incl. consumer names, emails, transcripts, media. | Gate moved **out of the `Promise.all`** so it runs *before* any feedback is read; `notFound()` not 403, so the product isn't confirmed to exist. |
+| 3 | `/api/dashboard/feedback-media/[id]/download` | `requireRole('brand')` proves the caller is *a* brand, **not the owner** → any brand could stream any other brand's consumer audio/video by id. | New `getBrandIdForMediaOwner()` in `feedbackRepository`. `feedback_media.owner_id` is **polymorphic** (`feedback` / `survey_response`) and deliberately has **no FK** (migration 032 dropped the one 031 wrongly added — it had broken ALL uploads), so the join is resolved **in code per `owner_type`**. Unknown `owner_type` → fail closed. 404 to prevent id enumeration. |
+| 4 | `lib/analytics/segmentedAnalytics.ts` | **Zero consent checks** — demographic segmentation ran over all profiles regardless of whether `demographic` consent was granted or **revoked**. k-anonymity limits re-identification but does **not** establish a lawful purpose (DPDP §6 / GDPR Art. 5(1)(b)). | New batch `getUsersWithConsentForCategory()` in `consentRepository` (per-user `hasConsentForCategory` would be an N+1 over hundreds of profiles); profiles filtered **before any demographics are read**. |
+
+**K=5 confirmed intact.** Suppression is applied at `segmentedAnalytics.ts:110` / `:163` from `segment.userCount`, computed *after* grouping. The consent filter runs *pre*-grouping, so bucket counts are recomputed from the reduced set — a bucket dropping below 5 is suppressed exactly as before. Dropped profiles fall through as "no profile" into the existing `'Unknown'` bucket (no new code path). Both entry points (`getSegmentedAnalytics`, `getConsumerIntelligence`) share `getFeedbackWithProfiles`, so one gate covers both.
+
+**⚠️ Deliberate deviation — fail-closed on null `owner_id` (founder-approved, do NOT "consistency-fix" back).** All three ownership checks **deny** when `owner_id` is null, unlike the existing pattern at `api/analytics/segments/[productId]/route.ts:47` (`if (ownerId && ownerId !== session.user.id)`) which **allows** it. `products.owner_id` is **nullable by design** (`schema.ts:72` — *"null for unclaimed placeholders"*, consumer-created products pending verification), so fail-open would expose every unclaimed product's feedback to every logged-in user. Copying the permissive check into 3 new callsites would have widened the hole being closed.
+
+**Legitimate paths verified unaffected:** Feedback Hub links come from owner-scoped `getBrandProductIds()` (`eq(products.ownerId, brandId)`); own product / own media / own survey export all still resolve; unclaimed products never appeared in a brand's own list (`getProductsByOwner` filters by ownerId). One *intended* behavior change: a brand clicking from the shared catalog into **another** brand's product feedback now gets a 404 instead of data.
+
+### (b) OPEN SECURITY DEBT — follow-up batch (queued, NOT started)
+
+Found by the same sweep. **Severity context:** middleware *does* gate `/dashboard/*` to logged-in users (`middleware.ts:309-316`), so these are **authenticated-user IDORs**, not anonymous. Priority order is founder-set:
+
+1. **`dashboard/products/[productId]/profile/actions.ts` — HIGHEST.** `'use server'` **WRITE** mutations (`saveStep1–6` + `completeProfile`) with **no auth and no owner check** → any authenticated user can **overwrite another brand's product profile**. Same class as Defect 1 but write-side.
+2. **`dashboard/surveys/[id]/responses/page.tsx`** — no auth, no owner check; renders the **full responses table with names + emails**. ⚠️ **This blunts the Defect-1 fix** — the CSV export is closed but the table beside the button still shows the same data.
+3. **`dashboard/surveys/[id]/page.tsx`** — same, no auth.
+4. **Read exposures, all no-auth/no-owner:** `[productId]/page.tsx` (renders `RecentFeedback` — 5 items + media + names/emails), `[productId]/profile/page.tsx` (full brand profile: audience, channels, goals, branding, testimonials), `[productId]/themes/page.tsx` (AI-extracted feedback themes).
+5. **`api/analytics/segments/[productId]/route.ts:47`** — flip the fail-**open** null check to fail-**closed**, matching the batch above.
+
+**Clean / no risk (checked, no action):** `[productId]/nps/page.tsx` + `[productId]/social/page.tsx` are static placeholders with no data; `products/product/*` are redirect shims; `[productId]/actions.ts` checks auth correctly.
+
+**Enumeration source worth knowing:** `/dashboard/products/page.tsx` calls `getProducts()` — **all** products, not owner-scoped (shared catalog; copy branches by role at line 100). So productIds don't need guessing, they're listed — which makes the routes above trivially reachable rather than theoretical.
+
+### (c) Blob media is PUBLIC-READ — investigation only, nothing changed
+
+**Confirmed genuinely public.** Both upload paths call `put(pathname, file, { access: 'public' })` — `api/uploads/feedback-media/server/route.ts:178` and `api/feedback/upload-media/route.ts:169`. Vercel Blob serves these from a public CDN URL with **no auth check of any kind**. `storageKey` stores that URL and the players render it **directly**, so the ownership check added to the download proxy in Defect 3 **is bypassed by the pages that should use it**.
+
+**Only mitigations today:** `addRandomSuffix: true` on both paths (prefix is predictable — `feedback-media/{surveyId}/{responseId}/audio.webm` — the suffix isn't), plus `feedbackMediaRetentionService` deleting raw media on the tier retention window (30/60/90d). That is **security-by-obscurity**: the URL is unauthenticated and permanent until retention fires, and anything leaked via logs, referrers, or a shared screenshot stays live.
+
+**Options (by cost):**
+1. **Proxy-only rendering** — point `<audio>`/`<video>`/`<img>` at `/api/dashboard/feedback-media/[id]/download` (already ownership-checked) instead of `storageKey`. Small: ~4 render sites (both `FeedbackMediaSection` copies, `RecentFeedback`, responses table). Proxy already sets `content-disposition: inline` + streams upstream body → drop-in for the players. **Caveat: does NOT close existing exposure** — every already-issued blob URL stays live forever. Stops *new* leakage only.
+2. **Proxy + re-upload existing media to fresh random paths, deleting old blobs.** Closes the back catalogue. Needs a one-off migration over `feedback_media` + `storageKey` rewrites; I/O-heavy in proportion to corpus size. **➡️ CHEAPEST NOW, while the media corpus is still small — cost grows monotonically with every upload. Do this before beta volume arrives, or it gets materially more expensive.**
+3. **Signed/expiring URLs.** Vercel Blob has no presigned-read for public blobs → means moving the store to S3/R2 with presigned GETs. Largest: new provider + env, migration of all objects, plus changes to upload, retention (`del()`), and the moderation/processing services that read `storageKey`. Separate project.
