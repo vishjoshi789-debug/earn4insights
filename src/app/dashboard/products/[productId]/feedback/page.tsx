@@ -10,6 +10,7 @@ import { ExternalLink, Copy, MessageSquare } from 'lucide-react'
 import FeedbackStatusButton from './FeedbackStatusButton'
 import ShareFeedbackLink from './ShareFeedbackLink'
 import { auth } from '@/lib/auth/auth.config'
+import { isAdminSession } from '@/lib/auth/roles'
 import { notFound, redirect } from 'next/navigation'
 import { getBrandSubscription } from '@/server/subscriptions/subscriptionService'
 import UpgradePrompt from '@/app/dashboard/analytics/unified/UpgradePrompt'
@@ -72,8 +73,13 @@ export default async function ProductFeedbackPage({
   // src/app/api/analytics/segments/[productId]/route.ts, but fails closed when
   // owner_id is absent instead of allowing access.
   const product = await getProductById(productId)
-  if (!product?.ownerId || product.ownerId !== session.user.id) {
-    notFound()
+  if (!product) notFound()
+
+  // Admin bypass — platform-wide policy, see lib/auth/roles.ts.
+  if (!isAdminSession(session)) {
+    if (!product.ownerId || product.ownerId !== session.user.id) {
+      notFound()
+    }
   }
 
   const [feedbackItems, stats, subscription] = await Promise.all([

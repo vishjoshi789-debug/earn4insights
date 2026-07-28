@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -8,6 +8,9 @@ import { ArrowLeft, Download, TrendingUp, Users, Star } from 'lucide-react'
 import { fetchSurvey } from '@/server/surveys/surveyService'
 import { calculateNPS } from '@/server/surveys/responseService'
 import { getResponsesBySurveyId } from '@/db/repositories/surveyRepository'
+import { getProductById } from '@/db/repositories/productRepository'
+import { auth } from '@/lib/auth/auth.config'
+import { isAdminSession } from '@/lib/auth/roles'
 import { formatDistanceToNow } from 'date-fns'
 import ResponsesTable from './ResponsesTable'
 import NPSTrendChart from './NPSTrendChart'
@@ -33,8 +36,29 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
   const { id } = await params
   const filters = await searchParams
   
+  // SECURITY: ownership gate BEFORE any response is read. This page renders
+  // the full responses table incl. respondent names and emails; without the
+  // check any logged-in user could read them by knowing the survey id. It also
+  // hosts the CSV export button — the export action was locked down separately
+  // (assertSurveyOwnedByCaller in server/surveys/responseService.ts), so
+  // without this the table would still show what the export no longer hands
+  // out. notFound() rather than 403 so we don't confirm the survey exists;
+  // denies on a null owner_id for the same reason as the rest of the batch
+  // (products.owner_id is nullable by design — schema.ts:72).
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
+
   const survey = await fetchSurvey(id)
-  if (!survey) notFound()
+  if (!survey?.productId) notFound()
+
+  // Admin bypass (platform-wide policy — see lib/auth/roles.ts). Also required
+  // here specifically: /dashboard/surveys deliberately gives admins a
+  // platform-wide list (getAllSurveys), so without this the admin's own list
+  // would link to 404s.
+  if (!isAdminSession(session)) {
+    const product = await getProductById(survey.productId)
+    if (!product?.ownerId || product.ownerId !== session.user.id) notFound()
+  }
 
   const allResponses = await getResponsesBySurveyId(id)
 

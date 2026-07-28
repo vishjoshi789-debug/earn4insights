@@ -11,8 +11,11 @@ import { ProductHealthCard } from '@/components/analytics/ProductHealthCard'
 
 export default function ProductOverview({
   product,
+  canManage = false,
 }: {
   product: Product
+  /** Owner (or admin) — gates the brand-management Quick-actions card. */
+  canManage?: boolean
 }) {
   // ✅ Safety check - provide default profile if missing
   const profile = product.profile || {
@@ -261,6 +264,13 @@ export default function ProductOverview({
         {/* =======================
             4. QUICK ACTIONS
         ======================== */}
+        {/* Brand-management CTAs — owner/admin only. These all point at routes
+            that are now ownership-gated, so rendering them for a browsing
+            consumer would just hand them buttons that 404. The whole card is
+            gated rather than the four live buttons: the remaining two are
+            "Soon" placeholders, and a Quick-actions card containing nothing but
+            disabled placeholders is worse than no card. */}
+        {canManage && (
         <Card>
           <CardHeader>
             <CardTitle>Quick actions</CardTitle>
@@ -313,6 +323,7 @@ export default function ProductOverview({
             </div>
           </CardContent>
         </Card>
+        )}
 
       </div>
     </div>

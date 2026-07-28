@@ -11,6 +11,7 @@ import { sendSurveyResponseNotification } from '@/server/surveys/responseNotific
 import { analyzeSentiment } from '@/server/sentimentService'
 import { normalizeTextForAnalytics } from '@/server/textNormalizationService'
 import { auth } from '@/lib/auth/auth.config'
+import { isAdminSession } from '@/lib/auth/roles'
 
 export async function submitSurveyResponse(
   surveyId: string,
@@ -284,6 +285,9 @@ async function assertSurveyOwnedByCaller(surveyId: string) {
 
   const survey = await getSurveyById(surveyId)
   if (!survey?.productId) throw denied()
+
+  // Admin bypass — platform-wide policy, see lib/auth/roles.ts.
+  if (isAdminSession(session)) return survey
 
   const product = await getProductById(survey.productId)
   // Deny when owner_id is absent — an unowned product must not be readable by

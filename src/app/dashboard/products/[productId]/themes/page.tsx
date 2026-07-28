@@ -5,6 +5,9 @@ import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { Sparkles, TrendingUp, MessageSquare } from 'lucide-react'
 import ExtractThemesButton from './ExtractThemesButton'
+import { notFound, redirect } from 'next/navigation'
+import { auth } from '@/lib/auth/auth.config'
+import { isAdminSession } from '@/lib/auth/roles'
 
 function SentimentIcon({ sentiment }: { sentiment: string }) {
   const icons: Record<string, string> = {
@@ -39,14 +42,28 @@ export default async function ProductThemesPage({
 }) {
   const { productId } = await params
 
-  let product: any = null
-  let themes: any[] = []
+  // SECURITY: ownership gate BEFORE themes are read. Themes are derived from
+  // consumer feedback, so they leak the substance of another brand's feedback
+  // corpus. The product fetch is deliberately pulled out of the Promise.all so
+  // the check runs first. notFound() rather than 403 so we don't confirm the
+  // product exists; denies on a null owner_id like the rest of the batch
+  // (products.owner_id is nullable by design — schema.ts:72).
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
 
+  const product: any = await getProductById(productId)
+  if (!product) notFound()
+
+  // Admin bypass — platform-wide policy, see lib/auth/roles.ts.
+  if (!isAdminSession(session)) {
+    if (!product.ownerId || product.ownerId !== session.user.id) {
+      notFound()
+    }
+  }
+
+  let themes: any[] = []
   try {
-    ;[product, themes] = await Promise.all([
-      getProductById(productId),
-      getThemesForProduct(productId),
-    ])
+    themes = await getThemesForProduct(productId)
   } catch {
     // Table may not exist yet
   }

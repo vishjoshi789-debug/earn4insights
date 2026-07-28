@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { isAdminSession } from '@/lib/auth/roles'
 import { getSegmentedAnalytics } from '@/lib/analytics/segmentedAnalytics'
 import { db } from '@/db'
 import { products } from '@/db/schema'
@@ -44,8 +45,17 @@ export async function GET(
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
 
-    if (product[0].ownerId && product[0].ownerId !== session.user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    // Fail CLOSED on a missing owner_id. This check previously read
+    // `if (ownerId && ownerId !== session.user.id)`, which ALLOWED access
+    // whenever owner_id was null — and products.owner_id is nullable by design
+    // (schema.ts:72, "null for unclaimed placeholders"), so every unclaimed
+    // product's segmented analytics was readable by any authenticated user.
+    // Now matches the rest of the access-control batch.
+    // Admin bypass — platform-wide policy, see lib/auth/roles.ts.
+    if (!isAdminSession(session)) {
+      if (!product[0].ownerId || product[0].ownerId !== session.user.id) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
     }
 
     const result = await getSegmentedAnalytics(productId, dimension)

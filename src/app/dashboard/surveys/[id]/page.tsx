@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ArrowLeft, BarChart3, Code } from 'lucide-react'
 import { fetchSurvey } from '@/server/surveys/surveyService'
+import { getProductById } from '@/db/repositories/productRepository'
+import { auth } from '@/lib/auth/auth.config'
+import { isAdminSession } from '@/lib/auth/roles'
 import { formatDistanceToNow } from 'date-fns'
 import CopyLinkButton from './CopyLinkButton'
 import QuestionEditor from './QuestionEditor'
@@ -17,10 +20,29 @@ type PageProps = {
 
 export default async function SurveyDetailPage({ params }: PageProps) {
   const { id } = await params
-  const survey = await fetchSurvey(id)
 
-  if (!survey) {
+  // SECURITY: ownership gate. This page exposes the survey's questions, embed
+  // code and config; without it any logged-in user could read another brand's
+  // survey by id. notFound() rather than 403 so we don't confirm the survey
+  // exists; denies on a null owner_id like the rest of the batch
+  // (products.owner_id is nullable by design — schema.ts:72).
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
+
+  const survey = await fetchSurvey(id)
+  if (!survey?.productId) {
     notFound()
+  }
+
+  // Admin bypass (platform-wide policy — see lib/auth/roles.ts). Also required
+  // here specifically: /dashboard/surveys deliberately gives admins a
+  // platform-wide list (getAllSurveys), so without this the admin's own list
+  // would link to 404s.
+  if (!isAdminSession(session)) {
+    const product = await getProductById(survey.productId)
+    if (!product?.ownerId || product.ownerId !== session.user.id) {
+      notFound()
+    }
   }
 
   return (
