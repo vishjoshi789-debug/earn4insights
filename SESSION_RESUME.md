@@ -329,3 +329,54 @@ The same `canManage` flag also gates **`ProductOverview`'s brand-management Quic
 - **Three pre-existing ownership checks outside both batches have no admin bypass** (all already fail-closed, so no leak — just inconsistent with the new policy): `api/contribution/brand-config/route.ts:74`, `api/notifications/product-launch/[productId]/route.ts:39`, `api/notifications/survey-distribute/[surveyId]/route.ts:55`.
 - **`/dashboard/products` remains a shared catalog listing every product** (`getProducts()`, not owner-scoped). Intentional — it's the consumer discovery surface — but it means productIds are enumerable by any logged-in user, which is what made the now-closed IDORs trivially reachable.
 - **Blob media is still public-read** — unchanged by either batch. See the Blob section under `61b31af`; option 2 remains cheapest while the corpus is small.
+
+---
+
+## 📣 CLAIMS POLICY — what we may advertise, and when (2026-07-28, `92f7d7b`)
+
+Founder-approved policy, written down so it survives to the freemium build. Grew out of the export/filtering copy fix (`92f7d7b`) and the earlier false-trial fix (`9181d49`) — the same mistake twice means it needed a rule, not another one-off patch.
+
+### The rule
+
+The question is never "remove vs. mention". It is **what kind of claim** you are making:
+
+| Claim type | Example | Rule |
+|---|---|---|
+| **Present-tense capability** in a priced feature list | "Export all feedback to CSV" under Pro | Only if it **works today**. An unlabeled item in a priced list is *a reason to pay* — treat it as contractual. |
+| **Labeled roadmap** | `detail: 'Roadmap'`, `comingSoon: true` | **Legitimate — keep doing this.** Context, not obligation. Needs a rough horizon; if you can't name a quarter, it's a hope, not a roadmap item. |
+| **Vision / positioning** | The site tagline | Fine. Nobody reads a tagline as a feature list. |
+
+**The mechanism already exists — use it instead of inventing new copy patterns:** `pricing/page.tsx` supports `detail: 'Roadmap'` (live on "Custom branding", "SSO / SAML"); the landing feature grids support `comingSoon: true` (live on Social, Category Intelligence, Discover Influencers).
+
+### Timing
+
+- **Reason-to-buy feature** (why someone picks Pro over Free) → **build first, then claim.**
+- **Tiebreaker** → claim as **badged roadmap** with a horizon.
+- **No horizon** → don't claim it.
+
+⏰ **The deadline is the first real payment, not launch.** While nothing is billable the pricing page's job is credibility, not conversion, so cutting an unbuilt claim costs nothing. The moment money changes hands every unbadged line is something a customer can reasonably say they paid for. Same gate as the payment-ledger blocker in `CLAUDE.md` §6.
+
+### Why `92f7d7b` CUT rather than badged
+
+Not a precedent for "always delete". Specific to those two items: (1) badging implies commitment, and an undated "coming soon" repeated across three surfaces decays into noise; (2) both are **cheap and near** — the survey-response filter UI and CSV export already exist as working templates to copy — so the gap is days, not a quarter. For genuinely distant/expensive items (REST API, webhooks) **badged roadmap is the better call**, especially on Enterprise where the CTA is already "Contact Sales".
+
+Also decisive for export specifically: the one export that exists (survey responses CSV) is **ungated**, so rewording the Pro line to describe it would have created a *new* false claim — selling as an upgrade something every free user already has. Same trap applies to filtering. **Check gating before rewording a claim to "the true capability".**
+
+### Backlog created by this policy (claim only after building)
+
+| Item | Effort | Plan |
+|---|---|---|
+| **Direct-feedback filtering** | **Low** — copy `surveys/[id]/responses/ResponseFilters.tsx`; `getFeedbackByProduct` already accepts `status`/`sentiment` with **zero callers** | Build, then re-add the claim. Best value/hour on this list. |
+| **Direct-feedback export** | **Low** — `exportResponsesToCSV` is a working template | Build, then re-add. It's what brands actually ask for. |
+| **REST API / webhooks** | High | Re-add as **badged roadmap** on Enterprise. `canAccessAPI`/`canUseWebhooks` unimplemented. |
+| **Usage metering** | Medium | Blocks every limit line (transcription min / upload GB / product count / retention) from being honest. Do it **with** freemium, not before. `tierMiddleware` still has zero callers. |
+
+⚠️ **The mirror-image problem — do not forget this one.** The Free plan's `included: false` rows are *also* untrue: tier gating is **cosmetic**, so free users currently see individual feedback, transcripts and media playback exactly as Pro does. We are **under**-claiming Free while over-claiming Pro. A brand who upgrades to unlock something they already had is the worst version of this. Resolves only when tier enforcement is wired — i.e. the parked freemium build (constraint at line ~200 above still stands: do NOT touch `subscriptionService` / `tierMiddleware` / `brand_subscriptions` until greenlit).
+
+### What `92f7d7b` changed (14 strings, 3 files, copy only)
+
+**Export (10):** Pro tagline "and export"; Pro export row + "Up to 100 exports/month"; Free "Export feedback data (CSV / JSON)"; Enterprise "Unlimited CSV & JSON exports"; Pro "Export data to share..." value prop; all three `limits.exports` values + the `exports` interface field + the Exports comparison row; export lines in **both** UpgradePrompts (`dashboard/feedback` and `products/[productId]/feedback` — the latter a third instance beyond the two originally reported).
+
+**Filtering (4):** pricing Pro + Free rows, and the filter lines in both UpgradePrompts. Direct feedback has **no filter UI at all** — neither page reads `searchParams`.
+
+**Verified TRUE, left alone —** all consumer DSAR copy (landing "My Data Export", `transparency` ×2, privacy policy, `ConsentRenewalModal`, privacy settings): `/api/user/export-data` genuinely returns the user's own data as JSON. Landing brand grid (18 cards), onboarding, email templates and meta carried **no** export claims.
