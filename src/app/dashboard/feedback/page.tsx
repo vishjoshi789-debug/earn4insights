@@ -345,8 +345,6 @@ export default async function FeedbackDashboardPage() {
             'Read full feedback text for every submission',
             'Play audio and video recordings from customers',
             'View customer contact details and metadata',
-            'Export all feedback data to CSV',
-            'Advanced filtering by sentiment, modality, and date',
           ]}
         />
       )}

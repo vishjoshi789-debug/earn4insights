@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import {
   Check, X, ArrowUpRight, Zap, Shield, Building2, Crown,
-  BarChart3, Mic, Video, Image as ImageIcon, Download, Filter,
+  BarChart3, Mic, Video, Image as ImageIcon,
   Globe, Users, Webhook, Info, Clock, HardDrive
 } from 'lucide-react'
 import Link from 'next/link'
@@ -60,7 +60,6 @@ interface PricingPlan {
     transcription: string
     storage: string
     retention: string
-    exports: string
   }
   valueProps: string[]
 }
@@ -87,8 +86,6 @@ const PLANS: PricingPlan[] = [
       { label: 'Audio feedback collection & transcription', included: false },
       { label: 'Video feedback collection & transcription', included: false },
       { label: 'Play/download audio, video, or full-res images', included: false },
-      { label: 'Export feedback data (CSV / JSON)', included: false },
-      { label: 'Advanced filters (by sentiment, modality, date range)', included: false },
       { label: 'API or webhook access', included: false },
     ],
     limits: {
@@ -96,7 +93,6 @@ const PLANS: PricingPlan[] = [
       transcription: 'None — text only',
       storage: 'Up to 2 GB (images)',
       retention: '30 days for images',
-      exports: 'Not available',
     },
     valueProps: [
       'Test whether customers will actually leave feedback on your product',
@@ -107,7 +103,7 @@ const PLANS: PricingPlan[] = [
   {
     id: 'pro',
     name: 'Pro',
-    tagline: 'Read, listen to, and export every piece of customer feedback across up to 10 products',
+    tagline: 'Read and listen to every piece of customer feedback across up to 10 products',
     monthlyPrice: 79,
     annualMonthlyPrice: 66,
     icon: Crown,
@@ -123,8 +119,6 @@ const PLANS: PricingPlan[] = [
       { label: 'Play audio recordings and watch video submissions in-dashboard', included: true },
       { label: 'Download individual media files for internal review', included: true },
       { label: 'AI-generated transcripts with detected language + English translation', included: true },
-      { label: 'Export all feedback to CSV or JSON', included: true, detail: 'Up to 100 exports/month' },
-      { label: 'Filter by sentiment, modality, rating, language, date range', included: true },
       { label: 'See consumer name, email, and submission metadata', included: true },
       { label: 'Priority transcription queue (processed before Free tier)', included: true },
       { label: 'Multimodal quality scoring for each submission', included: true },
@@ -136,12 +130,10 @@ const PLANS: PricingPlan[] = [
       transcription: '1,000 min/month included',
       storage: 'Up to 50 GB/month uploads',
       retention: '60 days raw media, transcripts kept forever',
-      exports: 'Up to 100 exports/month',
     },
     valueProps: [
       'Read the exact words customers say — not just a score',
       'Audio clips let you hear tone, emotion, and nuance that text misses',
-      'Export data to share with product, design, and leadership teams',
       'One dashboard for text, audio, video, and image feedback across 10 products',
     ],
   },
@@ -162,7 +154,6 @@ const PLANS: PricingPlan[] = [
       { label: 'Webhooks: real-time events on new feedback, transcription complete, etc.', included: true },
       { label: 'Custom / pooled transcription quotas across products', included: true, detail: '10,000+ min/month' },
       { label: 'Extended media retention: 90 days+ or BYO external storage', included: true },
-      { label: 'Unlimited CSV & JSON exports', included: true },
       { label: 'Dedicated account manager + onboarding', included: true },
       { label: 'Volume-based or negotiated per-minute transcription rate', included: true },
       { label: 'Custom branding on consumer-facing survey pages', included: true, detail: 'Roadmap' },
@@ -174,7 +165,6 @@ const PLANS: PricingPlan[] = [
       transcription: '10,000+ min/month (custom)',
       storage: '500 GB+/month (custom)',
       retention: '90 days+ (negotiable / BYO)',
-      exports: 'Unlimited',
     },
     valueProps: [
       'Pipe every piece of feedback into Salesforce, Snowflake, or your BI tool via API',
@@ -329,7 +319,6 @@ export default async function PricingPage() {
                   <LimitRow icon={<Mic className="w-3.5 h-3.5" />} label="Transcription" value={plan.limits.transcription} />
                   <LimitRow icon={<HardDrive className="w-3.5 h-3.5" />} label="Upload" value={plan.limits.storage} />
                   <LimitRow icon={<Clock className="w-3.5 h-3.5" />} label="Retention" value={plan.limits.retention} />
-                  <LimitRow icon={<Download className="w-3.5 h-3.5" />} label="Exports" value={plan.limits.exports} />
                 </div>
 
                 {/* CTA */}

@@ -181,8 +181,6 @@ export default async function ProductFeedbackPage({
             'Read complete feedback text and AI-generated transcripts',
             'Play audio and video recordings submitted by customers',
             'See attached images in full resolution',
-            'Export this product\'s feedback to CSV',
-            'Filter by sentiment, modality, rating, and date range',
           ]}
         />
       )}
