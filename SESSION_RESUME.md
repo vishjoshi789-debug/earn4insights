@@ -290,3 +290,42 @@ Found by the same sweep. **Severity context:** middleware *does* gate `/dashboar
 1. **Proxy-only rendering** — point `<audio>`/`<video>`/`<img>` at `/api/dashboard/feedback-media/[id]/download` (already ownership-checked) instead of `storageKey`. Small: ~4 render sites (both `FeedbackMediaSection` copies, `RecentFeedback`, responses table). Proxy already sets `content-disposition: inline` + streams upstream body → drop-in for the players. **Caveat: does NOT close existing exposure** — every already-issued blob URL stays live forever. Stops *new* leakage only.
 2. **Proxy + re-upload existing media to fresh random paths, deleting old blobs.** Closes the back catalogue. Needs a one-off migration over `feedback_media` + `storageKey` rewrites; I/O-heavy in proportion to corpus size. **➡️ CHEAPEST NOW, while the media corpus is still small — cost grows monotonically with every upload. Do this before beta volume arrives, or it gets materially more expensive.**
 3. **Signed/expiring URLs.** Vercel Blob has no presigned-read for public blobs → means moving the store to S3/R2 with presigned GETs. Largest: new provider + env, migration of all objects, plus changes to upload, retention (`del()`), and the moderation/processing services that read `storageKey`. Separate project.
+
+---
+
+## ✅ Follow-up security batch — sweep findings CLOSED (2026-07-28, `e939199`)
+
+Closes the **OPEN SECURITY DEBT** list logged above under `61b31af`. All 5 items done, in the founder-set priority order. Ownership checks only — no tier work, no filters, no export build. Typecheck clean.
+
+| # | Surface | Was | Now |
+|---|---|---|---|
+| 1 | `products/[productId]/profile/actions.ts` | 7 `'use server'` **WRITE** actions (`saveStep1–6` + `completeProfile`) with **no auth, no owner check** → any authenticated user could **overwrite another brand's product profile** | Private `assertProductOwnedByCaller()` as the first statement in all 7. Verified this file is the **SOLE** entry point to those `productService` writes (`ProfileClient` imports from `./actions`), so the surface is fully covered |
+| 2 | `surveys/[id]/responses/page.tsx` | No auth/owner check; rendered the full responses table with **names + emails** — this **blunted the `61b31af` export fix**, since the table still showed what `exportResponsesToCSV` no longer handed out | Gate runs **BEFORE** `getResponsesBySurveyId` |
+| 3 | `surveys/[id]/page.tsx` | No auth | Owner-gated (questions, embed code, config) |
+| 4 | `products/[productId]/{page,profile/page,themes/page}.tsx` | Read exposures: feedback + names/emails/media, brand profile, AI themes | Gated — see the exposure-vs-page decision below |
+| 5 | `analytics/segments/[productId]/route.ts` | Fail-**OPEN** null owner check | Fail-closed. **Plus its twin:** a sweep of every `ownerId` comparison found `analytics/consumer-intelligence/[productId]/route.ts:35` carrying the *identical* bug — both are entry points into `segmentedAnalytics` (the surface consent-gated in `61b31af`). Fixed the same way |
+
+### Decision 1 — UNIFORM ADMIN BYPASS (founder-directed)
+
+New **`src/lib/auth/roles.ts`** exports `isAdminSession()` — the single home for the `(role as string) === 'admin'` cast CLAUDE.md §5 requires. **Every** ownership check created or touched by both batches consults it (**10 files**), rather than a patchwork of per-route exceptions:
+
+`analytics/consumer-intelligence/[productId]/route.ts` · `analytics/segments/[productId]/route.ts` · `products/[productId]/feedback/page.tsx` · `products/[productId]/page.tsx` · `products/[productId]/profile/actions.ts` · `products/[productId]/profile/page.tsx` · `products/[productId]/themes/page.tsx` · `surveys/[id]/page.tsx` · `surveys/[id]/responses/page.tsx` · `server/surveys/responseService.ts`
+
+**Rule: admins bypass ownership checks platform-wide.** Deliberately includes the profile **WRITE** actions, so an admin can edit any brand's product profile — narrow it in `roles.ts` if admin access should ever be read-only. Concretely required because `/dashboard/surveys` gives admins a platform-wide list (`getAllSurveys`) whose links would otherwise **all 404**.
+
+⚠️ **If you add a new ownership check, consult `isAdminSession()` — do not reintroduce a local cast.**
+
+### Decision 2 — EXPOSURE-GATED, not page-gated, on `products/[productId]/page.tsx`
+
+**Do NOT "fix" this into a blanket owner gate.** `/dashboard/products` is a **SHARED catalog**: `products-list.tsx:129` renders "View details" → `/dashboard/products/[id]` for **every role**, and the consumer copy is *"Browse products and share your feedback to earn rewards."* An owner-only page gate **breaks consumer browsing** (this was caught during path verification, after being implemented that way first).
+
+So the **exposure** is gated, not the page: `<RecentFeedback>` (consumer names, emails, media) renders only for owner/admin; `ProductOverview` stays public. Fails closed on a null `owner_id`, so an unclaimed product never renders feedback to anyone.
+
+The same `canManage` flag also gates **`ProductOverview`'s brand-management Quick-actions card** (View All Feedback / AI Themes / Edit product profile / Unified Analytics, + the two "Soon" placeholders). That card previously rendered for every role; once the target routes were gated it would have handed browsing consumers buttons that 404. Whole card gated rather than the four live buttons — a Quick-actions card containing only disabled placeholders is worse than no card.
+
+### Still open / known (not fixed — decide later)
+
+- **`/api/dashboard/feedback-media/[id]/download` is admin-INACCESSIBLE.** `requireRole('brand')` (`lib/auth/server.ts:44`) throws for `role='admin'` *before* the ownership check runs, so the uniform bypass can't reach it. Pre-existing, not introduced by these batches; fixing it means touching the shared `requireRole` primitive.
+- **Three pre-existing ownership checks outside both batches have no admin bypass** (all already fail-closed, so no leak — just inconsistent with the new policy): `api/contribution/brand-config/route.ts:74`, `api/notifications/product-launch/[productId]/route.ts:39`, `api/notifications/survey-distribute/[surveyId]/route.ts:55`.
+- **`/dashboard/products` remains a shared catalog listing every product** (`getProducts()`, not owner-scoped). Intentional — it's the consumer discovery surface — but it means productIds are enumerable by any logged-in user, which is what made the now-closed IDORs trivially reachable.
+- **Blob media is still public-read** — unchanged by either batch. See the Blob section under `61b31af`; option 2 remains cheapest while the corpus is small.
