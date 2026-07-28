@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { createSurveyResponse, getResponsesBySurveyId, updateSurveyResponseById } from '@/db/repositories/surveyRepository'
 import { getSurveyById } from '@/db/repositories/surveyRepository'
+import { getProductById } from '@/db/repositories/productRepository'
 import type { SurveyResponse } from '@/lib/survey-types'
 import { sendSurveyResponseNotification } from '@/server/surveys/responseNotificationEmail'
 import { analyzeSentiment } from '@/server/sentimentService'
@@ -261,14 +262,42 @@ export type ExportResponsesFilters = {
   sentiment?: string
 }
 
+/**
+ * Resolve a survey's owning brand (survey → product → products.owner_id) and
+ * assert the current session is that brand. Returns the survey on success.
+ *
+ * SECURITY: `exportResponsesToCSV` is a 'use server' action, i.e. a directly
+ * invokable endpoint — not merely the dashboard button's callback. Without this
+ * check any authenticated caller could POST an arbitrary surveyId and receive
+ * every respondent's name and email.
+ *
+ * Fails closed and stays silent: no session, unknown survey, missing product,
+ * product with no owner_id, and owner mismatch all raise the SAME generic
+ * error, so a caller cannot probe which survey ids exist.
+ */
+async function assertSurveyOwnedByCaller(surveyId: string) {
+  const denied = () => new Error('Survey not found or access denied')
+
+  const session = await auth()
+  const userId = session?.user?.id
+  if (!userId) throw denied()
+
+  const survey = await getSurveyById(surveyId)
+  if (!survey?.productId) throw denied()
+
+  const product = await getProductById(survey.productId)
+  // Deny when owner_id is absent — an unowned product must not be readable by
+  // every authenticated user.
+  if (!product?.ownerId || product.ownerId !== userId) throw denied()
+
+  return survey
+}
+
 export async function exportResponsesToCSV(
   surveyId: string,
   filters?: ExportResponsesFilters
 ): Promise<string> {
-  const survey = await getSurveyById(surveyId)
-  if (!survey) {
-    throw new Error('Survey not found')
-  }
+  const survey = await assertSurveyOwnedByCaller(surveyId)
   let responses = await getResponsesBySurveyId(surveyId)
 
   // Apply the same filters used by the dashboard table (best-effort)

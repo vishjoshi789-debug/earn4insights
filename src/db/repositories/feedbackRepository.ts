@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { feedback, feedbackMedia } from '@/db/schema'
+import { feedback, feedbackMedia, products, surveyResponses } from '@/db/schema'
 import { eq, desc, and, sql, count, inArray } from 'drizzle-orm'
 
 export type FeedbackItem = {
@@ -186,6 +186,59 @@ export type MediaItem = {
   durationMs: number | null
   status: string
   moderationStatus: string | null
+}
+
+/**
+ * Resolve the brand that owns a media attachment, via its polymorphic parent:
+ *   feedback_media → (feedback | survey_responses) → products.owner_id
+ *
+ * `feedback_media.owner_id` is polymorphic (`owner_type` is 'feedback' or
+ * 'survey_response') and deliberately carries NO foreign key — migration 032
+ * dropped the FK that migration 031 wrongly added, which had broken every
+ * audio/video/image upload. So the join is resolved in code, per owner_type.
+ *
+ * Returns null when the parent row, its product, or the product's owner_id
+ * cannot be resolved. Callers MUST treat null as "deny", not "allow".
+ */
+export async function getBrandIdForMediaOwner(
+  ownerType: string,
+  ownerId: string
+): Promise<string | null> {
+  try {
+    let productId: string | null = null
+
+    if (ownerType === 'feedback') {
+      const [row] = await db
+        .select({ productId: feedback.productId })
+        .from(feedback)
+        .where(eq(feedback.id, ownerId as any))
+        .limit(1)
+      productId = row?.productId ?? null
+    } else if (ownerType === 'survey_response') {
+      const [row] = await db
+        .select({ productId: surveyResponses.productId })
+        .from(surveyResponses)
+        .where(eq(surveyResponses.id, ownerId))
+        .limit(1)
+      productId = row?.productId ?? null
+    } else {
+      // Unknown owner_type — fail closed rather than guessing.
+      return null
+    }
+
+    if (!productId) return null
+
+    const [product] = await db
+      .select({ ownerId: products.ownerId })
+      .from(products)
+      .where(eq(products.id, productId))
+      .limit(1)
+
+    return product?.ownerId ?? null
+  } catch (err) {
+    console.error('[getBrandIdForMediaOwner] Error (denying access):', err)
+    return null
+  }
 }
 
 /**

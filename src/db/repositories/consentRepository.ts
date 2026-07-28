@@ -7,7 +7,7 @@ import {
   type ConsentRecord,
   type NewConsentRecord,
 } from '@/db/schema'
-import { eq, and, lt, isNotNull, sql } from 'drizzle-orm'
+import { eq, and, lt, isNotNull, isNull, inArray, sql } from 'drizzle-orm'
 import { logSensitiveDataAccess } from '@/lib/audit-log'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -94,6 +94,44 @@ export async function hasConsentForCategory(
   if (!record.granted) return false
   if (record.revokedAt) return false
   return true
+}
+
+/**
+ * Batch form of `hasConsentForCategory` — returns the subset of `userIds` that
+ * have ACTIVELY granted consent for `dataCategory` (granted = true AND not
+ * revoked). Ids absent from the result have no record, a denied record, or a
+ * revoked one, and must be treated as not consented.
+ *
+ * Exists so aggregate consumers (e.g. segmented analytics, which resolves
+ * hundreds of profiles per product) can apply the same rule as the per-user
+ * check without an N+1 of `getConsent` calls.
+ */
+export async function getUsersWithConsentForCategory(
+  userIds: string[],
+  dataCategory: ConsentDataCategory
+): Promise<Set<string>> {
+  const consented = new Set<string>()
+  if (userIds.length === 0) return consented
+
+  // Chunked to keep the IN list bounded on wide products.
+  for (let i = 0; i < userIds.length; i += 200) {
+    const batch = userIds.slice(i, i + 200)
+    const rows = await db
+      .select({ userId: consentRecords.userId })
+      .from(consentRecords)
+      .where(
+        and(
+          inArray(consentRecords.userId, batch),
+          eq(consentRecords.dataCategory, dataCategory),
+          eq(consentRecords.granted, true),
+          isNull(consentRecords.revokedAt)
+        )
+      )
+
+    for (const row of rows) consented.add(row.userId)
+  }
+
+  return consented
 }
 
 // ── Mutations ─────────────────────────────────────────────────────

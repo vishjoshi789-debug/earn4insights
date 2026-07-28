@@ -11,6 +11,7 @@ import {
 } from '@/db/schema'
 import { eq, and, gte, desc, sql, inArray, lt } from 'drizzle-orm'
 import { classifyEngagementTier } from '@/lib/personalization/userSignalAggregator'
+import { getUsersWithConsentForCategory } from '@/db/repositories/consentRepository'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -270,6 +271,21 @@ async function getFeedbackWithProfiles(productId: string): Promise<FeedbackWithP
     for (const p of profiles) {
       profileMap.set(p.email, p)
     }
+  }
+
+  // ── Consent gate (DPDP §6 / GDPR Art. 5(1)(b) purpose limitation) ──
+  // k-anonymity alone only limits re-identification; it does not establish a
+  // lawful purpose. Drop every profile whose owner has not ACTIVELY granted the
+  // 'demographic' consent category, so revoking consent actually removes a
+  // consumer from brand-facing segmentation. Profiles dropped here fall through
+  // as "no profile" below and land in the 'Unknown' bucket, which is still
+  // subject to the unchanged K=5 suppression applied by the callers.
+  const consentedUserIds = await getUsersWithConsentForCategory(
+    [...profileMap.values()].map((p: any) => p.id).filter(Boolean),
+    'demographic'
+  )
+  for (const [email, p] of [...profileMap.entries()]) {
+    if (!p?.id || !consentedUserIds.has(p.id)) profileMap.delete(email)
   }
 
   // Also fetch device type from analytics events for users who have them

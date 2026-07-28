@@ -10,7 +10,7 @@ import { ExternalLink, Copy, MessageSquare } from 'lucide-react'
 import FeedbackStatusButton from './FeedbackStatusButton'
 import ShareFeedbackLink from './ShareFeedbackLink'
 import { auth } from '@/lib/auth/auth.config'
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { getBrandSubscription } from '@/server/subscriptions/subscriptionService'
 import UpgradePrompt from '@/app/dashboard/analytics/unified/UpgradePrompt'
 
@@ -64,8 +64,19 @@ export default async function ProductFeedbackPage({
 
   const { productId } = await params
 
-  const [product, feedbackItems, stats, subscription] = await Promise.all([
-    getProductById(productId),
+  // SECURITY: ownership gate BEFORE any feedback is read. This page exposes
+  // consumer names, emails, transcripts and media; without the check any
+  // authenticated user (consumer, influencer, competing brand) could read a
+  // product's full feedback just by knowing its id. 404 rather than 403 so we
+  // don't confirm the product exists. Mirrors the check in
+  // src/app/api/analytics/segments/[productId]/route.ts, but fails closed when
+  // owner_id is absent instead of allowing access.
+  const product = await getProductById(productId)
+  if (!product?.ownerId || product.ownerId !== session.user.id) {
+    notFound()
+  }
+
+  const [feedbackItems, stats, subscription] = await Promise.all([
     getFeedbackByProduct(productId, { limit: 100 }),
     getFeedbackStats(productId),
     getBrandSubscription(session.user.id),

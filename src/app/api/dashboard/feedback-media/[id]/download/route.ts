@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { feedbackMedia } from '@/db/schema'
 import { requireRole } from '@/lib/auth/server'
+import { getBrandIdForMediaOwner } from '@/db/repositories/feedbackRepository'
 
 function guessExtensionFromMime(mimeType: string | null): string {
   const m = (mimeType || '').toLowerCase()
@@ -31,8 +32,9 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  let brandUser
   try {
-    await requireRole('brand')
+    brandUser = await requireRole('brand')
   } catch (err) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: authErrorToStatus(err) })
   }
@@ -53,6 +55,17 @@ export async function GET(
   }
 
   const media = rows[0]
+
+  // SECURITY: requireRole('brand') only proves the caller is *a* brand, not
+  // that they own this media. Without this check any brand account could
+  // stream any other brand's consumer audio/video by id. Resolve the owning
+  // brand through the polymorphic parent and fail closed (null => deny).
+  // 404, not 403, so a caller can't enumerate valid media ids.
+  const ownerBrandId = await getBrandIdForMediaOwner(media.ownerType, media.ownerId)
+  if (!ownerBrandId || ownerBrandId !== brandUser.id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   if (media.status === 'deleted') {
     return NextResponse.json({ error: 'Gone' }, { status: 410 })
   }
