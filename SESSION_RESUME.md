@@ -380,3 +380,39 @@ Also decisive for export specifically: the one export that exists (survey respon
 **Filtering (4):** pricing Pro + Free rows, and the filter lines in both UpgradePrompts. Direct feedback has **no filter UI at all** — neither page reads `searchParams`.
 
 **Verified TRUE, left alone —** all consumer DSAR copy (landing "My Data Export", `transparency` ×2, privacy policy, `ConsentRenewalModal`, privacy settings): `/api/user/export-data` genuinely returns the user's own data as JSON. Landing brand grid (18 cards), onboarding, email templates and meta carried **no** export claims.
+
+---
+
+## 🔍 Direct-feedback filtering — BUILT (2026-07-29)
+
+First item off the claims-policy backlog above. Filtering now exists on `/dashboard/products/[productId]/feedback` across **7 dimensions**: date from/to, rating min/max, sentiment, modality, review status, language. URL-driven (`?sentiment=negative&modality=audio`), so filtered views are shareable and bookmarkable.
+
+**Files:** `db/repositories/feedbackRepository.ts` (`FeedbackFilters` type, shared `buildFeedbackConditions()`, filter-aware `getFeedbackByProduct` + `countFeedbackByProduct`, new `getFeedbackLanguagesForProduct`) · `products/[productId]/feedback/FeedbackFilters.tsx` (new client panel, modeled on the survey `ResponseFilters`) · `products/[productId]/feedback/page.tsx` (searchParams parsing + wiring).
+
+### Decisions worth preserving
+
+- **SQL filtering, NOT in-memory — this is correctness, not preference.** The survey responses page fetches all rows then `.filter()`s in JS. Copying that here would be **wrong**: the feedback query is `limit: 100`, so in-memory filtering searches only the newest 100 rows. Filter to "audio" on a product with 500 responses and most silently vanish. Don't "simplify" this back to the survey pattern.
+- **One predicate builder for list + count.** `buildFeedbackConditions()` feeds both `getFeedbackByProduct` and `countFeedbackByProduct`, so "Showing 12 of 340" can't drift from the rows rendered.
+- **Query params validated against enums**, not passed through. Drizzle parameterises anyway, so this isn't injection defence — it stops a hand-edited URL yielding a silently empty result that reads as "no feedback". Ratings clamp to 1–5.
+- **NO demographic filters (age/gender/geo).** They need the `feedback.userEmail → user_profiles` join **and** the `demographic` consent gate. The `FeedbackFilters` type carries a comment saying don't add them without routing through `lib/analytics/segmentedAnalytics.ts`'s consent path.
+- **NOT tier-gated** — consistent with the rest of the product, and the freemium constraint (line ~200) still stands.
+- **Feedback Hub (`/dashboard/feedback`) deliberately untouched** — aggregate cards per product, not a list; filters don't map onto it.
+
+### Two bugs fixed in passing
+
+1. **"Unreviewed" stat card** was derived from the item list, so once filters existed, filtering to "reviewed" would render **Unreviewed: 0**. Now a product-wide count via `countFeedbackByProduct(productId, { status: 'new' })`, consistent with the other four cards.
+2. **Empty state** now distinguishes "no feedback yet" (share your link) from "no feedback matches these filters" (N responses exist — widen them). Without this an over-narrow filter reads as data loss.
+
+### ⚠️ Copy deliberately NOT re-added
+
+Filtering now exists, so by the claims policy it is claimable — **but it is ungated**, so listing it as a **Pro** feature would repeat exactly the trap that caused `92f7d7b` (selling as an upgrade something every free user already has). Founder decision: **leave the copy out until tier enforcement lands.** Same reasoning applies to feedback export when that gets built.
+
+---
+
+## 🐛 Survey CSV export — `dateTo` end-of-day fix (2026-07-29)
+
+`exportResponsesToCSV` (`server/surveys/responseService.ts`) compared `submittedAt <= new Date(dateTo)`. A `type="date"` input yields **midnight**, so any single-day range excluded everything submitted that day.
+
+**Why it mattered more than it looks:** the responses **page** already widened correctly (`toDate.setHours(23,59,59,999)`), so page and export **disagreed** — a brand filtered to one day, saw N rows on screen, clicked Export CSV, and got an empty file. Now matched to the page's behaviour.
+
+📌 **Correction to an earlier note in this session:** the responses *page* never had this bug — only the export service did. If you read a claim that both were affected, that was wrong.
