@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { feedback, feedbackMedia, products, surveyResponses } from '@/db/schema'
-import { eq, desc, and, sql, count, inArray } from 'drizzle-orm'
+import { eq, desc, and, sql, count, inArray, gte, lte, isNotNull } from 'drizzle-orm'
 
 export type FeedbackItem = {
   id: string
@@ -22,29 +22,71 @@ export type FeedbackItem = {
 }
 
 /**
- * Get feedback for a specific product with pagination
+ * Filters for the brand-facing feedback list.
+ *
+ * Every dimension here maps to a column on `feedback` itself — deliberately no
+ * demographic filters (age/gender/geo), which live in `user_profiles` behind an
+ * email join and a `demographic` consent record. Don't add them here without
+ * routing through the consent gate (see lib/analytics/segmentedAnalytics.ts).
+ */
+export type FeedbackFilters = {
+  status?: string
+  sentiment?: string
+  modality?: string
+  language?: string
+  ratingMin?: number
+  ratingMax?: number
+  dateFrom?: Date
+  dateTo?: Date
+}
+
+/**
+ * Build the WHERE predicate shared by the list and count queries, so
+ * "showing X of Y" can never disagree with the rows actually rendered.
+ *
+ * Filtering happens in SQL rather than in memory because the list query is
+ * paginated: filtering an already-LIMITed page would search only within the
+ * newest N rows instead of across everything that matches.
+ */
+function buildFeedbackConditions(productId: string, filters?: FeedbackFilters) {
+  const conditions = [eq(feedback.productId, productId)]
+
+  if (filters?.status) conditions.push(eq(feedback.status, filters.status))
+  if (filters?.sentiment) conditions.push(eq(feedback.sentiment, filters.sentiment))
+  if (filters?.modality) conditions.push(eq(feedback.modalityPrimary, filters.modality))
+  if (filters?.language) conditions.push(eq(feedback.originalLanguage, filters.language))
+
+  if (typeof filters?.ratingMin === 'number') {
+    conditions.push(gte(feedback.rating, filters.ratingMin))
+  }
+  if (typeof filters?.ratingMax === 'number') {
+    conditions.push(lte(feedback.rating, filters.ratingMax))
+  }
+
+  // Date objects are correct here: this is Drizzle against a `timestamp`
+  // column, not a pgClient template literal (which would need .toISOString()
+  // — see CLAUDE.md §5). The caller is responsible for widening `dateTo` to
+  // end-of-day so a single-day range isn't empty.
+  if (filters?.dateFrom) conditions.push(gte(feedback.createdAt, filters.dateFrom))
+  if (filters?.dateTo) conditions.push(lte(feedback.createdAt, filters.dateTo))
+
+  return conditions
+}
+
+/**
+ * Get feedback for a specific product with pagination + optional filters
  */
 export async function getFeedbackByProduct(
   productId: string,
-  options?: {
+  options?: FeedbackFilters & {
     limit?: number
     offset?: number
-    status?: string
-    sentiment?: string
   }
 ): Promise<FeedbackItem[]> {
   const limit = options?.limit ?? 50
   const offset = options?.offset ?? 0
 
-  const conditions = [eq(feedback.productId, productId)]
-
-  if (options?.status) {
-    conditions.push(eq(feedback.status, options.status))
-  }
-
-  if (options?.sentiment) {
-    conditions.push(eq(feedback.sentiment, options.sentiment))
-  }
+  const conditions = buildFeedbackConditions(productId, options)
 
   const rows = await db
     .select({
@@ -118,15 +160,49 @@ export async function getFeedbackByProductIds(
 }
 
 /**
- * Count feedback by product
+ * Count feedback by product, honouring the same filters as
+ * `getFeedbackByProduct` (both build their predicate from
+ * `buildFeedbackConditions`, so the count always matches the rows).
  */
-export async function countFeedbackByProduct(productId: string): Promise<number> {
+export async function countFeedbackByProduct(
+  productId: string,
+  filters?: FeedbackFilters
+): Promise<number> {
   const [result] = await db
     .select({ count: count() })
     .from(feedback)
-    .where(eq(feedback.productId, productId))
+    .where(and(...buildFeedbackConditions(productId, filters)))
 
   return result?.count ?? 0
+}
+
+/**
+ * Distinct detected languages present in a product's feedback, so the language
+ * filter only offers values that can actually return rows. Ordered, NULLs
+ * dropped. Returns [] on error — the filter degrades to "All languages".
+ */
+export async function getFeedbackLanguagesForProduct(
+  productId: string
+): Promise<string[]> {
+  try {
+    const rows = await db
+      .selectDistinct({ language: feedback.originalLanguage })
+      .from(feedback)
+      .where(
+        and(
+          eq(feedback.productId, productId),
+          isNotNull(feedback.originalLanguage)
+        )
+      )
+
+    return rows
+      .map((r) => r.language)
+      .filter((l): l is string => Boolean(l))
+      .sort()
+  } catch (err) {
+    console.error('[getFeedbackLanguagesForProduct] Error (non-fatal):', err)
+    return []
+  }
 }
 
 /**

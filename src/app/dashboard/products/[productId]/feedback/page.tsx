@@ -1,5 +1,12 @@
-import { getFeedbackByProduct, getFeedbackStats, getMediaForFeedbackIds } from '@/db/repositories/feedbackRepository'
-import type { MediaItem } from '@/db/repositories/feedbackRepository'
+import {
+  getFeedbackByProduct,
+  getFeedbackStats,
+  getMediaForFeedbackIds,
+  countFeedbackByProduct,
+  getFeedbackLanguagesForProduct,
+} from '@/db/repositories/feedbackRepository'
+import type { MediaItem, FeedbackFilters } from '@/db/repositories/feedbackRepository'
+import FeedbackFiltersPanel from './FeedbackFilters'
 import { getProductById } from '@/db/repositories/productRepository'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -53,10 +60,61 @@ function StarDisplay({ rating }: { rating: number | null }) {
   )
 }
 
+/**
+ * Parse the filter query string into repository filters.
+ *
+ * Values are validated against known enums rather than passed through, so a
+ * hand-edited URL can't inject an arbitrary value into the WHERE clause.
+ * Invalid or empty params are simply dropped (treated as "no filter").
+ */
+function parseFeedbackFilters(sp: FeedbackSearchParams): FeedbackFilters {
+  const oneOf = (value: string | undefined, allowed: string[]) =>
+    value && allowed.includes(value) ? value : undefined
+
+  const toRating = (value: string | undefined) => {
+    const n = Number(value)
+    return value && Number.isFinite(n) ? Math.min(5, Math.max(1, Math.trunc(n))) : undefined
+  }
+
+  const toDate = (value: string | undefined, endOfDay = false) => {
+    if (!value) return undefined
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return undefined
+    // A date input yields midnight; widen the upper bound so a single-day
+    // range includes that whole day instead of returning nothing.
+    if (endOfDay) d.setHours(23, 59, 59, 999)
+    return d
+  }
+
+  return {
+    sentiment: oneOf(sp.sentiment, ['positive', 'neutral', 'negative']),
+    modality: oneOf(sp.modality, ['text', 'audio', 'video', 'mixed']),
+    status: oneOf(sp.status, ['new', 'reviewed', 'addressed']),
+    language: sp.language || undefined,
+    ratingMin: toRating(sp.ratingMin),
+    ratingMax: toRating(sp.ratingMax),
+    dateFrom: toDate(sp.dateFrom),
+    dateTo: toDate(sp.dateTo, true),
+  }
+}
+
+type FeedbackSearchParams = {
+  dateFrom?: string
+  dateTo?: string
+  ratingMin?: string
+  ratingMax?: string
+  sentiment?: string
+  modality?: string
+  status?: string
+  language?: string
+}
+
 export default async function ProductFeedbackPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ productId: string }>
+  searchParams: Promise<FeedbackSearchParams>
 }) {
   const session = await auth()
   if (!session?.user?.id) {
@@ -82,8 +140,22 @@ export default async function ProductFeedbackPage({
     }
   }
 
-  const [feedbackItems, stats, subscription] = await Promise.all([
-    getFeedbackByProduct(productId, { limit: 100 }),
+  const filters = parseFeedbackFilters(await searchParams)
+
+  const [
+    feedbackItems,
+    filteredCount,
+    totalCount,
+    unreviewedCount,
+    availableLanguages,
+    stats,
+    subscription,
+  ] = await Promise.all([
+    getFeedbackByProduct(productId, { ...filters, limit: 100 }),
+    countFeedbackByProduct(productId, filters),
+    countFeedbackByProduct(productId),
+    countFeedbackByProduct(productId, { status: 'new' }),
+    getFeedbackLanguagesForProduct(productId),
     getFeedbackStats(productId),
     getBrandSubscription(session.user.id),
   ])
@@ -163,9 +235,10 @@ export default async function ProductFeedbackPage({
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-blue-600">
-              {feedbackItems.filter((f) => f.status === 'new').length}
-            </div>
+            {/* Product-wide, like the other stat cards — deliberately NOT
+                derived from the (filtered, paginated) list, or filtering to
+                "reviewed" would render Unreviewed: 0. */}
+            <div className="text-2xl font-bold text-blue-600">{unreviewedCount}</div>
             <p className="text-sm text-muted-foreground">Unreviewed</p>
           </CardContent>
         </Card>
@@ -185,15 +258,36 @@ export default async function ProductFeedbackPage({
         />
       )}
 
+      {/* Filters — only worth showing once there's something to filter */}
+      {totalCount > 0 && (
+        <FeedbackFiltersPanel
+          availableLanguages={availableLanguages}
+          totalCount={totalCount}
+          filteredCount={filteredCount}
+        />
+      )}
+
       {/* Feedback List */}
       {feedbackItems.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-            <p className="text-lg font-semibold mb-1">No feedback yet</p>
-            <p className="text-sm text-muted-foreground mb-4">
-              Share the feedback link above with consumers to start collecting.
-            </p>
+            {totalCount === 0 ? (
+              <>
+                <p className="text-lg font-semibold mb-1">No feedback yet</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Share the feedback link above with consumers to start collecting.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-semibold mb-1">No feedback matches these filters</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {totalCount} {totalCount === 1 ? 'response' : 'responses'} exist for this
+                  product — try widening or clearing the filters above.
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : (

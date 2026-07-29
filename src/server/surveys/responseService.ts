@@ -306,11 +306,19 @@ export async function exportResponsesToCSV(
 
   // Apply the same filters used by the dashboard table (best-effort)
   if (filters?.dateFrom) {
-    responses = responses.filter(r => new Date(r.submittedAt) >= new Date(filters.dateFrom!))
+    const fromDate = new Date(filters.dateFrom)
+    responses = responses.filter(r => new Date(r.submittedAt) >= fromDate)
   }
 
   if (filters?.dateTo) {
-    responses = responses.filter(r => new Date(r.submittedAt) <= new Date(filters.dateTo!))
+    // Widen to end-of-day. A `type="date"` input yields midnight, so a bare
+    // `<= dateTo` excludes everything submitted during that day — a
+    // single-day range exported as an empty file. The responses PAGE already
+    // does this (its own dateTo filter sets 23:59:59.999), so without it the
+    // export silently disagreed with the table the brand was looking at.
+    const toDate = new Date(filters.dateTo)
+    toDate.setHours(23, 59, 59, 999)
+    responses = responses.filter(r => new Date(r.submittedAt) <= toDate)
   }
 
   if (filters?.ratingMin || filters?.ratingMax) {
