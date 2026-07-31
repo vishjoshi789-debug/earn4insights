@@ -578,3 +578,64 @@ Concretely: **`/login` and `/signup` returned 404** — both routes in the `(aut
 ### Bonus observation: local dev compile times on this machine are pathological
 
 `Ready in 171s` on a warm cache, **`366s` after clearing `.next`**; 28–71s to compile a single 21-module route. This is the disk, not the code — Vercel builds are unaffected. It is the standing reason to **prefer static verification (typecheck + read-only DB scripts) over live HTTP smoke tests** locally, and to test UI against the deployed app instead.
+
+---
+
+## 🎙️ INCIDENT — silent recordings accepted, Whisper hallucinations stored as consumer feedback (2026-07-31, `68bd1d3`)
+
+Found while testing media playback in production: the organic user's 18-second voice note was inaudible.
+
+### What was wrong
+
+Four production recordings (**two different users, two months apart**) contained **digital silence** — valid WebM/Opus containers, correct duration, correct 20ms Opus frame cadence, but **12 bytes per frame**, the DTX/comfort-noise floor (~1.7 kbps vs 24-32 kbps for real speech). Verified by parsing the WebM cluster timecodes directly, which also ruled out truncation: real duration matched the recorded duration.
+
+**The recorder code was NOT at fault.** `getUserMedia({audio:true})` → `new MediaRecorder(stream, {mimeType})` → `start(1000)` is textbook-correct on every surface, with no AudioContext, analyser, `track.enabled` manipulation or constraints that could mute input. *(An earlier claim in this session that "voice feedback has never captured audio / is shipping broken" was an overreach made before the code was read — the evidence does not support a recorder defect.)*
+
+The real defect was **the absence of any signal to the user** that their mic was dead, plus a pipeline that accepted the result:
+1. **No level meter** — a muted mic produced a normal-looking timer and pulsing icon.
+2. **No silence check before upload.**
+3. **Whisper hallucinated.** It does not return empty text for silence — it invents stock phrases. All four transcribed to `"you"`.
+
+### ⚠️ The contamination was REAL, not hypothetical
+
+Media processing did not only write `transcript_text`. It **also overwrote `normalized_text`** — the field sentiment analysis and the CSV export actually read — so the consumer's genuine written feedback was replaced by `"you"` in every downstream path.
+
+**2 of the 4 sentiments were WRONG**: genuinely positive reviews were scored `neutral`, because sentiment ran on the hallucination instead of what the customer wrote. The brand's sentiment breakdown was understating positives by two.
+
+Downstream checks:
+- `consumer_intents` — **0** rows referencing these feedback ids (clean)
+- `contributions`, `product_themes` — tables do not exist
+- 🚩 **`consumer_signal_snapshots` (302 rows) — NOT id-linked, so contamination could not be attributed either way. This is UNVERIFIABLE, not confirmed clean. Do not upgrade this wording to "confirmed unaffected" without an actual trace.**
+
+### The fix (`68bd1d3`)
+
+**Client — all 6 capture paths across 4 files** (4 audio + 2 video): `survey-response-form.tsx`, `DirectFeedbackForm.tsx`, `dashboard/submit-feedback/page.tsx`, and **`submit-feedback/page.tsx`** — a fifth surface not in the original report; missing it would have been a half-fix. New `createAudioLevelMonitor()` (`lib/media/audioLevelMonitor.ts`) taps the stream read-only via `AnalyserNode` (never connected to `destination` — that would cause howl) and drives `<AudioLevelMeter>`.
+
+**Threshold: PEAK amplitude 0.015 across the whole take** — peak not average, because speech is bursty and one syllable anywhere should pass. Digital silence ≈ 0.000 · room tone 0.005-0.02 · whisper 0.05+ · normal speech 0.2-0.8. That's ~3x below a whisper, deliberately biased toward **false acceptance**: a blocked real user is feedback lost forever. **FAILS OPEN** — no AudioContext ⇒ monitor is null ⇒ recording always kept.
+
+**AUDIO blocks · VIDEO WARNS** — founder's call, deliberately asymmetric. Silent audio contains nothing, so rejecting loses nothing. A silent video still carries its **visual** content, which is often the entire point (a product defect, damaged packaging, how something looks in use). Destroying that to enforce an audio rule would throw away real feedback. ⚠️ **Do not "consistency-fix" video into a hard block** — the code carries this note too.
+
+**Server — defence in depth** (`feedbackMediaProcessingService.ts`), because the client gate can be bypassed, fail, or be absent on an old browser. Discards a transcript only when **BOTH** signals agree: text matching a known Whisper silence hallucination **AND** encoded bitrate below the **6 kbps** DTX floor. Either alone is insufficient — a user might genuinely say "thank you", and some quiet recording might sit low on bitrate. Also added `silent_audio` to `NON_RETRYABLE_ERROR_CODES`: `isTransientError()` treats *unlisted* codes as transient, so without it every silent recording would retry to the cap, burning an OpenAI call each time on audio that can never transcribe.
+
+**Backfill** — `scripts/backfill-silent-audio-transcripts.ts`, applied and idempotent (re-run: 0 affected). Nulled `transcript_text`, restored `normalized_text` from `feedback_text`, recomputed sentiment. `feedback_text` itself was never touched — it always held the genuine text.
+
+> Note for running that script: `sentimentService` imports `server-only`, which throws outside RSC. Run with `NODE_OPTIONS=--conditions=react-server` so the package resolves to its empty stub.
+
+### Still open
+
+- **Not verified in a browser**: the level meter and the audio block/video warn behaviour. Needs a real mic (and a muted one) against the deployed app.
+- Whether the four originals were user error (didn't speak / muted OS input) or something environmental remains unknown. Four-for-four across two users is suspicious, but with the code exonerated there is nothing further to trace from here.
+
+---
+
+## 🔁 `.next` corruption — THIRD occurrence (2026-07-31)
+
+Recorded again because it produced a **completely different symptom** this time and cost real debugging.
+
+**Symptom this time:** `tsc --noEmit` failed with **76 errors, all in `.next/types/routes.d.ts`**, ending in `TS1002: Unterminated string literal`. Zero errors in actual source. Cause: stopping the dev server interrupted Next.js mid-write of its generated route types.
+
+**Previous symptom (same root cause):** route-group-specific 404s — `/login` and `/signup` 404ing while other public routes returned 200, with the route *compiling successfully* and then rendering `/_not-found`.
+
+**Fix, both times:** delete `.next` and re-run. It's pure build cache.
+
+⚠️ **The pattern to recognise: if generated output under `.next` looks structurally broken — truncated types, routes that compile then 404 — suspect the cache before suspecting source.** Contributing factor is low disk; `CLAUDE.md` §6 and the local-dev section above both record it. **Keep C: headroom above ~10 GB.**
