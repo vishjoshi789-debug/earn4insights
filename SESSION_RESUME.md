@@ -416,3 +416,66 @@ Filtering now exists, so by the claims policy it is claimable — **but it is un
 **Why it mattered more than it looks:** the responses **page** already widened correctly (`toDate.setHours(23,59,59,999)`), so page and export **disagreed** — a brand filtered to one day, saw N rows on screen, clicked Export CSV, and got an empty file. Now matched to the page's behaviour.
 
 📌 **Correction to an earlier note in this session:** the responses *page* never had this bug — only the export service did. If you read a claim that both were affected, that was wrong.
+
+---
+
+# 🚨 INCIDENT — consumer media served from unauthenticated public URLs
+
+**Opened:** 2026-07-31 · **Status:** Phase 1 remediated (`a66cb16`), Phase 2 tooling ready (`3585ce0`), **rotation pending execution**
+**Severity:** Moderate — real personal data exposed, low likelihood of access, no evidence of any.
+**Discovered by:** the brand-facing feedback viewing/filtering/export audit (the same pass that produced the two access-control batches above).
+
+## What was exposed
+
+Consumer **audio recordings and images** submitted as product feedback, reachable by **anyone with the URL, with no authentication of any kind**.
+
+Vercel Blob objects are uploaded with **`access: 'public'`** (`api/uploads/feedback-media/server/route.ts:178`, `api/feedback/upload-media/route.ts:169`) — Vercel Blob has **no private-read mode**, so this was not a misconfiguration but a property of the storage choice. `feedback_media.storage_key` therefore holds a permanent, unauthenticated CDN URL.
+
+The dashboard **rendered `storage_key` directly** into `<audio>`, `<video>` and `<img>` tags across 3 pages (12 sites). So the ownership check on the download proxy — added in `61b31af` — was **bypassed by the very pages it was meant to protect**. Any URL that appeared in page source works forever and cannot be revoked.
+
+A quieter variant of the same leak: the survey responses page passed `storage_key` as a **prop into `ResponsesTable`, a `'use client'` component**. The field was never rendered, but client props are serialized into the RSC payload, so every image's permanent URL sat in page source regardless of any `src` attribute.
+
+## Scope — 8 objects, 2 submitters
+
+Established by `scripts/count-feedback-media.mjs` (read-only):
+
+| Submitter | Rows | Uploaded | Products |
+|---|---|---|---|
+| `vishweshwar@startupsgurukul.com` (founder test data) | 6 — 3 audio + 3 image | 2026-06-26 | Computational, Step by step, Metacog |
+| **`pooranprasad@gmail.com` — GENUINE ORGANIC USER** | **2 — 1 audio + 1 image** | **2026-07-20** | Earn4Insights |
+
+⚠️ **One affected record belongs to a real external user, not a tester.** Their voice recording and image were reachable at an unauthenticated URL from **2026-07-20 until rotation**. This is the fact that makes this an incident rather than a hygiene task, and the reason the data was **rotated, not purged** — it is feedback the brand legitimately received and the user intended to give.
+
+## Exposure window
+
+- **Founder rows:** 2026-06-26 → rotation
+- **Organic user row:** **2026-07-20 → rotation**
+- Phase 1 (`a66cb16`, 2026-07-31) stopped **new** URLs reaching browsers. It could not un-publish URLs already emitted — hence Phase 2.
+
+## Mitigating factors (why severity is moderate, not high)
+
+- **URLs are unguessable.** Both upload paths set `addRandomSuffix: true`. The path prefix is predictable (`feedback-media/{surveyId}/{responseId}/audio.webm`) but the suffix is not, so enumeration is impractical — exposure required someone to *obtain* a URL, not guess one.
+- **No evidence of unauthorized access.** Also no proof of absence: Vercel Blob public reads are not attributable per-object in our tooling. Treat as "no evidence", not "did not happen".
+- **Narrow audience.** Pre-beta; the pages carrying the URLs were the brand dashboard, and the ownership hole that widened reach (`61b31af`) was open for a bounded period.
+- **Retention limits the tail.** `feedbackMediaRetentionService` deletes raw media on the tier window (30/60/90d) — but a permanent URL outliving a short window is precisely the problem, so this bounds rather than solves it.
+
+## Remediation
+
+**Phase 1 — `a66cb16` (shipped, deployed).** All playback moved to the ownership-checked proxy via `feedbackMediaUrl()` (`src/lib/media/mediaUrl.ts`); 12 sites across 3 files. Proxy hardened in three ways it needed before it could be the *only* path to media: session auth replacing `requireRole('brand')` (which threw for admins before any ownership check), **Range forwarding** (the old proxy always returned 200 with the whole object — switching players to it without this would have broken video seeking, a regression not a fix), and `cache-control: private, no-store`. Dead `storage_key` client prop removed from the survey responses page.
+
+**Phase 2 — `3585ce0` (tooling ready, EXECUTION PENDING).** `scripts/rotate-feedback-media-urls.mjs` re-uploads each object to a fresh random path under `feedback-media-v2/`, updates `storage_key`, then deletes the original — after which every previously-leaked URL 404s. Ordering is **upload → update → delete per row**, so a crash always leaves the row pointing at an object that exists. Idempotent via the prefix; `--dry-run` verified against all 8.
+
+Deliberately a one-off script, **not** the batched admin route first proposed — that machinery exists to survive partial failure across thousands of objects; here it would be more code than data.
+
+## Verification (required after running rotation)
+
+1. `--snapshot` **before** rotating (pre-rotation URLs are unrecoverable afterwards) — already captured to `pre-rotation-urls.json`, which is **gitignored**: committing it would permanently publish, in version control, the exact URLs the rotation exists to kill.
+2. `verify-feedback-media-rotation.mjs` — all 8 rows on the `v2` prefix, new objects reachable.
+3. `--check pre-rotation-urls.json` — **old URLs must all return 404/403**. This is the actual security claim; everything else is housekeeping.
+4. Manual: media still plays in-dashboard for the owning brand (and seeks, given the Range work).
+
+## Residual risk / follow-ups
+
+- **Blob objects remain `access: 'public'` after rotation.** Vercel Blob offers no private mode. Post-rotation the URLs are fresh, unguessable, and — crucially — **never rendered to a browser**, so they function as secrets rather than published links. Truly access-controlled storage means signed URLs on S3/R2 (option 3): new provider, env, migration of all objects, plus changes to upload, retention (`del()`) and the processing services that read `storage_key`. **Not scheduled.**
+- **`/api/admin/feedback-media/[id]/download`** authenticates via `ADMIN_API_KEY` Bearer header — unusable from a media tag, so admin UI playback goes through the dashboard proxy (which now permits admins).
+- **DPDP consideration:** the affected external user was not notified. Given unguessable URLs and no evidence of access, this was judged not to meet a notification threshold — **founder's call to revisit if that judgement should change.**
