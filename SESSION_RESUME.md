@@ -421,9 +421,18 @@ Filtering now exists, so by the claims policy it is claimable — **but it is un
 
 # 🚨 INCIDENT — consumer media served from unauthenticated public URLs
 
-**Opened:** 2026-07-31 · **Status:** Phase 1 remediated (`a66cb16`), Phase 2 tooling ready (`3585ce0`), **⛔ ROTATION NOT YET RUN — exposure still open**
+**Opened:** 2026-07-31 · **Exposure closed:** 2026-07-31 · **Status: ✅ REMEDIATED** (Phase 1 `a66cb16` + Phase 2 rotation executed) — one item still open, see the notification question at the end.
 
-> **Verified 2026-07-31** via `scripts/verify-feedback-media-rotation.mjs`: `on rotated prefix: 0/8`, all 8 original URLs still returning HTTP 206. The rotation script has **not** been executed against production. Until it is, every previously-emitted URL remains live, and `pre-rotation-urls.json` must be **kept** (it is the only record of the URLs whose death the `--check` run has to prove).
+> **Rotation executed 2026-07-31** against production. All 8 objects re-uploaded to `feedback-media-v2/`, `storage_key` updated, originals deleted. `rotated: 8 · skipped: 0 · failed: 0`, no orphaned blobs.
+>
+> **Verified** via `scripts/verify-feedback-media-rotation.mjs --check`:
+> - `on rotated prefix : 8/8`
+> - `new object reachable : 8/8` (HTTP 206 — media intact and range-capable)
+> - **`old URLs still reachable: 0`** — all 8 pre-rotation URLs now return **HTTP 404**
+>
+> That last line is the security claim: every URL emitted during the exposure window is dead, including any captured from page source or via the ownership hole. `pre-rotation-urls.json` was deleted after verification (its gitignore rule is kept deliberately, so a future `--snapshot` can't be committed by accident).
+>
+> ⚠️ **Not verified programmatically:** in-browser playback through the proxy (audio, video seeking, images) for the owning brand. Requires a real browser session against the deployed app — worth one manual pass, especially seeking, since Range forwarding is new.
 **Severity:** Moderate — real personal data exposed, low likelihood of access, no evidence of any.
 **Discovered by:** the brand-facing feedback viewing/filtering/export audit (the same pass that produced the two access-control batches above).
 

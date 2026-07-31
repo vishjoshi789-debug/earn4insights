@@ -85,7 +85,11 @@ try {
 
   if (CHECK_FILE) {
     console.log(`\n--- old URLs (must be dead) ---`)
-    const prev = JSON.parse(fs.readFileSync(CHECK_FILE, 'utf8'))
+    // Strip a UTF-8 BOM: PowerShell's `>` redirect writes one, and JSON.parse
+    // rejects it ("Unexpected token '﻿'"). The snapshot is routinely
+    // produced via `... --snapshot > file.json` on Windows, so handle it.
+    const raw = fs.readFileSync(CHECK_FILE, 'utf8').replace(/^﻿/, '')
+    const prev = JSON.parse(raw)
     let stillLive = 0
     for (const p of prev) {
       const status = await probe(p.oldUrl)
