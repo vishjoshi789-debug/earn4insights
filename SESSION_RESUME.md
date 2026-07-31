@@ -421,7 +421,9 @@ Filtering now exists, so by the claims policy it is claimable — **but it is un
 
 # 🚨 INCIDENT — consumer media served from unauthenticated public URLs
 
-**Opened:** 2026-07-31 · **Status:** Phase 1 remediated (`a66cb16`), Phase 2 tooling ready (`3585ce0`), **rotation pending execution**
+**Opened:** 2026-07-31 · **Status:** Phase 1 remediated (`a66cb16`), Phase 2 tooling ready (`3585ce0`), **⛔ ROTATION NOT YET RUN — exposure still open**
+
+> **Verified 2026-07-31** via `scripts/verify-feedback-media-rotation.mjs`: `on rotated prefix: 0/8`, all 8 original URLs still returning HTTP 206. The rotation script has **not** been executed against production. Until it is, every previously-emitted URL remains live, and `pre-rotation-urls.json` must be **kept** (it is the only record of the URLs whose death the `--check` run has to prove).
 **Severity:** Moderate — real personal data exposed, low likelihood of access, no evidence of any.
 **Discovered by:** the brand-facing feedback viewing/filtering/export audit (the same pass that produced the two access-control batches above).
 
@@ -478,4 +480,12 @@ Deliberately a one-off script, **not** the batched admin route first proposed �
 
 - **Blob objects remain `access: 'public'` after rotation.** Vercel Blob offers no private mode. Post-rotation the URLs are fresh, unguessable, and — crucially — **never rendered to a browser**, so they function as secrets rather than published links. Truly access-controlled storage means signed URLs on S3/R2 (option 3): new provider, env, migration of all objects, plus changes to upload, retention (`del()`) and the processing services that read `storage_key`. **Not scheduled.**
 - **`/api/admin/feedback-media/[id]/download`** authenticates via `ADMIN_API_KEY` Bearer header — unusable from a media tag, so admin UI playback goes through the dashboard proxy (which now permits admins).
-- **DPDP consideration:** the affected external user was not notified. Given unguessable URLs and no evidence of access, this was judged not to meet a notification threshold — **founder's call to revisit if that judgement should change.**
+### ⚖️ OPEN — external-user notification (UNRESOLVED, do not close without legal input)
+
+**Status: UNRESOLVED founder decision. This is deliberately left open — do not record it as settled.**
+
+The affected external user (`pooranprasad@gmail.com`) has **not** been notified. The working position is that unguessable URLs plus no evidence of access put this below a DPDP notification threshold — but that is a **provisional technical read, not a legal determination**, and whether it crosses the threshold is a **legal judgment, not a technical one**.
+
+📌 **Queued for legal review alongside the privacy-policy lawyering** (`CLAUDE.md` §7 — the 14-section DPDP+GDPR policy is still an **un-lawyered draft** pending review, with entity name/address and exact retention windows deliberately blank). Same reviewer, same pass: ask explicitly whether this incident required notification under DPDP Act 2023, and whether the answer changes now that rotation has closed the exposure.
+
+⚠️ **Wording that must survive future edits:** *no evidence of access is not the same as no access* — Vercel Blob public reads **are not attributable per-object in our tooling**, so we cannot demonstrate that nobody fetched these objects. A future session must **not** upgrade this into "assessed as no breach", "confirmed no access", or similar. If the wording gets stronger, the evidence must have gotten stronger first — and it hasn't, because the access logs to prove it never existed.
