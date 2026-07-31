@@ -539,3 +539,42 @@ Because it's ungated, **listing it under Pro would repeat the exact trap that ca
 📌 **Revisit when tier enforcement lands.** Same standing decision as filtering (see the claims-policy section above).
 
 Note for whoever writes that copy: the old strings would **still** be wrong even now. They promised **"CSV or JSON"** (we have CSV only) and **"up to 100 exports/month"** (there is no metering of anything). Confirmed removed — the Pro feature list has no export row, the `exports` field is gone from the `PricingPlan` interface and all three plans' `limits` blocks, the limits-comparison row is gone, and both UpgradePrompts carry no export claim.
+
+---
+
+## 🖥️ KNOWN LOCAL-DEV ISSUES (2026-07-31) — neither is a code bug
+
+Both hit while trying to smoke-test media playback + CSV export locally. **Production is unaffected by both.** Recorded so a future session doesn't spend an hour rediscovering them.
+
+### 1. Local login fails: `AUTH_URL` points at production → Secure-cookie rejection
+
+`.env.local` sets **`AUTH_URL` to the production URL**, so NextAuth v5 mints
+`__Host-authjs.csrf-token` and `__Secure-authjs.callback-url=https%3A%2F%2Fearn4insights.com`
+— cookies flagged `Secure`. A browser **will not send `Secure` cookies over plain HTTP**, so on `http://localhost:9002` sign-in bounces straight back to `/login` with no error message. `/api/auth/session` also returns 404 locally for the same root cause.
+
+**Fix for local dev:** point `AUTH_URL` at `http://localhost:9002` in `.env.local` (local-only; never commit — the file is gitignored).
+
+**Not fixed here** — `.env.local` holds live credentials and is the founder's file; changing it was explicitly declined. Founder's call: test against production (which has HTTPS, so the problem doesn't exist there) rather than fight the local environment.
+
+### 2. Near-full disk corrupted the `.next` routing manifest → route-group-specific 404s
+
+**Symptom (worth memorising — it's misleading):** a route **compiles successfully and then renders `/_not-found`**.
+
+```
+○ Compiling /login ...
+✓ Compiled /login in 2.3s (638 modules)
+○ Compiling /_not-found ...
+GET /login 404
+```
+
+Concretely: **`/login` and `/signup` returned 404** — both routes in the `(auth)` route group — while `/`, `/about-us` and `/contact-us` all returned **200**. Since every dashboard route 307-redirects to `/login`, this blocks local testing entirely.
+
+**Ruled out** before landing on the cache: middleware (response carried `x-mw-decision: continue`), missing files (`src/app/(auth)/login/page.tsx` exists, no conflicting route), and compile errors (the route compiled cleanly).
+
+**Fix:** `rm -rf .next` and restart. `/login` + `/signup` → 200 immediately after. `.next` is pure build cache (~140 MB) and regenerates.
+
+⚠️ **Second time a near-full disk has caused file corruption on this machine** — `CLAUDE.md` §6 already records *"a near-full disk truncated a file mid-write this session."* The disk was at **95% / 7.2 GB free** when this happened; clearing the pip cache (3.4 GB) and npm `_cacache` (0.5 GB) brought it to ~10 GB. **Keep headroom above ~10 GB.** Below that, expect silent corruption of written files — not just slowness.
+
+### Bonus observation: local dev compile times on this machine are pathological
+
+`Ready in 171s` on a warm cache, **`366s` after clearing `.next`**; 28–71s to compile a single 21-module route. This is the disk, not the code — Vercel builds are unaffected. It is the standing reason to **prefer static verification (typecheck + read-only DB scripts) over live HTTP smoke tests** locally, and to test UI against the deployed app instead.
