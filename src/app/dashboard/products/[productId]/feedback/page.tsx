@@ -5,8 +5,13 @@ import {
   countFeedbackByProduct,
   getFeedbackLanguagesForProduct,
 } from '@/db/repositories/feedbackRepository'
-import type { MediaItem, FeedbackFilters } from '@/db/repositories/feedbackRepository'
+import type { MediaItem } from '@/db/repositories/feedbackRepository'
 import FeedbackFiltersPanel from './FeedbackFilters'
+import ExportFeedbackButton from './ExportFeedbackButton'
+import {
+  parseFeedbackFilters,
+  type FeedbackSearchParams,
+} from '@/lib/feedback/filterParams'
 import { feedbackMediaUrl } from '@/lib/media/mediaUrl'
 import { getProductById } from '@/db/repositories/productRepository'
 import { Card, CardContent } from '@/components/ui/card'
@@ -61,55 +66,6 @@ function StarDisplay({ rating }: { rating: number | null }) {
   )
 }
 
-/**
- * Parse the filter query string into repository filters.
- *
- * Values are validated against known enums rather than passed through, so a
- * hand-edited URL can't inject an arbitrary value into the WHERE clause.
- * Invalid or empty params are simply dropped (treated as "no filter").
- */
-function parseFeedbackFilters(sp: FeedbackSearchParams): FeedbackFilters {
-  const oneOf = (value: string | undefined, allowed: string[]) =>
-    value && allowed.includes(value) ? value : undefined
-
-  const toRating = (value: string | undefined) => {
-    const n = Number(value)
-    return value && Number.isFinite(n) ? Math.min(5, Math.max(1, Math.trunc(n))) : undefined
-  }
-
-  const toDate = (value: string | undefined, endOfDay = false) => {
-    if (!value) return undefined
-    const d = new Date(value)
-    if (Number.isNaN(d.getTime())) return undefined
-    // A date input yields midnight; widen the upper bound so a single-day
-    // range includes that whole day instead of returning nothing.
-    if (endOfDay) d.setHours(23, 59, 59, 999)
-    return d
-  }
-
-  return {
-    sentiment: oneOf(sp.sentiment, ['positive', 'neutral', 'negative']),
-    modality: oneOf(sp.modality, ['text', 'audio', 'video', 'mixed']),
-    status: oneOf(sp.status, ['new', 'reviewed', 'addressed']),
-    language: sp.language || undefined,
-    ratingMin: toRating(sp.ratingMin),
-    ratingMax: toRating(sp.ratingMax),
-    dateFrom: toDate(sp.dateFrom),
-    dateTo: toDate(sp.dateTo, true),
-  }
-}
-
-type FeedbackSearchParams = {
-  dateFrom?: string
-  dateTo?: string
-  ratingMin?: string
-  ratingMax?: string
-  sentiment?: string
-  modality?: string
-  status?: string
-  language?: string
-}
-
 export default async function ProductFeedbackPage({
   params,
   searchParams,
@@ -141,7 +97,8 @@ export default async function ProductFeedbackPage({
     }
   }
 
-  const filters = parseFeedbackFilters(await searchParams)
+  const rawSearchParams = await searchParams
+  const filters = parseFeedbackFilters(rawSearchParams)
 
   const [
     feedbackItems,
@@ -180,7 +137,7 @@ export default async function ProductFeedbackPage({
           <span>/</span>
           <span>Feedback</span>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-headline font-bold">
               Direct Feedback
@@ -189,6 +146,14 @@ export default async function ProductFeedbackPage({
               Consumer feedback submitted directly for {productName}
             </p>
           </div>
+          {totalCount > 0 && (
+            <ExportFeedbackButton
+              productId={productId}
+              productName={productName}
+              searchParams={rawSearchParams}
+              filteredCount={filteredCount}
+            />
+          )}
         </div>
       </header>
 
