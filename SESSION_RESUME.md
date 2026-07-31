@@ -498,3 +498,44 @@ The affected external user (`pooranprasad@gmail.com`) has **not** been notified.
 📌 **Queued for legal review alongside the privacy-policy lawyering** (`CLAUDE.md` §7 — the 14-section DPDP+GDPR policy is still an **un-lawyered draft** pending review, with entity name/address and exact retention windows deliberately blank). Same reviewer, same pass: ask explicitly whether this incident required notification under DPDP Act 2023, and whether the answer changes now that rotation has closed the exposure.
 
 ⚠️ **Wording that must survive future edits:** *no evidence of access is not the same as no access* — Vercel Blob public reads **are not attributable per-object in our tooling**, so we cannot demonstrate that nobody fetched these objects. A future session must **not** upgrade this into "assessed as no breach", "confirmed no access", or similar. If the wording gets stronger, the evidence must have gotten stronger first — and it hasn't, because the access logs to prove it never existed.
+
+---
+
+## 📤 Direct-feedback CSV export — BUILT (2026-07-31, `f303155`)
+
+Second item off the claims-policy backlog, after filtering. **This is the capability the pricing page used to falsely advertise** — the claim was removed in `92f7d7b`, and the feature now genuinely exists.
+
+Brands export a product's direct feedback from `/dashboard/products/[productId]/feedback`.
+
+**Files:** `lib/feedback/filterParams.ts` (shared parser) · `lib/feedback/feedbackCsv.ts` (pure builder) · `server/feedback/feedbackExportService.ts` (`'use server'` action) · `products/[productId]/feedback/ExportFeedbackButton.tsx` · `scripts/verify-feedback-export.ts`.
+
+### Decisions worth preserving
+
+- **⚠️ MEDIA URLs ARE DELIBERATELY EXCLUDED — do not "helpfully" add them.** `feedback_media.storage_key` is a public, unauthenticated Blob URL. Putting it in a downloadable CSV would re-publish exactly what the 2026-07-31 rotation destroyed (see the incident record above), in a form that can never be revoked once it's in someone's Downloads folder. The CSV reports media presence as **per-type counts** + transcript text — the analysable content — and media itself stays behind the ownership-checked proxy. `verify-feedback-export.ts` asserts zero Blob URLs in the output, so a regression fails the check.
+- **ONE filter parser, shared by page and export** (`parseFeedbackFilters` in `lib/feedback/filterParams.ts`). The survey side is the cautionary tale: page and export had separate date logic, so a single-day range showed rows on screen and exported an empty file (fixed in `b22ea11`). Keeping one function makes that drift structurally impossible. The verification script asserts `dateFrom=dateTo` returns that day's rows.
+- **The action takes RAW query params and parses them server-side**, rather than accepting pre-parsed filters from the client — the client can't be trusted to have validated them, and it guarantees export and page run identical logic.
+- **Filters apply in SQL**, so the export covers every matching row, not the page's first 100. `MAX_EXPORT_ROWS = 10000` bounds memory + the 60s function limit.
+- **CSV builder lives outside the `'use server'` file** (`lib/feedback/feedbackCsv.ts`). That file can only export async functions, which would have made the builder untestable and forced every check through an authenticated request.
+- **Security:** `assertProductOwnedByCaller` inside the action (it's a directly invokable endpoint, not just the button's callback), admin bypass per `lib/auth/roles.ts`, single generic error so product ids can't be probed.
+- **UTF-8 BOM on the client blob** so Excel renders non-English feedback correctly — first-class here, since feedback text is auto-translated from any language.
+
+### Verified (`scripts/verify-feedback-export.ts`, read-only, against production data)
+
+Run on a text-only product **and** one with attachments:
+- 19 rows exported; header + 17 columns consistent
+- sentiment/modality filters narrow correctly in SQL; invalid enum values dropped
+- `dateFrom=dateTo` returns that day's rows — **regression guard for the survey-export bug**
+- **zero Blob storage URLs**; media reported as counts (`1,0,1` verified on a row with audio + image)
+- rows containing `,` `"` or newline stay well-formed (3 such rows)
+
+**Not verified:** the in-browser click-to-download path (needs a real browser). Data path, filters, escaping and security are all verified.
+
+### ⚠️ Pricing copy deliberately NOT added — founder decision (2026-07-31)
+
+**Export is UNGATED by design for now** — no `canExportCSV` check, consistent with the rest of the product while tier enforcement stays parked.
+
+Because it's ungated, **listing it under Pro would repeat the exact trap that caused `92f7d7b`**: advertising as an upgrade something every free user already has. Adding it to the **Free** list was also rejected — it would be honest today, but *"reversing 'it's free' later is worse than announcing 'we've added export' later."*
+
+📌 **Revisit when tier enforcement lands.** Same standing decision as filtering (see the claims-policy section above).
+
+Note for whoever writes that copy: the old strings would **still** be wrong even now. They promised **"CSV or JSON"** (we have CSV only) and **"up to 100 exports/month"** (there is no metering of anything). Confirmed removed — the Pro feature list has no export row, the `exports` field is gone from the `PricingPlan` interface and all three plans' `limits` blocks, the limits-comparison row is gone, and both UpgradePrompts carry no export claim.
