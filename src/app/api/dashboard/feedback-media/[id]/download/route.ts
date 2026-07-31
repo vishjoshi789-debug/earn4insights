@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { feedbackMedia } from '@/db/schema'
-import { requireRole } from '@/lib/auth/server'
+import { auth } from '@/lib/auth/auth.config'
+import { isAdminSession } from '@/lib/auth/roles'
 import { getBrandIdForMediaOwner } from '@/db/repositories/feedbackRepository'
 
 function guessExtensionFromMime(mimeType: string | null): string {
@@ -15,28 +16,28 @@ function guessExtensionFromMime(mimeType: string | null): string {
   return 'bin'
 }
 
-function authErrorToStatus(err: unknown): number {
-  const msg = err instanceof Error ? err.message : String(err)
-  if (msg.toLowerCase().includes('forbidden')) return 403
-  return 401
-}
-
 /**
  * GET /api/dashboard/feedback-media/:id/download
  *
- * Dashboard-authenticated proxy download:
- * - authorizes via NextAuth session cookies
- * - streams the underlying Blob URL without exposing it in the UI
+ * Dashboard-authenticated proxy download. This is the ONLY way consumer media
+ * should reach a browser: the underlying Vercel Blob objects are stored with
+ * `access: 'public'`, so their raw URLs are unauthenticated and permanent.
+ * Rendering `storageKey` directly in a page hands out a URL that works forever
+ * for anyone who sees it — so every player/thumbnail points here instead.
+ *
+ * Authorization: NextAuth session, then ownership of the media's polymorphic
+ * parent (admins bypass per lib/auth/roles.ts).
  */
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  let brandUser
-  try {
-    brandUser = await requireRole('brand')
-  } catch (err) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: authErrorToStatus(err) })
+  // Session-based, NOT requireRole('brand'): that helper throws for
+  // role='admin' before any ownership check could run, which made this route
+  // admin-inaccessible — a problem once it became the only path to media.
+  const session = await auth()
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { id } = await context.params
@@ -56,14 +57,16 @@ export async function GET(
 
   const media = rows[0]
 
-  // SECURITY: requireRole('brand') only proves the caller is *a* brand, not
-  // that they own this media. Without this check any brand account could
-  // stream any other brand's consumer audio/video by id. Resolve the owning
-  // brand through the polymorphic parent and fail closed (null => deny).
-  // 404, not 403, so a caller can't enumerate valid media ids.
-  const ownerBrandId = await getBrandIdForMediaOwner(media.ownerType, media.ownerId)
-  if (!ownerBrandId || ownerBrandId !== brandUser.id) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // SECURITY: a valid session only proves the caller is *someone*, not that
+  // they own this media. Without this check any account could stream any
+  // brand's consumer audio/video by id. Resolve the owning brand through the
+  // polymorphic parent and fail closed (null => deny). 404, not 403, so a
+  // caller can't enumerate valid media ids.
+  if (!isAdminSession(session)) {
+    const ownerBrandId = await getBrandIdForMediaOwner(media.ownerType, media.ownerId)
+    if (!ownerBrandId || ownerBrandId !== session.user.id) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
   }
 
   if (media.status === 'deleted') {
@@ -71,7 +74,18 @@ export async function GET(
   }
 
   const blobUrl = media.storageKey
-  const upstream = await fetch(blobUrl)
+  if (!blobUrl) {
+    return NextResponse.json({ error: 'Missing storage URL' }, { status: 500 })
+  }
+
+  // Forward Range so <video>/<audio> can seek. Without this the proxy always
+  // returns the whole object with status 200, and browsers can't scrub — a
+  // regression the raw (range-capable) Blob URLs didn't have.
+  const range = request.headers.get('range')
+  const upstream = await fetch(blobUrl, {
+    headers: range ? { range } : undefined,
+    cache: 'no-store',
+  })
   if (!upstream.ok || !upstream.body) {
     return NextResponse.json({ error: 'Failed to fetch media from storage' }, { status: 502 })
   }
@@ -84,13 +98,25 @@ export async function GET(
   const ext = guessExtensionFromMime(contentType)
   const filename = `feedback-media-${id}.${ext}`
 
+  const headers: Record<string, string> = {
+    'content-type': contentType,
+    'content-disposition': `inline; filename="${filename}"`,
+    // Private media behind a session check — never let a shared/CDN cache hold
+    // it, and don't leave a copy a later viewer could pull without authorizing.
+    'cache-control': 'private, no-store',
+    'accept-ranges': upstream.headers.get('accept-ranges') || 'bytes',
+  }
+
+  // Pass through the range-response headers so partial content is well-formed.
+  for (const h of ['content-range', 'content-length', 'etag', 'last-modified']) {
+    const v = upstream.headers.get(h)
+    if (v) headers[h] = v
+  }
+
   return new Response(upstream.body, {
-    status: 200,
-    headers: {
-      'content-type': contentType,
-      'content-disposition': `inline; filename="${filename}"`,
-      'cache-control': 'no-store',
-    },
+    // 206 when upstream honoured the Range request, else 200.
+    status: upstream.status === 206 ? 206 : 200,
+    headers,
   })
 }
 

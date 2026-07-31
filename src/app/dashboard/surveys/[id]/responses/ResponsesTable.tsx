@@ -50,7 +50,6 @@ type ResponsesTableProps = {
   }>>
   imageMediaByResponseId?: Record<string, Array<{
     id: string
-    storageKey: string
     mimeType: string | null
     sizeBytes: number | null
     moderationStatus: string | null

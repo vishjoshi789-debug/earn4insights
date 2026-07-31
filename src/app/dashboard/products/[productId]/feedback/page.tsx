@@ -7,6 +7,7 @@ import {
 } from '@/db/repositories/feedbackRepository'
 import type { MediaItem, FeedbackFilters } from '@/db/repositories/feedbackRepository'
 import FeedbackFiltersPanel from './FeedbackFilters'
+import { feedbackMediaUrl } from '@/lib/media/mediaUrl'
 import { getProductById } from '@/db/repositories/productRepository'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -375,7 +376,7 @@ function FeedbackMediaSection({ media }: { media: MediaItem[] }) {
         <div key={a.id} className="flex items-center gap-2 bg-muted/40 rounded-lg p-2">
           <span className="text-sm">🎤</span>
           <audio controls preload="metadata" className="h-8 flex-1 min-w-0">
-            <source src={a.storageKey} type={a.mimeType || 'audio/webm'} />
+            <source src={feedbackMediaUrl(a.id)} type={a.mimeType || 'audio/webm'} />
             Your browser does not support audio playback.
           </audio>
           {a.durationMs && (
@@ -395,7 +396,7 @@ function FeedbackMediaSection({ media }: { media: MediaItem[] }) {
             className="w-full max-h-[300px]"
             playsInline
           >
-            <source src={v.storageKey} type={v.mimeType || 'video/webm'} />
+            <source src={feedbackMediaUrl(v.id)} type={v.mimeType || 'video/webm'} />
             Your browser does not support video playback.
           </video>
           {v.durationMs && (
@@ -416,14 +417,14 @@ function FeedbackMediaSection({ media }: { media: MediaItem[] }) {
           {imageItems.map((img) => (
             <a
               key={img.id}
-              href={img.storageKey}
+              href={feedbackMediaUrl(img.id)}
               target="_blank"
               rel="noopener noreferrer"
               className="block rounded-lg overflow-hidden border hover:ring-2 hover:ring-primary transition-all"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={img.storageKey}
+                src={feedbackMediaUrl(img.id)}
                 alt="Feedback attachment"
                 className="w-full h-auto max-h-[200px] object-cover"
                 loading="lazy"

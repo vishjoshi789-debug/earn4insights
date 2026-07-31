@@ -222,9 +222,14 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
     return acc
   }, {})
 
+  // NOTE: deliberately does NOT carry `storageKey`. ResponsesTable is a client
+  // component, so anything passed here is serialized into the RSC payload and
+  // readable in page source. storageKey is the raw `access: 'public'` Blob URL
+  // — permanent and unauthenticated — and the table never used it anyway
+  // (playback already goes through the ownership-checked proxy route). Render
+  // media via feedbackMediaUrl(id), never the storage URL.
   const imageMediaByResponseId = media.reduce<Record<string, Array<{
     id: string
-    storageKey: string
     mimeType: string | null
     sizeBytes: number | null
     moderationStatus: string | null
@@ -233,7 +238,6 @@ export default async function SurveyResponsesPage({ params, searchParams }: Page
     const list = acc[row.ownerId] || []
     list.push({
       id: String(row.id),
-      storageKey: String((row as any).storageKey || ''),
       mimeType: (row as any).mimeType ?? null,
       sizeBytes: typeof (row as any).sizeBytes === 'number' ? (row as any).sizeBytes : null,
       moderationStatus: (row as any).moderationStatus ? String((row as any).moderationStatus) : null,

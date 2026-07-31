@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import { MessageSquare, ExternalLink } from 'lucide-react'
+import { feedbackMediaUrl } from '@/lib/media/mediaUrl'
 
 /**
  * Server component: Recent Consumer Feedback with full media display.
@@ -174,7 +175,7 @@ function FeedbackMediaInline({ media }: { media: MediaItem[] }) {
         >
           <span className="text-sm">🎤</span>
           <audio controls preload="metadata" className="h-8 flex-1 min-w-0">
-            <source src={a.storageKey} type={a.mimeType || 'audio/webm'} />
+            <source src={feedbackMediaUrl(a.id)} type={a.mimeType || 'audio/webm'} />
             Your browser does not support audio playback.
           </audio>
           {a.durationMs && (
@@ -194,7 +195,7 @@ function FeedbackMediaInline({ media }: { media: MediaItem[] }) {
             className="w-full max-h-[280px]"
             playsInline
           >
-            <source src={v.storageKey} type={v.mimeType || 'video/webm'} />
+            <source src={feedbackMediaUrl(v.id)} type={v.mimeType || 'video/webm'} />
             Your browser does not support video playback.
           </video>
           {v.durationMs && (
@@ -219,14 +220,14 @@ function FeedbackMediaInline({ media }: { media: MediaItem[] }) {
           {imageItems.map((img) => (
             <a
               key={img.id}
-              href={img.storageKey}
+              href={feedbackMediaUrl(img.id)}
               target="_blank"
               rel="noopener noreferrer"
               className="block rounded-lg overflow-hidden border hover:ring-2 hover:ring-primary transition-all"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={img.storageKey}
+                src={feedbackMediaUrl(img.id)}
                 alt="Feedback attachment"
                 className="w-full h-auto max-h-[180px] object-cover"
                 loading="lazy"
