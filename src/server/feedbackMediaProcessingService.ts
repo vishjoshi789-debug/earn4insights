@@ -68,6 +68,8 @@ const NON_RETRYABLE_ERROR_CODES = new Set([
   'invalid_api_key',        // config error — retrying won't help
   'model_not_found',        // invalid model — retrying won't help
   'content_policy_violation', // moderation rejection — permanent
+  'silent_audio',           // no audible speech — re-transcribing burns an
+                            // OpenAI call and will always hallucinate again
 ])
 
 /**
@@ -110,10 +112,58 @@ async function fetchAsFile(url: string, filename: string, fallbackType: string) 
   return new File([arrayBuffer], filename, { type: contentType })
 }
 
+/**
+ * Transcripts Whisper emits when fed silence. It hallucinates stock phrases
+ * rather than returning nothing, so an empty-text check alone does not catch a
+ * silent recording — this is how "you" ended up stored as consumer feedback,
+ * exported to CSV, and scored for sentiment.
+ *
+ * Matched case-insensitively after stripping punctuation.
+ */
+const WHISPER_SILENCE_HALLUCINATIONS = new Set([
+  'you',
+  'thank you',
+  'thanks',
+  'thanks for watching',
+  'thank you for watching',
+  'thank you very much',
+  'bye',
+  'okay',
+  'ok',
+  'so',
+  'the',
+  'yeah',
+  'mm',
+  'mhm',
+  'uh',
+  'um',
+  'subtitles by the amaraorg community',
+  'please subscribe',
+])
+
+/**
+ * Bits-per-second below which an Opus stream is at the DTX / comfort-noise
+ * floor — i.e. encoding silence. Real speech runs ~24-32 kbps; the four silent
+ * production recordings measured 1.7 kbps. 6 kbps leaves a wide margin so a
+ * genuinely quiet-but-real recording is never caught by this.
+ */
+const DTX_FLOOR_KBPS = 6
+
+function looksLikeSilenceHallucination(transcript: string): boolean {
+  const normalized = transcript
+    .toLowerCase()
+    .replace(/[.,!?;:'"()\[\]—–-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return WHISPER_SILENCE_HALLUCINATIONS.has(normalized)
+}
+
 async function transcribeAndNormalizeFromBlobUrl(params: {
   blobUrl: string
   filename: string
   fallbackType: string
+  /** Used to compute bitrate for the silence check; omit if unknown. */
+  durationMs?: number | null
 }): Promise<ProcessingResult> {
   try {
     const apiKey = requireOpenAIKey()
@@ -136,6 +186,27 @@ async function transcribeAndNormalizeFromBlobUrl(params: {
         ok: false,
         errorCode: 'empty_transcript',
         errorDetail: 'Transcription returned empty text',
+      }
+    }
+
+    // DEFENCE IN DEPTH — the client-side silence gate can be bypassed, fail, or
+    // simply not exist on an older browser, so never trust it alone. Requires
+    // BOTH signals before discarding: a known Whisper silence hallucination AND
+    // an encoded bitrate at the DTX floor. Either alone is not enough — a real
+    // user might genuinely say "thank you", and an unrelated quiet recording
+    // might sit low on bitrate. Only the combination means "silence that
+    // Whisper invented words for".
+    const durationSec = params.durationMs ? params.durationMs / 1000 : 0
+    const kbps = durationSec > 0 ? (mediaFile.size * 8) / durationSec / 1000 : null
+    if (kbps !== null && kbps < DTX_FLOOR_KBPS && looksLikeSilenceHallucination(transcriptText)) {
+      console.warn(
+        `[transcribe] Discarding hallucinated transcript ${JSON.stringify(transcriptText)} ` +
+        `— ${kbps.toFixed(1)}kbps is at the DTX floor (silent audio)`
+      )
+      return {
+        ok: false,
+        errorCode: 'silent_audio',
+        errorDetail: `Recording contains no audible speech (${kbps.toFixed(1)}kbps); transcript discarded as hallucination`,
       }
     }
 
@@ -390,6 +461,7 @@ export async function processPendingAudioFeedbackMedia(params?: { limit?: number
       blobUrl: media.storageKey,
       filename: 'voice.webm',
       fallbackType: 'audio/webm',
+      durationMs: media.durationMs,
     })
 
     if (!processed.ok) {
@@ -552,6 +624,7 @@ export async function processPendingVideoFeedbackMedia(params?: { limit?: number
       blobUrl: media.storageKey,
       filename: 'video.webm',
       fallbackType: 'video/webm',
+      durationMs: media.durationMs,
     })
 
     if (!processed.ok) {

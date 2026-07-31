@@ -12,6 +12,13 @@ import { Star, Mic, Square, RotateCcw } from 'lucide-react'
 import { submitSurveyResponse } from '@/server/surveys/responseService'
 import { trackSurveyStartAction, trackSurveyCompleteAction } from '@/app/survey/[surveyId]/actions'
 import type { Survey, SurveyQuestion } from '@/lib/survey-types'
+import AudioLevelMeter from '@/components/media/AudioLevelMeter'
+import {
+  createAudioLevelMonitor,
+  SILENT_RECORDING_MESSAGE,
+  SILENT_VIDEO_WARNING,
+  type AudioLevelMonitor,
+} from '@/lib/media/audioLevelMonitor'
 
 type SurveyResponseFormProps = {
   survey: Survey
@@ -33,6 +40,10 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
   const [consentAudio, setConsentAudio] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
+  const [levelMonitor, setLevelMonitor] = useState<AudioLevelMonitor | null>(null)
+  const [videoLevelMonitor, setVideoLevelMonitor] = useState<AudioLevelMonitor | null>(null)
+  /** Video recorded with no audible audio — warned about, not rejected. */
+  const [videoSilent, setVideoSilent] = useState(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [audioMimeType, setAudioMimeType] = useState<string | null>(null)
@@ -225,6 +236,7 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
 
   const resetVideo = () => {
     setVideoError(null)
+    setVideoSilent(false)
     setVideoBlob(null)
     setVideoMimeType(null)
     setVideoDurationMs(null)
@@ -282,6 +294,10 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       const mr = new MediaRecorder(stream, preferredAudioMimeType ? { mimeType: preferredAudioMimeType } : undefined)
       mediaRecorderRef.current = mr
       recordingStartRef.current = Date.now()
+      // Read-only tap for the live level meter + silence gate. Null when the
+      // browser can't measure — in that case we allow the recording through.
+      const monitor = createAudioLevelMonitor(stream)
+      setLevelMonitor(monitor)
 
       mr.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -295,6 +311,21 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       }
 
       mr.onstop = () => {
+        const silent = monitor?.isSilent() ?? false
+        monitor?.stop()
+        setLevelMonitor(null)
+
+        // Discard a take the mic never registered. Fails open when we couldn't
+        // measure (monitor null => silent false).
+        if (silent) {
+          setAudioError(SILENT_RECORDING_MESSAGE)
+          setAudioBlob(null)
+          setAudioUrl(null)
+          setAudioDurationMs(0)
+          recordingStartRef.current = null
+          return
+        }
+
         const mime = mr.mimeType || preferredAudioMimeType || 'audio/webm'
         const blob = new Blob(chunksRef.current, { type: mime })
         setAudioBlob(blob)
@@ -351,6 +382,10 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       const mr = new MediaRecorder(stream, preferredVideoMimeType ? { mimeType: preferredVideoMimeType } : undefined)
       videoRecorderRef.current = mr
       videoRecordingStartRef.current = Date.now()
+      // Video carries an audio track with the SAME failure mode — monitor it
+      // exactly like audio-only capture.
+      const monitor = createAudioLevelMonitor(stream)
+      setVideoLevelMonitor(monitor)
 
       mr.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -364,6 +399,15 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
       }
 
       mr.onstop = () => {
+        const silent = monitor?.isSilent() ?? false
+        monitor?.stop()
+        setVideoLevelMonitor(null)
+
+        // WARN, don't block — unlike audio-only, a silent video still carries
+        // its visual content, which is often the entire point (a defect,
+        // damaged packaging, how something looks). The clip is KEPT.
+        setVideoSilent(silent)
+
         const mime = mr.mimeType || preferredVideoMimeType || 'video/webm'
         const blob = new Blob(videoChunksRef.current, { type: mime })
         setVideoBlob(blob)
@@ -722,6 +766,8 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
                 )}
               </div>
 
+              <AudioLevelMeter monitor={levelMonitor} active={isRecording} />
+
               {audioUrl && (
                 <div className="space-y-2">
                   <audio controls src={audioUrl} className="w-full" />
@@ -803,6 +849,15 @@ export default function SurveyResponseForm({ survey }: SurveyResponseFormProps) 
                   </Button>
                 )}
               </div>
+
+              <AudioLevelMeter monitor={videoLevelMonitor} active={isRecordingVideo} />
+
+              {/* Non-blocking: the clip is kept and submittable. */}
+              {videoSilent && videoUrl && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                  <p className="text-xs text-amber-700 dark:text-amber-400">{SILENT_VIDEO_WARNING}</p>
+                </div>
+              )}
 
               {videoUrl && (
                 <div className="space-y-2">

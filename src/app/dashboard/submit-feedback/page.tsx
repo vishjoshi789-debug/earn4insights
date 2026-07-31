@@ -13,6 +13,13 @@ import {
 } from 'lucide-react'
 import ProductSearch from '@/components/product-search'
 import Link from 'next/link'
+import AudioLevelMeter from '@/components/media/AudioLevelMeter'
+import {
+  createAudioLevelMonitor,
+  SILENT_RECORDING_MESSAGE,
+  SILENT_VIDEO_WARNING,
+  type AudioLevelMonitor,
+} from '@/lib/media/audioLevelMonitor'
 import { useEmailVerification } from '@/components/EmailVerificationProvider'
 import { EmailVerificationContextBanner } from '@/components/EmailVerificationContextBanner'
 import { openEmailVerificationPrompt } from '@/lib/email-verification-prompt'
@@ -96,6 +103,10 @@ export default function SubmitFeedbackPage() {
 
   // Audio recording state
   const [isRecording, setIsRecording] = useState(false)
+  const [levelMonitor, setLevelMonitor] = useState<AudioLevelMonitor | null>(null)
+  const [videoLevelMonitor, setVideoLevelMonitor] = useState<AudioLevelMonitor | null>(null)
+  /** Video recorded with no audible audio — warned about, not rejected. */
+  const [videoSilent, setVideoSilent] = useState(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [recordingDuration, setRecordingDuration] = useState(0)
@@ -169,6 +180,10 @@ export default function SubmitFeedbackPage() {
           : 'audio/mp4'
 
       const recorder = new MediaRecorder(stream, { mimeType })
+      // Read-only tap for the live level meter + silence gate. Null when the
+      // browser can't measure — in that case we allow the recording through.
+      const monitor = createAudioLevelMonitor(stream)
+      setLevelMonitor(monitor)
       audioChunksRef.current = []
 
       recorder.ondataavailable = (e) => {
@@ -177,11 +192,25 @@ export default function SubmitFeedbackPage() {
 
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop())
+        const silent = monitor?.isSilent() ?? false
+        monitor?.stop()
+        setLevelMonitor(null)
+        setIsRecording(false)
+        if (timerRef.current) clearInterval(timerRef.current)
+
+        // Discard a take the mic never registered. Fails open when we couldn't
+        // measure (monitor null => silent false).
+        if (silent) {
+          setError(SILENT_RECORDING_MESSAGE)
+          setAudioBlob(null)
+          setAudioUrl(null)
+          setRecordingDuration(0)
+          return
+        }
+
         const blob = new Blob(audioChunksRef.current, { type: mimeType })
         setAudioBlob(blob)
         setAudioUrl(URL.createObjectURL(blob))
-        setIsRecording(false)
-        if (timerRef.current) clearInterval(timerRef.current)
       }
 
       recorder.start(1000)
@@ -240,6 +269,11 @@ export default function SubmitFeedbackPage() {
           : 'video/mp4'
 
       const recorder = new MediaRecorder(stream, { mimeType })
+      // Video carries an audio track with the SAME failure mode — a dead mic
+      // yields a normal-looking clip whose audio transcribes to Whisper's
+      // silence hallucination. Monitor it exactly like audio-only capture.
+      const monitor = createAudioLevelMonitor(stream)
+      setVideoLevelMonitor(monitor)
       videoChunksRef.current = []
 
       recorder.ondataavailable = (e) => {
@@ -249,6 +283,9 @@ export default function SubmitFeedbackPage() {
       recorder.onstop = () => {
         stream.getTracks().forEach(t => t.stop())
         videoStreamRef.current = null
+        const silent = monitor?.isSilent() ?? false
+        monitor?.stop()
+        setVideoLevelMonitor(null)
         const blob = new Blob(videoChunksRef.current, { type: mimeType })
 
         if (blob.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
@@ -257,6 +294,12 @@ export default function SubmitFeedbackPage() {
           if (videoTimerRef.current) clearInterval(videoTimerRef.current)
           return
         }
+
+        // WARN, don't block — unlike audio-only, a silent video still carries
+        // its visual content, which is often the entire point (a defect,
+        // damaged packaging, how something looks). The clip is KEPT and the
+        // user decides.
+        setVideoSilent(silent)
 
         setVideoBlob(blob)
         setVideoUrl(URL.createObjectURL(blob))
@@ -303,6 +346,7 @@ export default function SubmitFeedbackPage() {
     setVideoBlob(null)
     setVideoUrl(null)
     setVideoDuration(0)
+    setVideoSilent(false)
   }, [videoUrl])
 
   // Image handling
@@ -706,6 +750,7 @@ export default function SubmitFeedbackPage() {
                   </div>
                   <p className="text-lg font-mono font-semibold text-red-600">{formatTime(recordingDuration)}</p>
                   <p className="text-sm text-muted-foreground">Recording... (max 2 min)</p>
+                  <AudioLevelMeter monitor={levelMonitor} active={isRecording} className="w-full max-w-xs" />
                   <Button type="button" variant="destructive" size="lg" onClick={stopRecording} className="gap-2">
                     <Square className="w-4 h-4" /> Stop Recording
                   </Button>
@@ -747,6 +792,15 @@ export default function SubmitFeedbackPage() {
                     <Video className="w-4 h-4" />
                     <span>{formatTime(videoDuration)} recorded</span>
                   </div>
+
+                  {/* Non-blocking: the clip is kept and submittable. */}
+                  {videoSilent && (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                      <MicOff className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-500" />
+                      <p className="text-xs text-amber-700 dark:text-amber-400">{SILENT_VIDEO_WARNING}</p>
+                    </div>
+                  )}
+
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={consentVideo} onChange={(e) => setConsentVideo(e.target.checked)} className="rounded" />
                     I consent to my video recording being stored and processed
@@ -764,6 +818,7 @@ export default function SubmitFeedbackPage() {
                     </div>
                   </div>
                   <p className="text-sm text-muted-foreground">Recording... (max {MAX_VIDEO_DURATION_S}s)</p>
+                  <AudioLevelMeter monitor={videoLevelMonitor} active={isRecordingVideo} className="w-full max-w-xs" />
                   <Button type="button" variant="destructive" size="lg" onClick={stopVideoRecording} className="gap-2">
                     <Square className="w-4 h-4" /> Stop Recording
                   </Button>

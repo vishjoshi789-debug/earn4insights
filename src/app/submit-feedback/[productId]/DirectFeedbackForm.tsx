@@ -11,6 +11,12 @@ import {
   Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera, Check, AlertTriangle
 } from 'lucide-react'
 import Link from 'next/link'
+import AudioLevelMeter from '@/components/media/AudioLevelMeter'
+import {
+  createAudioLevelMonitor,
+  SILENT_RECORDING_MESSAGE,
+  type AudioLevelMonitor,
+} from '@/lib/media/audioLevelMonitor'
 
 type FeedbackCategory = 'general' | 'bug' | 'feature-request' | 'praise' | 'complaint'
 
@@ -45,6 +51,7 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
 
   // Audio
   const [isRecording, setIsRecording] = useState(false)
+  const [levelMonitor, setLevelMonitor] = useState<AudioLevelMonitor | null>(null)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [recordingDuration, setRecordingDuration] = useState(0)
@@ -90,15 +97,33 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
         : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
 
       const recorder = new MediaRecorder(stream, { mimeType })
+      // Read-only tap for the live level meter + silence gate. Null when the
+      // browser can't measure — in that case we allow the recording through.
+      const monitor = createAudioLevelMonitor(stream)
+      setLevelMonitor(monitor)
       audioChunksRef.current = []
       recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop())
+        const silent = monitor?.isSilent() ?? false
+        monitor?.stop()
+        setLevelMonitor(null)
+        setIsRecording(false)
+        if (timerRef.current) clearInterval(timerRef.current)
+
+        // Discard a take the mic never registered. Fails open: if we couldn't
+        // measure (monitor null), `silent` is false and the take is kept.
+        if (silent) {
+          setError(SILENT_RECORDING_MESSAGE)
+          setAudioBlob(null)
+          setAudioUrl(null)
+          setRecordingDuration(0)
+          return
+        }
+
         const blob = new Blob(audioChunksRef.current, { type: mimeType })
         setAudioBlob(blob)
         setAudioUrl(URL.createObjectURL(blob))
-        setIsRecording(false)
-        if (timerRef.current) clearInterval(timerRef.current)
       }
       recorder.start(1000)
       mediaRecorderRef.current = recorder
@@ -395,6 +420,7 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
                       <MicOff className="w-10 h-10 text-red-600" />
                     </div>
                     <p className="text-lg font-mono font-semibold text-red-600">{formatTime(recordingDuration)}</p>
+                    <AudioLevelMeter monitor={levelMonitor} active={isRecording} className="w-full max-w-xs" />
                     <Button type="button" variant="destructive" size="lg" onClick={stopRecording} className="gap-2">
                       <Square className="w-4 h-4" /> Stop Recording
                     </Button>
