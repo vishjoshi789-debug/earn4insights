@@ -673,3 +673,25 @@ The address was on **Resend's suppression list**. Its mailbox had been over stor
 ### Unrelated inconsistency spotted
 
 `NEXT_PUBLIC_APP_URL = https://earn4insights.com` (no `www`), while `CLAUDE.md` §2 states production is **always** `www.`. Password-reset links are built from this var, so they currently hit a redirect. Harmless for a GET but worth aligning.
+
+---
+
+## ✅ Silence gate VERIFIED IN PRODUCTION (2026-08-02)
+
+Founder tested against `earn4insights.com` after clearing the Resend suppression that had blocked the password reset:
+
+- **Live level meter works** — moves with real mic input.
+- **Muted audio is rejected** — the silence gate fires and the take is discarded with the retry message.
+
+This closes the "not verified in a browser" caveat on `68bd1d3` for the **audio** path. The peak-`0.015` threshold and the fail-open behaviour are therefore confirmed working against a real microphone, not just typechecked.
+
+**Still unverified in a browser** (carried forward, do not mark done):
+- **Video WARN path** — that a silent video is *kept* with an amber warning rather than rejected. This is the asymmetry the founder specifically asked for, so it is the one most worth confirming.
+- **Blob proxy playback + seeking** — Range forwarding is new code that has never met a real player.
+- **Export click-to-download** — the data path, filters, escaping and security are all verified; the DOM download is not.
+
+### How the account was unblocked
+
+`vishweshwar@startupsgurukul.com` could not receive its password reset: the address was on **Resend's suppression list** after its mailbox went over storage and hard-bounced. Suppression does not lift itself once the mailbox is fixed — cleared via the Resend dashboard. A reset token was also minted directly (same scheme as `api/auth/forgot-password`: 32 random bytes, SHA-256 hash stored, 1h single use) to unblock testing while that was diagnosed.
+
+That incident is what surfaced the email delivery-visibility gap recorded above.
