@@ -639,3 +639,37 @@ Recorded again because it produced a **completely different symptom** this time 
 **Fix, both times:** delete `.next` and re-run. It's pure build cache.
 
 ⚠️ **The pattern to recognise: if generated output under `.next` looks structurally broken — truncated types, routes that compile then 404 — suspect the cache before suspecting source.** Contributing factor is low disk; `CLAUDE.md` §6 and the local-dev section above both record it. **Keep C: headroom above ~10 GB.**
+
+---
+
+## 📧 KNOWN GAP — we have NO visibility into email delivery failures (2026-08-02)
+
+Surfaced while debugging why password-reset emails never arrived for `vishweshwar@startupsgurukul.com`.
+
+### Root cause of that incident (resolved)
+
+The address was on **Resend's suppression list**. Its mailbox had been over storage and hard-bouncing, so Resend suppressed it to protect sending reputation — and **suppression does not lift itself** when the mailbox is fixed. Removed via the Resend dashboard → Suppressions.
+
+### ⚠️ The systemic gap this exposed — worth fixing before beta volume
+
+**A suppressed send returns HTTP 200 with an email id, and is then silently dropped.** Our code only checks Resend's `error` field, which is empty in that case. So:
+
+- `notification_queue` read **21 sent, 0 failed** while delivering nothing to that address
+- The forgot-password route returned its normal success message
+- Two reset tokens were minted (24 Jul, 31 Jul) and neither was ever used
+- Nothing anywhere recorded a problem
+
+**`status='sent'` in `notification_queue` means "Resend accepted the API call", NOT "delivered".** Bounces, suppressions and complaints are entirely invisible to us today.
+
+**Why this matters more than one password reset:** if a beta user's address gets suppressed, they silently stop receiving *everything* — points notifications, brand alerts, and **email verification, which per `CLAUDE.md` HARD-BLOCKS feedback submission (EV.1)**. That user simply cannot participate, neither they nor we get any signal, and they look like an inactive account.
+
+**Fix (not built):** a Resend webhook consuming `email.delivered` / `email.bounced` / `email.complained` and writing real delivery state back to `notification_queue`, plus surfacing suppressed recipients somewhere in admin. There is already a `SOCIAL_MENTION_WEBHOOK_SECRET` pattern to follow for signature verification.
+
+### Diagnostic notes for next time (both cost time here)
+
+1. 🔑 **The production `RESEND_API_KEY` is SENDING-SCOPED.** It returns **401 `restricted_api_key`** on `GET /domains` and `GET /emails/{id}` while `POST /emails` works fine. **A 401 on those endpoints does NOT mean the key is invalid** — this was misdiagnosed as a revoked key during this session. To test the key, attempt an actual send; to read delivery status, use the dashboard (the API key cannot).
+2. 📮 Verified working config, for reference: `EMAIL_FROM = Earn4Insights <support@earn4insights.com>`, domain `earn4insights.com` verified, key valid for send. A probe to that address returned `200 {"id":"292afccf-…"}`.
+
+### Unrelated inconsistency spotted
+
+`NEXT_PUBLIC_APP_URL = https://earn4insights.com` (no `www`), while `CLAUDE.md` §2 states production is **always** `www.`. Password-reset links are built from this var, so they currently hit a redirect. Harmless for a GET but worth aligning.
