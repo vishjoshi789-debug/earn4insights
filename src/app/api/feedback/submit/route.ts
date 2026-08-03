@@ -18,7 +18,6 @@ import {
 import { awardPoints, POINT_VALUES } from '@/server/pointsService'
 import { recordContribution } from '@/server/contributionPipeline'
 import { notifyPointsEarned, notifyWatchlistUpdate } from '@/server/consumerNotifications'
-import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 // ── Anti-fraud constants ──────────────────────────────────────
 const MAX_TEXT_LENGTH = 5000
@@ -390,14 +389,22 @@ export async function POST(request: Request) {
       console.error('[Feedback] Contribution pipeline failed (non-blocking):', err)
     }
 
-    // ── 13. Emit real-time event ───────────────────────────────
-    emit(PLATFORM_EVENTS.CONSUMER_FEEDBACK_SUBMITTED, {
-      actorId:     session.user.id,
-      productId,
-      productName: productName,
-      feedbackId:  created.id,
-      sentiment:   sentimentResult ?? undefined,
-    }).catch(() => {}) // fire-and-forget
+    // ── 13. Real-time notification to the brand ────────────────
+    // Deliberately NOT emitting CONSUMER_FEEDBACK_SUBMITTED here.
+    //
+    // Step 10 above already calls alertOnNewFeedback -> fireAlert, which emits
+    // BRAND_ALERT_FIRED -> dispatchToUsers (inbox + activity feed + Pusher +
+    // email). Emitting CONSUMER_FEEDBACK_SUBMITTED as well made BOTH chains
+    // target the product owner, so a brand received ~2 notifications and 2
+    // feed items per feedback — 3 when sentiment was negative, since that
+    // fires a second alert.
+    //
+    // fireAlert owns this because it is strictly richer: brand_alert_rules
+    // matching (global + per-product), ICP gating via minMatchScore,
+    // slack/whatsapp channels, and the brand_alerts row that powers
+    // /dashboard/alerts and its sidebar count badge. The plain eventBus path
+    // had no capability the alert path lacks — only better copy and a more
+    // specific CTA, both of which now flow through fireAlert's payload.
 
     return NextResponse.json({
       success: true,

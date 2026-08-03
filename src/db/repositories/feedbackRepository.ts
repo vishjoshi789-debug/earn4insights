@@ -238,6 +238,34 @@ export async function getFeedbackStats(productId: string) {
 }
 
 /**
+ * Fetch a single feedback row's identity + ownership-relevant fields.
+ *
+ * Exists so routes can resolve feedback -> product before authorizing a
+ * mutation; returns only what an ownership check needs, not the consumer's
+ * text or contact details.
+ */
+export async function getFeedbackById(
+  feedbackId: string
+): Promise<{ id: string; productId: string; status: string } | null> {
+  try {
+    const [row] = await db
+      .select({
+        id: feedback.id,
+        productId: feedback.productId,
+        status: feedback.status,
+      })
+      .from(feedback)
+      .where(eq(feedback.id, feedbackId as any))
+      .limit(1)
+
+    return row ?? null
+  } catch (err) {
+    console.error('[getFeedbackById] Error (denying access):', err)
+    return null
+  }
+}
+
+/**
  * Update feedback status (for brand review workflow)
  */
 export async function updateFeedbackStatus(

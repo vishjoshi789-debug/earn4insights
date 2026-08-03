@@ -442,9 +442,14 @@ async function routeEvent(
       await dispatchToUsers([brandTarget], {
         eventType,
         eventId,
-        title:  'Brand alert fired',
+        // Prefer the alert's own title/CTA. This path is the SOLE brand
+        // notification for new feedback (see the note in
+        // api/feedback/submit/route.ts §13), so a generic "Brand alert fired"
+        // pointing at /dashboard/alerts would be a downgrade from what the
+        // now-removed duplicate chain produced.
+        title:  (payload.title as string) || 'Brand alert fired',
         body:   `${payload.body as string ?? 'A new brand alert was triggered.'}`,
-        ctaUrl: '/dashboard/alerts',
+        ctaUrl: (payload.ctaUrl as string) || '/dashboard/alerts',
         type:   'brand_alert',
         entityType: payload.entityType as string | undefined,
         entityId:   payload.entityId as string | undefined,

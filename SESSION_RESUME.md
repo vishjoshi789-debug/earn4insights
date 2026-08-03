@@ -695,3 +695,44 @@ This closes the "not verified in a browser" caveat on `68bd1d3` for the **audio*
 `vishweshwar@startupsgurukul.com` could not receive its password reset: the address was on **Resend's suppression list** after its mailbox went over storage and hard-bounced. Suppression does not lift itself once the mailbox is fixed — cleared via the Resend dashboard. A reset token was also minted directly (same scheme as `api/auth/forgot-password`: 32 random bytes, SHA-256 hash stored, 1h single use) to unblock testing while that was diagnosed.
 
 That incident is what surfaced the email delivery-visibility gap recorded above.
+
+---
+
+## 🔔 Real-time loop: status-route IDOR closed + brand notification de-duplicated (2026-08-03)
+
+Two fixes off the real-time-loop trace (which found 3 of the 4 claimed steps genuinely built — see the gap analysis in that trace).
+
+### 1. `PATCH /api/dashboard/feedback/[id]/status` — live WRITE IDOR, closed
+
+Verified a session existed, then updated by id with **no ownership check** — any authenticated user could mark any brand's feedback `addressed`. Same class as the `61b31af`/`e939199` batches; this route was outside that audit's scope.
+
+Fixed with the established pattern: new `getFeedbackById()` in the repository (returns **only** id/productId/status — an ownership check has no business reading the consumer's text or contact details), then feedback → product → `owner_id`, admin bypass via `isAdminSession()`, **fail closed on a null owner**, **404 not 403** so feedback ids can't be enumerated.
+
+### 2. Duplicate brand notification — de-duplicated, Chain A owns it
+
+A brand received **~2 notifications and 2 activity-feed items per feedback** (3 when sentiment was negative). Two chains both targeted the product owner:
+
+- **Chain A** — `alertOnNewFeedback` → `fireAlert`: `brand_alert_rules` matching (global + per-product), **ICP gating** via `minMatchScore`, **slack/whatsapp** channels, the **`brand_alerts` row** powering `/dashboard/alerts` + its sidebar badge, a distinct `negative_feedback` alert, then emits `BRAND_ALERT_FIRED` → `dispatchToUsers`.
+- **Chain B** — `emit(CONSUMER_FEEDBACK_SUBMITTED)` → `getProductOwner` → the same `dispatchToUsers`. **No structural capability Chain A lacks** — only better copy and a more specific CTA.
+
+**Chain A kept.** ⚠️ **The dangerous alternative was dropping Chain A's dispatch instead** — `BRAND_ALERT_FIRED` serves **every** alert type (`frustration_spike`, `high_intent`, …), so that would have silenced all of them. Do not "simplify" the alert dispatch away.
+
+Chain B's two advantages were folded in rather than lost: `FireAlertInput` gained an optional **`ctaUrl`** threaded through the emit; the handler now prefers `payload.title` / `payload.ctaUrl`; `alertOnNewFeedback` points both alerts at `/dashboard/products/{id}/feedback` (where the brand acts) instead of the generic alerts page. `CONSUMER_FEEDBACK_SUBMITTED` had exactly one emitter, so removing it cost nothing; its handler remains for any future emitter.
+
+⚠️ **Behaviour change to be aware of:** new brand notifications now carry inbox `type='brand_alert'` instead of `'feedback_received'`. Existing rows keep the old type. **Caveat: I did not exhaustively search for code filtering the inbox on `type === 'feedback_received'`** — none was found, but treat that as "not found", not "does not exist".
+
+**Not verified end-to-end.** Typecheck proves it compiles, not that exactly one notification now arrives. `notification_inbox` currently holds `feedback_received × 2` and `brand_alert × 2` from production; a fresh submission should now produce **only** a `brand_alert` row — a clean checkable signal.
+
+---
+
+## 📋 FOLLOW-UP (not scoped) — `feedback.status='approved'`: the ingestion path accepts unvalidated status
+
+**The 18 rows are the symptom, not the defect.**
+
+Production holds **18 rows with `status='approved'`** and 5 with `new`. `approved` is **not** in `VALID_STATUSES` (`new | reviewed | addressed`). The PATCH route rejects it and `FeedbackStatusButton` can only send those three — so **no current app code path can write it**. `STATUS_CONFIG` has no `approved` key, so those rows fall back to displaying **"new" forever**, regardless of what a brand does.
+
+**The real defect: an ingestion path — most likely `/api/import/csv` or the webhook routes — almost certainly writes `status` straight through with no validation against `VALID_STATUSES`.** (Suspected, not yet confirmed — confirming it is part of the follow-up.)
+
+⏰ **TRIGGER — fix the ingestion validation BEFORE brands import at volume.** "Bring your own customer data" is the core beta wedge, so that path is about to be heavily exercised. **Backfilling before fixing the source just means it recurs**, at greater volume and mixed in with real data.
+
+Order of work when scoped: (1) confirm which ingestion path writes `status` and add validation/normalisation there; (2) *then* one idempotent `UPDATE feedback SET status='reviewed' WHERE status='approved'` — mapping `approved`→`reviewed` is the likely intent, worth a founder decision; (3) consider a DB-level CHECK constraint so the schema enforces the enum rather than relying on every writer.

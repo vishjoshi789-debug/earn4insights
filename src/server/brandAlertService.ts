@@ -56,6 +56,13 @@ interface FireAlertInput {
   title: string
   body: string
   payload?: Record<string, any>
+  /**
+   * Where the in-app notification should send the brand. Defaults to
+   * /dashboard/alerts. Set it when a more specific destination exists — e.g.
+   * new_feedback points at the product's feedback list, since that is where
+   * the brand actually acts on it.
+   */
+  ctaUrl?: string
   // Pre-computed snapshot from scoring engine (skips re-fetch when caller already has it)
   matchScoreSnapshot?: MatchScoreSnapshot
 }
@@ -164,6 +171,8 @@ export async function toggleAlertRule(ruleId: string, brandId: string, enabled: 
  */
 export async function fireAlert(input: FireAlertInput): Promise<BrandAlert | null> {
   const { brandId, alertType, productId, consumerId, title, body, payload } = input
+  // `input.ctaUrl` is read directly at the emit below rather than destructured,
+  // to keep this line stable against the existing callers.
 
   // Find matching rules (global rules for this alertType + product-specific rules)
   const rules = await db
@@ -331,6 +340,7 @@ export async function fireAlert(input: FireAlertInput): Promise<BrandAlert | nul
     consumerId: consumerId ?? undefined,
     title,
     body,
+    ctaUrl: input.ctaUrl,
   }).catch(() => {}) // never throw — alert is already written
 
   return alert
@@ -359,6 +369,9 @@ export async function alertOnNewFeedback(params: {
     consumerId,
     title: `New feedback on "${productName}"`,
     body: `${consumerName || 'A consumer'} left feedback: "${feedbackPreview.substring(0, 120)}${feedbackPreview.length > 120 ? '...' : ''}"`,
+    // Send the brand to the feedback list, not the generic alerts page —
+    // that's where they read and action it.
+    ctaUrl: `/dashboard/products/${productId}/feedback`,
     payload: { feedbackId, sentiment },
   })
 
@@ -371,6 +384,7 @@ export async function alertOnNewFeedback(params: {
       consumerId,
       title: `⚠️ Negative feedback on "${productName}"`,
       body: `${consumerName || 'A consumer'} left negative feedback: "${feedbackPreview.substring(0, 120)}${feedbackPreview.length > 120 ? '...' : ''}"`,
+      ctaUrl: `/dashboard/products/${productId}/feedback`,
       payload: { feedbackId, sentiment },
     })
   }
