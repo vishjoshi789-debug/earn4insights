@@ -960,3 +960,86 @@ In-app bell + Pusher fire sub-second. The email is queued and drained by
 `/api/cron/process-notifications`, scheduled **`0 6 * * *` (06:00 UTC daily)** in `vercel.json`.
 Trigger it manually with `Authorization: Bearer $CRON_SECRET` to test without waiting. Note the
 open delivery-visibility gap still applies: `sent` means Resend accepted the call, not delivered.
+
+### ✅ VERIFIED IN PRODUCTION — 2026-08-04 12:52 UTC
+
+Deployed as `1f22751` (Vercel auto-deploy on push). Columns applied via the **Neon console before
+the deploy** (Option A, the same zero-downtime path as 033) — the three bare
+`db.select().from(feedback)` sites would otherwise have 500'd between deploy and migration.
+`POST /api/admin/run-migration-034` was then re-run as a confirming no-op.
+
+Column definitions independently checked before testing — all three nullable, **no default**:
+
+| column | type | nullable | default |
+|---|---|---|---|
+| `resolution_notified_at` | `timestamp` | YES | none |
+| `resolution_note` | `text` | YES | none |
+| `user_id` | `text` | YES | none |
+
+⚠️ **The absent default on `resolution_notified_at` matters.** A `DEFAULT now()` would have marked
+all 23 existing rows already-notified and permanently suppressed the loop for every one of them,
+silently and irreversibly.
+
+Baseline before the test: `total=23 reachable=5 addressed=0 already_notified=0`.
+
+**Test:** feedback `a5644db9-7bd1-4ff5-9749-f3a244798519` ("it's great product which helps to
+acheive my goal step by step") on product *Step by step*, marked Addressed by the owning brand
+`vishweshwar98765@gmail.com`; author `vishweshwar@startupsgurukul.com`. Deliberately NOT tested on
+`19f1f02a…` — that row belongs to `pooranprasad@gmail.com`, the genuine external user from the
+Blob incident, and would have sent a real stranger a real email.
+
+**Every layer left exactly ONE trace, all within 130ms:**
+
+| layer | evidence |
+|---|---|
+| `feedback` | `status='addressed'`, `resolution_notified_at = 12:52:40.457` |
+| `notification_inbox` | 1 row, `type='feedback_addressed'`, title *"The brand acted on your feedback 🎉"*, `cta_url=/dashboard/my-feedback?highlight=a5644db9…`, **`is_read=true`** |
+| `notification_queue` | 1 row, `channel='email'`, `status='pending'` |
+| `realtime_events` | `target_entity_type='feedback'`, `target_entity_id=a5644db9…`, `processed_at` set |
+
+Confirmed by that evidence:
+- **Notify-once held** — one row in each table, not two.
+- **`is_read=true`** means the founder actually opened it: the bell item and the deep link work,
+  not just the DB write.
+- **`realtime_events` points at the FEEDBACK row**, not the product — the `resolveEntityType` /
+  `resolveEntityId` override landed. Without it the audit trail would have identified only which
+  product was involved, not which item was resolved.
+- **Email correctly `pending`** — `process-notifications` is a **daily `0 6 * * *` cron**, so the
+  email is queued, not sent. Not a failure; drain it manually with
+  `Authorization: Bearer $CRON_SECRET` when testing. ⚠️ And `sent` would still only mean Resend
+  accepted the call — the delivery-visibility gap is unchanged.
+
+**Not yet exercised** (all non-blocking):
+- the `addressed → new → addressed` toggle (the claim guard is proven by construction and by the
+  single row, but not by an actual second click)
+- the admin-bypass path — `feb710e7…` and `3e668c78…` sit on products with a NULL `owner_id`, so
+  no brand can reach them and only an admin can fire the loop there
+- the delivered email itself
+- B2's visible fix: the `vishweshwar981+brand@gmail.com` My Feedback page should now be **empty**
+  where it previously listed 18 strangers' feedback
+
+### PowerShell gotcha when calling admin routes
+
+`curl -X POST … -H "x-api-key: $ADMIN_API_KEY"` **fails in PowerShell 5.1** — `curl` is an alias for
+`Invoke-WebRequest`, which rejects `-X`/`-H`, and `$ADMIN_API_KEY` is bash syntax (PowerShell needs
+`$env:`). Either use `curl.exe` to bypass the alias, or go native:
+
+```powershell
+$key = ((Get-Content .env.local) -match '^ADMIN_API_KEY=')[0] -replace '^ADMIN_API_KEY=','' -replace '"',''
+$r = Invoke-RestMethod -Method Post -Uri 'https://www.earn4insights.com/api/admin/run-migration-034' -Headers @{'x-api-key'=$key}
+$r.results | Format-Table step,status,detail -AutoSize
+```
+
+### Checking whether a commit is actually deployed
+
+Vercel auto-deploys on push to `main`, so there is no deploy step to run — but confirming it is
+awkward because `vercel ls` needs a CLI login the local machine doesn't have. Probe instead:
+
+```bash
+curl -s -D - -o /dev/null -X POST -H "x-api-key: probe-invalid" \
+  https://www.earn4insights.com/api/admin/run-migration-NNN | grep -i "x-mw"
+```
+
+`X-Mw-Decision: redirect` = middleware blocked it (route missing from the allowlist, or not
+deployed). `X-Mw-Decision: continue` = the request reached the handler, so the code is live and the
+401 is just the route rejecting the bad key.
