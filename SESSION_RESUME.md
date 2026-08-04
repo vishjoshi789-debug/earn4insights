@@ -796,3 +796,42 @@ Three call sites do a **bare `db.select().from(feedback)`**, which Drizzle expan
 `api/user/export-data/route.ts:56` · `server/analytics/unifiedAnalyticsService.ts:458` · `server/dsarService.ts:283`
 
 So once the code deploys, those three **500 until the column exists**. The migration route itself ships *with* that code, so the safe sequence is either (a) apply the `ALTER TABLE` in the Neon console first, then deploy, leaving the route as an idempotent confirming no-op, or (b) deploy and run 033 immediately, accepting a brief window where DSAR export / unified analytics error. Option (a) has no window.
+
+### ✅ APPLIED 2026-08-04 via the **Neon console**, not the migration route (Option A)
+
+The ordering dependency above was resolved by taking **Option (a)**: the DDL + backfill were pasted
+into the Neon SQL editor **before** `ffe606b` deployed, so `feedback.user_id` existed the moment the
+new schema shipped and the three bare-`select` paths never had a window to 500.
+
+Applied, in order, with these results:
+
+| Statement | Result |
+|---|---|
+| `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS user_id TEXT` | column added |
+| provenance-aware `UPDATE … WHERE importSource IS NULL` | **UPDATE 5** ✅ |
+| `ADD CONSTRAINT fk_feedback_user … ON DELETE SET NULL` | created |
+| `CREATE INDEX … idx_feedback_user_id` (partial) | created |
+
+Verified: **total 23 · linked 5 · unlinked 18** — exactly the provenance split predicted above.
+The 5 organic rows are linked; the 18 imported rows are correctly left NULL rather than
+mis-attributed to the importing brand.
+
+⚠️ **So `POST /api/admin/run-migration-033` was NOT the applying mechanism.** A future session
+reading the migration index must not assume the route ran. Re-running it is still safe and still
+useful — every step is idempotent, the backfill is scoped `WHERE user_id IS NULL` so it reports
+`0 row(s) linked`, and step 5 re-prints the coverage line as an independent confirmation.
+
+### 🐛 Follow-on defect in `ffe606b` — migration routes need a MIDDLEWARE ALLOWLIST entry
+
+`ffe606b` added the route but not its path to `PUBLIC_API_ADMIN_PATHS` in `src/middleware.ts`.
+That set is a **deliberate exact allowlist** (from security batch B1–B9) so a new
+`run-migration-*` route is not silently public until someone adds it — correct policy, but it means
+**a missing entry makes the route unreachable**: middleware returns `401 {"error":"Unauthorized"}`
+*before* route resolution, for a correct `x-api-key` exactly as for a wrong one.
+
+That failure is **indistinguishable from a bad key**, which is what makes it worth writing down —
+the natural next move is to go re-check `ADMIN_API_KEY`, which is not the problem. Diagnostic that
+identifies it: probe a migration number that **doesn't exist** (e.g. `run-migration-034`). If that
+also returns `401` rather than `404`, the 401 is coming from middleware, not from the handler.
+
+**Rule: creating `run-migration-NNN` is a TWO-file change** — the route *and* the allowlist entry.
