@@ -114,6 +114,13 @@ export async function POST(request: Request) {
     }
     const userEmail = session.user.email
     const userName = session.user.name || null
+    // Migration 033 gave feedback a real FK to users. This is the ONLY path
+    // that can populate it going forward — the three import paths write
+    // third-party respondents who have no platform account, so they stay NULL
+    // by design. Without this line the column would be a permanent 5-row
+    // historical artefact and the resolution loop (notifying the consumer when
+    // a brand addresses their feedback) could never reach anyone new.
+    const userId = (session.user as { id?: string }).id || null
 
     // EV.1 hard-block — email must be verified to submit feedback.
     // Soft-nudge for everything else; gate at the financial / analytics
@@ -275,6 +282,7 @@ export async function POST(request: Request) {
         feedbackText: trimmedText,
         rating: rating || null,
         category: category || 'general',
+        userId, // from session — see note at derivation (migration 033 FK)
         userName, // from session
         userEmail, // from session
         status: 'new',

@@ -6,18 +6,35 @@ import { auth } from '@/lib/auth/auth.config'
 
 /**
  * GET /api/feedback/my
- * 
+ *
  * Fetch all feedback submitted by the currently logged-in user.
- * Matches by userEmail from session.
+ *
+ * ── MATCHES ON user_id, NEVER ON user_email ────────────────────────────────
+ * This previously matched `feedback.user_email = session.user.email`, which
+ * was a LIVE mis-attribution bug, not merely a fragile join:
+ *
+ *   `api/import/csv` used to fall back to `session.user.email` when a CSV had
+ *   no email column, so in production all 18 imported rows carry the IMPORTING
+ *   BRAND's address. That brand's "My Feedback" page therefore listed 18
+ *   pieces of third-party consumers' feedback as its own — other people's
+ *   words, ratings and sentiment, presented as theirs.
+ *
+ * `user_id` (migration 033) is the only trustworthy identity here: it is set
+ * from the session on submit and left NULL for imported rows precisely because
+ * those respondents are not platform users. Rows with a NULL user_id belong to
+ * nobody's "My Feedback" and must never be matched by any fallback.
+ *
+ * This is also the destination of the resolution-loop notification, so a wrong
+ * match here would send a consumer to a page showing someone else's feedback.
  */
 export async function GET() {
   try {
     const session = await auth()
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userEmail = session.user.email
+    const userId = session.user.id
 
     // Fetch feedback with product name via left join
     const results = await db
@@ -36,7 +53,7 @@ export async function GET() {
       })
       .from(feedback)
       .leftJoin(products, eq(feedback.productId, products.id))
-      .where(eq(feedback.userEmail, userEmail))
+      .where(eq(feedback.userId, userId))
       .orderBy(desc(feedback.createdAt))
       .limit(100)
 
@@ -50,7 +67,7 @@ export async function GET() {
         negativeCount: sql<number>`count(*) filter (where ${feedback.sentiment} = 'negative')`,
       })
       .from(feedback)
-      .where(eq(feedback.userEmail, userEmail))
+      .where(eq(feedback.userId, userId))
 
     const stats = statsResult[0] || {
       totalCount: 0,

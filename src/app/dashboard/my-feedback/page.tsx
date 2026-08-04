@@ -40,6 +40,7 @@ export default function MyFeedbackPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
+  const [highlightId, setHighlightId] = useState<string | null>(null)
 
   const filteredFeedback = useMemo(() => {
     if (!filterQuery.trim()) return feedbackList
@@ -56,6 +57,26 @@ export default function MyFeedbackPage() {
   useEffect(() => {
     fetchMyFeedback()
   }, [])
+
+  // Deep-link target for the resolution notification
+  // (/dashboard/my-feedback?highlight=<feedbackId>). Landing on a list and
+  // hunting for the item that changed undoes the point of the notification.
+  //
+  // Read from window.location rather than useSearchParams(): the latter forces
+  // this page under a Suspense boundary at build time, and there is nothing
+  // here worth restructuring the page for.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('highlight')
+    if (id) setHighlightId(id)
+  }, [])
+
+  // Scroll only once the list is rendered — on a cold load from an email the
+  // effect above runs long before the fetch resolves.
+  useEffect(() => {
+    if (!highlightId || loading) return
+    const el = document.getElementById(`feedback-${highlightId}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [highlightId, loading, feedbackList])
 
   const fetchMyFeedback = async () => {
     setLoading(true)
@@ -245,7 +266,15 @@ export default function MyFeedbackPage() {
       {filteredFeedback.length > 0 && (
         <div className="space-y-3">
           {filteredFeedback.map((item) => (
-            <Card key={item.id} className="hover:shadow-md transition-shadow">
+            <Card
+              key={item.id}
+              id={`feedback-${item.id}`}
+              className={`hover:shadow-md transition-shadow ${
+                highlightId === item.id
+                  ? 'ring-2 ring-primary border-primary/50 bg-primary/5'
+                  : ''
+              }`}
+            >
               <CardContent className="p-4 sm:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                   {/* Left: content */}

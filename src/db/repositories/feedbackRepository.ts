@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { feedback, feedbackMedia, products, surveyResponses } from '@/db/schema'
-import { eq, desc, and, sql, count, inArray, gte, lte, isNotNull } from 'drizzle-orm'
+import { eq, desc, and, sql, count, inArray, gte, lte, isNotNull, isNull } from 'drizzle-orm'
 
 export type FeedbackItem = {
   id: string
@@ -246,13 +246,25 @@ export async function getFeedbackStats(productId: string) {
  */
 export async function getFeedbackById(
   feedbackId: string
-): Promise<{ id: string; productId: string; status: string } | null> {
+): Promise<{
+  id: string
+  productId: string
+  status: string
+  userId: string | null
+  feedbackText: string
+} | null> {
   try {
     const [row] = await db
       .select({
         id: feedback.id,
         productId: feedback.productId,
         status: feedback.status,
+        // Added for the resolution loop. `userId` is the ONLY identity used to
+        // decide who to notify — never `userEmail`, which carries the
+        // importing brand's address on all imported rows. `feedbackText` is
+        // quoted back to the consumer in the email.
+        userId: feedback.userId,
+        feedbackText: feedback.feedbackText,
       })
       .from(feedback)
       .where(eq(feedback.id, feedbackId as any))
@@ -279,6 +291,41 @@ export async function updateFeedbackStatus(
     .returning()
 
   return updated
+}
+
+/**
+ * Claim the right to send the resolution notification for one feedback item.
+ *
+ * Returns true EXACTLY ONCE per feedback row, for the lifetime of the row.
+ *
+ * This is a conditional UPDATE rather than a read-then-write because the naive
+ * version races: two brand tabs, a double-click on the status dropdown, or a
+ * retried request all read `resolution_notified_at IS NULL` before either
+ * writes, and each then sends a notification. Postgres serialises the UPDATE,
+ * so exactly one caller sees a returned row.
+ *
+ * Same shape as the scheduled-launch cron guard
+ * (`WHERE launch_status = 'scheduled'`) — a concurrent runner gets nothing back
+ * and skips the side-effects rather than duplicating them.
+ *
+ * Consequence, which is the intended behaviour: a brand toggling
+ * addressed -> new -> addressed notifies the consumer once, not twice.
+ */
+export async function claimResolutionNotification(
+  feedbackId: string
+): Promise<boolean> {
+  const rows = await db
+    .update(feedback)
+    .set({ resolutionNotifiedAt: new Date() })
+    .where(
+      and(
+        eq(feedback.id, feedbackId),
+        isNull(feedback.resolutionNotifiedAt)
+      )
+    )
+    .returning({ id: feedback.id })
+
+  return rows.length > 0
 }
 
 export type MediaItem = {

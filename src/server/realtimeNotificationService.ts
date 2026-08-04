@@ -30,6 +30,35 @@ export interface DispatchPayload {
   // Email fallback fields
   emailSubject?: string
   emailBody?:    string
+
+  /**
+   * SERVICE-MESSAGE CARVE-OUT — set by ONE event type. Do not spread it.
+   *
+   * Step 2 below skips any consumer without `personalization` consent, which
+   * is right for the events that gate feeds them: product launches, discounts,
+   * ICP-matched suggestions — all of which target a consumer based on inferred
+   * traits. That is personalization, and a consumer who declined it should not
+   * receive them.
+   *
+   * `consumer.feedback.addressed` is categorically different. It reports the
+   * OUTCOME OF THE CONSUMER'S OWN SUBMISSION to the person who submitted it.
+   * There is no inference, no targeting and no audience — the recipient is
+   * determined solely by `feedback.user_id`. Under DPDP §7 that is service
+   * communication in performance of the exchange the consumer entered when
+   * they submitted feedback for reward points, not personalization.
+   *
+   * Without this flag, the most privacy-conscious consumers — exactly the ones
+   * who read the consent screen — would silently never learn a brand acted on
+   * their feedback, which is the whole product promise.
+   *
+   * ⚠️ FOUNDER-APPROVED and deliberately NARROW. The alternative considered and
+   * REJECTED was relaxing the global gate, which would have quietly reclassified
+   * every marketing event as service. Do not "consistency-fix" this by removing
+   * the flag, and do not set it on a new event without the same analysis: the
+   * test is whether the recipient is derived from their own prior act, or
+   * selected from an audience.
+   */
+  bypassPersonalizationConsent?: boolean
 }
 
 export interface DispatchResult {
@@ -75,7 +104,11 @@ export async function dispatchToUser(
   // ── Step 2: Consent check for personalization ────────────────────────
   // Consumers must have 'personalization' consent for us to target them.
   // Brands and admins are never consent-gated for notification delivery.
-  if (target.role === 'consumer') {
+  //
+  // Exception: service messages reporting the outcome of the consumer's own
+  // submission are not personalization — see the field docs on
+  // `bypassPersonalizationConsent`. Narrow by design; one event type sets it.
+  if (target.role === 'consumer' && !payload.bypassPersonalizationConsent) {
     const { allowed } = await checkConsent(target.userId, 'personalization')
     if (!allowed) {
       result.skippedConsent = true

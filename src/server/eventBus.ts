@@ -21,6 +21,7 @@ export const PLATFORM_EVENTS = {
   BRAND_ALERT_FIRED:             'brand.alert.fired',
   // Consumer
   CONSUMER_FEEDBACK_SUBMITTED:   'consumer.feedback.submitted',
+  CONSUMER_FEEDBACK_ADDRESSED:   'consumer.feedback.addressed',
   CONSUMER_SURVEY_COMPLETED:     'consumer.survey.completed',
   CONSUMER_PRODUCT_SEARCHED:     'consumer.product.searched',
   CONSUMER_REWARD_WITHDRAWN:     'consumer.reward.withdrawn',
@@ -80,6 +81,7 @@ export interface EventPayload {
   brandName?:    string
   consumerId?:   string
   consumerName?: string
+  feedbackId?:   string
   influencerId?: string
   mentionId?:    string
   mentionText?:  string
@@ -283,6 +285,66 @@ async function routeEvent(
         actorRole:  payload.actorRole,
         entityType: 'product',
         entityId:   payload.productId,
+      })
+      break
+    }
+
+    // ── Consumer: feedback ADDRESSED → notify the consumer who wrote it
+    //
+    // This closes the loop: submit -> brand notified -> brand acts -> the
+    // person who bothered to write it finds out. It is the only event on the
+    // platform that travels brand -> consumer about that consumer's own words.
+    //
+    // The caller (the status PATCH route) has already:
+    //   - confirmed the transition INTO 'addressed',
+    //   - claimed the notification via the conditional resolution_notified_at
+    //     update, so this runs at most once per feedback item, and
+    //   - resolved consumerId from feedback.user_id, never from user_email.
+    // So there is no identity work to redo here, only delivery.
+    case PLATFORM_EVENTS.CONSUMER_FEEDBACK_ADDRESSED: {
+      if (!payload.consumerId) break
+
+      const productName = (payload.productName as string) || 'a product you reviewed'
+      // Phase-2 slot (migration 034). `resolutionNote` is never populated in
+      // v1 — the copy is shaped so the brand's own words drop in ahead of the
+      // generic line without a rewrite when moderation is designed.
+      const note = (payload.resolutionNote as string) || null
+      const quoted = (payload.feedbackExcerpt as string) || null
+
+      await dispatchToUsers([{ userId: payload.consumerId, role: 'consumer' }], {
+        eventType,
+        eventId,
+        title: 'The brand acted on your feedback 🎉',
+        body: note
+          ? `${productName}: “${note}”`
+          : `${productName} marked your feedback as addressed. Your input helped shape what happens next.`,
+        ctaUrl: `/dashboard/my-feedback?highlight=${payload.feedbackId as string}`,
+        type: 'feedback_addressed',
+        actorId:    payload.actorId,
+        actorRole:  'brand',
+        entityType: 'feedback',
+        entityId:   payload.feedbackId as string,
+        metadata:   { productId: payload.productId, brandId: payload.brandId },
+
+        // SERVICE MESSAGE, not personalization — the recipient is derived
+        // solely from their own prior submission. See the field docs in
+        // realtimeNotificationService.ts. Founder-approved, deliberately narrow.
+        bypassPersonalizationConsent: true,
+
+        emailSubject: `Your feedback on ${productName} was addressed`,
+        // Quoting the consumer's own words back is most of the emotional
+        // payload — they wrote this weeks ago and will not remember it. The
+        // row is already in hand, so it costs nothing.
+        emailBody: [
+          `<p><strong>Good news — a brand acted on your feedback.</strong></p>`,
+          quoted
+            ? `<p>You told <strong>${productName}</strong>:</p><blockquote style="margin:12px 0;padding:8px 16px;border-left:3px solid #4F46E5;color:#444;">${quoted}</blockquote>`
+            : `<p>Your feedback on <strong>${productName}</strong> has been marked as addressed.</p>`,
+          note
+            ? `<p>They replied: “${note}”</p>`
+            : `<p>It has now been marked as addressed. Your input helped shape what happens next.</p>`,
+          `<p><a href="https://www.earn4insights.com/dashboard/my-feedback?highlight=${payload.feedbackId as string}">See your feedback →</a></p>`,
+        ].join('\n'),
       })
       break
     }
@@ -1004,6 +1066,13 @@ async function routeEvent(
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function resolveEntityType(eventType: string, payload: EventPayload): string | null {
+  // Feedback events that name a specific row point AT that row. Checked first
+  // because the generic rules below map anything mentioning feedback to
+  // 'product', which is right for feedback.submitted (the brand cares which
+  // product) but wrong for feedback.addressed (the audit trail should identify
+  // the individual item that was resolved). Gated on feedbackId so
+  // feedback.submitted, which carries none, keeps its existing behaviour.
+  if (eventType.includes('feedback') && payload.feedbackId) return 'feedback'
   if (eventType.startsWith('support.'))      return 'support_ticket'
   if (eventType.startsWith('payment.payout')) return 'payout'
   if (eventType.startsWith('payment.'))      return 'campaign'
@@ -1019,6 +1088,8 @@ function resolveEntityType(eventType: string, payload: EventPayload): string | n
 }
 
 function resolveEntityId(eventType: string, payload: EventPayload): string | null {
+  // Mirror of resolveEntityType — see the note there.
+  if (eventType.includes('feedback') && payload.feedbackId) return payload.feedbackId as string
   if (eventType.startsWith('support.'))      return (payload.ticketId as string) ?? null
   if (eventType.startsWith('payment.payout')) return (payload.payoutId as string) ?? null
   if (eventType.startsWith('payment.'))      return payload.campaignId ?? null

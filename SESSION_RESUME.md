@@ -835,3 +835,128 @@ identifies it: probe a migration number that **doesn't exist** (e.g. `run-migrat
 also returns `401` rather than `404`, the 401 is coming from middleware, not from the handler.
 
 **Rule: creating `run-migration-NNN` is a TWO-file change** — the route *and* the allowlist entry.
+
+---
+
+## 🔁 The resolution loop — step 4 of the "three-way connection" (2026-08-04)
+
+Closes the last missing leg of the core platform claim: consumer submits → brand notified
+in real time → brand acts → **the consumer finds out**. Steps 1–3 were built; step 4 had no
+event, no handler and no trigger — the status route updated the DB and returned.
+
+Migration 033 supplied the missing identity (`feedback.user_id`). Migration 034 supplies the
+delivery bookkeeping. New event `consumer.feedback.addressed`.
+
+### 🔴 B1 — the 033 FK was INERT: nothing populated `user_id` going forward
+
+`api/feedback/submit/route.ts` inserted `user_name` and `user_email` from the session but
+**not `user_id`**. 033 created the column and linked 5 historical rows; every *new*
+submission still landed NULL.
+
+So before this fix the loop would have reached **5 legacy rows and zero future ones**, and
+the coverage number could only ever go down as a proportion. The submit route is the ONLY
+path that can populate it — the three import paths write third-party respondents who have no
+platform account and stay NULL by design.
+
+**Lesson: adding a column + backfill is not the same as adding a column, backfill, AND the
+write path.** 033 was signed off on the backfill number without anyone checking that new rows
+would populate it.
+
+### 🔴 B2 — LIVE mis-attribution bug found and fixed (independent of this feature)
+
+`/api/feedback/my` resolved "my feedback" as `WHERE feedback.user_email = session.user.email`.
+
+Because `api/import/csv` used to fall back to `session.user.email` for CSVs with no email
+column, **all 18 imported production rows carry the importing brand's address**. Verified live:
+
+| email | rows | linked | imported | role |
+|---|---|---|---|---|
+| `vishweshwar981+brand@gmail.com` | **18** | 0 | 18 | **brand** |
+| `vishweshwar@startupsgurukul.com` | 4 | 4 | 0 | consumer |
+| `pooranprasad@gmail.com` | 1 | 1 | 0 | consumer |
+
+That brand account's **My Feedback page was listing 18 pieces of third-party consumers'
+feedback as its own** — other people's words, ratings and sentiment, presented as theirs.
+This was not a latent risk; it was rendering in production.
+
+Now matched on `user_id`, which also correctly empties that brand's page. This was found while
+tracing the loop's CTA target — a wrong match there would have sent a consumer to a page
+showing someone else's feedback — but it is **a bug fixed, not merely a prerequisite**.
+
+### ⚖️ FOUNDER-APPROVED consent carve-out — `bypassPersonalizationConsent`
+
+`dispatchToUser` skips any **consumer** without `personalization` consent. Correct for the
+events it normally gates (product launches, discounts, ICP-matched suggestions — all target a
+consumer by inferred traits). **Wrong for this one:** it reports the outcome of the consumer's
+OWN submission to the person who submitted it. No inference, no targeting, no audience — the
+recipient is `feedback.user_id` and nothing else. Under **DPDP §7** that is service
+communication in performance of the exchange the consumer entered when they submitted feedback
+for reward points.
+
+Without the carve-out, the most privacy-conscious consumers — the ones who actually read the
+consent screen — would silently never learn a brand acted on their feedback, which is the whole
+product promise.
+
+⚠️ **Deliberately NARROW. One event type sets it.** The rejected alternative was relaxing the
+global gate, which would have quietly reclassified every marketing event as service. **Do not
+"consistency-fix" this away, and do not set the flag on a new event without the same analysis.**
+The test: *is the recipient derived from their own prior act, or selected from an audience?*
+
+### Notify ONCE per feedback item — by conditional claim, not by reading `status`
+
+`claimResolutionNotification()` does:
+
+```sql
+UPDATE feedback SET resolution_notified_at = now()
+WHERE id = $1 AND resolution_notified_at IS NULL RETURNING id
+```
+
+and the route emits only if a row comes back. Reading `status <> 'addressed'` in app code
+**races** — two brand tabs, a double-click on the status dropdown, or a retry all read the
+pre-update value and each send. Same claim-by-conditional-update shape as the scheduled-launch
+cron guard (`WHERE launch_status = 'scheduled'`).
+
+Result: `addressed → new → addressed` notifies **once, forever**. `resolution_notified_at` is
+also the only durable answer to "was this consumer ever told?" — `notification_inbox` cannot
+answer it, since its rows carry `expires_at` and are not written at all when in-app is off.
+
+### Trigger: `addressed` only, and only the TRANSITION
+
+`reviewed` deliberately does not notify — it means someone read it, which is not an outcome,
+and `my-feedback` already shows that badge passively. Also: `FeedbackStatusButton` is a flat
+dropdown, so a natural `new → reviewed → addressed` would have fired twice for one act of
+attention.
+
+### Four deliberate SILENT SKIPS (each is normal, none is an error)
+
+1. status is not `addressed` · 2. previous status was already `addressed` ·
+3. `user_id IS NULL` (imported rows — **18 of 23 today**) ·
+4. `user_id === product.owner_id` (a brand's own feedback on its own product).
+
+⚠️ **A quiet loop is the expected result when testing against imported data.** Real reach today
+is 5 rows across 2 consumers.
+
+### Brand note — column shipped, feature deliberately NOT in v1
+
+`resolution_note` exists (034) and the copy has a slot for it, but **nothing writes it**. It
+would be the first user-generated content travelling **brand → consumer**, rendered in-app AND
+in email, and that needs a real moderation design rather than a textarea. Founder-approved as
+Phase 2; shipping the column now makes Phase 2 UI-only, no migration.
+
+### ⚠️ Notification preferences — enforced but UNREACHABLE. Not shipped.
+
+`dispatchToUser` genuinely consults `getPreference` before every channel, so a stored preference
+is honoured, and the new event type is in the `NotifiableEventType` union. **But no page in the
+app calls `/api/notifications/preferences`** — there is no settings UI for per-event controls.
+Every user is on the defaults (in-app ✓ / email ✓ / SMS ✗) with no way to change them.
+
+**Do not record "respects notification preferences" as a shipped capability.** It is true in the
+plumbing and unreachable in practice — precisely the kind of claim the v15 claims policy exists
+to stop.
+
+### ⏱️ Email is NOT immediate — `process-notifications` is a DAILY cron
+
+In-app bell + Pusher fire sub-second. The email is queued and drained by
+`/api/cron/process-notifications`, scheduled **`0 6 * * *` (06:00 UTC daily)** in `vercel.json`.
+Trigger it manually with `Authorization: Bearer $CRON_SECRET` to test without waiting. Note the
+open delivery-visibility gap still applies: `sent` means Resend accepted the call, not delivered.

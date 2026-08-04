@@ -319,6 +319,24 @@ export const feedback = pgTable('feedback', {
   status: text('status').default('new').notNull(), // 'new' | 'reviewed' | 'addressed'
   createdAt: timestamp('created_at').defaultNow().notNull(),
 
+  // Migration 034 — the resolution loop.
+  //
+  // `resolutionNotifiedAt` is the idempotence key for "notify the consumer
+  // once per feedback item, ever". NOT derivable from `status`: checking
+  // `status <> 'addressed'` in app code races (two tabs, a double-click, a
+  // retry). The status route claims the right to notify with a conditional
+  // UPDATE ... WHERE resolution_notified_at IS NULL RETURNING, and emits only
+  // if a row comes back. So addressed -> new -> addressed notifies once.
+  // It is also the only durable "was this consumer ever told?" record —
+  // notification_inbox rows expire and aren't written when in-app is off.
+  resolutionNotifiedAt: timestamp('resolution_notified_at'),
+
+  // Phase 2 slot — DELIBERATELY UNUSED IN V1. A brand's short note back to the
+  // consumer would be the first brand -> consumer user-generated content,
+  // shown in-app AND emailed, so it is held until moderation is designed
+  // properly. The notification copy already has a slot for it.
+  resolutionNote: text('resolution_note'),
+
   // Multimodal + multilingual foundations (Phase 0)
   modalityPrimary: text('modality_primary').default('text').notNull(), // 'text' | 'audio' | 'video' | 'mixed'
   processingStatus: text('processing_status').default('ready').notNull(), // 'ready' | 'processing' | 'failed'

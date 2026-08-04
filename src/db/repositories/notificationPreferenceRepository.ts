@@ -21,6 +21,7 @@ export type NotifiableEventType =
   | 'brand.alert.fired'
   // Consumer events
   | 'consumer.feedback.submitted'
+  | 'consumer.feedback.addressed'
   | 'consumer.survey.completed'
   | 'consumer.product.searched'
   | 'consumer.reward.withdrawn'
@@ -36,6 +37,16 @@ export type NotifiableEventType =
 /**
  * Default preference for any event type not explicitly set.
  * inApp=true, email=true, sms=false — mirrors the spec.
+ *
+ * ⚠️ KNOWN GAP — these preferences are enforced but UNREACHABLE.
+ * `dispatchToUser` genuinely consults `getPreference` before every channel, so
+ * a stored preference is honoured. But the only caller of `upsertPreference`
+ * is `/api/notifications/preferences`, and NO page in the app calls it — there
+ * is no settings UI for per-event notification controls. So every user is on
+ * these defaults with no way to change them.
+ *
+ * Do not record "respects notification preferences" as a shipped capability:
+ * it is true in the plumbing and unreachable in practice.
  */
 export const DEFAULT_EVENT_PREFERENCE = {
   inAppEnabled: true,
