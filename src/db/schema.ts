@@ -293,6 +293,23 @@ export const socialPosts = pgTable('social_posts', {
 export const feedback = pgTable('feedback', {
   id: uuid('id').defaultRandom().primaryKey(),
   productId: text('product_id').notNull(),
+
+  // Migration 033. NULLABLE BY DESIGN — never add NOT NULL. Imported and
+  // webhook-ingested feedback comes from third-party respondents who are not
+  // platform users, and import is the core beta wedge, so NULL is the dominant
+  // case rather than an edge case.
+  //
+  // ON DELETE SET NULL, deliberately deviating from migration 031's
+  // PII→CASCADE rule (founder-approved — see 033's header). CASCADE would
+  // destroy feedback a brand paid to collect on one consumer's erasure.
+  // ⚠️ The FK only severs the account link; `user_name`/`user_email` below are
+  // still PII and are scrubbed by the process-deletions cron. Both halves are
+  // required for erasure.
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+
+  // Denormalised, deliberately KEPT alongside user_id: imported rows have no
+  // other identity, and these are the only key from which user_id could ever
+  // be re-derived. Scrubbed on erasure rather than dropped.
   userName: text('user_name'),
   userEmail: text('user_email'),
   feedbackText: text('feedback_text').notNull(),

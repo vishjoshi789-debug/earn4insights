@@ -183,10 +183,27 @@ export async function POST(request: NextRequest) {
           feedbackText,
           rating: rating && rating >= 1 && rating <= 5 ? rating : null,
           userName: userName || 'CSV Import',
-          userEmail: userEmail || session.user.email || 'import@system',
+          // Only the respondent's OWN email from the CSV, or NULL.
+          //
+          // This previously fell back to `session.user.email` — the importing
+          // BRAND's address — which mis-attributed every emailless imported row
+          // to the brand itself (18 rows in production). That made the brand
+          // look like the author of third-party feedback on its own product,
+          // would have fed the brand's demographics into consumer segmentation,
+          // and made the row deletable by the brand's own erasure request.
+          // NULL is the truthful answer: these respondents are not platform
+          // users. It also keeps migration 033's user_id NULL for them, which
+          // is correct.
+          userEmail: userEmail || null,
           sentiment: sentimentResult.sentiment,
           category: category || 'general',
-          status: 'approved',
+          // Imported feedback has not been reviewed by the brand, so it starts
+          // at the front of the workflow like any other new feedback.
+          // Previously hardcoded 'approved', which is NOT in VALID_STATUSES
+          // (new | reviewed | addressed) — STATUS_CONFIG has no such key, so
+          // those rows rendered as "new" forever and a brand could not move
+          // them through the workflow.
+          status: 'new',
           multimodalMetadata: {
             importSource: 'csv',
             importJobId: job.id,

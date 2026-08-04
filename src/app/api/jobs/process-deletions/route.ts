@@ -88,12 +88,43 @@ async function processAccountDeletions(request: NextRequest) {
           continue
         }
 
-        // ── Tables NOT reachable by a users(id) FK — must delete manually ──
-        // feedback / survey_responses are keyed by userEmail (no user_id FK).
+        // ── Feedback: SCRUB the PII, retain the anonymised row ────────────
+        // Previously this hard-DELETEd every feedback row matching the user's
+        // email. Two problems:
+        //
+        //   1. It destroyed analytics a brand paid to collect, on one
+        //      consumer's erasure — the same reason migration 033 chose
+        //      ON DELETE SET NULL over 031's PII→CASCADE rule.
+        //   2. `user_email` on IMPORTED rows historically held the importing
+        //      BRAND's address (api/import/csv fell back to session.user.email
+        //      when a CSV had no email column). So deleting that brand deleted
+        //      third-party feedback that merely inherited their address — in
+        //      production that was 18 rows.
+        //
+        // Scrubbing is safe in both cases: it removes the PII (which is what
+        // erasure requires) without destroying content that isn't the erased
+        // user's to delete. Where the email was wrong, it removes a wrong
+        // email — strictly an improvement.
+        //
+        // `user_id` is NOT set here: migration 033's FK does it automatically
+        // via ON DELETE SET NULL when the users row is deleted below. Doing it
+        // by hand would also break if this deploys before 033 has run.
+        //
+        // ⚠️ This scrub is the OTHER HALF of erasure. The FK only severs the
+        // account link; without nulling these columns the consumer's name and
+        // email remain on the row in plain text and SET NULL is theatre.
         if (user.email) {
-          await db.delete(feedback).where(eq(feedback.userEmail, user.email))
+          await db
+            .update(feedback)
+            .set({ userName: null, userEmail: null })
+            .where(eq(feedback.userEmail, user.email))
+          console.log(`[CRON]   ✓ Scrubbed name/email from feedback (rows retained, anonymised)`)
+
+          // survey_responses keeps the existing hard-delete for now: unlike
+          // feedback it has no import path, and 66 of 69 production rows carry
+          // no email at all. Revisit if it ever gains an ingestion route.
           await db.delete(surveyResponses).where(eq(surveyResponses.userEmail, user.email))
-          console.log(`[CRON]   ✓ Deleted email-keyed feedback + survey responses`)
+          console.log(`[CRON]   ✓ Deleted email-keyed survey responses`)
         }
         // icp_match_scores is a denormalised cache (consumerId, intentionally FK-less).
         await db.delete(icpMatchScores).where(eq(icpMatchScores.consumerId, profile.id))

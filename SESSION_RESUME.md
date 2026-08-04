@@ -736,3 +736,63 @@ Production holds **18 rows with `status='approved'`** and 5 with `new`. `approve
 ⏰ **TRIGGER — fix the ingestion validation BEFORE brands import at volume.** "Bring your own customer data" is the core beta wedge, so that path is about to be heavily exercised. **Backfilling before fixing the source just means it recurs**, at greater volume and mixed in with real data.
 
 Order of work when scoped: (1) confirm which ingestion path writes `status` and add validation/normalisation there; (2) *then* one idempotent `UPDATE feedback SET status='reviewed' WHERE status='approved'` — mapping `approved`→`reviewed` is the likely intent, worth a founder decision; (3) consider a DB-level CHECK constraint so the schema enforces the enum rather than relying on every writer.
+
+---
+
+## 🔗 Migration 033 — `feedback.user_id` FK + the PII scrub + import corruption fixes (2026-08-04)
+
+The keystone change: `feedback` had no link to `users`, which simultaneously blocked GDPR erasure, demographic filtering, and the resolution loop.
+
+### 🔴 LIVE data-loss exposure found and closed (not hypothetical)
+
+While designing the FK policy, `process-deletions` turned out to be doing this:
+
+```ts
+await db.delete(feedback).where(eq(feedback.userEmail, user.email))
+```
+
+**A hard DELETE of every feedback row matching the deleted user's email.** That means the CASCADE danger raised in the FK discussion **was already live via this code path** — it did not need the FK to exist:
+
+- Deleting **any** consumer destroyed feedback a brand paid to collect, rather than anonymising it.
+- Worse, `api/import/csv` fell back to `session.user.email` when a CSV had no email column, so **all 18 imported production rows carried the importing BRAND's address**. Deleting that brand account would have **deleted 18 rows of third-party feedback that merely inherited their email**.
+
+**Now closed** — replaced with a scrub (`userName`/`userEmail` → NULL), which is safe in both cases: where the email was wrong it removes a wrong email, and it never destroys content that isn't the erased user's to delete. `user_id` is deliberately NOT set here — 033's `ON DELETE SET NULL` does it automatically, and doing it by hand would break if the code deployed before the migration ran.
+
+`survey_responses` keeps its hard-delete for now: no ingestion path, and 66 of 69 production rows carry no email at all. Revisit if it ever gains an import route.
+
+### ⚠️ `ON DELETE SET NULL` — FOUNDER-APPROVED deviation from migration 031
+
+031's triage says **PII → CASCADE**, and feedback text is consumer PII, so the rule points at CASCADE. **033 deliberately uses SET NULL instead. Do NOT "consistency-fix" this back.**
+
+Reason: feedback is analytics a brand paid for; CASCADE destroys it on one consumer's erasure. Precedent exists in 031 itself under *"analytics (retain anonymised)"* — `user_events.user_id`, `analytics_events.user_id`, `products.owner_id` are all SET NULL.
+
+⚠️ **SET NULL alone is NOT erasure** — `user_name`/`user_email` remain plain text on the row. The `process-deletions` scrub is the other half. **Both are required; neither is sufficient.**
+
+### Backfill is PROVENANCE-AWARE — the headline number was a trap
+
+A naive email join reported **"23/23 backfillable (100%)"**. That was **dangerous**: 18 of those 23 carry the importing brand's own email, so a plain backfill would have made the brand the author of third-party feedback on its own product, fed the brand's demographics into consumer segmentation, and (once the resolution loop ships) notified the brand that its own feedback was addressed.
+
+033 backfills **only** `WHERE multimodal_metadata->>'importSource' IS NULL`. Real coverage is **5 of 23 (~22%)** — and that is the honest number. Imported rows stay NULL because those respondents genuinely are not platform users.
+
+✅ **Verification signal when running 033:** the route returns a coverage line. It must read **`linked=5 imported=18`**. If it reads `linked=23`, the provenance filter failed and mis-attribution happened — stop.
+
+**NEVER add NOT NULL to `user_id`.** Import is the core beta wedge, so NULL is the dominant case, not an edge case.
+
+### Import corruption — all THREE ingestion paths were writing bad data
+
+| Path | Was | Now |
+|---|---|---|
+| `import/csv` | `status:'approved'` (not in `VALID_STATUSES`), `userEmail` fell back to **`session.user.email`** | `status:'new'`, `userEmail: entry email or NULL` |
+| `import/webhook` | `status:'approved'`, synthetic `${source}@webhook.import` email, **no `importSource` at all** | `status:'new'`, NULL email, **`importSource` added** |
+| `import/webhook/v2` | `status:'approved'` | `status:'new'` |
+
+Fixing only `import/csv` would have left corruption flowing through the other two. **The missing `importSource` on webhook v1 was the essential catch — without it, webhook-ingested rows look organic to 033's provenance filter, so a respondent's email could be linked to an unrelated platform account that happens to share it.**
+
+`status='approved'` was never "unvalidated passthrough" as first suspected — it was a **hardcoded literal in our own code**, in all three paths. Those rows have no `STATUS_CONFIG` key so they rendered as "new" forever and could not be moved through the review workflow. `scripts/backfill-feedback-approved-status.ts` repairs them (`approved`→`new`), **to be run only after the ingestion fixes deploy**, or it recurs.
+
+### ⏱️ ORDERING DEPENDENCY — migration must precede the new code paths
+
+Three call sites do a **bare `db.select().from(feedback)`**, which Drizzle expands to every column in the schema, now including `user_id`:
+`api/user/export-data/route.ts:56` · `server/analytics/unifiedAnalyticsService.ts:458` · `server/dsarService.ts:283`
+
+So once the code deploys, those three **500 until the column exists**. The migration route itself ships *with* that code, so the safe sequence is either (a) apply the `ALTER TABLE` in the Neon console first, then deploy, leaving the route as an idempotent confirming no-op, or (b) deploy and run 033 immediately, accepting a brief window where DSAR export / unified analytics error. Option (a) has no window.

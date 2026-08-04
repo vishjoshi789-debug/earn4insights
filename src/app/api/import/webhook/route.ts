@@ -76,10 +76,24 @@ export async function POST(request: NextRequest) {
           feedbackText: text,
           rating: typeof entry.rating === 'number' ? Math.min(5, Math.max(1, entry.rating)) : null,
           userName: entry.author || `${source} Import`,
-          userEmail: entry.email || `${source}@webhook.import`,
+          // NULL rather than a synthetic `${source}@webhook.import` address:
+          // a fake email is not an identity, it pollutes any email-keyed
+          // lookup, and it would be scrubbed as if it were consumer PII.
+          userEmail: entry.email || null,
           sentiment: sentimentResult.sentiment,
           category: entry.category || source,
-          status: 'approved',
+          // Was 'approved' — not a member of VALID_STATUSES
+          // (new | reviewed | addressed), so such rows render as "new" forever
+          // and can't be moved through the brand's review workflow.
+          status: 'new',
+          // Provenance matters: migration 033 backfills user_id for ORGANIC
+          // rows only, keyed on this field. Without it, webhook-ingested rows
+          // look organic and a respondent's email could be linked to an
+          // unrelated platform account that happens to share it.
+          multimodalMetadata: {
+            importSource: source,
+            importedAt: new Date().toISOString(),
+          },
         })
 
         imported++

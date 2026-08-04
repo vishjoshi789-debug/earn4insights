@@ -238,7 +238,10 @@ export async function POST(request: NextRequest) {
           userEmail: entry.email || null,
           sentiment: sentimentResult.sentiment,
           category: entry.category || source,
-          status: 'approved',
+          // Was 'approved' — not a member of VALID_STATUSES
+          // (new | reviewed | addressed), so such rows render as "new" forever
+          // and can't be moved through the brand's review workflow.
+          status: 'new',
           modalityPrimary,
           processingStatus: hasMedia ? 'processing' : 'ready',
           multimodalMetadata: {
