@@ -42,11 +42,30 @@ function formatTimeAgo(timestamp: string): string {
   return 'just now'
 }
 
+/**
+ * Mock products are DEVELOPMENT FIXTURES and must never render in production.
+ *
+ * The mock branch of this page publishes fabricated reviews under invented
+ * human names (Alice Johnson, Bob Williams, …) with invented `Authenticity: N%`
+ * scores and fabricated social-mention engagement counts — on a route that is
+ * in the middleware public allowlist, so anonymous visitors and search engines
+ * could read all of it. It also renders <FeedbackForm>, a stub that alerts
+ * "Feedback submitted (mock)." and stores nothing, so a real visitor believed
+ * they had left feedback.
+ *
+ * That is the same class of problem as the false pricing claims cut in
+ * 92f7d7b: content presented as real that isn't. Blocked rather than deleted
+ * so local development keeps the fixtures.
+ */
+const MOCK_PRODUCTS_ENABLED = process.env.NODE_ENV !== 'production'
+
 export default async function PublicProductPage({ params }: PageProps) {
   const { id } = await params
 
-  // Try mock products first
-  const mockProduct = mockProducts.find((p) => p.id === id)
+  // Try mock products first — dev only, see above.
+  const mockProduct = MOCK_PRODUCTS_ENABLED
+    ? mockProducts.find((p) => p.id === id)
+    : undefined
 
   if (!mockProduct) {
     // Not a mock product — try DB

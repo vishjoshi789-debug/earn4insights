@@ -9,9 +9,14 @@ import { Badge } from '@/components/ui/badge'
 import {
   MessageSquare, Star, Send, CheckCircle,
   Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera,
-  Video, VideoOff, Shield, AlertTriangle, Info, Sparkles
+  Video, VideoOff, Shield, AlertTriangle, Info, Sparkles, Eye
 } from 'lucide-react'
 import ProductSearch from '@/components/product-search'
+import {
+  FEEDBACK_VISIBILITY_TITLE,
+  FEEDBACK_VISIBILITY_BODY,
+  FEEDBACK_VISIBILITY_SHORT,
+} from '@/lib/feedback/visibilityNotice'
 import Link from 'next/link'
 import AudioLevelMeter from '@/components/media/AudioLevelMeter'
 import {
@@ -639,6 +644,18 @@ export default function SubmitFeedbackPage() {
         </p>
       </div>
 
+      {/* Visibility disclosure — shown BEFORE the form, covering text as well
+          as media. This page previously said nothing at all about who reads a
+          submission, while the media checkboxes below named the brand; a
+          consumer typing text had no way to know where it went. */}
+      <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/40 border border-border">
+        <Eye className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+        <div className="text-sm">
+          <p className="font-semibold">{FEEDBACK_VISIBILITY_TITLE}</p>
+          <p className="text-muted-foreground mt-1">{FEEDBACK_VISIBILITY_BODY}</p>
+        </div>
+      </div>
+
       {/* Authenticity Notice */}
       <div className="flex items-start gap-3 p-4 rounded-lg bg-primary/5 border border-primary/20">
         <Shield className="w-5 h-5 text-primary shrink-0 mt-0.5" />
@@ -985,6 +1002,7 @@ export default function SubmitFeedbackPage() {
         </Button>
 
         <p className="text-xs text-muted-foreground text-center">
+          {FEEDBACK_VISIBILITY_SHORT}{' '}
           By submitting, you confirm this is genuine feedback based on your real experience.
           Spam, duplicate, or fake submissions may result in point deductions.
           You&apos;ll earn reward points for quality feedback!

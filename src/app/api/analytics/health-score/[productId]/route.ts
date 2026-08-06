@@ -21,7 +21,12 @@ export async function GET(
 
     return NextResponse.json(result, {
       headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+        // Authenticated response — must not sit in a shared/CDN cache.
+        // The body is aggregate-only (score, grade, trend, weighted
+        // breakdown, counts) and carries no verbatim consumer text, so this
+        // is defence in depth rather than a fix for a known leak. Matched to
+        // the public-summary route so the two can't drift.
+        'Cache-Control': 'private, no-store',
       },
     })
   } catch (error) {

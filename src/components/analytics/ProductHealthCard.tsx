@@ -22,6 +22,15 @@ type SummaryData = {
   overallSentiment: { positive: number; negative: number; neutral: number; score: number }
   recentHighlights: string[]
   totalFeedbackCount: number
+  /**
+   * Set by the API from the caller's relationship to the product. 'public'
+   * means every verbatim field has already been stripped SERVER-SIDE — this
+   * flag only drives labelling. Never use it to decide what to hide: the data
+   * simply isn't in the payload.
+   */
+  viewerScope: 'owner' | 'public'
+  /** Aggregates withheld because the cohort is under MIN_COHORT_SIZE. */
+  suppressedForCohortSize: boolean
 }
 
 export function ProductHealthCard({ productId }: { productId: string }) {
@@ -119,14 +128,25 @@ export function ProductHealthCard({ productId }: { productId: string }) {
         </CardContent>
       </Card>
 
-      {/* AI Summary Card */}
-      {summary && summary.totalFeedbackCount > 0 && (
+      {/* AI Summary Card.
+          Suppressed entirely when the cohort is under the privacy floor —
+          the payload is empty in that case, so a card would show three zeros
+          and read as "no feedback" rather than "withheld". */}
+      {summary && summary.totalFeedbackCount > 0 && !summary.suppressedForCohortSize && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Sparkles className="h-5 w-5 text-purple-500" />
               AI Feedback Summary
             </CardTitle>
+            {summary.viewerScope === 'public' && (
+              // Say what this view is. Without it a competing brand sees a
+              // thinner card and assumes the product has little feedback,
+              // rather than understanding that quotes are private to the brand.
+              <p className="text-xs text-muted-foreground pt-1">
+                Aggregate view — individual feedback is private to the product&apos;s brand.
+              </p>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Sentiment Overview */}

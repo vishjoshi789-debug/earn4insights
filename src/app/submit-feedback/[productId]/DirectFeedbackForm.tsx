@@ -8,9 +8,14 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   MessageSquare, Star, Send, CheckCircle, ArrowLeft,
-  Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera, Check, AlertTriangle
+  Mic, MicOff, Square, Image as ImageIcon, X, Loader2, Camera, Check, AlertTriangle, Eye
 } from 'lucide-react'
 import Link from 'next/link'
+import {
+  FEEDBACK_VISIBILITY_TITLE,
+  FEEDBACK_VISIBILITY_BODY,
+  FEEDBACK_VISIBILITY_SHORT,
+} from '@/lib/feedback/visibilityNotice'
 import AudioLevelMeter from '@/components/media/AudioLevelMeter'
 import {
   createAudioLevelMonitor,
@@ -339,6 +344,16 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
           </div>
         </div>
 
+        {/* Visibility disclosure — before the form, covering text as well as
+            media. One shared source with the other submission surfaces. */}
+        <div className="mb-6 flex items-start gap-3 p-4 rounded-lg bg-muted/40 border border-border">
+          <Eye className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold">{FEEDBACK_VISIBILITY_TITLE}</p>
+            <p className="text-muted-foreground mt-1">{FEEDBACK_VISIBILITY_BODY}</p>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Rating */}
           <Card>
@@ -535,7 +550,7 @@ export default function DirectFeedbackForm({ preselectedProduct }: Props) {
           </Button>
 
           <p className="text-xs text-muted-foreground text-center">
-            By submitting, you agree that your feedback may be shared with the product&apos;s brand for improvement purposes.
+            {FEEDBACK_VISIBILITY_SHORT}
           </p>
         </form>
       </div>

@@ -21,20 +21,30 @@ export function FeedbackForm({ productId }: FeedbackFormProps) {
       text,
     });
 
-    alert("Feedback submitted (mock).");
+    // Explicitly says nothing was stored. The old text ("Feedback submitted
+    // (mock).") read as a successful submission to anyone who didn't know
+    // what "mock" meant in our codebase.
+    alert("Demo form — nothing was submitted or stored.");
     setText("");
     setRating(5);
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Transparency Info Box (GDPR Article 13) */}
-      <div className="p-3 bg-primary/10 border-l-4 border-primary/50 rounded text-sm text-foreground/80">
-        <p className="font-semibold text-foreground mb-1">💡 Why we&apos;re collecting feedback</p>
-        <ul className="text-xs text-muted-foreground space-y-0.5">
-          <li>• Improve personalized product recommendations</li>
-          <li>• Help other users discover quality products</li>
-        </ul>
+      {/* ⚠️ DEV-ONLY MOCK FORM — submits nothing. Reachable only from the mock
+          product pages, which are blocked in production
+          (public-products/[id]/page.tsx). Kept honest anyway so the false copy
+          can't be revived by a future copy/paste.
+
+          This box used to claim feedback would "Help other users discover
+          quality products", implying a public review site. It does not: raw
+          feedback goes to the product's brand and nobody else. That copy
+          contradicted the two real submission surfaces. */}
+      <div className="p-3 bg-amber-500/10 border-l-4 border-amber-500/50 rounded text-sm text-foreground/80">
+        <p className="font-semibold text-foreground mb-1">⚠️ Demo form — not a real submission</p>
+        <p className="text-xs text-muted-foreground">
+          This is sample data for development. Nothing you type here is stored or sent.
+        </p>
       </div>
 
       <div>

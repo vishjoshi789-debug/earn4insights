@@ -1043,3 +1043,126 @@ curl -s -D - -o /dev/null -X POST -H "x-api-key: probe-invalid" \
 `X-Mw-Decision: redirect` = middleware blocked it (route missing from the allowlist, or not
 deployed). `X-Mw-Decision: continue` = the request reached the handler, so the code is live and the
 401 is just the route rejecting the bad key.
+
+---
+
+## 🔒 The AI Feedback Summary leaked verbatim consumer feedback — found pre-pitch, closed (2026-08-06)
+
+Found while checking whether the positioning line *"feedback goes privately to the brand, not
+publicly like Amazon reviews"* was actually true before pitching it. It was **partially true**, and
+the false part was precisely the part a competitor cares about.
+
+### What was leaking
+
+`/api/analytics/public-summary/[productId]` had **no auth check** (its comment said *"Public route
+— no auth required"*), **no ownership check**, **no MIN_COHORT_SIZE floor**, and
+`Cache-Control: public, s-maxage=600`. `ProductHealthCard` mounted it **ungated** at
+`ProductOverview.tsx:99` — the shared catalog page every role browses.
+
+`generatePublicSummary()` returned verbatim consumer text in two fields: `recentHighlights`
+(100 chars × 3) and `example` on each of topPraise/topConcern/emergingIssue (120 chars).
+
+**Actual strings it was serving in production** — pulled from `extracted_themes` before the fix:
+
+> ⚠️ Top Concern — "Downtime issues" — 8 mentions
+> *"Earn4Insights downtime is getting frustrating. Third time this month."*
+
+> "Performance" — negative — 15 mentions
+> *"StartupsGurukul has been having issues lately. Support response time is slow."*
+
+> "Documentation" — negative — 6 mentions
+> *"Had a bad experience with StartupsGurukul integration. Documentation is lacking."*
+
+Readable by **any logged-in user for any product id** — a competing brand, any consumer, any
+influencer. And `/dashboard/products` lists every product (already logged in §11 as making ids
+enumerable), so nothing had to be guessed.
+
+### It broke three specific sentences of the published privacy policy
+
+| Policy text | Was | Now |
+|---|---|---|
+| brands receive insights "aggregated and anonymized" | ❌ verbatim excerpts | ✅ non-owners get zero verbatim |
+| shown "only above a minimum group size" | ❌ no floor on this path | ✅ MIN_COHORT_SIZE=5, twice |
+| content visible only to the brand it was submitted to | ❌ any logged-in user | ✅ owner/admin only |
+
+### The fix — viewer scope, not a 404
+
+`generatePublicSummary(productId, scope)` where `scope` **defaults to `'public'`**, so a caller
+that forgets to pass one leaks nothing.
+
+- **owner/admin** → aggregates **+** verbatim quotes + recentHighlights. The consumer submitted to
+  that brand; the brand reading their words is the interaction working as designed.
+- **everyone else** → theme NAME + mention count + sentiment counts + total. `example` is `null`,
+  `recentHighlights` is `[]`. **A theme name is an abstraction over many rows; a quote is one
+  identifiable person's words. That is the line.**
+
+⚠️ Deliberately **NOT** a 404 for non-owners, unlike the `/feedback` and `/themes` gates. The
+aggregate view is legitimate product information on a shared catalog page, so the payload degrades
+instead of the request failing. **The security property lives in the SCOPE, not the status code** —
+don't "consistency-fix" this into a 404 gate.
+
+`MIN_COHORT_SIZE` applies **twice** for non-owners: the whole summary is suppressed under 5 total
+(on a 2-row product, "1 negative" plus a date is one identifiable person), and per-theme, so a
+2-mention theme can't single out a small group. Owners are not floored — it's their own product's
+feedback.
+
+`Cache-Control` → `private, no-store`. **This was load-bearing:** the body now differs per caller,
+so the old `public, s-maxage=600` would have let a CDN cache an owner-scoped response (with quotes)
+and serve it to the next non-owner, defeating the gate entirely. `/api/analytics/health-score` got
+the same header — it's aggregate-only so there was no known leak, but it's an authenticated
+response and the two routes shouldn't drift.
+
+### Mock products were publicly serving fabricated reviews
+
+`/public-products/prod_001` and `prod_002` were **live, HTTP 200, in the middleware public
+allowlist** — anonymous visitors and crawlers could read invented reviews under invented human
+names (Alice Johnson, Bob Williams, Charlie Brown) with invented **`Authenticity: N%`** scores, plus
+fabricated social-mention engagement counts. The page also rendered a stub form that alerted
+*"Feedback submitted (mock)."* and stored nothing.
+
+No real consumer's privacy was affected — but it is content presented as real that isn't, the same
+class as the false pricing claims cut in `92f7d7b`. Now gated on `NODE_ENV !== 'production'`
+(blocked, not deleted, so local dev keeps the fixtures). The listing page empties in production
+too, or it would have rendered a public grid of cards that all 404. The demo form's copy was
+corrected regardless of reachability.
+
+### Consent copy reconciled to ONE source
+
+Three surfaces said three different things; one implied a public review site:
+
+| Surface | Was |
+|---|---|
+| `/dashboard/submit-feedback` | **silent on visibility entirely** |
+| `/submit-feedback` + `[productId]` | "may be shared with the product's brand" |
+| the mock form | "**Help other users discover quality products**" |
+
+Now all import `lib/feedback/visibilityNotice.ts`:
+
+> **Who sees your feedback** — Your feedback goes to this product's brand. They can see what you
+> wrote, your name, and any recordings or photos you attach. Everyone else on Earn4Insights sees
+> only anonymised aggregates — overall sentiment and common themes — never your words or your
+> identity.
+
+Every clause is checked against the code in that module's header. ⚠️ **If the summary scope ever
+changes, that text becomes a false claim** — under the §5 claims policy an unqualified statement in
+the submission flow is contractual, because the consumer relies on it when deciding what to write.
+
+**TEXT feedback is now covered for the first time** — it had no disclosure of any kind, despite
+being the most common submission type, while the media checkboxes named the brand. Shown as a
+prominent panel *before* the form rather than a fourth required checkbox: the media consents are
+separately revocable categories, whereas visibility applies to 100% of submissions and is notice,
+not a per-category choice. **Founder's call if they want it as a blocking checkbox instead.**
+
+### Still true after the fix — the honest residue
+
+- **Theme NAMES remain visible to non-owners** ("Downtime issues", "Documentation", 8 mentions).
+  That is the deliberate design and matches the policy's "aggregated" wording, but a theme name is
+  still derived from content. A competitor learns *that* a product has a documentation problem, not
+  what anyone said about it. **Founder-approved as the useful/safe split.**
+- **Any logged-in user can still read aggregates for any product id.** No per-product access
+  control on the aggregate view, by design.
+- **Health score is readable for any product by any logged-in user** — aggregate-only (score,
+  grade, trend, weighted breakdown, counts), no verbatim content, no cohort floor applied.
+- The **breach question does not arise**: leaked strings were feedback text without names or
+  emails, and no evidence exists of anyone having read a competitor's summary. Not a determination —
+  recording it as unassessed, same posture as the Blob incident's external-user question.

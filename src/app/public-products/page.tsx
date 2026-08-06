@@ -5,6 +5,14 @@ import Link from "next/link";
 import { mockProducts } from "@/lib/data";
 import { WatchButton } from "@/components/WatchButton";
 
+/**
+ * This listing links to the mock product pages, which are dev-only fixtures
+ * serving fabricated reviews (see public-products/[id]/page.tsx). Linking to
+ * them in production would produce a public grid of cards that all 404, so the
+ * listing is emptied there too. Kept in dev for the fixtures.
+ */
+const MOCK_PRODUCTS_ENABLED = process.env.NODE_ENV !== "production";
+
 const productImages: Record<string, string> = {
   'product-smartwatch': 'https://picsum.photos/seed/smartwatch/400/250',
   'product-headphones': 'https://picsum.photos/seed/headphones/400/250',
@@ -15,6 +23,8 @@ const productImages: Record<string, string> = {
 };
 
 export default function ProductsPage() {
+  const products = MOCK_PRODUCTS_ENABLED ? mockProducts : [];
+
   return (
     <main className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-12">
@@ -27,8 +37,22 @@ export default function ProductsPage() {
           <div className="mt-4 h-1 w-20 rounded-full bg-gradient-to-r from-primary to-secondary" />
         </div>
 
+        {products.length === 0 && (
+          <div className="rounded-xl border border-border bg-card p-10 text-center">
+            <p className="text-muted-foreground">
+              No products are listed here yet.
+            </p>
+            <Link
+              href="/top-products"
+              className="mt-4 inline-block text-sm font-medium text-primary hover:underline"
+            >
+              Browse top-rated products →
+            </Link>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockProducts.map((product) => {
+          {products.map((product) => {
             const imageUrl = productImages[product.imageId] || `https://picsum.photos/seed/${product.id}/400/250`;
             return (
               <Link
