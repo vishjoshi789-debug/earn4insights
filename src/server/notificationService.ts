@@ -5,6 +5,7 @@ import { eq, and, lte, gte } from 'drizzle-orm'
 import { Resend } from 'resend'
 import { logger } from '@/lib/logger'
 import { sendWhatsAppAlertMessage } from '@/server/whatsappNotifications'
+import { recordEmailSend, isEmailSuppressed } from '@/db/repositories/emailDeliveryRepository'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -159,11 +160,60 @@ async function sendEmail(notification: typeof notificationQueue.$inferSelect): P
     toEmail = user.email
   }
 
-  await resend.emails.send({
+  const subject = notification.subject || 'Notification from Earn4Insights'
+
+  // Refuse to send to a known-bad address (migration 035). Continuing to mail
+  // a hard-bounced or complained address degrades the sending domain's
+  // reputation for EVERY other user — that is how one bad address becomes
+  // platform-wide delivery failure. Recorded, not silently dropped, so the
+  // suppression is visible in email_deliveries rather than looking like a
+  // successful send.
+  if (await isEmailSuppressed(toEmail)) {
+    await recordEmailSend({
+      userId: notification.userId,
+      toEmail,
+      emailType: 'notification',
+      subject,
+      notificationQueueId: notification.id,
+      status: 'suppressed',
+      detail: 'address is on the suppression list',
+    })
+    console.warn(`[Notifications] Skipped suppressed address for notification ${notification.id}`)
+    return
+  }
+
+  const { data, error } = await resend.emails.send({
     from: process.env.EMAIL_FROM || 'Earn4Insights <notifications@earn4insights.com>',
     to: toEmail,
-    subject: notification.subject || 'Notification from Earn4Insights',
+    subject,
     html: notification.body
+  })
+
+  if (error) {
+    await recordEmailSend({
+      userId: notification.userId,
+      toEmail,
+      emailType: 'notification',
+      subject,
+      notificationQueueId: notification.id,
+      status: 'failed',
+      detail: String(error.message ?? error),
+    })
+    // Rethrow so the caller's retry/backoff logic still applies. Previously
+    // `error` was discarded entirely and the row was marked 'sent'.
+    throw new Error(`Resend error: ${error.message ?? String(error)}`)
+  }
+
+  // Store Resend's message id — this is the ONLY key the delivery webhook
+  // can correlate on. Without it, every webhook event is unmatched.
+  await recordEmailSend({
+    providerMessageId: data?.id ?? null,
+    userId: notification.userId,
+    toEmail,
+    emailType: 'notification',
+    subject,
+    notificationQueueId: notification.id,
+    status: 'accepted',
   })
 }
 

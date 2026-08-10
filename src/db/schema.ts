@@ -493,6 +493,65 @@ export const notificationQueue = pgTable('notification_queue', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ── Email delivery truth (migration 035) ──────────────────────────
+//
+// WHY THIS EXISTS: `notification_queue.status='sent'` only ever meant
+// "Resend accepted the API call". A suppressed or bouncing recipient returns
+// HTTP 200 and is dropped silently, so the queue read "23 sent, 0 failed"
+// with no way to tell delivery from silence. That matters most for the
+// VERIFICATION email, which is a hard block on feedback submission (EV.1):
+// a consumer who never receives it can never perform the core action and
+// looks merely inactive.
+//
+// These two tables are the only place real delivery state lives. They are
+// deliberately NOT columns on notification_queue, because the verification
+// and influencer-verification emails bypass the queue entirely and send
+// through Resend directly — the queue could never have covered them.
+
+export const emailDeliveries = pgTable('email_deliveries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+
+  // Resend's message id — the correlation key the webhook arrives with.
+  // Nullable: a send that throws before Resend responds still deserves a row.
+  providerMessageId: text('provider_message_id'),
+  provider: text('provider').default('resend').notNull(),
+
+  // Nullable — not every send has a platform user (imports, admin sends).
+  userId: text('user_id'),
+  toEmail: text('to_email').notNull(),
+
+  // 'verification' | 'notification' | 'influencer_verification' | …
+  // Lets us answer "are VERIFICATION emails landing?" separately from the
+  // general notification stream, which is the question that actually matters.
+  emailType: text('email_type').notNull(),
+  subject: text('subject'),
+
+  // Set when the send originated from the queue, so the two can be joined.
+  notificationQueueId: uuid('notification_queue_id'),
+
+  // 'accepted' → Resend took it (what we used to call 'sent')
+  // 'delivered' | 'bounced' | 'complained' | 'delayed' → from the webhook
+  // 'suppressed' → we refused to send; the address is on the suppression list
+  // 'failed'    → the send call itself threw
+  status: text('status').default('accepted').notNull(),
+  detail: text('detail'),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Addresses we must stop emailing. A hard bounce means the mailbox does not
+// exist; a complaint means the human pressed "spam". Continuing to send to
+// either poisons the sending domain's reputation for EVERY other user, which
+// is how one bad address turns into platform-wide delivery failure.
+export const emailSuppressions = pgTable('email_suppressions', {
+  email: text('email').primaryKey(), // stored lowercased + trimmed
+  reason: text('reason').notNull(),  // 'bounced' | 'complained' | 'manual'
+  detail: text('detail'),
+  firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+  lastEventAt: timestamp('last_event_at').defaultNow().notNull(),
+})
+
 // ══════════════════════════════════════════════════════════════════
 // SECTION 6: ANALYTICS, AUDIT & SEND-TIME OPTIMIZATION
 // ══════════════════════════════════════════════════════════════════

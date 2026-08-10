@@ -97,6 +97,7 @@ const PUBLIC_API_ADMIN_PATHS = new Set<string>([
   '/api/admin/run-migration-032',
   '/api/admin/run-migration-033',
   '/api/admin/run-migration-034',
+  '/api/admin/run-migration-035',
 ])
 
 // Next.js build-generated metadata routes (no file extension in the path) +

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { Resend } from 'resend'
+import { recordEmailSend, isEmailSuppressed } from '@/db/repositories/emailDeliveryRepository'
 
 import {
   buildVerificationAutoApprovedHTML,
@@ -70,8 +71,22 @@ async function send(opts: {
     console.warn(`[VerificationEmail/${opts.contextTag}] Resend not configured — skipping send to`, maskEmail(opts.to))
     return
   }
+  // Known-bad address: don't send, but DO record, so a stuck influencer is
+  // visible rather than silently missing their verification correspondence.
+  if (await isEmailSuppressed(opts.to)) {
+    await recordEmailSend({
+      toEmail: opts.to,
+      emailType: 'influencer_verification',
+      subject: opts.subject,
+      status: 'suppressed',
+      detail: `${opts.contextTag}: address is on the suppression list`,
+    })
+    console.warn(`[VerificationEmail/${opts.contextTag}] Skipped suppressed address`, maskEmail(opts.to))
+    return
+  }
+
   try {
-    const { error } = await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: process.env.EMAIL_FROM || 'Earn4Insights <notifications@earn4insights.com>',
       to: opts.to,
       subject: opts.subject,
@@ -79,9 +94,33 @@ async function send(opts: {
     })
     if (error) {
       console.error(`[VerificationEmail/${opts.contextTag}] Resend error:`, error)
+      await recordEmailSend({
+        toEmail: opts.to,
+        emailType: 'influencer_verification',
+        subject: opts.subject,
+        status: 'failed',
+        detail: `${opts.contextTag}: ${error.message ?? String(error)}`,
+      })
+      return
     }
+    // Correlation key for the delivery webhook.
+    await recordEmailSend({
+      providerMessageId: data?.id ?? null,
+      toEmail: opts.to,
+      emailType: 'influencer_verification',
+      subject: opts.subject,
+      status: 'accepted',
+      detail: opts.contextTag,
+    })
   } catch (err) {
     console.error(`[VerificationEmail/${opts.contextTag}] Send failed:`, err)
+    await recordEmailSend({
+      toEmail: opts.to,
+      emailType: 'influencer_verification',
+      subject: opts.subject,
+      status: 'failed',
+      detail: `${opts.contextTag}: ${err instanceof Error ? err.message : String(err)}`,
+    })
   }
 }
 

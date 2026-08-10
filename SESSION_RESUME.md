@@ -1166,3 +1166,123 @@ not a per-category choice. **Founder's call if they want it as a blocking checkb
 - The **breach question does not arise**: leaked strings were feedback text without names or
   emails, and no evidence exists of anyone having read a competitor's summary. Not a determination —
   recording it as unassessed, same posture as the Blob incident's external-user question.
+
+---
+
+## 📧 Email delivery truth — migration 035 + the Resend webhook (2026-08-10)
+
+**Item 1 of 5 in the "real users are arriving" wave.** The gap logged on 2026-08-02 as a
+known issue was re-assessed and promoted to blocking: with zero users it was a metrics-quality
+problem; with real consumers onboarding it is a **silent onboarding-failure machine**.
+
+### Why it blocks users, not just metrics
+
+`notification_queue.status='sent'` only ever meant *Resend accepted the API call*. A suppressed
+recipient returns **HTTP 200** and is dropped silently. Because email verification is a **HARD
+BLOCK on feedback submission** (EV.1), the chain is:
+
+> suppressed address → verification mail never lands → user cannot verify → user cannot submit
+> feedback → user looks merely inactive to us → we never find out.
+
+### 🔎 Diagnostic first — can Resend tell us who we've already lost? **NO.**
+
+Probed every read endpoint with the production key:
+
+| endpoint | result |
+|---|---|
+| `GET /domains` | 401 `restricted_api_key` |
+| `GET /emails` | 401 `restricted_api_key` |
+| `GET /api-keys` | 401 |
+| `GET /audiences` | 401 |
+
+*"This API key is restricted to only send emails."* ⚠️ **Expected — this does NOT mean the key is
+dead.** `POST /emails` works. But it means **historical bounce data cannot be recovered
+programmatically**. The only sources are (a) the Resend dashboard → Emails/Logs, read by a human,
+or (b) a new full-access key, which does not exist yet.
+
+**`email_deliveries` therefore starts empty and fills from the webhook forward. There is no backfill.**
+
+### What our own data showed (2026-08-10)
+
+- `notification_queue`: **23 email rows, all `sent`, zero `failed`** — the textbook symptom.
+- **18 of 29 users unverified.** brand 6/15 verified · influencer 1/7 · consumer 4/5 · admin 0/2.
+- Real external accounts unverified: `waleharshit@gmail.com` (brand, 08-02),
+  `atharv.bhute18@gmail.com` (influencer, 08-01), `sanketsable51@gmail.com` (consumer, 08-01),
+  `vikas.khude@gmail.com` (brand, 07-15), `atharva@invsel.in` (brand, 07-07).
+- **Clearest single case:** `waleharshit@gmail.com` had a token **issued 08-02 and never used** —
+  didn't arrive, or arrived and ignored, and *that distinction is exactly what we could not make.*
+- ✅ **Counter-evidence the domain is not broken:** `info@neptonhq.com` was issued a token on
+  08-03 and **used it**. Delivery works for at least some recipients.
+
+⚠️ **Caveat: only 4 users have ANY verification-token row.** A daily cron deletes expired tokens,
+so **absence of a token row is not evidence that no email was sent.** History can't be
+reconstructed from this table either.
+
+### What shipped
+
+**Migration 035 — two tables, additive, idempotent.**
+
+- **`email_deliveries`** — one row per send, keyed on Resend's `provider_message_id` (partial
+  UNIQUE, since Resend can redeliver events). Statuses: `accepted` (what `sent` used to mean) ·
+  `delivered` · `bounced` · `complained` · `delayed` · `suppressed` · `failed`.
+- **`email_suppressions`** — bounced/complained addresses, PK on lowercased email, idempotent
+  upsert that preserves `first_seen_at` so "how long has this been broken?" stays answerable.
+
+⚠️ **Deliberately NOT columns on `notification_queue`.** The verification email
+(`emailVerificationService`) and all six influencer-verification emails
+(`influencerVerificationEmailService`) call Resend **directly and never touch the queue** — so
+queue columns could never have covered the most important email on the platform. All **three**
+send paths now write to `email_deliveries`.
+
+**`/api/webhooks/resend`** — Svix signature verification written directly against `node:crypto`
+(~15 lines) rather than adding the `svix` package: a dependency in the request path of a public
+unauthenticated endpoint is a supply-chain surface we don't need. 5-minute replay window,
+constant-time compare, accepts any of several `v1,` signatures for secret rotation.
+
+⚠️ **Fails closed (503) when `RESEND_WEBHOOK_SECRET` is unset.** `/api/webhooks/` is already in
+`PUBLIC_PREFIXES` *and* `CSRF_EXEMPT_PREFIXES`, so **this route's signature check is its entire
+access control** — an unsigned version would let anyone suppress any address and cut off their
+email. No middleware change was needed, which is precisely why that's worth writing down.
+
+**Suppression is enforced, not just recorded.** All three senders check `isEmailSuppressed()`
+first. Recording a bounce and continuing to send is pointless — every further attempt degrades the
+sending domain's reputation for **every other user**, which is how one bad address becomes
+platform-wide delivery failure. Suppressed sends are **recorded with `status='suppressed'`, never
+silently dropped**, so a stuck user is visible.
+
+⚠️ **`isEmailSuppressed` FAILS OPEN by design** — on any error it returns false and we send. A
+suppression check that failed closed would silently block real users: the exact failure this
+feature exists to eliminate. Everything else in the repository is non-fatal too: observability
+breaking must never become the reason an email doesn't send.
+
+**Bug fixed in passing:** `sendEmail` destructured only nothing from `resend.emails.send()` and
+**discarded the `error` return entirely**, then the caller marked the row `sent`. A Resend-side
+rejection was recorded as a success. Now recorded and rethrown, so the existing retry/backoff
+actually applies.
+
+**Both hard and soft bounces suppress.** Resend doesn't reliably distinguish them in the payload,
+and the asymmetry is deliberate: over-suppression is recoverable (`unsuppressEmail`),
+under-suppression silently burns domain reputation.
+
+**`scripts/email-delivery-report.ts`** — the read side. Suppressed addresses, verification-email
+outcomes by type, and unverified users **cross-referenced against suppressions**, which is what
+finally separates "never received it" from "ignored it".
+
+### ⚙️ REQUIRED after deploy — the feature is inert until both are done
+
+1. **Resend dashboard → Webhooks → Add endpoint**
+   `https://www.earn4insights.com/api/webhooks/resend`
+   events: `email.delivered`, `email.bounced`, `email.complained`, `email.delivery_delayed`
+   (`email.sent` optional — we already record `accepted` at send time)
+2. **Set `RESEND_WEBHOOK_SECRET`** (`whsec_…`) in Vercel, Production scope, then redeploy.
+   ⚠️ Env changes only bind on a *fresh deploy after the save* — see the `CSRF_ENFORCE` gotcha.
+   Until it's set the route returns **503** and delivery state stays blind.
+
+### Open after this
+
+- **No admin UI** — visibility is the script plus direct SQL. Deliberate: a page was scope the
+  founder didn't ask for, and the script answers the question today.
+- **No historical backfill is possible** (send-only key). Pre-035 bounces exist only in the Resend
+  dashboard.
+- **Not yet verified end-to-end** — needs a real webhook delivery from Resend after setup. The
+  signature verification in particular has never met a real Svix payload.

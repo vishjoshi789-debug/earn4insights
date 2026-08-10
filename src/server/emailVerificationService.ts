@@ -7,6 +7,7 @@ import { and, eq, isNull, lt } from 'drizzle-orm'
 import { db } from '@/db'
 import { users, emailVerificationTokens, auditLog } from '@/db/schema'
 import { maskEmail } from '@/lib/logger'
+import { recordEmailSend, isEmailSuppressed } from '@/db/repositories/emailDeliveryRepository'
 import {
   buildVerificationEmailHTML,
   VERIFICATION_EMAIL_SUBJECT,
@@ -135,8 +136,31 @@ export async function sendVerificationEmail(params: {
   const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${plainToken}`
   const firstName = (name?.split(' ')[0] ?? '').trim() || 'there'
 
+  // ── Suppression check (migration 035) ─────────────────────────────────
+  // This is the most consequential email on the platform: verification is a
+  // HARD BLOCK on feedback submission (EV.1), so a user who never receives it
+  // can never perform the core action. If their address is already known-bad,
+  // sending again cannot help them and does harm the sending domain — but the
+  // attempt MUST be recorded, because "this user is stuck and here is why" is
+  // precisely the signal that did not exist before.
+  if (await isEmailSuppressed(email)) {
+    await recordEmailSend({
+      userId,
+      toEmail: email,
+      emailType: 'verification',
+      subject: VERIFICATION_EMAIL_SUBJECT,
+      status: 'suppressed',
+      detail: 'address is on the suppression list — user cannot verify, needs manual contact',
+    })
+    console.error(
+      `[EmailVerification] BLOCKED: ${email} is suppressed. This user cannot verify ` +
+      `and therefore cannot submit feedback until the address is fixed.`
+    )
+    return { ok: false, reason: 'email_suppressed' }
+  }
+
   try {
-    const { error } = await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: process.env.EMAIL_FROM || 'Earn4Insights <notifications@earn4insights.com>',
       to: email,
       subject: VERIFICATION_EMAIL_SUBJECT,
@@ -144,10 +168,37 @@ export async function sendVerificationEmail(params: {
     })
     if (error) {
       console.error('[EmailVerification] Resend error:', error)
+      await recordEmailSend({
+        userId,
+        toEmail: email,
+        emailType: 'verification',
+        subject: VERIFICATION_EMAIL_SUBJECT,
+        status: 'failed',
+        detail: String(error.message ?? error),
+      })
       return { ok: false, reason: 'resend_error' }
     }
+    // Correlation key for the delivery webhook. Previously the returned id
+    // was discarded, so there was no way to ever learn whether the single
+    // most important email on the platform actually arrived.
+    await recordEmailSend({
+      providerMessageId: data?.id ?? null,
+      userId,
+      toEmail: email,
+      emailType: 'verification',
+      subject: VERIFICATION_EMAIL_SUBJECT,
+      status: 'accepted',
+    })
   } catch (err) {
     console.error('[EmailVerification] Send failed:', err)
+    await recordEmailSend({
+      userId,
+      toEmail: email,
+      emailType: 'verification',
+      subject: VERIFICATION_EMAIL_SUBJECT,
+      status: 'failed',
+      detail: err instanceof Error ? err.message : String(err),
+    })
     return { ok: false, reason: 'send_failed' }
   }
 
