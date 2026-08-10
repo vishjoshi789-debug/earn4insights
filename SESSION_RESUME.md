@@ -1286,3 +1286,77 @@ finally separates "never received it" from "ignored it".
   dashboard.
 - **Not yet verified end-to-end** — needs a real webhook delivery from Resend after setup. The
   signature verification in particular has never met a real Svix payload.
+
+---
+
+## 🔔 Notification preferences — the UI, and two bugs it exposed (2026-08-10)
+
+**Item 2 of 5.** The controls were enforced in `dispatchToUser` from the day the real-time layer
+shipped, but **no page called the API**, so every user was pinned to the defaults
+(in-app ✓ / email ✓ / SMS ✗).
+
+**Why it pairs with item 1:** the only way a consumer could stop email was to press **spam** —
+which suppresses their address at Resend, silently breaks their *verification* email (a hard block
+on feedback submission), and degrades the sending domain for every other user. The missing opt-out
+was actively manufacturing the suppressions the new webhook now detects. It is also a **DPDP
+withdrawal-of-consent obligation** that was not being met with live users.
+
+### 🐛 Bug 1 — partial updates silently reinstated withdrawn consent
+
+`upsertPreference`'s conflict branch wrote `prefs.x ?? DEFAULT_EVENT_PREFERENCE.x` for **all three**
+fields, so any field the caller didn't mention was **reset to its default** rather than left alone:
+
+> turn email OFF → later toggle anything else → **email silently switches back ON**
+
+A withdrawn consent quietly reinstated — precisely the obligation this feature exists to meet. The
+bug survived because the function had **zero callers** until now. Fixed: the `set` object contains
+only the supplied keys. Defaults still apply on INSERT, where they're correct.
+
+### 🐛 Bug 2 — the API stored anything
+
+`POST` cast any incoming string to `NotifiableEventType` and wrote it. A typo produced a permanent
+row that `getPreference` would never match — so the user's choice did nothing while the UI reported
+success. Now validated against a runtime set, and the whole request is rejected rather than
+partially applied.
+
+The union also covered only **16 of ~40** event types — every payment, deal, community and support
+preference was untyped. Replaced with `NOTIFIABLE_EVENT_TYPES` (a `const` array; the type is derived
+from it) so one declaration serves both compile-time and runtime.
+
+⚠️ **Not imported from `PLATFORM_EVENTS`** despite being a duplicate list: `eventBus` imports
+repositories, so the reverse import closes a cycle. Keep them in sync by hand.
+
+### Design decisions worth keeping
+
+- **Categories, not ~40 raw event strings.** The table is keyed on exact event strings, but
+  `influencer.milestone.completed` is not a choice a human makes. Each category writes every event
+  it covers in **ONE request**, so a category can't end up half-applied if the tab closes.
+- **A category reads as ON only when EVERY event in it is on.** Mixed state renders as off, so one
+  flip re-syncs the group instead of leaving it ambiguous.
+- **NO SMS toggle.** `sendSMS` in `notificationService` is a stub that **throws**
+  (`'SMS not yet implemented'`). A switch would be a control that silently does nothing — the exact
+  false affordance the §5 claims policy exists to stop. Add it when SMS ships.
+- **Categories with no emitter are omitted.** `brand.member.active` and `brand.discount.created`
+  have handlers wired but nothing emits them (CLAUDE.md §11), so a toggle would govern
+  notifications that can never arrive.
+- **Optimistic updates with rollback on failure** — a settings switch that lags reads as broken,
+  but a switch that stays flipped after a failed save is a lie on screen.
+- **Email verification and password reset are deliberately NOT gated** by these preferences. Both
+  call Resend directly rather than going through `dispatchToUser`; otherwise an opted-out user
+  would be locked out of their own account. **The UI says so explicitly** — that sentence is a
+  claim, and it is true only while those two paths bypass `dispatchToUser`.
+
+### ⚠️ Schema drift found
+
+`notification_preferences` has `UNIQUE(user_id, event_type)` in the database (created by migration
+005) but **that constraint is not declared in `schema.ts`**. `onConflictDoUpdate` depends on it and
+works because Drizzle emits the target from the column list and Postgres resolves it against the
+real constraint. Harmless today; would bite anyone rebuilding the schema from `schema.ts` alone —
+including the fresh test environment in item 3.
+
+### Not verified
+
+Browser-untested (local login is still broken — item 3). Specifically unproven: the optimistic
+toggle + rollback path, and that a saved opt-out actually suppresses the next email end-to-end.
+The latter is worth one real check after deploy: turn off "When a brand acts on your feedback",
+re-fire the resolution loop, and confirm no row lands in `notification_queue`.

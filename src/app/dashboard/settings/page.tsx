@@ -18,6 +18,7 @@ import { apiPatch, apiPost } from '@/lib/api-client'
 import { SecuritySettingsCard } from '@/components/two-factor/SecuritySettingsCard'
 import { BecomeInfluencerCard } from '@/components/BecomeInfluencerCard'
 import { EmailVerificationCard } from '@/components/EmailVerificationCard'
+import { NotificationPreferencesCard } from '@/components/notifications/NotificationPreferencesCard'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -459,6 +460,15 @@ export default function NotificationSettingsPage() {
 
       {/* ── Security: Two-Factor Authentication (all users) ── */}
       <SecuritySettingsCard />
+
+      {/* ── Per-event notification preferences (all users) ──
+          These have been ENFORCED in dispatchToUser since the real-time layer
+          shipped, but nothing called the API, so every user was pinned to the
+          defaults. Without this card the only way a consumer could stop email
+          was to mark it as spam — which suppresses their address at Resend,
+          silently breaks their verification email, and degrades the sending
+          domain for everyone else. */}
+      <NotificationPreferencesCard />
 
       {/* ── WhatsApp (all users) — gated behind NEXT_PUBLIC_WHATSAPP_ENABLED ── */}
       {WHATSAPP_ENABLED && (
