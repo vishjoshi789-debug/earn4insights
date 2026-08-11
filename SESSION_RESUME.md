@@ -1360,3 +1360,93 @@ Browser-untested (local login is still broken — item 3). Specifically unproven
 toggle + rollback path, and that a saved opt-out actually suppresses the next email end-to-end.
 The latter is worth one real check after deploy: turn off "When a brand acts on your feedback",
 re-fire the resolution loop, and confirm no row lands in `notification_queue`.
+
+---
+
+## 🧪 Test environment groundwork — migration 036, env-check, local login (2026-08-10)
+
+**Item 3 of 5.** Mostly Vercel/Neon/Razorpay dashboard work, which is the founder's to do. What
+shipped is the code that makes that work **correct and verifiable** rather than assumed, plus the
+local-login fix.
+
+### 🔴 Hazard found while looking at `.env.local`
+
+Local dev points at the **production Neon database**, with **LIVE Razorpay keys** (`rzp_live_…`)
+and the live Resend key. **Local dev is not a sandbox — it is production with a different
+frontend.** That was survivable only because login didn't work; fixing login (below) removes the
+accident barrier. A click in local dev can now charge a real card, email a real person, or delete
+real data.
+
+**Point `.env.local` at the preview Neon branch and `rzp_test_` keys as soon as they exist.**
+
+### Local login — fixed
+
+`AUTH_URL` in `.env.local` was `https://earn4insights.com`. `trustHost: true` is set in both
+`auth.config.ts` and `auth.edge.ts`, so NextAuth would otherwise take the host from the request —
+but an explicit `AUTH_URL` **overrides** that, and an `https://` URL makes NextAuth mint `Secure`
+cookies, which a browser will not send over plain-HTTP localhost. Login was therefore impossible
+locally, which is the root cause of most of the **"not verified in a browser"** backlog
+(Blob proxy seeking, the export download path, the video WARN path, the summary scope fix, the
+notification-preference toggles).
+
+Now `AUTH_URL="http://localhost:9002"`. Revert with `AUTH_URL="https://earn4insights.com"`.
+`.env.local` is gitignored; no backup file was left in the repo (a copy of secrets sitting
+untracked in the working tree is worse than retyping one line).
+
+### Migration 036 — parity for a fresh database
+
+Both objects exist in production but in **no numbered migration**, so a database built from the
+migration routes alone — which is exactly what a fresh preview environment is — would lack them:
+
+1. **`brand_subscriptions`** — created historically by `drizzle push`, then FK'd by migration 031
+   (which landed, so it must exist in prod). The only table of ~30 with no CREATE route.
+   `getBrandSubscription` is called on two live brand feedback pages, so its absence breaks them.
+   Also `ADD COLUMN IF NOT EXISTS feature_overrides` separately, in case an older prod table
+   predates that column.
+2. **`UNIQUE(user_id, event_type)` on `notification_preferences`** — created by migration 005, but
+   never declared in `schema.ts`. `upsertPreference`'s `onConflictDoUpdate` **depends on it**:
+   Drizzle emits the ON CONFLICT target from the column list and Postgres resolves it against the
+   real constraint. Without it every preference save throws *"no unique or exclusion constraint
+   matching the ON CONFLICT specification"* — and the settings UI shipped in this same wave, so a
+   fresh env would have had a completely broken settings page. No-op on prod, safety net elsewhere.
+
+### `/api/admin/env-check` — the control that replaces guesswork
+
+⚠️ **Vercel env vars default to "All Environments."** A preview deployment therefore inherits
+production's database, blob store and **live payment keys** unless each variable is explicitly
+scoped. The failure mode is not a crash — it is a preview deployment quietly **taking real card
+payments against real data**. That is not something to verify by reading a dashboard list.
+
+`GET /api/admin/env-check` (admin-key gated, in the middleware allowlist) returns a verdict plus
+explicit warnings for:
+
+- LIVE Razorpay keys on a non-production deployment ("a payment made here charges a real card")
+- server/client Razorpay key **mode mismatch** (widget and verification in different environments)
+- a database host that doesn't look like a branch
+- a computed base URL still pointing at `earn4insights.com` — because `getAppBaseUrl()` prefers
+  `NEXT_PUBLIC_APP_URL`, an inherited value means **verification links generated on preview point
+  at production**, so the token is consumed against the wrong deployment and preview looks broken
+- `CSRF_ENFORCE` not `true` in production
+- `RESEND_WEBHOOK_SECRET` missing (item 1 inert)
+
+⚠️ **It NEVER returns a secret** — presence booleans, key *mode* (`rzp_live_` vs `rzp_test_`, a
+prefix not a key), and a database **hostname with credentials stripped**. Adding a field that
+echoes a value would turn a diagnostic into a credential-disclosure endpoint. Keep it that way.
+
+### `docs/PREVIEW_ENVIRONMENT_SETUP.md`
+
+Full dashboard checklist: Neon branch, Razorpay test keys, a per-variable scoping table stating
+**what specifically goes wrong if each is shared**, the migration loop (including "run 036"), the
+`env-check` verification step, and the payment-rehearsal script whose step 4 — *does a
+`campaign_payments` row exist?* — is the scoping input for the ledger fix.
+
+Two entries worth remembering:
+- **`BLOB_READ_WRITE_TOKEN` must differ** or preview uploads land in the production blob store,
+  mixing test media into the set rotated after the 2026-07-31 incident.
+- **`NEXT_PUBLIC_APP_URL` and `AUTH_URL` must be UNSET on preview**, not set — so `VERCEL_URL` wins.
+
+### Still outstanding (founder's, dashboard-only)
+
+Neon branch · Razorpay test keys · env scoping · run migrations against preview · `env-check`
+clean · repoint `.env.local`. **None of the code above proves anything until `env-check` returns
+`ok: true` on a real preview deployment.**
