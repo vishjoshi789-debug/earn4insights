@@ -113,6 +113,27 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  // Payments are meant to stay off until the campaign_payments ledger gap is
+  // fixed and rehearsed. Warn on ENABLED (the risky state) and on a
+  // server/client split, which would show brands a button that 503s.
+  const payServer = process.env.PAYMENTS_ENABLED === 'true'
+  const payClient = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === 'true'
+  if (payServer) {
+    warnings.push(
+      'PAYMENTS_ENABLED is true — brands CAN be charged. This should stay off ' +
+      'until the campaign_payments ledger gap is fixed and an end-to-end ' +
+      'rehearsal has passed on test keys.'
+    )
+  }
+  if (payServer !== payClient) {
+    warnings.push(
+      `Payment flag mismatch: server=${payServer}, client=${payClient}. ` +
+      (payClient
+        ? 'Brands see a Pay button that will 503.'
+        : 'Payments are permitted server-side but the button is hidden.')
+    )
+  }
+
   return NextResponse.json(
     {
       ok: warnings.length === 0,
@@ -139,6 +160,12 @@ export async function GET(request: NextRequest) {
         OPENAI_API_KEY: Boolean(process.env.OPENAI_API_KEY),
         PUSHER_SECRET: Boolean(process.env.PUSHER_SECRET),
         CURRENT_ENCRYPTION_KEY_ID: Boolean(process.env.CURRENT_ENCRYPTION_KEY_ID),
+      },
+      payments: {
+        // The kill-switch from lib/payments/paymentsEnabled.ts. Surfaced here
+        // so "are payments actually blocked?" is a curl, not a memory.
+        serverEnabled: process.env.PAYMENTS_ENABLED === 'true',
+        clientEnabled: process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === 'true',
       },
       flags: {
         CSRF_ENFORCE: process.env.CSRF_ENFORCE ?? null,

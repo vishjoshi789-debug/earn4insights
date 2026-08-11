@@ -1529,3 +1529,82 @@ existing responses are kept and points at Pause for the temporary case.
 
 Browser-untested. Worth one pass once local login works: pause a survey, load `/survey/<id>` in a
 private window, confirm the panel replaces the form; then resume and confirm the form returns.
+
+---
+
+## 🔒 The payment gate is now a CONTROL, not a promise (2026-08-10)
+
+**Item 5 of 5.** Assessed first as instructed: **small — about an hour**, so it was built.
+
+### Why it was worth doing
+
+The rule *"no brand pays until the ledger gap is fixed and rehearsed"* lived only in
+`SESSION_RESUME.md`. **Nothing in the code stopped a brand clicking "Create Payment Order."** The
+app runs on LIVE Razorpay keys (`rzp_live_…`), and the campaign-level path creates **no
+`campaign_payments` row** — so a click would have taken real money with no ledger entry, no escrow
+total, and nothing for the refund sync to act on.
+
+### The surface is small, which is why this was cheap
+
+- **One** creation entry point: `POST /api/payments/create-order`
+- **One** UI caller: the campaign detail page button
+
+So a single check at the route covers everything: no order can be created → no checkout can open →
+no card can be charged.
+
+### `PAYMENTS_ENABLED` — default OFF
+
+`lib/payments/paymentsEnabled.ts`. Must be exactly `'true'` to permit orders; **unset, empty,
+`'false'`, or a typo all disable payments.** Fail-safe: being wrongly disabled costs us an email
+from a brand; being wrongly enabled costs money we cannot account for.
+
+Safe to default off today because **no brand has ever paid** — production has zero
+`campaign_payments` rows.
+
+### ⚠️ Only order CREATION is gated — deliberately
+
+`/api/payments/verify` and the Razorpay webhook are **intentionally NOT gated**. If an order was
+created before the switch was flipped and the brand has already paid, blocking verification would
+**take their money and record nothing** — strictly worse than the problem being prevented.
+In-flight payments must be allowed to complete. Do not "consistency-fix" the gate onto verify.
+
+### Two layers, one of which is cosmetic
+
+- **Server (`arePaymentsEnabled`)** — the enforcement. Returns **503** with
+  `code: 'payments_disabled'` and a message pointing the brand at manual invoicing. Placed as the
+  **first statement** of the route, before auth, so nothing runs.
+- **Client (`arePaymentsEnabledClient`)** — hides the button and shows the explanation instead.
+  ⚠️ **COSMETIC ONLY.** `NEXT_PUBLIC_*` is inlined into the browser bundle and trivially bypassed;
+  it must never be the only thing between a user and a charge. Same "enforce in the action, be
+  courteous in the page" split as the paused-survey work in item 4.
+
+### Visible in `env-check`
+
+`/api/admin/env-check` now reports `payments.serverEnabled` / `payments.clientEnabled` and warns:
+
+- when `PAYMENTS_ENABLED` is **true** (the risky state — flagged, not the absence)
+- on a **server/client mismatch**, which would either show brands a button that 503s, or permit
+  payments while hiding the button
+
+So "are payments actually blocked?" is a curl, not a memory.
+
+### To re-enable — the checklist, not a flag flip
+
+⚠️ **Do not flip this to unblock one eager brand. Invoice them manually.** The gate exists because
+of a specific unfixed defect. Re-enable only when:
+
+1. the `campaign_payments` ledger fix has shipped (including the campaign-level vs milestone-level
+   granularity decision and the `escrowForMilestone` reconciliation), **and**
+2. an end-to-end rehearsal has passed on the preview environment with `rzp_test_` keys
+   (`4111 1111 1111 1111`), **and**
+3. `env-check` on production is otherwise clean.
+
+Then set **both** `PAYMENTS_ENABLED=true` and `NEXT_PUBLIC_PAYMENTS_ENABLED=true` and redeploy —
+env changes only bind on a fresh deploy after the save.
+
+### Not verified
+
+No browser test (local login only just became possible, and this path needs live Razorpay to
+exercise fully). What *is* certain by construction: with the flag unset, `create-order` returns 503
+before any auth or Razorpay call happens. Worth one curl against production after deploy to see the
+503 body.

@@ -23,6 +23,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RazorpayCheckout } from '@/components/payments/RazorpayCheckout'
 import { formatCurrency } from '@/lib/currency'
 import { apiPost, apiPatch } from '@/lib/api-client'
+import {
+  arePaymentsEnabledClient,
+  PAYMENTS_DISABLED_MESSAGE,
+} from '@/lib/payments/paymentsEnabled'
 
 // Statuses where a brand may edit campaign details (3D, Q1).
 // Mirrors EDITABLE_STATUSES in campaignManagementService so the UI
@@ -97,6 +101,9 @@ export default function BrandCampaignDetailPage() {
   const [razorpayOrder, setRazorpayOrder] = useState<any>(null)
   const [paymentTabLoaded, setPaymentTabLoaded] = useState(false)
   const [creatingOrder, setCreatingOrder] = useState(false)
+  // Read once at render: NEXT_PUBLIC_* is inlined at build time, so this is a
+  // constant, not reactive state. Cosmetic gate only — see paymentsEnabled.ts.
+  const paymentsEnabled = arePaymentsEnabledClient()
   // Release payment state
   const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false)
   const [releaseMilestone, setReleaseMilestone] = useState<any>(null)
@@ -954,17 +961,31 @@ export default function BrandCampaignDetailPage() {
                         <p className="text-xs text-muted-foreground">
                           Secure your campaign budget in escrow. Payment is released to the influencer only when milestones are approved.
                         </p>
-                        <Button
-                          size="sm"
-                          onClick={createPaymentOrder}
-                          disabled={creatingOrder || campaign?.status !== 'active'}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                        >
-                          {creatingOrder ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <CreditCard className="h-3.5 w-3.5 mr-2" />}
-                          Create Payment Order
-                        </Button>
-                        {campaign?.status !== 'active' && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400">Campaign must be active to accept payments.</p>
+                        {/* Payment gate. COSMETIC ONLY — the real refusal is in
+                            /api/payments/create-order, which returns 503
+                            regardless of what the browser thinks. This just
+                            avoids offering a button that would fail. */}
+                        {!paymentsEnabled ? (
+                          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                              {PAYMENTS_DISABLED_MESSAGE}
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={createPaymentOrder}
+                              disabled={creatingOrder || campaign?.status !== 'active'}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                            >
+                              {creatingOrder ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <CreditCard className="h-3.5 w-3.5 mr-2" />}
+                              Create Payment Order
+                            </Button>
+                            {campaign?.status !== 'active' && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400">Campaign must be active to accept payments.</p>
+                            )}
+                          </>
                         )}
                       </div>
                     )}

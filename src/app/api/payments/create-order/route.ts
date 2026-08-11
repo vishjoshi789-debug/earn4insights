@@ -23,10 +23,33 @@ import {
   EmailNotVerifiedError,
   emailNotVerifiedResponseBody,
 } from '@/server/emailVerificationGuard'
+import { arePaymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from '@/lib/payments/paymentsEnabled'
 
 export async function POST(req: NextRequest) {
   if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
+    // ── PAYMENT GATE — before auth, before anything ─────────────────
+    // The standing rule is that no brand pays until the campaign_payments
+    // ledger gap is fixed and rehearsed. That rule used to live only in a
+    // document; this makes it a control.
+    //
+    // Deliberately the FIRST check: this is the single entry point for
+    // creating a Razorpay order, so refusing here means no order can exist,
+    // which means no checkout can be opened and no card can be charged.
+    //
+    // ⚠️ Only order CREATION is gated. `/api/payments/verify` and the
+    // Razorpay webhook are intentionally NOT gated — if an order was created
+    // before the switch was flipped and the brand has already paid, blocking
+    // verification would take their money and record nothing, which is worse
+    // than the problem being prevented. In-flight payments must complete.
+    if (!arePaymentsEnabled()) {
+      console.warn('[CreateOrder] Blocked — PAYMENTS_ENABLED is not "true"')
+      return NextResponse.json(
+        { error: PAYMENTS_DISABLED_MESSAGE, code: 'payments_disabled' },
+        { status: 503 }
+      )
+    }
+
     // ── Auth ────────────────────────────────────────────────────────
     const session = await auth()
     if (!session?.user?.email) {
