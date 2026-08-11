@@ -1450,3 +1450,82 @@ Two entries worth remembering:
 Neon branch · Razorpay test keys · env scoping · run migrations against preview · `env-check`
 clean · repoint `.env.local`. **None of the code above proves anything until `env-check` returns
 `ok: true` on a real preview deployment.**
+
+---
+
+## ⏸️ Survey pause / stop — and five unauthenticated `'use server'` actions (2026-08-10)
+
+**Item 4 of 5.** Surveys are **live-on-create**: `createSurvey` sets `status:'active'` and
+immediately fans out email + in-app notifications to matched consumers. `toggleSurveyActive` had
+**zero callers**, so a brand who published with the wrong product, a typo, or at the wrong moment
+had **no way to stop it** — the notifications had already reached real inboxes.
+
+### 🔴 Found while wiring it: every mutating survey action was unauthenticated
+
+`src/server/surveys/surveyService.ts` is a `'use server'` file, so **every export is a
+directly-invokable endpoint** — not just its button's callback. None of them checked anything:
+
+| Action | What an arbitrary logged-in user could do |
+|---|---|
+| `deleteSurvey` | **destroy any brand's survey** by id |
+| `updateSurveyQuestions` | rewrite the questions consumers are answering |
+| `toggleSurveyActive` | pause/unpause any survey |
+| `createSurvey` | create a survey on **any** product — which fans out email + bell to real consumers, i.e. a spam primitive aimed at our own users |
+
+Same class as the `exportResponsesToCSV` hole closed in `61b31af`. **Wiring the toggle into the UI
+without fixing this would have shipped a known hole**, so the batch was widened by one file.
+
+Closed with the established pattern: a private `assertSurveyOwnedByCaller()` /
+`assertProductOwnedByCaller()` as the **first statement** of every mutating action, survey →
+product → `owner_id`, admin bypass via `isAdminSession()`, **fail closed on a null `owner_id`**,
+and **ONE generic error** for every failure mode so survey ids can't be probed.
+
+### 🔴 And: pausing did not actually stop anything
+
+`/survey/[surveyId]` rendered the response form **regardless of status**, with only a
+*"currently inactive… responses are for testing only"* banner. A Pause button on top of that would
+have been a control that appears to work and doesn't — the exact false-affordance shape the §5
+claims policy exists to stop.
+
+Fixed in **both** halves, which is the point:
+
+- **`submitSurveyResponse` now rejects `paused`/`closed`.** This is the enforcement. It's a
+  `'use server'` action, so hiding the form would leave the endpoint open and anyone with the tab
+  already loaded could keep submitting after Pause. **A control that only hides its own button is
+  not a control.**
+- **The page shows a plain "no longer accepting responses" panel** instead of a form. The courteous
+  half: this link is *emailed*, so people arrive days later, and letting someone fill in a survey
+  that the server will reject wastes their time.
+- The `draft` banner survives but now says **"not published yet"** — the old wording would have
+  been actively misleading for paused/closed, where responses aren't accepted at all rather than
+  being "for testing".
+
+### `isActive` ↔ `status` reconciled
+
+`toggleSurveyActive(id, isActive: boolean)` → **`setSurveyStatus(id, status)`**.
+
+`status` was already the source of truth — the repository's insert and update persist **only**
+`status`, and `toSurvey` derives `isActive = (status === 'active')`. A boolean parameter had to be
+translated into a status anyway and **could not express `closed` at all**. Taking the status
+directly makes the writable surface and the stored value the same thing.
+
+**`isActive` stays on the `Survey` type as a DERIVED, read-only convenience for rendering. Nothing
+persists it. Do not add a write path for it.**
+
+`toggleSurveyActive` was renamed rather than kept as an alias — it had zero callers, so a
+deprecated shim would have been cruft with no migration to ease.
+
+### UI
+
+`SurveyStatusControl` on the survey detail page replaces the read-only Active/Inactive badge:
+badge + **Pause / Resume / Close**. Optimistic with rollback on failure, so a rejected change
+doesn't leave a wrong badge on screen.
+
+**Close is confirmed via dialog, Pause is not** — deliberately asymmetric. Pause is reversible from
+the same control; Close offers no way back (no Resume button once closed). The dialog states that
+existing responses are kept and points at Pause for the temporary case.
+
+### Not verified
+
+Browser-untested. Worth one pass once local login works: pause a survey, load `/survey/<id>` in a
+private window, confirm the panel replaces the form; then resume and confirm the form returns.

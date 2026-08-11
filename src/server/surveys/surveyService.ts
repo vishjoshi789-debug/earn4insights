@@ -16,6 +16,58 @@ import { createNPSSurvey, createCSATSurvey } from '@/lib/survey-types'
 import { notifyNewSurvey } from '@/server/campaigns/surveyNotificationCampaign'
 import { findIdealConsumers } from '@/lib/personalization/smartDistributionService'
 import { dispatchToUsers } from '@/server/realtimeNotificationService'
+import { auth } from '@/lib/auth/auth.config'
+import { isAdminSession } from '@/lib/auth/roles'
+import { getProductById } from '@/db/repositories/productRepository'
+
+/**
+ * ⚠️ EVERY EXPORT IN THIS FILE IS A DIRECTLY-INVOKABLE ENDPOINT.
+ *
+ * `'use server'` exports are not just their button's callback — they can be
+ * POSTed to by anyone who knows the action id. Until 2026-08-10 none of the
+ * mutating actions here checked anything, so any logged-in user could pause,
+ * rewrite the questions of, or **delete** any brand's survey by id. Same
+ * class as the `exportResponsesToCSV` hole closed in `61b31af`.
+ *
+ * The gate below is the first statement of every mutating action, raising ONE
+ * generic error for every failure mode so survey ids can't be probed.
+ */
+
+/** Generic on purpose — never reveals whether the id exists. */
+const DENIED = 'Survey not found or you do not have permission to modify it'
+
+/**
+ * Resolve survey → product → owner and confirm the caller owns it.
+ * Admins bypass, per the platform-wide policy in `lib/auth/roles.ts`.
+ *
+ * FAILS CLOSED on a null `owner_id` — `products.owner_id` is nullable by
+ * design (schema.ts:72, unclaimed placeholders), so `ownerId && ownerId !==`
+ * would grant every unclaimed product to everyone.
+ */
+async function assertSurveyOwnedByCaller(surveyId: string): Promise<Survey> {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error(DENIED)
+
+  const survey = await getSurveyById(surveyId)
+  if (!survey?.productId) throw new Error(DENIED)
+
+  if (isAdminSession(session)) return survey
+
+  const product = await getProductById(survey.productId)
+  if (!product?.ownerId || product.ownerId !== session.user.id) throw new Error(DENIED)
+
+  return survey
+}
+
+/** Same check for actions keyed on a product rather than a survey. */
+async function assertProductOwnedByCaller(productId: string): Promise<void> {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error(DENIED)
+  if (isAdminSession(session)) return
+
+  const product = await getProductById(productId)
+  if (!product?.ownerId || product.ownerId !== session.user.id) throw new Error(DENIED)
+}
 
 export async function fetchAllSurveys() {
   return await getAllSurveys()
@@ -41,6 +93,10 @@ export async function createSurvey(
   if (!productId || !title.trim()) {
     throw new Error('Product ID and title are required')
   }
+
+  // Creating a survey on a product fans out email + bell to real consumers.
+  // Unauthenticated, that was a spam primitive pointed at our own users.
+  await assertProductOwnedByCaller(productId)
 
   if (type === 'custom' && questions.length === 0) {
     throw new Error('Custom surveys must have at least one question')
@@ -123,11 +179,40 @@ export async function createSurvey(
   return survey
 }
 
-export async function toggleSurveyActive(surveyId: string, isActive: boolean) {
-  const survey = await updateSurveyInDB(surveyId, { status: isActive ? 'active' : 'paused' })
+/**
+ * Set a survey's lifecycle status. The brand's only way to STOP a running
+ * survey.
+ *
+ * ── Why this replaced `toggleSurveyActive(id, isActive: boolean)` ─────────
+ * `status` is the source of truth: the repository's insert and update persist
+ * ONLY `status`, and `toSurvey` derives `isActive = (status === 'active')`.
+ * A boolean parameter therefore had to be translated into a status anyway,
+ * and it could not express `closed` at all. Taking the status directly means
+ * the writable surface and the stored value are the same thing — which is the
+ * `isActive` ↔ `status` reconciliation.
+ *
+ * `isActive` remains on the `Survey` type as a DERIVED, read-only convenience
+ * for rendering. Nothing persists it. Do not add a write path for it.
+ *
+ * Surveys are live-on-create (see `createSurvey`), so without this control a
+ * brand who published with a mistake had no recourse: the bell + email fan-out
+ * has already reached real consumers' inboxes and there was no way to stop
+ * further responses.
+ */
+export type SurveyLifecycleStatus = 'active' | 'paused' | 'closed'
+
+export async function setSurveyStatus(
+  surveyId: string,
+  status: SurveyLifecycleStatus
+) {
+  await assertSurveyOwnedByCaller(surveyId)
+
+  const survey = await updateSurveyInDB(surveyId, { status })
 
   if (survey) {
     revalidatePath('/dashboard/surveys')
+    revalidatePath(`/dashboard/surveys/${surveyId}`)
+    revalidatePath(`/survey/${surveyId}`)
     revalidatePath(`/dashboard/products/${survey.productId}`)
   }
 
@@ -138,6 +223,9 @@ export async function updateSurveyQuestions(
   surveyId: string,
   questions: SurveyQuestion[]
 ) {
+  // FIRST statement — this rewrites the questions consumers are answering.
+  await assertSurveyOwnedByCaller(surveyId)
+
   if (!surveyId) throw new Error('Survey ID is required')
   if (questions.length === 0) throw new Error('At least one question is required')
 
@@ -166,11 +254,10 @@ export async function updateSurveyQuestions(
 }
 
 export async function deleteSurvey(surveyId: string) {
-  const survey = await getSurveyById(surveyId)
-  if (!survey) {
-    throw new Error('Survey not found')
-  }
-  
+  // FIRST statement. Unauthenticated, this let anyone destroy any brand's
+  // survey — and its responses — by id.
+  const survey = await assertSurveyOwnedByCaller(surveyId)
+
   const success = await deleteSurveyFromDB(surveyId)
   revalidatePath('/dashboard/surveys')
   revalidatePath(`/dashboard/products/${survey.productId}`)

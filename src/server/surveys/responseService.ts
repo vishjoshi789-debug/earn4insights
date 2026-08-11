@@ -30,6 +30,15 @@ export async function submitSurveyResponse(
     throw new Error('Survey not found')
   }
 
+  // A paused or closed survey must actually STOP collecting. Enforced here,
+  // not only in the page: this is a `'use server'` action, so hiding the form
+  // would leave the endpoint open, and anyone with the tab already loaded
+  // could keep submitting after the brand pressed Pause. A control that only
+  // hides its own button is not a control.
+  if (survey.status === 'paused' || survey.status === 'closed') {
+    throw new Error('This survey is no longer accepting responses.')
+  }
+
   // Validate required questions are answered
   const requiredQuestions = survey.questions.filter(q => q.required)
   for (const question of requiredQuestions) {

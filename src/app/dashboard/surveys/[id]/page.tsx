@@ -13,6 +13,7 @@ import { isAdminSession } from '@/lib/auth/roles'
 import { formatDistanceToNow } from 'date-fns'
 import CopyLinkButton from './CopyLinkButton'
 import QuestionEditor from './QuestionEditor'
+import SurveyStatusControl from './SurveyStatusControl'
 
 type PageProps = {
   params: Promise<{ id: string }>
@@ -58,11 +59,16 @@ export default async function SurveyDetailPage({ params }: PageProps) {
 
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex flex-wrap items-center gap-3 mb-2">
             <h1 className="text-3xl font-bold">{survey.title}</h1>
-            <Badge variant={survey.isActive ? 'default' : 'secondary'}>
-              {survey.isActive ? 'Active' : 'Inactive'}
-            </Badge>
+            {/* Status badge + Pause/Resume/Close. Replaces a read-only
+                Active/Inactive badge: surveys are live-on-create and fan out
+                to real consumers immediately, so a brand needs a way to stop
+                one. `status` is the source of truth; `isActive` is derived. */}
+            <SurveyStatusControl
+              surveyId={survey.id}
+              initialStatus={survey.status ?? (survey.isActive ? 'active' : 'draft')}
+            />
           </div>
           {survey.description && (
             <p className="text-muted-foreground">{survey.description}</p>
