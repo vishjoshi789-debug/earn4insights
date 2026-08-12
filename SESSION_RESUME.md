@@ -1608,3 +1608,151 @@ No browser test (local login only just became possible, and this path needs live
 exercise fully). What *is* certain by construction: with the flag unset, `create-order` returns 503
 before any auth or Razorpay call happens. Worth one curl against production after deploy to see the
 503 body.
+
+---
+
+## 🎯 Consumer intent — the diagnosis, three fixes, and the strategic conclusion (2026-08-12)
+
+### The investigation: zero rows in `consumer_intents` was NOT a silent write failure
+
+Reported as a bug — real feedback text that should obviously match, zero rows stored. It turned
+out to be **three different states wearing one symptom**, and conflating them would have produced
+the wrong fix.
+
+**Decisive test** — the real `extractIntents()` imported and run against the exact production
+strings, not read and reasoned about:
+
+```
+[imported] 40c42948  price_sensitive(0.8)   "Too expensive for what it offers…"
+[imported] 40853974  purchase_ready(0.85)   "…Will buy again."
+[imported] e58144e4  price_sensitive(0.8)   "…a bit overpriced compared to…"
+[imported] fa6d8bfb  frustrated(0.7)        "…no tracking update. Frustrating."
+[imported] e5b96d27  — NO MATCH —           "Stopped working after two weeks…"
+
+[ORGANIC]  19f1f02a  — NO MATCH —  "Product / service Discovery can be more extensive"
+[ORGANIC]  c8140b68  — NO MATCH —  "This product is useful"
+[ORGANIC]  feb710e7  — NO MATCH —  "it's useful product which solves my problem"
+[ORGANIC]  a5644db9  — NO MATCH —  "it's great product which helps to acheive my goal…"
+[ORGANIC]  3e668c78  — NO MATCH —  "it's really great product which helps me to introspect…"
+```
+
+**imported 4/5 · ORGANIC 0/5.** Provenance confirmed by the founder: all five quoted rows are
+`import_source='csv'`, `organic=false`.
+
+| Path | Verdict |
+|---|---|
+| **Organic feedback** | ✅ **Working correctly.** Five real users wrote five short positive sentences containing no intent language. `extractAndPersistIntents` returns early on `intents.length === 0`, before any insert, so nothing is attempted and nothing throws. **Zero rows was the correct output.** |
+| **Imported feedback** | ⚪ Never wired — no import path calls extraction at all |
+| **Survey responses** | 🔴 **Genuinely broken** — see below |
+
+⚠️ **Method note worth keeping: insisting on the provenance check before touching code prevented a
+fix to a non-bug.** The obvious move — "extraction is broken, go fix the regex/the write" — would
+have churned working code and left the actual defect (the survey path) untouched.
+
+**Correction to the earlier verdict.** The prior session's claim that the service *"writes to
+production on every feedback submission"* was too strong. It writes only **on a pattern match**,
+and no organic submission has ever produced one. The wiring claim was right; the "produces data"
+implication was not.
+
+### Fix 1 — the survey-path identity bug (the real defect)
+
+`responseService.ts` passed **`response.userEmail || ''`** as `consumer_intents.user_id`. That
+column is **NOT NULL with an FK to `users.id`** (`fk_consumer_intents_user`, migration 031), so an
+email address — or an empty string — could **never** satisfy it. Every survey-sourced insert was a
+guaranteed FK violation, caught and logged, so the path looked healthy while writing nothing.
+
+**Exactly the same identity confusion as `feedback.user_id` in migration 033: an email is not an
+id.** Third occurrence of this family now.
+
+Fixed by reusing `pointsUserId`, already resolved from the session a few lines above for the B23
+points award. Anonymous respondents are **skipped** — an intent row must belong to a real account
+or it belongs to nobody.
+
+The feedback path's **`session.user.id || ''`** fallback was fixed the same way. It is masked today
+only because the id is always present; the moment it wasn't, it would have produced precisely the
+silent write failure that was suspected here.
+
+**Rule: never write `''` into an FK'd NOT NULL column to satisfy a type. No id means no row.**
+
+### Fix 2 — consent gate on inference
+
+`intentExtractionService` had **zero** consent checks while deriving commercial/psychological state
+("this person is churning", "price-sensitive") from a consumer's words — and `alertOnHighIntent`
+ships the **verbatim phrase** to the brand.
+
+Gated with `checkConsent(userId, 'behavioral')` — the category `collect_behavioral_signals →
+['behavioral']` already existed at `consent-enforcement.ts:136` and **nothing used it**.
+
+Placed at the **persistence chokepoint**, not the call sites, so a future third caller is covered
+automatically. Same shape as the `segmentedAnalytics` fix, and the same lesson: **k-anonymity did
+not establish a lawful purpose there, and "the brand can already read the feedback" does not
+establish one here.** Reading what someone wrote and inferring their intent from it are different
+processing.
+
+⚠️ **This gates the brand alert too, by construction:** `alertOnHighIntent` fires only over the
+array this function returns, which is empty without consent. **Do not bypass by calling
+`extractIntents()` directly and alerting on the result.**
+
+Denial is a **silent skip**, never an error — declining behavioural processing is normal, and the
+feedback must still save.
+
+### Fix 3 — two false affordances REMOVED
+
+`frustration_spike` and `watchlist_milestone` were Settings toggles a brand could switch on that
+**could never fire**. Nothing anywhere calls `fireAlert()` with either; every other reference was a
+label, an emoji map, a priority branch, or a default-rules seed entry. Handlers with no emitter —
+same shape as the removed `BRAND_SURVEY_CREATED` handler, and the same class of claim as the
+14-day-trial promise and the phantom CSV export.
+
+Removed from the settings UI **and** from `bootstrapDefaultAlertRules` (which was seeding *enabled*
+rules for notifications that can never arrive, making the dead types look deliberate).
+
+**Removed rather than wired, and the reasoning matters:** both are **baseline-relative** — a
+"spike" or a "milestone" needs a normal rate to deviate from. At ~23 feedback rows any threshold
+either never trips or fires constantly, so wiring them would have replaced a dead toggle with a
+noisy one. Retained in the `AlertType` union with a warning comment so existing rows typecheck;
+**a type member is not a feature — if you add an emitter, re-add the settings entry in the same
+change.**
+
+### 📌 Deliberately NOT done — volume-gated, revisit when input grows
+
+1. **Regex coverage gap.** `"Stopped working after two weeks. Support was slow to respond this
+   time."` matches nothing — `frustrated` covers `"doesn't work"` but not `"stopped working"`, and
+   nothing covers slow support. Both are churn signals sailing through. **Tuning patterns against
+   5 organic rows would be guessing**, and overfitting to a handful of sentences is worse than a
+   known gap.
+2. **Wiring extraction into the import paths.** It would work — 4 of 5 imported rows match — but it
+   would populate `consumer_intents` with **seeded CSV text, not real consumer language**. The
+   table would look healthy and teach us nothing, and it would poison any future measurement of the
+   false-positive rate.
+
+### 🧭 Strategic conclusion — which intent our data can actually support
+
+**PURCHASE intent is NOT supportable from our data. Do not build on it.**
+
+Our consumers are **post-purchase** — they write about things they already own. The same sentence
+means opposite things either side of a purchase: *"I want to buy this"* vs *"I'm glad I bought
+this."* When an owner writes *"would definitely pay for this"*, the regex records `purchase_ready`
+and a brand is told a consumer is about to buy, when they were paying a compliment. **This is a
+semantic mismatch, not a tuning problem** — and the failure is invisible, because a brand chasing a
+phantom lead has no way to tell.
+
+Supporting it honestly would need genuinely **pre-purchase** surfaces: browse/search on products
+the user does *not* own, watchlist adds, deal saves, comparison behaviour. Those event types exist
+and are behavioural rather than textual — that is the honest path if it's ever wanted.
+
+**CHURN / SWITCHING intent IS supportable, and is the honest direction.**
+
+`churning`, `frustrated` and `price_sensitive` fire on exactly the language a dissatisfied *owner*
+uses — the context matches the population we have. The corroborating inputs already exist:
+sentiment trend across repeat feedback, `extracted_themes` with negative sentiment and counts, NPS
+detractor scores, Reddit/YouTube/Google mentions.
+
+Two of those three churn types (`frustrated`, `price_sensitive`) are currently **extracted and
+discarded** — the feedback route's alert filter covers only `purchase_ready`, `want_feature`,
+`churning`. And `frustration_spike`, the alert designed for exactly this, has no emitter.
+
+⚠️ **Both are blocked on INPUT VOLUME, not plumbing.** 5 organic feedback rows across ~11 products.
+Churn detection is architecturally supportable today and statistically not. **Build the supply side
+before the inference side** — more consumers writing real feedback is the unlock for all of this,
+and no amount of pattern work substitutes for it.

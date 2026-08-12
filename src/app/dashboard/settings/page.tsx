@@ -10,7 +10,8 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import {
   Bell, Mail, Slack, Smartphone, Check, Loader2, BarChart3,
-  MessageSquare, AlertCircle, TrendingUp, Eye, Zap, Info, MessageCircle,
+  // Eye / Zap dropped with the watchlist_milestone + frustration_spike entries.
+  MessageSquare, AlertCircle, TrendingUp, Info, MessageCircle,
   Link2, Link2Off, ExternalLink,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -64,18 +65,28 @@ const ALERT_TYPES: Record<string, AlertTypeConfig> = {
     icon: TrendingUp,
     color: 'text-purple-600',
   },
-  watchlist_milestone: {
-    label: 'Watchlist Milestone',
-    description: 'When your product reaches a watchlist count threshold',
-    icon: Eye,
-    color: 'text-amber-600',
-  },
-  frustration_spike: {
-    label: 'Frustration Spike',
-    description: 'When an unusual volume of negative signals is detected',
-    icon: Zap,
-    color: 'text-orange-600',
-  },
+  // ⚠️ REMOVED 2026-08-12 — `watchlist_milestone` and `frustration_spike`.
+  //
+  // Both were toggles a brand could switch on that could NEVER fire: nothing
+  // in the codebase calls `fireAlert({ alertType: 'frustration_spike' })` or
+  // `'watchlist_milestone'`. Every other reference was a label, an emoji map,
+  // a priority branch, or a default-rules seed entry — handlers with no
+  // emitter, the same shape as the removed BRAND_SURVEY_CREATED handler.
+  //
+  // Same class as the 14-day-trial promise and the phantom CSV export: a
+  // control that implies a capability we don't have. Under the §5 claims
+  // policy an unlabelled item in a settings list is a statement that it works.
+  //
+  // REMOVED rather than wired, deliberately: "spike" and "milestone" are both
+  // BASELINE-RELATIVE — they need a normal rate to deviate from. At ~23
+  // feedback rows any threshold would either never trip or fire constantly,
+  // so wiring them would replace a dead toggle with a noisy one. Re-add when
+  // volume supports a baseline; it's a few lines either way.
+  //
+  // The display maps in `dashboard/alerts` and `dashboard-header` keep their
+  // entries on purpose — if a row of either type ever exists (seeded default
+  // rules, a future emitter), it should still render with a proper label
+  // rather than falling back to a raw string.
 }
 
 

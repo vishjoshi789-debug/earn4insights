@@ -42,9 +42,16 @@ export type AlertType =
   | 'negative_feedback'
   | 'survey_complete'
   | 'high_intent_consumer'
+  | 'icp_match'                  // Phase 9: consumer crossed an ICP threshold
+  // ⚠️ NO EMITTER — retained in the type so existing/seeded rows still
+  // typecheck, but removed from the settings UI and the default-rules seed
+  // (2026-08-12). Nothing calls fireAlert() with either. Both are
+  // baseline-relative ("spike", "milestone") and need a normal rate to
+  // deviate from, which ~23 feedback rows cannot provide. If you add an
+  // emitter, re-add the settings entry in the same change — a type member
+  // is not a feature.
   | 'watchlist_milestone'
   | 'frustration_spike'
-  | 'icp_match'                  // Phase 9: consumer crossed an ICP threshold
 
 type MatchScoreSnapshot = NonNullable<BrandAlert['matchScoreSnapshot']>
 
@@ -571,13 +578,22 @@ export async function alertOnIcpMatch(params: {
  * Called on brand signup / onboarding to create sensible default alert rules.
  */
 export async function bootstrapDefaultAlertRules(brandId: string) {
+  // Only alert types with a REAL EMITTER are seeded. `watchlist_milestone`
+  // and `frustration_spike` were removed 2026-08-12: nothing anywhere calls
+  // fireAlert() with either, so seeding them created enabled rules for
+  // notifications that can never arrive — and made the dead types look
+  // intentional to anyone reading this list.
+  //
+  // Emitters, verified by caller search:
+  //   new_feedback / negative_feedback → alertOnNewFeedback (feedback submit)
+  //   survey_complete                  → alertOnSurveyComplete (responseService)
+  //   high_intent_consumer             → alertOnHighIntent (feedback submit)
+  //   icp_match                        → alertOnIcpMatch (recomputeIcpScores cron)
   const defaults: Array<{ alertType: string; channels: string[] }> = [
     { alertType: 'new_feedback', channels: ['in_app'] },
     { alertType: 'negative_feedback', channels: ['in_app', 'email'] },
     { alertType: 'survey_complete', channels: ['in_app'] },
     { alertType: 'high_intent_consumer', channels: ['in_app', 'email'] },
-    { alertType: 'watchlist_milestone', channels: ['in_app'] },
-    { alertType: 'frustration_spike', channels: ['in_app', 'email'] },
     { alertType: 'icp_match', channels: ['in_app', 'email'] },
   ]
 
