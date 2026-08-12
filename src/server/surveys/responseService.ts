@@ -128,20 +128,34 @@ export async function submitSurveyResponse(
   }
 
   // ── Extract intent signals (non-blocking) ────────────────
-  try {
-    const { extractAndPersistIntents } = await import('@/server/intentExtractionService')
-    const textForIntent = combinedText || Object.values(answers).filter((a) => typeof a === 'string').join(' ')
-    if (textForIntent && textForIntent.length > 10) {
-      await extractAndPersistIntents({
-        userId: response.userEmail || '',
-        text: textForIntent,
-        productId: survey.productId,
-        sourceType: 'survey',
-        sourceId: response.id || surveyId,
-      })
+  //
+  // 🐛 FIXED 2026-08-12. This used to pass `response.userEmail || ''` as the
+  // userId. `consumer_intents.user_id` is NOT NULL with an FK to `users.id`
+  // (fk_consumer_intents_user, migration 031), so an email address — or an
+  // empty string — could NEVER satisfy it. Every survey-sourced insert was a
+  // guaranteed FK violation, caught by the catch below and logged, so the
+  // path looked healthy while writing nothing. Same identity confusion as the
+  // feedback.user_id work in migration 033: an email is not an id.
+  //
+  // Identity now comes from the SESSION (`pointsUserId`, resolved above),
+  // never from a client-supplied value. Anonymous respondents are SKIPPED —
+  // an intent row must belong to a real account or it belongs to nobody.
+  if (pointsUserId) {
+    try {
+      const { extractAndPersistIntents } = await import('@/server/intentExtractionService')
+      const textForIntent = combinedText || Object.values(answers).filter((a) => typeof a === 'string').join(' ')
+      if (textForIntent && textForIntent.length > 10) {
+        await extractAndPersistIntents({
+          userId: pointsUserId,
+          text: textForIntent,
+          productId: survey.productId,
+          sourceType: 'survey',
+          sourceId: response.id || surveyId,
+        })
+      }
+    } catch (err) {
+      console.error('[SurveyResponse] Intent extraction failed (non-blocking):', err)
     }
-  } catch (err) {
-    console.error('[SurveyResponse] Intent extraction failed (non-blocking):', err)
   }
 
   // ── Alert brand about survey completion (non-blocking) ──────
