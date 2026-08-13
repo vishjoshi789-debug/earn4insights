@@ -254,9 +254,21 @@ export default function ProductOverview({
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <FeatureCard title="NPS" enabled={product.features.nps} />
             <FeatureCard title="Feedback" enabled={product.features.feedback} />
+            {/* ⚠️ `social_listening_enabled` does NOT enable social listening.
+                The ingestion cron reads `social_listening_rules`, a different
+                table, and nothing in the app can create a row in it — so this
+                flag has never caused a single mention to be collected. It is
+                true on 11 of 12 production products, every one of which was
+                displaying "Enabled" for a pipeline that has produced zero rows.
+
+                Shown as "Setup required" until keyword rules are creatable.
+                The flag still does one real thing — it controls whether the
+                product appears in the consumer social discovery list — which
+                is why it is not simply deleted. */}
             <FeatureCard
               title="Social listening"
-              enabled={product.features.social_listening}
+              enabled={false}
+              statusLabel="Setup required"
             />
           </CardContent>
         </Card>
@@ -356,19 +368,23 @@ function ContextCard({
 function FeatureCard({
   title,
   enabled,
+  /** Overrides the Enabled/Disabled text when the truth is neither. */
+  statusLabel,
 }: {
   title: string
   enabled: boolean
+  statusLabel?: string
 }) {
   return (
     <div className="border rounded-lg p-4">
       <div className="text-sm font-medium">{title}</div>
       <div
         className={`mt-1 text-sm ${
-          enabled ? 'text-green-600' : 'text-gray-400'
+          statusLabel ? 'text-amber-600 dark:text-amber-400'
+            : enabled ? 'text-green-600' : 'text-gray-400'
         }`}
       >
-        {enabled ? 'Enabled' : 'Disabled'}
+        {statusLabel ?? (enabled ? 'Enabled' : 'Disabled')}
       </div>
     </div>
   )

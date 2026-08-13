@@ -167,6 +167,20 @@ export async function GET(request: NextRequest) {
         serverEnabled: process.env.PAYMENTS_ENABLED === 'true',
         clientEnabled: process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === 'true',
       },
+      // Which social listening adapters would actually run. Reddit needs no
+      // key and is always on; the rest are silently skipped when unset, so
+      // "is YouTube live in PRODUCTION?" was previously unanswerable without
+      // reading .env.local — which describes the wrong environment.
+      //
+      // ⚠️ A key being present does NOT mean ingestion happens. The cron only
+      // polls for products with a row in `social_listening_rules`, and there
+      // is no UI to create one, so all four adapters are inert regardless.
+      socialAdapters: {
+        reddit: 'always-on (no key required)',
+        youtube: Boolean(process.env.YOUTUBE_API_KEY),
+        googlePlaces: Boolean(process.env.GOOGLE_PLACES_API_KEY),
+        telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+      },
       flags: {
         CSRF_ENFORCE: process.env.CSRF_ENFORCE ?? null,
         NEXT_PUBLIC_WHATSAPP_ENABLED: process.env.NEXT_PUBLIC_WHATSAPP_ENABLED ?? null,

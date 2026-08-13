@@ -1756,3 +1756,92 @@ discarded** — the feedback route's alert filter covers only `purchase_ready`, 
 Churn detection is architecturally supportable today and statistically not. **Build the supply side
 before the inference side** — more consumers writing real feedback is the unlock for all of this,
 and no amount of pattern work substitutes for it.
+
+---
+
+## 📡 Social listening — the audit, and stopping seed data being shown as real (2026-08-13)
+
+### The audit: ingestion has never produced a single row
+
+Triggered by `social_posts` holding 459 rows all created 2026-03-21 and nothing since.
+
+⚠️ **First correction: `social_posts` is not the ingestion target.** The cron
+(`/api/cron/process-social-mentions`, `30 5 * * *`) writes to **`social_mentions`** — a different
+table. So it isn't "ingestion stopped in March"; it is **ingestion has never run**.
+
+```
+social_posts       459 rows   all 2026-03-21   ← seeded via import/webhook/v2
+social_mentions      0 rows                    ← the cron's real output
+social_listening_rules  0 total, 0 active      ← THE IGNITION KEY
+```
+
+**Verdict: the cron runs and does nothing**, because `getAllActiveRules()` returns `[]`, so
+`platformRules` is empty for every adapter and no adapter is ever invoked. **Structurally identical
+to competitive intelligence being gated on `competitor_profiles`** — a complete machine with no
+fuel. This is now the third instance of the pattern (also: `BRAND_SURVEY_CREATED`,
+`frustration_spike`).
+
+🔴 **And no UI can create a rule.** `/api/brand/social-listening/rules` exists (GET/POST/PATCH,
+brand-only) and **no `.tsx` anywhere calls it**. A brand cannot turn on the feature at all; it
+would take a hand-crafted POST.
+
+🔴 **The flag brands CAN see is the wrong flag.** `products.social_listening_enabled` is **true on
+11 of 12 products** and the cron never reads it. Eleven products displayed "Social listening:
+Enabled" for a pipeline that has produced zero rows. Two unconnected switches — one visible and
+meaningless, one required and unbuildable from the UI.
+
+**Route reachability was ruled out** — this is NOT the migration-034 family. `/api/cron/` is in
+`PUBLIC_PREFIXES` and the route self-authenticates on `Bearer $CRON_SECRET`. (Note its check is
+`if (cronSecret && ...)` — if `CRON_SECRET` were ever unset the route would be fully open.)
+
+### 🚩 The false claim — seeded posts rendered as live social listening
+
+`/dashboard/social` and `/dashboard/report/[id]` render `social_posts`. Confirmed seeded on four
+independent grounds:
+
+1. all 459 created in one batch on 2026-03-21
+2. **`instagram`, `amazon`, `meta`, `twitter` have no adapter** — the registry has four
+   (`reddit`, `youtube`, `google`, `telegram`), so those 173 rows could not have been fetched by
+   any code in this repo
+3. **`url` is null on all of instagram/linkedin/amazon/meta/twitter** — real ingestion always sets
+   it (the Reddit adapter builds `https://www.reddit.com${d.permalink}` unconditionally)
+4. the cron physically cannot write this table — it calls `createMention()` → `social_mentions`
+
+**Same class as the mock product reviews removed on 2026-08-06**: fabricated content, invented
+authors, invented engagement counts, presented as real. Worse in one respect — two paths showed it
+to people it wasn't even seeded for:
+
+- **brand fallback:** a brand owning **no** products was shown up to 50 *other* products' posts
+  under their own "Social Mentions" heading
+- **consumers:** see all social-enabled products' posts unconditionally
+
+### What shipped
+
+**Removed the brand fallback.** Misattribution independent of the seed data — nothing
+distinguished other brands' posts from the viewer's own. A brand with no products now gets the
+existing "No products found" state, which is the truth.
+
+**Honest empty-state copy.** Was *"Click Refresh data to scan platforms"* — implying automated
+scanning that cannot happen. Now says monitoring **is not set up**, because for every product today
+that is the accurate answer. ⚠️ The distinction matters: *"nothing found"* and *"never looked"* are
+different claims, and only one of them is true.
+
+**`social_listening_enabled` now renders "Setup required"**, not "Enabled". The flag is *not*
+deleted — it still controls whether a product appears in the consumer social discovery list — but
+it does not and never did enable ingestion.
+
+**`env-check` reports `socialAdapters`** — which adapters would run in THIS environment, with an
+explicit note that a key being present does **not** mean ingestion happens, because the rule gate
+sits in front of all four.
+
+⚠️ **The empty state only works once the seed rows are gone.** The page cannot tell seed from real
+— the seeded Reddit/YouTube/Google rows look legitimate. **Deleting the 459 rows is the part that
+does the work**; the code change makes the resulting empty page honest. SQL handed to the founder;
+production data not deleted by the agent.
+
+### 📌 NOT done — volume-gated
+
+**The rules UI (~1 day).** Real gap, but pointless until we know the pipeline yields anything for
+products nobody discusses. Reddit search with `t=week&limit=25` on a keyword like "Metacog" will
+return ~0. ⚠️ **And without run-records we could not distinguish "working, no mentions" from
+"broken"** — which is why cron observability comes first.

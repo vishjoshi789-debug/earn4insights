@@ -725,10 +725,16 @@ export default function SocialPageClient({ data }: { data: SocialPageData }) {
           <CardContent className="py-12 text-center">
             <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="font-medium mb-1">No social mentions yet</p>
+            {/* Says what is actually true. Automated polling runs daily but
+                only for products with a row in `social_listening_rules`, and
+                there is currently no UI to create one — so for every product
+                today the honest answer is "not set up yet", not "nothing
+                found". Claiming the latter would be the same shape as the
+                seeded posts this empty state replaced. */}
             <p className="text-sm text-muted-foreground mb-4">
               {data.isBrand
-                ? 'Click "Refresh data" to scan platforms, or submit a link manually.'
-                : 'Social listening data will appear here once brands enable it.'}
+                ? 'Automated monitoring is not set up for your products yet. You can submit a link manually, or contact us to enable keyword monitoring.'
+                : 'Nothing here yet — social mentions appear once brands enable monitoring for a product.'}
             </p>
             {data.isBrand && (
               <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>

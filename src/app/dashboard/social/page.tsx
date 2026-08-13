@@ -30,19 +30,16 @@ export default async function SocialPage() {
       productNameMap[p.id] = p.name
     }
 
-    // Fallback: if brand has no owned products, show all social-enabled products
-    if (productIds.length === 0) {
-      const socialProducts = await db
-        .select({ id: products.id, name: products.name })
-        .from(products)
-        .where(eq(products.socialListeningEnabled, true))
-        .limit(50)
-
-      productIds = socialProducts.map((p) => p.id)
-      for (const p of socialProducts) {
-        productNameMap[p.id] = p.name
-      }
-    }
+    // ⚠️ REMOVED 2026-08-13 — the "show every social-enabled product" fallback.
+    //
+    // A brand that owned no products was shown up to 50 OTHER products' social
+    // posts, inside their own dashboard, under their own "Social Mentions"
+    // heading. That is misattribution: nothing distinguished those posts from
+    // the brand's own, so a new brand's first impression of the feature was
+    // other people's data presented as theirs.
+    //
+    // A brand with no products now gets the existing "No products found"
+    // empty state, which is the truth.
   } else {
     // Consumer sees all products with social listening enabled
     const socialProducts = await db
