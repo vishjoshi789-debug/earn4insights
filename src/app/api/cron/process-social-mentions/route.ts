@@ -14,7 +14,9 @@
  * Auth: Bearer CRON_SECRET header (Vercel Cron injects automatically).
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+// NextResponse no longer needed — withCronRun serialises the returned object
+// and owns the auth 401 that used to be built here.
+import { NextRequest } from 'next/server'
 import { getAllActiveRules, textMatchesRule } from '@/db/repositories/socialListeningRuleRepository'
 import {
   createMention,
@@ -33,6 +35,7 @@ import {
   TelegramAdapter,
   type PlatformAdapter,
 } from '@/server/social/platformAdapters'
+import { withCronRun } from '@/lib/cron/withCronRun'
 
 // ─────────────────────────────────────────────────────────────────────
 // Platform registry — env-gated dispatch.
@@ -57,13 +60,15 @@ const POLL_PLATFORMS: PollPlatformSpec[] = [
   { key: 'telegram', envVar: 'TELEGRAM_BOT_TOKEN',    envOk: () => !!process.env.TELEGRAM_BOT_TOKEN,    make: () => new TelegramAdapter() },
 ]
 
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+// Wrapped for run-recording (migration 037). The wrapper performs the
+// `Bearer $CRON_SECRET` check that used to live inline here, and writes a
+// `cron_runs` row before AND after the handler — so a run that dies mid-way
+// leaves a stranded 'running' row instead of no trace at all.
+//
+// This route is the reason the table exists: it has been scheduled daily for
+// months, has produced zero `social_mentions`, and there was no way to tell
+// whether it was executing.
+export const GET = withCronRun('process-social-mentions', async (request: NextRequest) => {
   const results = {
     polled:   { byPlatform: {} as Record<string, number>, newMentions: 0 },
     active:   [] as string[],
@@ -192,9 +197,12 @@ export async function GET(request: NextRequest) {
     results.errors.push(`Notify job: ${notifyErr?.message ?? String(notifyErr)}`)
   }
 
-  return NextResponse.json({
+  // Returned as a plain object — the wrapper serialises it AND stores it in
+  // cron_runs.result, so the per-platform counts and errors become queryable
+  // history rather than a response nobody reads.
+  return {
     success: true,
     timestamp: new Date().toISOString(),
     ...results,
-  })
-}
+  }
+})

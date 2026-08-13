@@ -28,11 +28,34 @@ export async function GET(request: Request) {
 
     const deletedCount = (result as any)?.rowCount ?? 0
 
-    logger.cronResult('cleanup-analytics-events', true, { deletedCount, retentionDays })
+    // ── cron_runs retention (migration 037) ──────────────────────────────
+    // Folded into this job rather than given its own cron: ~33 jobs × 1 row
+    // per run is ~12k rows/year, so this is hygiene, not pressure, and a
+    // dedicated schedule entry would cost more attention than it saves.
+    //
+    // ⚠️ Deletes only FINISHED runs. A row still marked 'running' after 90
+    // days is a job that died and never reported — the single most valuable
+    // row in the table. Sweeping those away would delete the evidence this
+    // table exists to preserve.
+    let cronRunsDeleted = 0
+    try {
+      const cronResult = await db.execute(
+        sql`DELETE FROM cron_runs
+            WHERE started_at < ${cutoff.toISOString()}
+              AND status <> 'running'`
+      )
+      cronRunsDeleted = (cronResult as any)?.rowCount ?? 0
+    } catch (err) {
+      // Table may not exist yet (037 not applied). Never fail the primary job.
+      console.warn('[cleanup] cron_runs retention skipped (non-fatal):', err)
+    }
+
+    logger.cronResult('cleanup-analytics-events', true, { deletedCount, cronRunsDeleted, retentionDays })
 
     return NextResponse.json({
       success: true,
       deletedCount,
+      cronRunsDeleted,
       cutoffDate: cutoff.toISOString(),
       timestamp: new Date().toISOString(),
     })

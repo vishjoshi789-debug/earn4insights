@@ -552,6 +552,50 @@ export const emailSuppressions = pgTable('email_suppressions', {
   lastEventAt: timestamp('last_event_at').defaultNow().notNull(),
 })
 
+// ── Cron run records (migration 037) ──────────────────────────────
+//
+// WHY: ~33 scheduled jobs and NONE of them left evidence of execution, so
+// "did nothing", "crashed", and "never fired" were indistinguishable. Two
+// separate investigations (the intent pipeline, then social ingestion) each
+// cost hours purely because a silent no-op looks exactly like a silent
+// failure. This table is the fix for the pattern, not for either incident.
+//
+// ⚠️ THE ROW IS INSERTED AT START, NOT ON COMPLETION. Do not "optimise" this
+// into a single write at the end — that change would quietly destroy the
+// feature's entire purpose. Vercel kills functions at 60s and a hard crash
+// never reaches a `finally`, so a job that dies mid-run leaves a row with
+// status='running' and finished_at IS NULL. That stranded row IS the signal:
+// it is the only way "fired and died" becomes visible. A write-on-completion
+// design records successes and loses precisely the failures we care about.
+//
+// Detect dead runs with:
+//   SELECT job_name, started_at FROM cron_runs
+//   WHERE status = 'running' AND started_at < now() - interval '15 minutes';
+export const cronRuns = pgTable('cron_runs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+
+  // Stable identifier, NOT the URL — 'process-social-mentions'. Keep it equal
+  // to the route folder name so a log line maps to a file without guessing.
+  jobName: text('job_name').notNull(),
+
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  finishedAt: timestamp('finished_at'),          // NULL while running OR if killed
+  durationMs: integer('duration_ms'),
+
+  // 'running' | 'ok' | 'error'. There is deliberately no 'timeout' — nothing
+  // is alive to write it. A timeout presents as 'running' that never finished,
+  // which is why the stale-row query above is the real detector.
+  status: text('status').default('running').notNull(),
+
+  result: jsonb('result'),                        // whatever the handler returned
+  error: text('error'),
+
+  // 'vercel-cron' | 'external' (cron-job.org) | 'manual'. Several jobs are
+  // driven externally because Vercel Hobby is daily-only; without this we
+  // could not tell a missed external schedule from a missed Vercel one.
+  triggeredBy: text('triggered_by'),
+})
+
 // ══════════════════════════════════════════════════════════════════
 // SECTION 6: ANALYTICS, AUDIT & SEND-TIME OPTIMIZATION
 // ══════════════════════════════════════════════════════════════════

@@ -1845,3 +1845,87 @@ production data not deleted by the agent.
 products nobody discusses. Reddit search with `t=week&limit=25` on a keyword like "Metacog" will
 return ~0. ⚠️ **And without run-records we could not distinguish "working, no mentions" from
 "broken"** — which is why cron observability comes first.
+
+---
+
+## ⏱️ Cron run-records — migration 037 + `withCronRun` (2026-08-13)
+
+**The durable fix for a pattern, not for an incident.** ~33 scheduled jobs, none of which left any
+evidence of execution, so **"did nothing", "crashed", and "never fired" were indistinguishable**.
+Two investigations — the intent pipeline and social ingestion — each burned hours on that ambiguity
+before finding the actual cause.
+
+### ⚠️⚠️ INSERT-AT-START IS LOAD-BEARING — do not "optimise" it
+
+`withCronRun` writes the `cron_runs` row **before** the handler runs and updates it after. This
+looks like a wasted round-trip and is the entire reason the feature works.
+
+Vercel kills functions at 60s and a hard crash never reaches a `finally`. With insert-at-start, a
+job that dies mid-run leaves a row with **`status='running'` and `finished_at IS NULL`** — and that
+stranded row is the **only** way "fired and died" ever becomes observable. A write-on-completion
+design faithfully records every success and **silently loses exactly the failures the table exists
+to surface.**
+
+```sql
+-- the query that answers "what died?"
+SELECT job_name, started_at FROM cron_runs
+WHERE status = 'running' AND started_at < now() - interval '15 minutes';
+```
+
+There is deliberately **no `'timeout'` status** — nothing is alive to write it. A timeout presents
+as a `running` row that never finished, which is why the stale-row query above is the real detector.
+
+### Design decisions
+
+- **Recording never breaks the job.** Every `cron_runs` write is in a try/catch that logs and
+  continues. If the table doesn't exist or the DB blips, the job runs normally and simply isn't
+  recorded. Same rule as `recordEmailSend` in 035 — observability must not become a new failure
+  mode for the thing it observes.
+- **The wrapper absorbs the auth check** duplicated across every route, so adopting it **removes**
+  more code than it adds.
+  ⚠️ It preserves the existing `if (cronSecret && …)` guard verbatim — meaning an **unset
+  `CRON_SECRET` leaves every job publicly triggerable**. Preserved deliberately to avoid changing
+  security behaviour in the same commit that adds recording; worth closing separately. `env-check`
+  reports whether it is set.
+- **`triggered_by`** distinguishes `vercel-cron` / `external` (cron-job.org drives the sub-daily
+  jobs, since Vercel Hobby is daily-only) / `manual`. Without it, a silently-stopped external
+  scheduler is invisible.
+- **Handlers may return a plain object or a `NextResponse`** — both supported, so adoption never
+  forces a rewrite of a route's return shape. A `NextResponse` is `.clone()`d to read its body,
+  leaving the original stream intact.
+- **Result JSON is capped at 8 KB**; larger payloads store a truncated preview. The column is for
+  diagnosis, not a second copy of the data.
+- **Unauthenticated probes are NOT recorded** — a 401 is not a run, and logging them would let
+  anyone flood the table.
+
+### 90-day retention — folded into `cleanup-analytics-events`
+
+No new cron. ~33 jobs × 1 row/run ≈ 12k rows/year is hygiene, not pressure, and a dedicated
+schedule entry would cost more attention than it saves.
+
+⚠️ **Deletes only FINISHED runs** (`status <> 'running'`). A row still marked `running` after 90
+days is a job that died and never reported — **the single most valuable row in the table**.
+Sweeping those would delete the evidence the table exists to preserve. The delete is also
+try/catch'd so a missing table can't fail the primary cleanup.
+
+### ⏱️ ORDERING — SAFE EITHER WAY (unlike 033/034)
+
+037 adds a **new table**. No code does a bare `select().from(cronRuns)`, so nothing expands to a
+missing column, and every write is non-fatal. Deploying before the table exists is harmless: crons
+run normally and record nothing. **Neon-first is preferred (no error noise, no blind window) but is
+a preference, not a requirement.** Same posture as 035; the opposite of 033/034.
+
+### 🔢 Scope correction: 33 cron routes, not 11
+
+The build plan assumed ~11. `find src/app/api/cron src/app/api/jobs -name route.ts` returns **33**,
+matching the 33 `vercel.json` entries. Wrapped so far: **`process-social-mentions`** (the proof
+case — daily for months, zero output, no way to tell if it ran).
+
+⚠️ **A blind mechanical wrap of the remaining 32 is NOT safe.** Most share the identical auth
+block, but `api/jobs/process-deletions` differs — it has **both GET and POST**, and falls back to
+`AUTH_SECRET` when `CRON_SECRET` is unset. Wrapping it without reading it would change its auth
+behaviour. The remaining routes need a read-then-wrap pass, not sed.
+
+**Until every job is wrapped, absence of a `cron_runs` row means "not wrapped yet", NOT "did not
+run."** That ambiguity is the thing being fixed, so it matters that the half-done state is
+recorded rather than assumed away.
