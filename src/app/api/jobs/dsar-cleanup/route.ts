@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { del } from '@vercel/blob'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import {
   findExpiredCompletedRequests,
   findStaleOtpRequests,
@@ -24,7 +25,11 @@ function verifyAuth(request: NextRequest): boolean {
   return authHeader === `Bearer ${secret}`
 }
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). ⚠️ `verifyAuth` uses CRON_SECRET ||
+// AUTH_SECRET — left untouched inside the handler.
+export const GET = withCronRun('jobs/dsar-cleanup', handleGET)
+
+async function handleGET(request: NextRequest) {
   if (!verifyAuth(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

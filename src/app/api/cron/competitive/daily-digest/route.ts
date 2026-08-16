@@ -1,5 +1,6 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { db } from '@/db'
 import { competitorProfiles } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
@@ -17,7 +18,11 @@ import { logger } from '@/lib/logger'
  * Trigger: Vercel Cron — daily (vercel.json).
  * Manual trigger: GET /api/cron/competitive/daily-digest
  */
-export async function GET(request: Request) {
+// Run-recording (migration 037). The route's own auth check is left exactly
+// as it was, inside the handler — wrapping adds observability only.
+export const GET = withCronRun('competitive/daily-digest', handleGET)
+
+async function handleGET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {

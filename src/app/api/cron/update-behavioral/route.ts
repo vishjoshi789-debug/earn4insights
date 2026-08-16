@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { batchUpdateBehavioralAttributes } from '@/server/analyticsService'
 import { logger } from '@/lib/logger'
 
@@ -6,7 +7,10 @@ import { logger } from '@/lib/logger'
  * API Route for Cron Job: Update Behavioral Attributes
  * Called daily by Vercel Cron
  */
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('update-behavioral', handleGET)
+
+async function handleGET(request: NextRequest) {
   try {
     // Verify cron secret to prevent unauthorized access
     const authHeader = request.headers.get('authorization')

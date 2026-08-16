@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { runSendTimeAnalysis } from '@/jobs/sendTimeAnalysisJob'
 import { logger } from '@/lib/logger'
 
@@ -10,7 +11,15 @@ import { logger } from '@/lib/logger'
  * 
  * Manual trigger: GET /api/cron/send-time-analysis
  */
-export async function GET(request: Request) {
+// Run-recording (migration 037).
+// ⚠️ This route is the ONLY one that compares unconditionally against
+// `Bearer ${process.env.CRON_SECRET}` with no `cronSecret &&` guard — so
+// unlike the majority it does NOT fall open when the secret is unset. That
+// difference is deliberate-looking and is preserved exactly: the check stays
+// inline, and the wrapper adds recording only.
+export const GET = withCronRun('send-time-analysis', handleGET)
+
+async function handleGET(request: Request) {
   // Verify cron secret (Vercel Cron sends this header)
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

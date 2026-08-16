@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { db } from '@/db'
 import { influencerProfiles } from '@/db/schema'
 import { eq } from 'drizzle-orm'
@@ -77,7 +78,10 @@ async function fetchYouTubeChannelStats(handle: string, apiKey: string): Promise
   }
 }
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('sync-social-stats', handleGET)
+
+async function handleGET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET

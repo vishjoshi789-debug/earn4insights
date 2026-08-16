@@ -10,9 +10,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { runRecomputeIcpScores } from '@/server/recomputeIcpScores'
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('recompute-icp-scores', handleGET)
+
+async function handleGET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET

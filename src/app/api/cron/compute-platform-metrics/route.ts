@@ -21,6 +21,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { computeDailyMetrics, computeRevenueMetrics } from '@/server/platformAnalyticsService'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -30,7 +31,10 @@ function startOfUtcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('compute-platform-metrics', handleGET)
+
+async function handleGET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {

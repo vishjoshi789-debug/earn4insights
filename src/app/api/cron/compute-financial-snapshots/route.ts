@@ -23,6 +23,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { computeFinancialSnapshot } from '@/server/platformAnalyticsService'
 
 const MAX_MONTHS = 12
@@ -40,7 +41,10 @@ function parseMonthParam(value: string): Date | null {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1))
 }
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('compute-financial-snapshots', handleGET)
+
+async function handleGET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {

@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { logDataAccess } from '@/lib/audit-log'
 import { getProcessingPayoutsOlderThan, updatePayoutStatus } from '@/db/repositories/razorpayRepository'
 import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
@@ -25,7 +26,11 @@ function verifyAuth(request: NextRequest): boolean {
   return authHeader === `Bearer ${cronSecret}`
 }
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). ⚠️ `verifyAuth` uses CRON_SECRET ||
+// AUTH_SECRET — left untouched inside the handler.
+export const GET = withCronRun('sync-razorpay-status', handleGET)
+
+async function handleGET(request: NextRequest) {
   const startTime = Date.now()
   console.log('[CRON] Starting sync-razorpay-status...')
 

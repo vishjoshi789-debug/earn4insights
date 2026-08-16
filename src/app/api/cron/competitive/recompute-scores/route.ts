@@ -1,5 +1,6 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { db } from '@/db'
 import { competitorProfiles } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
@@ -13,7 +14,10 @@ import { logger } from '@/lib/logger'
  * is wired via cron-job.org per approved plan (Q1).
  * Manual trigger: GET /api/cron/competitive/recompute-scores
  */
-export async function GET(request: Request) {
+// Run-recording (migration 037). Auth unchanged — see daily-digest.
+export const GET = withCronRun('competitive/recompute-scores', handleGET)
+
+async function handleGET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {

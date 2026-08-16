@@ -1,5 +1,6 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { db } from '@/db'
 import { users } from '@/db/schema'
 import { eq } from 'drizzle-orm'
@@ -25,7 +26,10 @@ import { logger } from '@/lib/logger'
  *
  * Trigger: Vercel Cron — daily (vercel.json), after digest/report crons.
  */
-export async function GET(request: Request) {
+// Run-recording (migration 037). Auth unchanged — see daily-digest.
+export const GET = withCronRun('competitive/send-reports', handleGET)
+
+async function handleGET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {

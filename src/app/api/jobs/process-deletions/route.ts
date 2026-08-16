@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { db } from '@/db'
 import { userProfiles, users, surveyResponses, feedback, icpMatchScores } from '@/db/schema'
 import { eq, and, lt, sql } from 'drizzle-orm'
@@ -25,13 +26,20 @@ function verifyAuth(request: NextRequest) {
  * 
  * Configured in vercel.json to run daily at 2 AM UTC
  */
-export async function GET(request: NextRequest) {
-  return processAccountDeletions(request)
-}
-
-export async function POST(request: NextRequest) {
-  return processAccountDeletions(request)
-}
+// Run-recording (migration 037). GET and POST are the same job reached two
+// ways, so they share one job_name.
+//
+// ⚠️ THE MOST DEVIANT ROUTE OF THE 33 — flagged deliberately. `verifyAuth`
+// above uses `CRON_SECRET || AUTH_SECRET` and compares unconditionally, so
+// unlike the majority it does NOT fall open when CRON_SECRET is unset (it
+// falls back to AUTH_SECRET, and failing that compares against the literal
+// "Bearer undefined"). That check is left entirely inside
+// `processAccountDeletions` — the wrapper adds recording and nothing else.
+//
+// This is also the job that permanently deletes user accounts, which is
+// exactly the kind of thing that should never have been running unobserved.
+export const GET = withCronRun('jobs/process-deletions', processAccountDeletions)
+export const POST = withCronRun('jobs/process-deletions', processAccountDeletions)
 
 async function processAccountDeletions(request: NextRequest) {
   const startTime = Date.now()

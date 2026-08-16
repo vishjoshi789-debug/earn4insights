@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import {
   autoApprovePendingPosts,
   processUpvoteMilestones,
@@ -24,7 +25,13 @@ function verifyAuth(request: NextRequest): boolean {
   return authHeader === `Bearer ${cronSecret}`
 }
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). ⚠️ This route's `verifyAuth` uses
+// CRON_SECRET || AUTH_SECRET and always compares — different from the
+// majority pattern. Left completely untouched inside the handler so wrapping
+// cannot alter it.
+export const GET = withCronRun('community-deals-moderation', handleGET)
+
+async function handleGET(request: NextRequest) {
   if (!verifyAuth(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { processExpiredDeals } from '@/server/dealsModerationService'
 
 function verifyAuth(request: NextRequest): boolean {
@@ -19,7 +20,11 @@ function verifyAuth(request: NextRequest): boolean {
   return authHeader === `Bearer ${cronSecret}`
 }
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). ⚠️ `verifyAuth` uses CRON_SECRET ||
+// AUTH_SECRET — left untouched inside the handler.
+export const GET = withCronRun('deals-expiry', handleGET)
+
+async function handleGET(request: NextRequest) {
   if (!verifyAuth(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

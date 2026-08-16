@@ -1929,3 +1929,95 @@ behaviour. The remaining routes need a read-then-wrap pass, not sed.
 **Until every job is wrapped, absence of a `cron_runs` row means "not wrapped yet", NOT "did not
 run."** That ambiguity is the thing being fixed, so it matters that the half-done state is
 recorded rather than assumed away.
+
+---
+
+## ⏱️ All 33 cron routes wrapped for run-recording (2026-08-13)
+
+Completes the observability work started with migration 037. **"No `cron_runs` row" now means
+"didn't run", with no asterisk.**
+
+### The adoption pattern — rename + re-export, auth left INLINE
+
+Every route was converted the same way:
+
+```ts
+export const GET = withCronRun('job-name', handleGET)
+
+async function handleGET(request: NextRequest) {   // was: export async function GET
+  …body unchanged, INCLUDING its auth check…
+}
+```
+
+⚠️ **Deliberate deviation from the original design.** The plan had the wrapper *absorb* the
+duplicated auth check. It doesn't, for 32 of the 33 — the inline check stays exactly where it was.
+
+Reason: the routes turned out to use **three different auth semantics**, and the founder's binding
+constraint was *"do NOT change any route's auth behaviour while wrapping."* Rewriting 32 auth
+blocks to be equivalent-but-different is exactly the kind of change that looks safe and isn't.
+Leaving them untouched makes behaviour preservation **true by construction** rather than by
+careful reasoning. It also avoids closing-brace surgery in 32 files.
+
+Cost: the auth check stays duplicated, and the wrapper's own (permissive default) check is
+redundant with it. That redundancy is harmless — the wrapper never rejects anything the inline
+check would accept — but it is not the tidy end state the design imagined.
+
+**Because the wrapper inserts its row before the handler runs, a rejected probe would have left a
+row.** So `withCronRun` now **discards the row when the handler returns 401** — a probe is not a
+run, and unauthenticated traffic must not be able to flood the table or masquerade as history.
+
+### The three auth semantics found (all preserved verbatim)
+
+| Pattern | Routes | Behaviour when secret unset |
+|---|---|---|
+| `if (cronSecret && header !== …)` | 24 | ⚠️ **falls OPEN** — no check at all |
+| `verifyAuth()` with `CRON_SECRET \|\| AUTH_SECRET`, always compares | 8 | falls back, else compares to `"Bearer undefined"` |
+| `header !== \`Bearer ${process.env.CRON_SECRET}\``, always compares | 1 (`send-time-analysis`) | compares to `"Bearer undefined"` |
+
+`CronAuthOptions` exists on the wrapper to reproduce all three exactly, should auth ever be moved
+inward. Only the default is used today — by `process-social-mentions`, the single route whose auth
+*was* moved into the wrapper (in the previous commit, where it was behaviourally identical).
+
+### Routes needing special handling (9)
+
+- **`jobs/process-deletions`** — GET **and** POST, `CRON_SECRET || AUTH_SECRET`, and it
+  **permanently deletes user accounts**. The most deviant of the 33 and precisely the job that
+  should never have run unobserved.
+- **`send-time-analysis`** — the ONLY route that does not fall open when the secret is unset.
+  ⚠️ Wrapping it with the standard wrapper auth would have *silently opened it*. Caught only by
+  reading it; a find-and-replace would have introduced the hole.
+- **`process-content-reviews`**, **`support-ticket-reminders`** — GET + POST sharing one handler.
+  Both exports wrapped under **one** `job_name`: same job reached two ways, not two jobs.
+- **`community-deals-moderation`, `deals-expiry`, `process-payouts`, `sync-razorpay-status`,
+  `jobs/dsar-cleanup`** — `verifyAuth` helper with the `AUTH_SECRET` fallback.
+
+### 📌 KNOWN GAP — recorded, not fixed
+
+**`if (cronSecret && …)` means every one of those 24 jobs becomes publicly triggerable if
+`CRON_SECRET` is ever unset.** Preserved verbatim rather than mixed into an observability change.
+
+⚠️ **Especially relevant to the new PREVIEW environment**, where a fresh env may not have the
+secret copied across — and `docs/PREVIEW_ENVIRONMENT_SETUP.md` lists `CRON_SECRET` as
+*"must differ"*, i.e. a value someone has to remember to set. If it is missed, preview's crons —
+including **account deletion** — are open to anyone who knows the URL. `env-check` reports whether
+it is set; that check is the mitigation until the pattern is fixed.
+
+The `"Bearer undefined"` comparison in the other 9 is a milder version of the same thing: guessable
+in principle. Also preserved, also logged.
+
+### Reading the results
+
+```sql
+-- last run of every job
+SELECT DISTINCT ON (job_name) job_name, status, duration_ms, triggered_by, started_at
+FROM cron_runs ORDER BY job_name, started_at DESC;
+
+-- what died (the reason insert-at-start exists)
+SELECT job_name, started_at FROM cron_runs
+WHERE status = 'running' AND started_at < now() - interval '15 minutes';
+
+-- which jobs have NEVER reported — now a real answer, not an artefact of partial adoption
+SELECT unnest(ARRAY['process-social-mentions','process-notifications', …]) AS job
+EXCEPT SELECT DISTINCT job_name FROM cron_runs;
+```
+

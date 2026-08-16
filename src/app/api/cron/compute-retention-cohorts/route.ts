@@ -19,12 +19,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { computeRetentionCohorts } from '@/server/platformAnalyticsService'
 
 const MAX_WEEKS = 26
 const DEFAULT_WEEKS = 12
 
-export async function GET(request: NextRequest) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('compute-retention-cohorts', handleGET)
+
+async function handleGET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {

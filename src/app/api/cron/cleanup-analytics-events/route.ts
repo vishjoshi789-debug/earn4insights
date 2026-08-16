@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { db, sql } from '@/db'
 import { logger } from '@/lib/logger'
 
@@ -10,7 +11,10 @@ import { logger } from '@/lib/logger'
  *
  * Trigger: GET /api/cron/cleanup-analytics-events
  */
-export async function GET(request: Request) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('cleanup-analytics-events', handleGET)
+
+async function handleGET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
 

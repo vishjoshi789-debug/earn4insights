@@ -47,6 +47,37 @@ export type CronHandlerResult = NextResponse | Record<string, unknown> | void
 
 export type CronHandler = (request: NextRequest) => Promise<CronHandlerResult>
 
+/**
+ * Auth options — these exist ONLY to reproduce, exactly, the three different
+ * auth patterns already present across the 33 routes. They are not a menu of
+ * new policies. Wrapping a route must never change how it authenticates.
+ *
+ * Observed patterns:
+ *
+ *  1. `whenUnset: 'skip'` (default, 23 routes)
+ *       const cronSecret = process.env.CRON_SECRET
+ *       if (cronSecret && authHeader !== `Bearer ${cronSecret}`) → 401
+ *     ⚠️ FAILS OPEN: no secret configured means no check at all.
+ *
+ *  2. `whenUnset: 'enforce'` + secretEnv ['CRON_SECRET','AUTH_SECRET'] (7 routes)
+ *       const cronSecret = process.env.CRON_SECRET || process.env.AUTH_SECRET
+ *       if (authHeader !== `Bearer ${cronSecret}`) → 401
+ *
+ *  3. `whenUnset: 'enforce'` + secretEnv ['CRON_SECRET'] (send-time-analysis)
+ *       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) → 401
+ *
+ * ⚠️ Patterns 2 and 3 compare against the STRING `"Bearer undefined"` when no
+ * secret is set, which is technically guessable. Reproduced verbatim rather
+ * than fixed — changing it here would alter live auth behaviour inside an
+ * observability change. Logged as a known gap.
+ */
+export type CronAuthOptions = {
+  /** Env vars supplying the shared secret, in precedence order. */
+  secretEnv?: string[]
+  /** What to do when none of `secretEnv` is set. Default 'skip' (fail open). */
+  whenUnset?: 'skip' | 'enforce'
+}
+
 /** Where the request came from — see the `triggered_by` column note. */
 function resolveTrigger(request: NextRequest): string {
   // Vercel Cron sets this on its own invocations.
@@ -97,6 +128,16 @@ async function finishRun(
   }
 }
 
+/** Remove a row for something that turned out not to be a run at all. */
+async function discardRun(runId: string | null): Promise<void> {
+  if (!runId) return
+  try {
+    await db.delete(cronRuns).where(eq(cronRuns.id, runId))
+  } catch (err) {
+    console.error('[cron] Could not discard run row (non-fatal):', err)
+  }
+}
+
 /** Keep the JSONB small and predictable. */
 function truncateForStorage(value: unknown): unknown {
   try {
@@ -108,17 +149,26 @@ function truncateForStorage(value: unknown): unknown {
   }
 }
 
-export function withCronRun(jobName: string, handler: CronHandler) {
+export function withCronRun(
+  jobName: string,
+  handler: CronHandler,
+  auth: CronAuthOptions = {},
+) {
+  const secretEnv = auth.secretEnv ?? ['CRON_SECRET']
+  const whenUnset = auth.whenUnset ?? 'skip'
+
   return async function wrappedCronRoute(request: NextRequest): Promise<NextResponse> {
     // ── Auth ──────────────────────────────────────────────────────────────
-    // Identical to the check previously duplicated across the routes,
-    // including the `cronSecret &&` guard. ⚠️ That guard means an UNSET
-    // CRON_SECRET leaves every job publicly triggerable — preserved here to
-    // avoid changing behaviour in the same commit that adds recording, but
-    // it is worth closing separately. env-check reports whether it is set.
-    const cronSecret = process.env.CRON_SECRET
+    // Reproduces the route's ORIGINAL check exactly — see CronAuthOptions.
+    // ⚠️ The default 'skip' mode means an UNSET CRON_SECRET leaves those jobs
+    // publicly triggerable. Preserved verbatim so that wrapping never changes
+    // auth behaviour; especially relevant to a fresh PREVIEW environment,
+    // where the secret may not have been copied across. env-check reports it.
+    const secret = secretEnv.map((k) => process.env[k]).find(Boolean)
     const authHeader = request.headers.get('authorization')
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+
+    const mustCheck = whenUnset === 'enforce' || Boolean(secret)
+    if (mustCheck && authHeader !== `Bearer ${secret}`) {
       // Deliberately NOT recorded: an unauthenticated probe is not a run, and
       // logging them would let anyone flood the table.
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -132,6 +182,17 @@ export function withCronRun(jobName: string, handler: CronHandler) {
       const out = await handler(request)
 
       if (out instanceof NextResponse) {
+        // A 401 from the handler means the route's OWN inline auth rejected
+        // the caller. That is a probe, not a run — discard the row so
+        // unauthenticated traffic can't flood the table or masquerade as
+        // execution history. Matters because most routes keep their inline
+        // auth check (see the adoption note in SESSION_RESUME): the wrapper
+        // has already inserted a row by the time that check runs.
+        if (out.status === 401) {
+          await discardRun(runId)
+          return out
+        }
+
         // Re-read the body to record it. Cloning first leaves the original
         // stream intact for the caller.
         let parsed: unknown = null

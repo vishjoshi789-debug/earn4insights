@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import {
   findOpenTicketsWithoutAdminReply,
   findInProgressTicketsWithoutRecentAdminReply,
@@ -89,5 +90,8 @@ async function handle(req: NextRequest) {
   }
 }
 
-export const GET = handle
-export const POST = handle
+// Run-recording (migration 037). GET and POST share one handler and therefore
+// one job_name — they are the same job reached two ways, not two jobs. Auth
+// stays inside `handle`, unchanged.
+export const GET = withCronRun('support-ticket-reminders', handle)
+export const POST = withCronRun('support-ticket-reminders', handle)

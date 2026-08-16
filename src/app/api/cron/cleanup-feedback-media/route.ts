@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { cleanupOldAudioMedia, cleanupOldVideoMedia } from '@/server/feedbackMediaRetentionService'
 import { logger } from '@/lib/logger'
 
@@ -8,7 +9,10 @@ import { logger } from '@/lib/logger'
  * Trigger: Vercel Cron (recommended daily)
  * Manual trigger: GET /api/cron/cleanup-feedback-media
  */
-export async function GET(request: Request) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('cleanup-feedback-media', handleGET)
+
+async function handleGET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
 

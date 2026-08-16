@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { processPendingAudioFeedbackMedia, processPendingVideoFeedbackMedia } from '@/server/feedbackMediaProcessingService'
 import { logger } from '@/lib/logger'
 
@@ -8,7 +9,10 @@ import { logger } from '@/lib/logger'
  * Trigger: Vercel Cron (recommended every 5-15 minutes)
  * Manual trigger: GET /api/cron/process-feedback-media
  */
-export async function GET(request: Request) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('process-feedback-media', handleGET)
+
+async function handleGET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
 

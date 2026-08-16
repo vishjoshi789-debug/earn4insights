@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { processPendingNotifications } from '@/server/notificationService'
 import { logger } from '@/lib/logger'
 
 // This endpoint should be called by a cron job every 5 minutes
 // In Vercel, you can use Vercel Cron Jobs for this
-export async function GET(request: Request) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('process-notifications', handleGET)
+
+async function handleGET(request: Request) {
   // Verify cron secret to prevent unauthorized access
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET

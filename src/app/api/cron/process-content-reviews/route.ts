@@ -13,6 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { processAutoApprovals } from '@/server/contentApprovalService'
 
 function verifyAuth(request: NextRequest): boolean {
@@ -61,10 +62,8 @@ async function handler(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
-  return handler(request)
-}
-
-export async function POST(request: NextRequest) {
-  return handler(request)
-}
+// Run-recording (migration 037). GET and POST are the same job reached two
+// ways, so they share one job_name. ⚠️ Auth lives in `handler` and uses
+// CRON_SECRET || AUTH_SECRET — left untouched.
+export const GET = withCronRun('process-content-reviews', handler)
+export const POST = withCronRun('process-content-reviews', handler)

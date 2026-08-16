@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { withCronRun } from '@/lib/cron/withCronRun'
 import { extractThemesForAllProducts } from '@/server/themeExtractionService'
 import { logger } from '@/lib/logger'
 
@@ -8,7 +9,10 @@ import { logger } from '@/lib/logger'
  * Trigger: Vercel Cron (recommended weekly, Sundays at 2 AM UTC)
  * Manual trigger: GET /api/cron/extract-themes
  */
-export async function GET(request: Request) {
+// Run-recording (migration 037). Auth left inline, unchanged.
+export const GET = withCronRun('extract-themes', handleGET)
+
+async function handleGET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
 
