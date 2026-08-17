@@ -2178,3 +2178,101 @@ decision, not an oversight.**
 Browser-untested. Volume unmeasured — Neon timed out from the dev machine and the local
 `ADMIN_API_KEY` is stale, so influencer/application/payout counts are still unknown.
 
+
+---
+
+## ⚖️ Consent carve-out completed + three decisions recorded (2026-08-17)
+
+### The carve-out is now complete — the gate covers only marketing
+
+Extended `bypassPersonalizationConsent` to the three non-creator transactional events flagged in the
+influencer audit:
+
+- **`CONSUMER_REWARD_REDEEMED`** (consumer half) — ⚠️ **this one is money.** A consumer spends their
+  own points and, without this, never learns whether the redemption went through. The brand half
+  stays as-is (`role: 'brand'`, never gated).
+- **`COMMUNITY_DEAL_APPROVED` / `COMMUNITY_DEAL_REJECTED`** — moderation outcome on their own post.
+  A suppressed rejection leaves someone believing their post is live when it isn't.
+- **`SUPPORT_ADMIN_REPLY` / `SUPPORT_TICKET_UPDATED` / `SUPPORT_TICKET_RESOLVED`** — their own
+  ticket. Suppressing these means someone asks for help and never learns they got an answer.
+
+**`personalization` consent now gates only genuinely audience-selected events:**
+`BRAND_PRODUCT_LAUNCHED`, `BRAND_CAMPAIGN_LAUNCHED`, `BRAND_MEMBER_ACTIVE`,
+`BRAND_DISCOUNT_CREATED`, `DEAL_EXPIRED`, and the ICP-matched consumer half of
+`INFLUENCER_POST_PUBLISHED` — i.e. the marketing surface, which is what the gate was always for.
+
+⚠️ **The flag is no longer "narrow" in the sense the resolution-loop note used.** It started as one
+event and is now on ~17. That is the correct outcome — the original framing was
+*"deliberately NARROW: one event type sets it"*, and a future reader should understand the scope
+grew **by applying the stated test**, not by erosion. The test still governs:
+*is the recipient derived from their own prior act, or selected from an audience?* Anything failing
+that test must stay gated.
+
+---
+
+### 📌 Decision record 1 — the campaign-invitation carve-out is BORDERLINE, on purpose
+
+`INFLUENCER_CAMPAIGN_INVITED` is the weakest member of the carved-out set and should be revisited
+rather than inherited.
+
+**The case against carving it out:** a brand genuinely *selects* the creator. That is
+audience-selection by the plain reading of the test, and it is the same mechanic as
+`BRAND_CAMPAIGN_LAUNCHED`, which we deliberately left gated.
+
+**The case for (what we chose):**
+1. The creator **published a marketplace profile precisely to be found** — being discoverable is
+   itself a prior act, opted into.
+2. It is **1:1, not fan-out.** `BRAND_CAMPAIGN_LAUNCHED` broadcasts to 100 influencers via
+   `getActiveInfluencers()`; an invitation targets one person.
+3. It carries a **decision with a deadline** — accept or decline paid work. That is transactional in
+   substance, not promotional.
+
+**If this is ever reversed**, the consequence is concrete: creators who declined personalization
+stop being told about paid work offers, and will appear unresponsive to brands. Weigh that against
+the purity of the test.
+
+---
+
+### 📌 Decision record 2 — creator-reviews-brand has NO event, deliberately
+
+`POST /api/campaigns/[campaignId]/reviews` emits `INFLUENCER_REVIEW_RECEIVED` **only when
+`isBrand`**. The reverse direction — a creator reviewing a brand — notifies nobody.
+
+**Why not just fire the same event:** the handler targets `payload.influencerId`, its copy says
+*"reviewed your work"*, and its CTA points at `/dashboard/influencer/campaigns/…`. Reusing it for a
+brand recipient would send a brand to an influencer page with creator-flavoured wording — the same
+class of mistake as the consumer product tour on the influencer path.
+
+**If you want it**, it needs its own event (`BRAND_REVIEW_RECEIVED`) with brand-facing copy and a
+`/dashboard/brand/campaigns/…` CTA. Small, but a real addition rather than a flag flip.
+
+---
+
+### 📌 Decision record 3 — the ledger gap is a CREATOR-FACING OUTAGE, not back-office cleanup
+
+**This reframes its severity and should change its priority.**
+
+The `campaign_payments` ledger gap has been carried since 2026-06-24 as an accounting/integrity
+problem: a brand pays campaign-level, `razorpay_orders` reaches `paid`, and **no `campaign_payments`
+row is created**. Framed that way it reads as something to tidy up before audit.
+
+**It is not.** Traced through the creator surface:
+
+- `influencerEarningsRepository` reads **`from(campaignPayments)`** (lines 106, 146) → a creator's
+  **Earnings screen shows ₹0**
+- `process-payouts` looks for **released `campaign_payments`** with no payout record → finds none →
+  **no payout row is ever created**
+- No payout row → the (fully working) `PAYMENT_PAYOUT_*` notification chain never fires → **the
+  creator is not even told anything is wrong**
+
+**So a creator can complete the work, have the brand pay, and see nothing: no earnings, no payout,
+no notification.** Silent, and unrecoverable from their point of view.
+
+⚠️ **Consequence for sequencing:** the creator notification work just completed is correct but
+currently announces a payment that cannot happen. **Preview environment → ledger fix** is therefore
+the path to creators being paid at all, and it outranks further notification or feature work.
+
+The `PAYMENTS_ENABLED` gate (default OFF) is what keeps this latent rather than live — a brand
+cannot currently create an order, so no creator is presently stranded. **That gate is the only thing
+standing between this defect and a real unpaid creator.**
+

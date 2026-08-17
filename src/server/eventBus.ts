@@ -630,10 +630,18 @@ async function routeEvent(
     //     BRAND_CAMPAIGN_LAUNCHED  → getActiveInfluencers(100), a broadcast
     //     INFLUENCER_POST_PUBLISHED (the ICP-matched consumer half)
     //
-    // 📌 The same argument applies to several NON-creator consumer events that
-    // are also transactional — community post approved/rejected, support
-    // replies, reward redemption confirmations. Deliberately NOT changed here
-    // (out of scope); logged in SESSION_RESUME as the same class.
+    // ✅ EXTENDED 2026-08-17 to the non-creator transactional events that were
+    // flagged in the same audit: community post approved/rejected, the three
+    // support-owner events, and reward-redemption confirmation (that last one
+    // is MONEY — a consumer spending their own points and never learning
+    // whether it worked). Search this file for
+    // `bypassPersonalizationConsent: true` for the complete current set.
+    //
+    // The gate now applies ONLY to genuinely audience-selected events:
+    // BRAND_PRODUCT_LAUNCHED, BRAND_CAMPAIGN_LAUNCHED, BRAND_MEMBER_ACTIVE,
+    // BRAND_DISCOUNT_CREATED, DEAL_EXPIRED, and the consumer half of
+    // INFLUENCER_POST_PUBLISHED — i.e. the marketing surface, which is what it
+    // was always for.
 
     // ── Content approval: approved → notify influencer
     case PLATFORM_EVENTS.INFLUENCER_CONTENT_APPROVED: {
@@ -1000,6 +1008,11 @@ async function routeEvent(
         ctaUrl: '/dashboard/rewards',
         type:   'reward_redeemed',
         entityType: 'reward',
+        // TRANSACTIONAL — and this one is MONEY. A consumer spent their own
+        // points; the confirmation that the redemption went through is a
+        // receipt, not marketing. Without this they'd have no way to know
+        // whether their points were consumed.
+        bypassPersonalizationConsent: true,
       })
       // If voucher and linked to a brand, notify the brand too
       if (payload.redemptionType === 'voucher' && payload.brandId) {
@@ -1051,6 +1064,8 @@ async function routeEvent(
           type: 'community_deal_approved',
           entityType: 'community_deal_post',
           entityId: payload.postId as string,
+          // TRANSACTIONAL — the outcome of moderation on THEIR own post.
+          bypassPersonalizationConsent: true,
         })
       }
       break
@@ -1068,6 +1083,9 @@ async function routeEvent(
           type: 'community_deal_rejected',
           entityType: 'community_deal_post',
           entityId: payload.postId as string,
+          // TRANSACTIONAL — a rejection they never see leaves them believing
+          // their post is live when it isn't.
+          bypassPersonalizationConsent: true,
         })
       }
       break
@@ -1137,6 +1155,9 @@ async function routeEvent(
         entityType: 'support_ticket',
         entityId: (payload.ticketId as string) ?? null,
         metadata: { ticketNumber: payload.ticketNumber },
+        // TRANSACTIONAL — a reply to a ticket THEY opened. Suppressing this
+        // means someone asks for help and never learns they got an answer.
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -1158,6 +1179,8 @@ async function routeEvent(
         entityType: 'support_ticket',
         entityId: (payload.ticketId as string) ?? null,
         metadata: { fromStatus: payload.fromStatus, toStatus: payload.toStatus },
+        // TRANSACTIONAL — status of their own ticket.
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -1179,6 +1202,10 @@ async function routeEvent(
         entityType: 'support_ticket',
         entityId: (payload.ticketId as string) ?? null,
         metadata: { ticketNumber: payload.ticketNumber },
+        // TRANSACTIONAL — resolution of their own ticket. ⚠️ Note this one
+        // also carries a rating prompt; the carve-out is justified by the
+        // resolution notice, not by the survey attached to it.
+        bypassPersonalizationConsent: true,
       })
       break
     }
