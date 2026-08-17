@@ -693,6 +693,132 @@ The route layer flips it atomically inside the same DB transaction that updates 
 
 ---
 
+## Migration 029/030/031/032 — money + data integrity (see `CLAUDE.md` §8)
+
+029 money ≥0 CHECKs · 030 status/enum CHECKs · 031 FK integrity + GDPR-aware on-delete actions ·
+032 drop the erroneous `fk_feedback_media_owner`.
+
+⚠️ **031's polymorphic-column rule.** `feedback_media.owner_id` is polymorphic (`owner_type` =
+`'feedback' | 'survey_response'`; `owner_id` is the parent row id, never a `users.id`). 031 wrongly
+FK'd it to `users.id`, which violated on **every** media insert and broke all audio/video/image
+uploads. 032 drops it. **Polymorphic columns get no FK** — verified that `products.owner_id` is the
+only other `owner_id` and is correct.
+
+⚠️ **031 also FK'd `consumer_intents.user_id → users.id` (CASCADE).** That is why writing an email
+address or `''` into that column silently failed for months — see 033's note below.
+
+---
+
+## Migration 033 — `feedback.user_id` (1 column + 1 FK + 1 partial index)
+
+### `feedback.user_id`
+`TEXT`, **nullable by design — never add NOT NULL.** FK → `users(id)` **`ON DELETE SET NULL`**.
+
+⚠️ **Founder-approved deviation from 031's PII→CASCADE rule.** Feedback is analytics a brand paid
+to collect; CASCADE would destroy it on one consumer's erasure. Precedent exists in 031 under
+*"analytics (retain anonymised)"* (`user_events.user_id`, `analytics_events.user_id`,
+`products.owner_id`). **Do not "consistency-fix" this back to CASCADE.**
+
+⚠️ **SET NULL alone is NOT erasure** — `user_name` / `user_email` remain plain text on the row. The
+`process-deletions` cron scrubs those. **Both halves are required; neither is sufficient.**
+
+**Backfill is PROVENANCE-AWARE.** Only organic rows (`multimodal_metadata->>'importSource' IS
+NULL`). A naive email join reported "23/23 backfillable"; the honest number is **5 of 23**, because
+18 imported rows carry the *importing brand's* address. Real coverage ~22%, and that is correct —
+imported respondents are not platform users.
+
+**Only `api/feedback/submit` writes this column.** The three import paths deliberately do not.
+⚠️ 033 shipped the column, backfill and FK but *not* the write path, so it sat inert until
+`1f22751`: **adding a column + backfill is not the same as adding the write path too.**
+
+---
+
+## Migration 034 — resolution loop (2 columns on `feedback`)
+
+### `feedback.resolution_notified_at` — `TIMESTAMP`, nullable, **no default**
+The notify-once claim key. Claimed conditionally:
+`UPDATE feedback SET resolution_notified_at = now() WHERE id = $1 AND resolution_notified_at IS NULL RETURNING id`
+— the route emits only if a row comes back. Reading `status <> 'addressed'` in app code **races**
+two tabs / a double-click / a retry.
+
+⚠️ **A `DEFAULT now()` here would mark every existing row already-notified and permanently suppress
+the loop.** The absent default is load-bearing.
+
+Also the only durable *"was this consumer ever told?"* record — `notification_inbox` rows expire and
+aren't written when in-app is off.
+
+### `feedback.resolution_note` — `TEXT`, nullable
+**Deliberately unwritten (Phase 2).** Would be the first user-generated content travelling
+**brand → consumer**, rendered in-app *and* emailed — needs a moderation design, not a textarea.
+
+---
+
+## Migration 035 — email delivery truth (2 new tables)
+
+### `email_deliveries`
+One row per send attempt. `provider_message_id` (Resend's id, partial-UNIQUE) is the correlation
+key the webhook arrives with. `status`: `accepted` (what `sent` used to mean) · `delivered` ·
+`bounced` · `complained` · `delayed` · `suppressed` · `failed`. Also `user_id`, `to_email`,
+`email_type`, `notification_queue_id`, `detail`.
+
+⚠️ **Deliberately NOT columns on `notification_queue`.** The verification email and the six
+influencer-verification emails call Resend **directly and never touch the queue** — queue columns
+could never have covered the most important email on the platform. All three send paths write here.
+
+### `email_suppressions`
+`email` (PK, lowercased) · `reason` (`bounced|complained|manual`) · `first_seen_at` ·
+`last_event_at`. Checked before every send. A hard bounce or spam complaint poisons the sending
+domain for **every** user, which is how one bad address becomes platform-wide delivery failure.
+
+⚠️ **`isEmailSuppressed` FAILS OPEN** — a suppression check that failed closed would silently block
+real users, the exact failure this table exists to eliminate.
+
+⚠️ **No historical backfill is possible.** The production `RESEND_API_KEY` is *sending-scoped*:
+every read endpoint (`/domains`, `/emails`, `/api-keys`, `/audiences`) returns 401
+`restricted_api_key`. That is expected and does **not** mean the key is dead. Pre-035 bounces exist
+only in the Resend dashboard.
+
+---
+
+## Migration 036 — parity for a fresh database (no new concepts)
+
+Both objects already existed in production but in **no numbered migration**, so a DB built from the
+migration routes alone — exactly what a fresh preview environment is — would lack them:
+
+1. **`brand_subscriptions`** — created historically by `drizzle push`, then FK'd by 031. The only
+   table of ~30 with no CREATE route. `getBrandSubscription` runs on two live brand pages.
+   Also `ADD COLUMN IF NOT EXISTS feature_overrides JSONB`.
+2. **`UNIQUE(user_id, event_type)` on `notification_preferences`** — created by migration 005 but
+   **never declared in `schema.ts`**. `upsertPreference`'s `onConflictDoUpdate` depends on it;
+   without it every preference save throws *"no unique or exclusion constraint matching the ON
+   CONFLICT specification"*.
+
+---
+
+## Migration 037 — cron run records (1 new table + 2 indexes)
+
+### `cron_runs`
+`job_name` · `started_at` · `finished_at` · `duration_ms` · `status` (`running|ok|error`) ·
+`result` (JSONB, capped 8 KB) · `error` · `triggered_by` (`vercel-cron|external|manual`).
+
+⚠️⚠️ **THE ROW IS INSERTED AT START, NOT ON COMPLETION. Do not "optimise" this.** Vercel kills
+functions at 60s and a hard crash never reaches a `finally`, so a job that dies mid-run leaves
+`status='running'` with `finished_at IS NULL` — **the only way "fired and died" is ever
+observable.** A write-on-completion design records every success and loses exactly the failures the
+table exists to surface. There is deliberately **no `'timeout'` status**: nothing is alive to write
+it.
+
+```sql
+-- the detector
+SELECT job_name, started_at FROM cron_runs
+WHERE status = 'running' AND started_at < now() - interval '15 minutes';
+```
+
+Retention: 90 days, folded into `cleanup-analytics-events`. ⚠️ **Deletes only FINISHED runs** — a
+row still `running` after 90 days is the most valuable row in the table.
+
+---
+
 ## Notes on tables that have evolved since their original migration
 
 ### `whatsapp_otp_verifications` (migrations 014 → 018)

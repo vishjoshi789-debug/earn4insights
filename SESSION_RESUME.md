@@ -2021,3 +2021,64 @@ SELECT unnest(ARRAY['process-social-mentions','process-notifications', …]) AS 
 EXCEPT SELECT DISTINCT job_name FROM cron_runs;
 ```
 
+---
+
+# 📍 STATE OF PLAY — 2026-08-17 (read this first)
+
+Doc sync point: **`593aae9`**. CLAUDE.md is at **v17**; `docs/SCHEMA.md` covers migrations through
+**037**; `docs/CRON_JOBS.md` documents run-records and the three auth patterns.
+
+## What the agent could NOT verify this pass — treat as reported, not confirmed
+
+The founder reports having run the Neon SQL for the outstanding migrations. **This was not
+independently verified**, because both verification routes were unavailable:
+
+- **Direct Neon connection: `CONNECT_TIMEOUT`** from the dev machine (production HTTP is fine, so
+  it is the DB endpoint, not the network — likely a suspended/cold compute).
+- **Deployed admin routes: 401.** ⚠️ **The `ADMIN_API_KEY` in `.env.local` is STALE** — it was
+  rotated during the Tier B wave and never updated locally. Confirmed it is a *key* problem and not
+  a middleware block via the established diagnostic: `X-Mw-Decision: continue` on both
+  `run-migration-034` and `-037`, i.e. the request reached the handler and the handler rejected the
+  key. (`redirect` would have meant middleware.)
+
+**One command settles it**, using the Vercel value of `ADMIN_API_KEY`:
+
+```powershell
+$key = '<from Vercel>'
+foreach ($n in @('035','036','037')) {
+  $r = Invoke-RestMethod -Method Post -Uri "https://www.earn4insights.com/api/admin/run-migration-$n" -Headers @{'x-api-key'=$key}
+  "$n ok=$($r.ok)"; $r.results | % { "   $($_.step) [$($_.status)] $($_.detail)" }
+}
+```
+
+All three are idempotent, so re-running is a confirming no-op that still prints its state line.
+
+⚠️ **Fix the stale local key too** — until then, no admin route can be exercised from the dev
+machine, and every 401 will look ambiguous again.
+
+## Verified true as of this sync
+
+- `593aae9` on `origin/main`, working tree clean, typecheck exit 0.
+- **All 33 cron routes wrapped** — confirmed by caller search, not assumed.
+- Migration **037 IS deployed and reachable** (`X-Mw-Decision: continue`).
+
+## The honest state
+
+**Code-complete, deployment-incomplete.** Twelve commits of work; several are **inert** until
+console steps happen — most importantly the **Resend webhook**, without which email delivery is
+still blind despite being built.
+
+**Nothing in v17 has been verified in a browser.** Local login now works, so that is the cheapest
+confidence available and should come before any new feature work.
+
+## Suggested order for the next session
+
+1. **Console:** Resend webhook + `RESEND_WEBHOOK_SECRET` → redeploy → `env-check`
+2. **Console:** delete the 459 seeded `social_posts` (verify the count first)
+3. **15 min:** the social pipeline proof — `cron_runs` now gives it somewhere to report, and after
+   a day that table answers *which of the 33 crons Vercel is actually firing*
+4. **~1 day:** build the preview environment — it unblocks the payment rehearsal, the ledger fix,
+   and every "not verified in a browser" item at once
+5. **Then:** scope the payment ledger (campaign vs milestone granularity + `escrowForMilestone`
+   reconciliation)
+

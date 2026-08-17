@@ -1,6 +1,69 @@
 # Cron Jobs — Earn4Insights
 
-**32 total entries** in `vercel.json` (post migration 019 — `cleanup-trusted-devices`). All authenticated via `Authorization: Bearer CRON_SECRET`.
+**33 route files**, 33 entries in `vercel.json`. All authenticated via `Authorization: Bearer CRON_SECRET`.
+
+---
+
+## ⏱️ Run records — every job is observable (migration 037, `593aae9`)
+
+**All 33 routes are wrapped in `withCronRun`** (`src/lib/cron/withCronRun.ts`), which writes a
+`cron_runs` row before AND after the handler. Before this, ~33 jobs left **no evidence of
+execution**, so *"did nothing"*, *"crashed"* and *"never fired"* were indistinguishable — two
+investigations (the intent pipeline, then social ingestion) each burned hours on that ambiguity.
+
+**"No `cron_runs` row" now means "didn't run", with no asterisk.**
+
+```sql
+-- last run of every job
+SELECT DISTINCT ON (job_name) job_name, status, duration_ms, triggered_by, started_at
+FROM cron_runs ORDER BY job_name, started_at DESC;
+
+-- what died mid-run — the reason insert-at-start exists
+SELECT job_name, started_at FROM cron_runs
+WHERE status = 'running' AND started_at < now() - interval '15 minutes';
+```
+
+⚠️⚠️ **INSERT-AT-START IS LOAD-BEARING — do not "optimise" it into one write on completion.**
+Vercel kills functions at 60s and a hard crash never reaches a `finally`, so a dead job leaves
+`status='running'` / `finished_at IS NULL`. That stranded row is the **only** way "fired and died"
+becomes visible. A write-on-completion design records the successes and loses precisely the
+failures the table exists to surface. There is deliberately **no `'timeout'` status** — nothing is
+alive to write it.
+
+**Adding a new cron?** Wrap it, or it is invisible:
+```ts
+export const GET = withCronRun('your-job-name', handleGET)
+async function handleGET(request: NextRequest) { /* …auth + body… */ }
+```
+
+**Retention:** 90 days, inside `cleanup-analytics-events`. ⚠️ Only **finished** runs are deleted.
+
+### ⚠️ Three different auth patterns exist — all preserved verbatim
+
+Wrapping did **not** normalise auth. `withCronRun` records; each route keeps its original check
+inline (the one exception is `process-social-mentions`, whose auth moved into the wrapper because
+it was behaviourally identical).
+
+| Pattern | Count | When the secret is unset |
+|---|---|---|
+| `if (cronSecret && header !== …)` | 24 | ⚠️ **falls OPEN — no check at all** |
+| `verifyAuth()` with `CRON_SECRET \|\| AUTH_SECRET` | 8 | falls back, else compares `"Bearer undefined"` |
+| `send-time-analysis` — always compares, no guard | 1 | compares `"Bearer undefined"` |
+
+⚠️ **`send-time-analysis` is the ONLY route that does not fall open when the secret is unset.**
+Wrapping it with the standard wrapper auth would have silently opened it.
+
+🔴 **KNOWN GAP — the `cronSecret &&` pattern means those 24 jobs become publicly triggerable if
+`CRON_SECRET` is ever unset.** Especially relevant to a fresh **preview environment**, where
+`docs/PREVIEW_ENVIRONMENT_SETUP.md` lists `CRON_SECRET` as a value someone must remember to set —
+miss it and preview's crons, **including account deletion**, are open to anyone with the URL.
+`/api/admin/env-check` reports whether it is set; that is the mitigation until the pattern is
+fixed. Closing it is queued as its own security-shaped change.
+
+GET+POST pairs (`process-content-reviews`, `support-ticket-reminders`, `jobs/process-deletions`)
+share **one** `job_name` — the same job reached two ways, not two jobs.
+
+---
 
 ## Schedule
 

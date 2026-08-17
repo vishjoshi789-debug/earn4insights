@@ -122,12 +122,35 @@
 
 > Migrations 022 / 023 / 024 (Phase 3.5 — influencer multi-role, role CHECK expansion, 6-step wizard) are documented in `docs/PRELAUNCH_AUDIT_FIX_LOG.md`.
 > Migration 026 (Email Verification — EV.1) is described in section 4.1 below.
+> Migrations **029–037** (money/data integrity, feedback identity, resolution loop, email delivery,
+> fresh-DB parity, cron run records) are documented in full in `docs/SCHEMA.md`, with the working
+> narrative in `SESSION_RESUME.md`. Summary index in `CLAUDE.md §8`.
 
 ---
 
 ## 3. Key Decisions — Full Archive
 
 > Verbatim from CLAUDE.md "Key Decisions" table. Active invariants/footguns relevant to daily work were extracted into `CLAUDE.md §5 Recurring Rules`; this table preserves the **full** ~80-row archive including historical implementation narratives.
+
+### v16–v17 additions (2026-08) — the "real users are arriving" wave
+
+| Decision | Why |
+|----------|-----|
+| **Assume nothing is wired until a caller is traced** | The dominant failure mode here is a complete-looking component gated on an ignition key nobody turned: competitive intelligence (9 tables, 0 rows), social ingestion (4 adapters, 0 mentions), `BRAND_SURVEY_CREATED`, `frustration_spike`, `getConsumerIntents`, `toggleSurveyActive`. Reading the code proves it exists, not that it runs. |
+| **Diagnose provenance before fixing** | `consumer_intents` had 0 rows and looked like a silent write failure. Testing the real regex against the real strings showed 4/5 *imported* rows match and **0/5 organic** — extraction was correct, the input simply had no intent language. The obvious fix would have churned working code and missed the real defect. |
+| **An email is not an id** | Three separate defects from the same confusion: `feedback.user_id` (033), `/api/feedback/my` listing 18 strangers' feedback as a brand's own, and `consumer_intents.user_id` receiving an email into an FK'd NOT NULL column. **Never write `''` or an email to satisfy a type — no id means no row.** |
+| **Insert-at-start for cron run records** | A job killed at Vercel's 60s limit never reaches a `finally`. The stranded `status='running'` row is the *only* observable form of "fired and died"; a write-on-completion design records every success and loses exactly the failures the table exists to catch. |
+| **Observability must never break what it observes** | Every `cron_runs` and `email_deliveries` write is non-fatal; `isEmailSuppressed` **fails open**. A suppression check that failed closed would silently block real users — the precise failure being fixed. |
+| **Enforce in the action, be courteous in the page** | Pausing a survey hid nothing until `submitSurveyResponse` rejected `paused`/`closed`; the payment gate returns 503 server-side while the client flag only hides a button. **A control that only hides its own button is not a control.** |
+| **Degrade the payload, don't deny the request** | Non-owners get an aggregate-only AI summary rather than a 404, because that view is legitimate on a shared catalog page. The security lives in the SCOPE, not the status code — the inverse of the `/feedback` and `/themes` gates, deliberately. |
+| **Inference is new processing** | Deriving "this person is churning" from someone's words is not the same as showing a brand what they wrote. k-anonymity didn't establish a lawful purpose for demographic segmentation and *"the brand can already read the feedback"* doesn't establish one for inferring from it. Gated at the persistence chokepoint so future callers inherit it. |
+| **A service message is not personalization** | `bypassPersonalizationConsent` is a narrow, founder-approved carve-out for one event: reporting the outcome of the consumer's *own* submission (DPDP §7). Test before reusing it: *is the recipient derived from their own prior act, or selected from an audience?* |
+| **A settings toggle with no emitter is a false claim** | Same class as the 14-day-trial promise and the phantom CSV export. Removed rather than wired when the metric is baseline-relative and no baseline exists. **A type-union member is not a feature.** |
+| **Preserve auth verbatim when changing something else** | Wrapping 33 crons revealed three different auth semantics, one of which (`send-time-analysis`) does *not* fail open. Normalising them inside an observability change would have silently opened it. Preservation had to be true by construction, not by reasoning correctly 32 times. |
+| **A new column on `feedback` must precede the deploy** | Three bare `select().from(feedback)` sites expand to every schema column, so the migration route ships *with* the code that breaks without it. New *tables* are safe either way. |
+| **Creating `run-migration-NNN` is a two-file change** | Route + `PUBLIC_API_ADMIN_PATHS`. A missing entry returns a 401 **byte-identical to a wrong `ADMIN_API_KEY`**, sending you to re-check the key. Diagnostic: probe a nonexistent migration number, or read `X-Mw-Decision` (`redirect` = middleware, `continue` = handler). |
+
+### Full archive (pre-v16)
 
 | Decision | Why |
 |----------|-----|
