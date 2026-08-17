@@ -31,6 +31,8 @@ export const PLATFORM_EVENTS = {
   INFLUENCER_POST_PUBLISHED:     'influencer.post.published',
   INFLUENCER_CAMPAIGN_ACCEPTED:  'influencer.campaign.accepted',
   INFLUENCER_MILESTONE_COMPLETED:'influencer.milestone.completed',
+  INFLUENCER_CAMPAIGN_INVITED:   'influencer.campaign.invited',
+  INFLUENCER_REVIEW_RECEIVED:    'influencer.review.received',
   // Content approval
   BRAND_CONTENT_PENDING_REVIEW:  'brand.content.pending_review',
   INFLUENCER_CONTENT_APPROVED:   'influencer.content.approved',
@@ -595,6 +597,44 @@ async function routeEvent(
       break
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // ⚖️ CREATOR CARVE-OUT — `bypassPersonalizationConsent` on the
+    //    transactional influencer events (founder-approved, 2026-08-17)
+    // ═══════════════════════════════════════════════════════════════════
+    //
+    // Every influencer target below is `role: 'consumer'` — correctly, since a
+    // dual-role creator (consumer who did "Become an Influencer") genuinely IS
+    // a consumer. But `dispatchToUser` skips consumer-role targets lacking
+    // `personalization` consent, and that gate is the ONLY thing `target.role`
+    // controls. So a creator who declined personalization was silently
+    // receiving NOTHING — including "your payment has been released".
+    //
+    // ⚠️ We did NOT fix this by changing the role to 'influencer'. That would
+    // have disabled the gate wholesale and invisibly, including for
+    // BRAND_CAMPAIGN_LAUNCHED, which fans out to 100 influencers selected from
+    // an audience and SHOULD stay gated. The per-event flag is explicit and
+    // auditable; a role change is neither.
+    //
+    // The test (from the resolution-loop carve-out): *is the recipient derived
+    // from their own prior act, or selected from an audience?*
+    //
+    //   CARVED OUT — derived from their own act:
+    //     content approved / rejected      (they submitted it)
+    //     application accepted / rejected  (they applied)
+    //     campaign invited                 (they published a marketplace profile)
+    //     review received                  (they did the work being rated)
+    //     payment escrowed / released      (their campaign, their money)
+    //     payout initiated / completed / failed
+    //
+    //   STILL GATED — selected from an audience:
+    //     BRAND_CAMPAIGN_LAUNCHED  → getActiveInfluencers(100), a broadcast
+    //     INFLUENCER_POST_PUBLISHED (the ICP-matched consumer half)
+    //
+    // 📌 The same argument applies to several NON-creator consumer events that
+    // are also transactional — community post approved/rejected, support
+    // replies, reward redemption confirmations. Deliberately NOT changed here
+    // (out of scope); logged in SESSION_RESUME as the same class.
+
     // ── Content approval: approved → notify influencer
     case PLATFORM_EVENTS.INFLUENCER_CONTENT_APPROVED: {
       if (!payload.influencerId) break
@@ -609,6 +649,9 @@ async function routeEvent(
         entityType: 'content_post',
         entityId:   payload.postId as string,
         metadata:   { campaignId: payload.campaignId, brandId: payload.brandId },
+        // TRANSACTIONAL — see the creator carve-out note above the payment
+        // cases. They submitted this content; the outcome is theirs.
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -627,6 +670,8 @@ async function routeEvent(
         entityType: 'content_post',
         entityId:   payload.postId as string,
         metadata:   { campaignId: payload.campaignId, brandId: payload.brandId, reason: payload.rejectionReason },
+        // TRANSACTIONAL — they submitted this content and need to act on it.
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -667,6 +712,69 @@ async function routeEvent(
       break
     }
 
+    // ── Brand invited a creator to a campaign → notify the creator
+    //
+    // Previously SILENT. `inviteInfluencerToCampaign` wrote the invitation row
+    // and emitted nothing, so a creator learned they had been invited only by
+    // opening the app — the single most important creator moment on the
+    // platform, with no notification behind it.
+    //
+    // Carved out of the consent gate: the creator published a marketplace
+    // profile precisely to be found, and this is a direct 1:1 offer of paid
+    // work with a decision attached — not an audience broadcast.
+    case PLATFORM_EVENTS.INFLUENCER_CAMPAIGN_INVITED: {
+      if (!payload.influencerId) break
+      const influencerTarget: NotificationTarget = { userId: payload.influencerId, role: 'consumer' }
+      await dispatchToUsers([influencerTarget], {
+        eventType,
+        eventId,
+        title:  "You've been invited to a campaign 🎉",
+        body:   `${payload.brandName ?? 'A brand'} invited you to "${payload.campaignTitle ?? 'a campaign'}"${
+          payload.agreedRate ? ` at ${payload.agreedRate}` : ''
+        }. Review the details and accept or decline.`,
+        ctaUrl: payload.campaignId
+          ? `/dashboard/influencer/campaigns/${payload.campaignId}`
+          : '/dashboard/influencer/campaigns',
+        type:   'campaign_invited',
+        actorId:    payload.actorId,
+        actorRole:  'brand',
+        entityType: 'campaign',
+        entityId:   payload.campaignId,
+        metadata:   { brandId: payload.brandId, agreedRate: payload.agreedRate },
+        bypassPersonalizationConsent: true,
+        emailSubject: `You've been invited to "${payload.campaignTitle ?? 'a campaign'}"`,
+      })
+      break
+    }
+
+    // ── Brand reviewed a creator's work → notify the creator
+    //
+    // Also previously silent. A review affects the creator's standing on the
+    // marketplace, so being told is not optional courtesy.
+    case PLATFORM_EVENTS.INFLUENCER_REVIEW_RECEIVED: {
+      if (!payload.influencerId) break
+      const influencerTarget: NotificationTarget = { userId: payload.influencerId, role: 'consumer' }
+      const rating = typeof payload.rating === 'number' ? payload.rating : null
+      await dispatchToUsers([influencerTarget], {
+        eventType,
+        eventId,
+        title:  rating ? `You received a ${rating}★ review` : 'You received a review',
+        body:   `${payload.brandName ?? 'A brand'} reviewed your work on "${payload.campaignTitle ?? 'a campaign'}".`,
+        ctaUrl: payload.campaignId
+          ? `/dashboard/influencer/campaigns/${payload.campaignId}`
+          : '/dashboard/influencer/campaigns',
+        type:   'review_received',
+        actorId:    payload.actorId,
+        actorRole:  'brand',
+        entityType: 'campaign',
+        entityId:   payload.campaignId,
+        metadata:   { rating, brandId: payload.brandId },
+        // TRANSACTIONAL — a rating of work they performed.
+        bypassPersonalizationConsent: true,
+      })
+      break
+    }
+
     // ── Marketplace: brand accepted application → notify influencer
     case PLATFORM_EVENTS.BRAND_APPLICATION_ACCEPTED: {
       if (!payload.influencerId) break
@@ -681,6 +789,8 @@ async function routeEvent(
         entityType: 'campaign',
         entityId:   payload.campaignId,
         metadata:   { brandId: payload.brandId },
+        // TRANSACTIONAL — they applied; this is the outcome of that act.
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -701,6 +811,9 @@ async function routeEvent(
         entityType: 'campaign',
         entityId:   payload.campaignId,
         metadata:   { brandId: payload.brandId, brandResponse: payload.brandResponse },
+        // TRANSACTIONAL — they applied; a rejection they never see leaves them
+        // waiting on an answer that already exists.
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -761,6 +874,8 @@ async function routeEvent(
             type:   'payment_escrowed',
             entityType: 'campaign',
             entityId:   payload.campaignId,
+            // TRANSACTIONAL — money for THEIR campaign. Not marketing.
+            bypassPersonalizationConsent: true,
           }
         )
       }
@@ -781,6 +896,9 @@ async function routeEvent(
         entityType: 'campaign',
         entityId:   payload.campaignId,
         metadata:   { milestoneName: payload.milestoneName },
+        // TRANSACTIONAL — this is the creator's money. A consent preference
+        // about personalization must never suppress "you have been paid".
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -818,6 +936,8 @@ async function routeEvent(
         type:   'payout_initiated',
         entityType: 'payout',
         entityId:   payload.payoutId as string,
+        // TRANSACTIONAL — their money moving.
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -838,6 +958,8 @@ async function routeEvent(
         type:   'payout_completed',
         entityType: 'payout',
         entityId:   payload.payoutId as string,
+        // TRANSACTIONAL — their money arrived.
+        bypassPersonalizationConsent: true,
       })
       break
     }
@@ -859,6 +981,9 @@ async function routeEvent(
         entityType: 'payout',
         entityId:   payload.payoutId as string,
         metadata:   { failureReason: payload.failureReason },
+        // TRANSACTIONAL — and the one they can least afford to miss: a failed
+        // payout needs the creator to act (fix bank details, contact support).
+        bypassPersonalizationConsent: true,
       })
       break
     }

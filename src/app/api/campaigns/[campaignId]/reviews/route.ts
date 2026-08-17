@@ -16,6 +16,7 @@ import {
 } from '@/db/repositories/influencerReviewRepository'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
 import { getInvitation } from '@/db/repositories/campaignInfluencerRepository'
+import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
 type RouteParams = { params: Promise<{ campaignId: string }> }
 
@@ -85,6 +86,28 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       rating: body.rating,
       review: body.review ?? null,
     })
+
+    // Tell the person who was reviewed. This emit was MISSING — a review
+    // affects a creator's standing on the marketplace and they were never
+    // told it existed.
+    //
+    // Only fired when a BRAND reviews a creator. The reverse direction
+    // (creator reviews brand) is deliberately not notified here: the handler
+    // targets `influencerId` and carries creator-facing copy and CTAs, so
+    // reusing it for a brand recipient would send them to an influencer page.
+    if (isBrand) {
+      emit(PLATFORM_EVENTS.INFLUENCER_REVIEW_RECEIVED, {
+        influencerId:  body.revieweeId,
+        brandId:       userId,
+        campaignId,
+        campaignTitle: campaign.title,
+        rating:        body.rating,
+        actorId:       userId,
+        actorRole:     'brand',
+      }).catch((err) =>
+        console.error('[CampaignReviews] Notification failed (non-blocking):', err),
+      )
+    }
 
     return NextResponse.json({ review }, { status: 201 })
   } catch (error: any) {

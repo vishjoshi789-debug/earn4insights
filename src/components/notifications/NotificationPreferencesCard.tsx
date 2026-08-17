@@ -95,13 +95,16 @@ const INFLUENCER_CATEGORIES: Category[] = [
   {
     key: 'campaigns',
     label: 'Campaigns and applications',
-    description: 'New campaigns, application outcomes, and content review results.',
+    description:
+      'Invitations, application outcomes, content review results, and reviews of your work.',
     events: [
       'brand.campaign.launched',
       'brand.application.accepted',
       'brand.application.rejected',
       'influencer.content.approved',
       'influencer.content.rejected',
+      'influencer.campaign.invited',
+      'influencer.review.received',
     ],
   },
   {

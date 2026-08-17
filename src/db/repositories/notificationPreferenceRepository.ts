@@ -49,6 +49,8 @@ export const NOTIFIABLE_EVENT_TYPES = [
   'influencer.milestone.completed',
   'influencer.content.approved',
   'influencer.content.rejected',
+  'influencer.campaign.invited',
+  'influencer.review.received',
   // Social
   'social.mention.detected',
   // Payments

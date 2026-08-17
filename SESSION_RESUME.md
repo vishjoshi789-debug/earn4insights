@@ -2082,3 +2082,99 @@ confidence available and should come before any new feature work.
 5. **Then:** scope the payment ledger (campaign vs milestone granularity + `escrowForMilestone`
    reconciliation)
 
+
+---
+
+## 🎬 Creator notifications — consent carve-out + two missing emitters (2026-08-17)
+
+Found by the influencer/creator audit. **The creator surface turned out to be the best-wired in the
+codebase** — 13 of 14 influencer-targeted events had real emitters, all 16 API routes had auth, and
+the onboarding actions were properly guarded (unlike the five survey actions). Its problems were
+three specific holes on top of one upstream defect.
+
+### 🔴 The delivery-side bug: creators were silently receiving NOTHING
+
+Every influencer notification target is `role: 'consumer'` (eventBus 601, 619, 673, 691, 732, 754,
+773, 809, 829, 849). `dispatchToUser` skips consumer-role targets lacking `personalization`
+consent — so **a creator who declined personalization got no campaign notifications, no content
+decisions, and no "your payment has been released."**
+
+### ⚖️ Why we did NOT just change `target.role` to `'influencer'`
+
+The obvious fix, and the wrong one. Three reasons:
+
+1. **`target.role` has exactly ONE use in the entire dispatcher** — the consent gate at
+   `realtimeNotificationService:111`. It is not used for the inbox, the feed, Pusher or email.
+   Changing it would not relabel anything; it would **disable the consent check wholesale and
+   invisibly.**
+2. **It would ungate `BRAND_CAMPAIGN_LAUNCHED`**, which fans out to 100 influencers via
+   `getActiveInfluencers()`. That one is genuinely audience-selected and **should** stay gated —
+   precisely the case the carve-out test excludes.
+3. **The role is not wrong.** A dual-role creator (consumer who did "Become an Influencer") has
+   `role: 'consumer'` + `isInfluencer: true`. They *are* a consumer. Relabelling would be
+   inaccurate for most creators, and `NotificationTarget.role` has no `'influencer'` member.
+
+**Per-event flag: explicit, auditable, reversible. Role change: implicit, invisible, blunt.**
+
+### The split — applying the resolution-loop test
+
+*Is the recipient derived from their own prior act, or selected from an audience?*
+
+**CARVED OUT (9 existing + 2 new):** content approved · content rejected · application accepted ·
+application rejected · **campaign invited** · **review received** · payment escrowed · payment
+released · payout initiated · payout completed · payout failed.
+
+**LEFT GATED, correctly:** `BRAND_CAMPAIGN_LAUNCHED` (broadcast to 100) and the ICP-matched
+consumer half of `INFLUENCER_POST_PUBLISHED`. Both are audience-selected marketing.
+
+⚠️ **The invitation was the least clear-cut.** A brand does *select* the creator. It was carved out
+because the creator published a marketplace profile precisely to be found, and an invitation is a
+**direct 1:1 offer of paid work with a decision attached** — not a broadcast. Recorded so the
+reasoning can be re-examined rather than assumed.
+
+### 🔴 Two emitters that did not exist
+
+- **`inviteInfluencerToCampaign`** (`campaignManagementService:358`) validated, deduped, wrote the
+  invitation row — **and emitted nothing.** A creator learned about a paid-work offer only by
+  opening the app. **The single most important creator moment on the platform had no notification
+  behind it.** Now emits `influencer.campaign.invited`.
+- **`POST /api/campaigns/[campaignId]/reviews`** — a brand rated a creator's work and the creator
+  was never told, despite it affecting their marketplace standing. Now emits
+  `influencer.review.received`, **only when `isBrand`**: the handler targets `influencerId` and
+  carries creator-facing copy and CTAs, so firing it for the creator→brand direction would send a
+  brand to an influencer page.
+
+Both emits are non-blocking — a notification failure must not undo a persisted invitation or review.
+
+Both event types were added to `NOTIFIABLE_EVENT_TYPES` (so preferences validate) and to the
+influencer **Campaigns** category in `NotificationPreferencesCard`.
+
+### 📌 Same class, deliberately NOT changed (out of scope)
+
+Several **non-creator** consumer-role events are equally transactional and remain gated behind
+personalization consent:
+
+- `COMMUNITY_DEAL_APPROVED` / `COMMUNITY_DEAL_REJECTED` — the author's own post
+- `SUPPORT_ADMIN_REPLY` / `SUPPORT_TICKET_UPDATED` / `SUPPORT_TICKET_RESOLVED` — their own ticket
+- `CONSUMER_REWARD_REDEEMED` — confirmation of their own redemption
+
+Each would pass the same test. Left alone to keep this change reviewable; **flagged here so it is a
+decision, not an oversight.**
+
+### Other audit findings — recorded, NOT fixed
+
+| Finding | Severity |
+|---|---|
+| 🔴 **Earnings + payouts read `campaign_payments`**, which the campaign-level ledger gap leaves empty → **a creator sees ₹0 and is never paid**. `process-payouts` looks for *released* `campaign_payments` and finds none. **The ledger gap is a creator-facing outage, not back-office cleanup.** | Critical |
+| 🟠 **Social stats are self-declared** — `sync-social-stats` is a documented placeholder. Brands choose whom to pay on numbers the creator typed, and the **verification badge validates profile completeness, not stat accuracy** — a brand could reasonably read it as validating both. | Medium–High |
+| 🟠 **`RAZORPAYX_ENABLED = false` is a hardcoded `const`** (`payoutService.ts:77`), **not an env var** — CLAUDE.md §6 calls it env-flag controlled and `env-check` reads `process.env.RAZORPAYX_ENABLED`, which is always null. Both are wrong; flipping it needs a code change + deploy. | Medium |
+| 🟠 `INFLUENCER_MILESTONE_COMPLETED` has **no emitter** — brands are never told a milestone was submitted for review. | Medium |
+| 🟡 `/api/influencer/payouts` is **GET only** — there is no creator-initiated payout request. Payouts are created automatically by the cron from released payments. The architecture is fine; the mental model of "requesting a payout" does not match the code. | Low |
+| 🟡 `VerifiedBadge` still not mounted on brand-side influencer search. | Low |
+| 🟡 `ProductTour.tsx:42` comment contradicts lines 21–24 and the implementation (`tourRole = isInfluencer ? 'influencer' : …`). Code correct, comment misleading. | Low |
+
+### Not verified
+
+Browser-untested. Volume unmeasured — Neon timed out from the dev machine and the local
+`ADMIN_API_KEY` is stale, so influencer/application/payout counts are still unknown.
+

@@ -13,6 +13,7 @@
 
 import 'server-only'
 
+import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 import {
   createCampaign,
   getCampaignById,
@@ -379,6 +380,22 @@ export async function inviteInfluencerToCampaign(
     deliverables: opts?.deliverables,
     agreedRate: opts?.agreedRate,
   })
+
+  // Tell the creator. This emit was MISSING — the invitation row was written
+  // and nothing was sent, so a creator discovered a paid-work offer only by
+  // happening to open the app. Non-blocking: a notification failure must not
+  // undo an invitation that is already persisted.
+  emit(PLATFORM_EVENTS.INFLUENCER_CAMPAIGN_INVITED, {
+    influencerId,
+    brandId,
+    campaignId,
+    campaignTitle: campaign.title,
+    agreedRate: opts?.agreedRate,
+    actorId: brandId,
+    actorRole: 'brand',
+  }).catch((err) =>
+    console.error('[Campaign] Invitation notification failed (non-blocking):', err),
+  )
 }
 
 export async function respondToInvitation(
