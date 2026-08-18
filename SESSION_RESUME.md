@@ -2276,3 +2276,67 @@ The `PAYMENTS_ENABLED` gate (default OFF) is what keeps this latent rather than 
 cannot currently create an order, so no creator is presently stranded. **That gate is the only thing
 standing between this defect and a real unpaid creator.**
 
+
+---
+
+## 🔒 Cron auth now FAILS CLOSED (2026-08-17)
+
+Closed before building the preview environment, deliberately: the founder's reasoning was
+*"I'd rather remove the consequence than rely on getting the env var right."*
+
+### What was open
+
+24 routes carried `if (cronSecret && authHeader !== …)` inline — **no secret configured meant no
+check at all.** An environment missing `CRON_SECRET` had every scheduled job triggerable by anyone
+with the URL, **including `jobs/process-deletions`, which permanently deletes user accounts.**
+
+`send-time-analysis` was the only route that compared unconditionally. **The standard now matches
+IT**, per instruction — not the reverse.
+
+### Fixed at the wrapper, not in 24 files
+
+`withCronRun`'s auth runs **before** each route's inline check, so flipping one default closes the
+hole for all 33 routes at once and leaves the inline blocks redundant rather than load-bearing.
+`whenUnset` now defaults to **`'enforce'`**.
+
+⚠️ **A second, subtler hole was closed in the same change.** Nine routes "always compared", which
+looked fail-closed — but with no secret set they compared against the string
+`` `Bearer ${undefined}` ``, so **anyone sending the literal header `Authorization: Bearer undefined`
+got in.** They were safe only by nobody guessing it. The wrapper now returns early when no secret
+is configured instead of falling through to a comparison, so this is genuinely closed.
+
+`'skip'` is retained ONLY so the old behaviour stays expressible and greppable. **Nothing passes it
+and nothing should** — reaching for it re-opens a hole that was closed on purpose.
+
+### ⚠️ AUTH_SECRET fallback PRESERVED, not removed
+
+Seven routes authenticate against `CRON_SECRET || AUTH_SECRET` via their own `verifyAuth`. Each now
+passes `secretEnv: ['CRON_SECRET', 'AUTH_SECRET']` so the wrapper accepts **exactly what the inline
+check already accepted** — otherwise the wrapper would have rejected a valid `AUTH_SECRET` caller
+before the route ever ran.
+
+`community-deals-moderation` · `deals-expiry` · `process-payouts` · `sync-razorpay-status` ·
+`process-content-reviews` (GET+POST) · `jobs/dsar-cleanup` · `jobs/process-deletions` (GET+POST)
+
+**Net effect: the same callers are accepted as before; only "no secret at all" changed from
+*accept everything* to *reject everything*.** Removing the `AUTH_SECRET` fallback outright would be
+a real behaviour change on the most destructive job on the platform, and is left as a separate,
+deliberate decision.
+
+### ⚠️ The intended consequence
+
+**An environment without `CRON_SECRET` now gets 401 on every cron and nothing scheduled runs.**
+That is the point — a visible, diagnosable failure instead of an invisible open door. `env-check`
+now warns explicitly when `CRON_SECRET` is unset, because the symptom (nothing runs, silently) is
+otherwise indistinguishable from a scheduler that never fired.
+
+Combined with run-records: a missing secret now shows as **401s and zero `cron_runs` rows**, and
+`env-check` names the cause.
+
+### Still inline, still redundant
+
+The 24 inline `if (cronSecret && …)` blocks remain in the route files. They are now dead weight —
+the wrapper rejects first — but the *pattern* survives in source where it could be copied into a
+new route. Removing them is the auth-absorbing pass, still queued; it is cosmetic now rather than
+security-relevant.
+

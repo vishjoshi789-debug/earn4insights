@@ -48,33 +48,45 @@ export type CronHandlerResult = NextResponse | Record<string, unknown> | void
 export type CronHandler = (request: NextRequest) => Promise<CronHandlerResult>
 
 /**
- * Auth options — these exist ONLY to reproduce, exactly, the three different
- * auth patterns already present across the 33 routes. They are not a menu of
- * new policies. Wrapping a route must never change how it authenticates.
+ * Auth options.
  *
- * Observed patterns:
+ * ── 🔒 FAIL CLOSED IS NOW THE DEFAULT (2026-08-17) ────────────────────────
+ * Previously this defaulted to `whenUnset: 'skip'`, reproducing the
+ * `if (cronSecret && …)` pattern that 24 routes carried inline: **no secret
+ * configured meant no check at all.** An environment missing `CRON_SECRET`
+ * had every scheduled job publicly triggerable by URL — including
+ * `jobs/process-deletions`, which permanently deletes user accounts.
  *
- *  1. `whenUnset: 'skip'` (default, 23 routes)
- *       const cronSecret = process.env.CRON_SECRET
- *       if (cronSecret && authHeader !== `Bearer ${cronSecret}`) → 401
- *     ⚠️ FAILS OPEN: no secret configured means no check at all.
+ * `send-time-analysis` was the only route that already compared
+ * unconditionally. **The standard now matches IT, not the other way round.**
  *
- *  2. `whenUnset: 'enforce'` + secretEnv ['CRON_SECRET','AUTH_SECRET'] (7 routes)
- *       const cronSecret = process.env.CRON_SECRET || process.env.AUTH_SECRET
- *       if (authHeader !== `Bearer ${cronSecret}`) → 401
+ * Because the wrapper's check runs BEFORE each route's own inline check, this
+ * one default closes the hole for all 33 routes at once — the inline blocks
+ * become redundant rather than load-bearing.
  *
- *  3. `whenUnset: 'enforce'` + secretEnv ['CRON_SECRET'] (send-time-analysis)
- *       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) → 401
+ * ⚠️ Consequence, and it is the intended one: an environment without a
+ * configured secret gets **401 on every cron**, not silent execution. That is
+ * a visible, diagnosable failure instead of an invisible open door.
+ * `/api/admin/env-check` reports whether the secret is set.
  *
- * ⚠️ Patterns 2 and 3 compare against the STRING `"Bearer undefined"` when no
- * secret is set, which is technically guessable. Reproduced verbatim rather
- * than fixed — changing it here would alter live auth behaviour inside an
- * observability change. Logged as a known gap.
+ * ⚠️ `'skip'` is retained ONLY so the old behaviour is expressible and
+ * greppable. **Nothing passes it, and nothing should.** If you find yourself
+ * reaching for it, you are re-opening a hole that was closed deliberately.
+ *
+ * ── secretEnv ─────────────────────────────────────────────────────────────
+ * Nine routes authenticate against `CRON_SECRET || AUTH_SECRET` via their own
+ * `verifyAuth` helper. They pass `secretEnv: ['CRON_SECRET', 'AUTH_SECRET']`
+ * so the wrapper's check accepts exactly what their inline check accepts —
+ * otherwise the wrapper would reject a valid `AUTH_SECRET` caller before the
+ * route ever saw it. Their fallback is preserved, not removed.
  */
 export type CronAuthOptions = {
   /** Env vars supplying the shared secret, in precedence order. */
   secretEnv?: string[]
-  /** What to do when none of `secretEnv` is set. Default 'skip' (fail open). */
+  /**
+   * What to do when none of `secretEnv` is set.
+   * Default **'enforce'** — reject. See the fail-closed note above.
+   */
   whenUnset?: 'skip' | 'enforce'
 }
 
@@ -155,20 +167,43 @@ export function withCronRun(
   auth: CronAuthOptions = {},
 ) {
   const secretEnv = auth.secretEnv ?? ['CRON_SECRET']
-  const whenUnset = auth.whenUnset ?? 'skip'
+  // 🔒 Fail closed by default — see CronAuthOptions.
+  const whenUnset = auth.whenUnset ?? 'enforce'
 
   return async function wrappedCronRoute(request: NextRequest): Promise<NextResponse> {
-    // ── Auth ──────────────────────────────────────────────────────────────
-    // Reproduces the route's ORIGINAL check exactly — see CronAuthOptions.
-    // ⚠️ The default 'skip' mode means an UNSET CRON_SECRET leaves those jobs
-    // publicly triggerable. Preserved verbatim so that wrapping never changes
-    // auth behaviour; especially relevant to a fresh PREVIEW environment,
-    // where the secret may not have been copied across. env-check reports it.
+    // ── Auth — 🔒 FAIL CLOSED ─────────────────────────────────────────────
+    // Runs BEFORE the route's own inline check, so this is the effective gate
+    // for all 33 routes regardless of what each one still does internally.
     const secret = secretEnv.map((k) => process.env[k]).find(Boolean)
     const authHeader = request.headers.get('authorization')
 
-    const mustCheck = whenUnset === 'enforce' || Boolean(secret)
-    if (mustCheck && authHeader !== `Bearer ${secret}`) {
+    // No secret configured → reject UNCONDITIONALLY. Do not fall through to
+    // the comparison below.
+    //
+    // ⚠️ Two separate holes are closed here, and the second is easy to miss:
+    //
+    //   1. `whenUnset: 'skip'` used to mean "no secret, no check" — an
+    //      environment missing CRON_SECRET had every job open to the internet.
+    //
+    //   2. Comparing against `Bearer ${undefined}` would let anyone in by
+    //      sending the literal header `Authorization: Bearer undefined`.
+    //      That was the pre-existing behaviour of the nine routes that
+    //      "always compared" — they were fail-closed only by accident of
+    //      nobody guessing the string. Returning early makes it real.
+    if (!secret) {
+      if (whenUnset === 'enforce') {
+        console.error(
+          `[cron:${jobName}] REJECTED — no secret configured in ${secretEnv.join(' | ')}. ` +
+          `Cron jobs fail closed; set the env var and redeploy.`
+        )
+        return NextResponse.json(
+          { error: 'Cron authentication is not configured' },
+          { status: 401 },
+        )
+      }
+      // 'skip' — legacy fail-open. Nothing passes this; see CronAuthOptions.
+      console.warn(`[cron:${jobName}] Running UNAUTHENTICATED (whenUnset='skip')`)
+    } else if (authHeader !== `Bearer ${secret}`) {
       // Deliberately NOT recorded: an unauthenticated probe is not a run, and
       // logging them would let anyone flood the table.
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

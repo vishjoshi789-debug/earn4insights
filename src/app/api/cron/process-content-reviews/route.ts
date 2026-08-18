@@ -65,5 +65,8 @@ async function handler(request: NextRequest) {
 // Run-recording (migration 037). GET and POST are the same job reached two
 // ways, so they share one job_name. ⚠️ Auth lives in `handler` and uses
 // CRON_SECRET || AUTH_SECRET — left untouched.
-export const GET = withCronRun('process-content-reviews', handler)
-export const POST = withCronRun('process-content-reviews', handler)
+// secretEnv matches this route's inline `handler` auth
+// (CRON_SECRET || AUTH_SECRET) so the wrapper accepts exactly what it does.
+const contentReviewAuth = { secretEnv: ['CRON_SECRET', 'AUTH_SECRET'] }
+export const GET = withCronRun('process-content-reviews', handler, contentReviewAuth)
+export const POST = withCronRun('process-content-reviews', handler, contentReviewAuth)

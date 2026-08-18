@@ -106,6 +106,19 @@ export async function GET(request: NextRequest) {
   if (isProdDeployment && process.env.CSRF_ENFORCE !== 'true') {
     warnings.push('CSRF_ENFORCE is not "true" in production — CSRF is log-only.')
   }
+  // 🔒 Cron jobs fail CLOSED as of 2026-08-17 — no secret means every
+  // scheduled job returns 401 rather than running. Surfaced here because the
+  // symptom (nothing runs, silently) is otherwise indistinguishable from a
+  // scheduler that never fired.
+  if (!process.env.CRON_SECRET) {
+    warnings.push(
+      'CRON_SECRET is unset — ALL 33 cron jobs will reject with 401 and none ' +
+      'will run. This is fail-closed by design (it previously left them open ' +
+      'to anyone with the URL, including account deletion), but nothing ' +
+      'scheduled will execute until it is set and redeployed.'
+    )
+  }
+
   if (!process.env.RESEND_WEBHOOK_SECRET) {
     warnings.push(
       'RESEND_WEBHOOK_SECRET is unset — /api/webhooks/resend fails closed (503), ' +

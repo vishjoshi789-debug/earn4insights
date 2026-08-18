@@ -38,8 +38,21 @@ function verifyAuth(request: NextRequest) {
 //
 // This is also the job that permanently deletes user accounts, which is
 // exactly the kind of thing that should never have been running unobserved.
-export const GET = withCronRun('jobs/process-deletions', processAccountDeletions)
-export const POST = withCronRun('jobs/process-deletions', processAccountDeletions)
+// 🔒 FAIL-CLOSED (2026-08-17). The wrapper now rejects when NO secret is
+// configured, so a preview/staging environment missing CRON_SECRET can no
+// longer have account deletion triggered by anyone who knows the URL.
+//
+// ⚠️ The AUTH_SECRET FALLBACK IS PRESERVED, NOT REMOVED. `verifyAuth` above
+// accepts `CRON_SECRET || AUTH_SECRET`; passing the same list here means the
+// wrapper accepts exactly what the route already accepted. Removing the
+// fallback would be a real behaviour change on the single most destructive
+// job on the platform, so it is left for a separate, deliberate decision.
+//
+// Net effect: same accepted callers as before, but "no secret at all" now
+// rejects instead of running.
+const deletionAuth = { secretEnv: ['CRON_SECRET', 'AUTH_SECRET'] }
+export const GET = withCronRun('jobs/process-deletions', processAccountDeletions, deletionAuth)
+export const POST = withCronRun('jobs/process-deletions', processAccountDeletions, deletionAuth)
 
 async function processAccountDeletions(request: NextRequest) {
   const startTime = Date.now()

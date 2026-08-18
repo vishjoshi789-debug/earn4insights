@@ -29,7 +29,11 @@ function verifyAuth(request: NextRequest): boolean {
 // CRON_SECRET || AUTH_SECRET and always compares — different from the
 // majority pattern. Left completely untouched inside the handler so wrapping
 // cannot alter it.
-export const GET = withCronRun('community-deals-moderation', handleGET)
+export const GET = withCronRun('community-deals-moderation', handleGET, {
+  // Matches this route's own `verifyAuth` (CRON_SECRET || AUTH_SECRET) so the
+  // wrapper doesn't reject a caller the inline check would accept.
+  secretEnv: ['CRON_SECRET', 'AUTH_SECRET'],
+})
 
 async function handleGET(request: NextRequest) {
   if (!verifyAuth(request)) {

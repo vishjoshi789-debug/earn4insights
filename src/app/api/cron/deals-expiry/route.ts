@@ -22,7 +22,9 @@ function verifyAuth(request: NextRequest): boolean {
 
 // Run-recording (migration 037). ⚠️ `verifyAuth` uses CRON_SECRET ||
 // AUTH_SECRET — left untouched inside the handler.
-export const GET = withCronRun('deals-expiry', handleGET)
+export const GET = withCronRun('deals-expiry', handleGET, {
+  secretEnv: ['CRON_SECRET', 'AUTH_SECRET'], // matches inline verifyAuth
+})
 
 async function handleGET(request: NextRequest) {
   if (!verifyAuth(request)) {
