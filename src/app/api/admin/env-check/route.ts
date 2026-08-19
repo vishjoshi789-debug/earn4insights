@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+// Imported rather than re-derived: the reported connection source must be the
+// one the app is actually using, not a second copy of the precedence chain.
+import { connectionSource } from '@/db'
 
 /**
  * GET /api/admin/env-check
@@ -84,7 +87,39 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Preview pointing at the production database ────────────────────────
-  const host = dbHost(process.env.POSTGRES_URL || process.env.DATABASE_URL)
+  // Mirrors src/db/index.ts precedence: OVERRIDE → POSTGRES_URL → DATABASE_URL.
+  // `connectionSource` is imported from the app rather than re-derived, so the
+  // reported source can never drift from the one actually in use.
+  const host = dbHost(
+    process.env.DATABASE_URL_OVERRIDE ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL
+  )
+
+  // ── 🔒 The override guard, surfaced ────────────────────────────────────
+  // src/db/index.ts REFUSES TO BOOT if the override is set in production
+  // without the explicit allow flag, so the dangerous state cannot silently
+  // persist. These warnings cover the states that are permitted but still
+  // worth shouting about.
+  if (process.env.DATABASE_URL_OVERRIDE) {
+    if (isProdDeployment) {
+      warnings.push(
+        'CRITICAL: DATABASE_URL_OVERRIDE is set on a PRODUCTION deployment. ' +
+        (process.env.ALLOW_DATABASE_URL_OVERRIDE_IN_PRODUCTION === 'true'
+          ? 'It is explicitly permitted via ALLOW_DATABASE_URL_OVERRIDE_IN_PRODUCTION, ' +
+            'so the live app is running on a NON-integration database. Unset both ' +
+            'variables as soon as the failover ends.'
+          : 'The app REFUSES TO BOOT in this state — if you are reading this, the ' +
+            'allow-flag is set or VERCEL_ENV is not what you think. Investigate now.')
+      )
+    } else {
+      warnings.push(
+        `DATABASE_URL_OVERRIDE is active on ${vercelEnv ?? 'this environment'} — ` +
+        `the database is "${host}", NOT the integration-managed one. Expected on ` +
+        'preview; unexpected anywhere else.'
+      )
+    }
+  }
   if (!isProdDeployment && host && !/dev|test|staging|preview|branch/i.test(host)) {
     warnings.push(
       `Database host "${host}" does not look like a branch/dev database. A ` +
@@ -161,7 +196,22 @@ export async function GET(request: NextRequest) {
         clientKeyMode: clientMode,
         webhookSecretSet: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET),
       },
-      database: { host },
+      database: {
+        host,
+        // WHICH variable produced the live connection — imported from the app,
+        // not re-derived, so it cannot drift from reality.
+        effectiveSource: connectionSource,
+        // Presence only; never the values. The integration owns the first two
+        // and scopes them to all environments, which is why the override
+        // exists at all.
+        present: {
+          DATABASE_URL_OVERRIDE: Boolean(process.env.DATABASE_URL_OVERRIDE),
+          POSTGRES_URL: Boolean(process.env.POSTGRES_URL),
+          DATABASE_URL: Boolean(process.env.DATABASE_URL),
+        },
+        overrideAllowedInProduction:
+          process.env.ALLOW_DATABASE_URL_OVERRIDE_IN_PRODUCTION === 'true',
+      },
       // Presence only — never the values.
       secretsPresent: {
         AUTH_SECRET: Boolean(process.env.AUTH_SECRET),

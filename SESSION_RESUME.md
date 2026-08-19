@@ -2340,3 +2340,89 @@ the wrapper rejects first — but the *pattern* survives in source where it coul
 new route. Removing them is the auth-absorbing pass, still queued; it is cosmetic now rather than
 security-relevant.
 
+
+---
+
+## 🗄️ DATABASE_URL_OVERRIDE — pointing preview at its own Neon branch (2026-08-19)
+
+### The problem
+
+The **Neon Vercel integration owns both `POSTGRES_URL` and `DATABASE_URL`** and scopes them to all
+three environments. Vercel offers no per-environment edit — only "rotate integration secrets". So
+there was **no way to point a preview deployment at a different Neon branch** using the canonical
+names, which blocked the whole preview environment, which blocks the payment rehearsal, which
+blocks the ledger fix, which is why creators can't be paid.
+
+### What the code actually reads (checked, not assumed)
+
+| Reader | Before |
+|---|---|
+| `src/db/index.ts:6` | `POSTGRES_URL \|\| DATABASE_URL` |
+| `drizzle.config.ts:8` | **`POSTGRES_URL` only — no fallback** |
+
+⚠️ **`drizzle.config.ts` was the sharp edge.** Reading `POSTGRES_URL` exclusively meant
+`drizzle-kit push` / `studio` would have **silently ignored an override and pushed schema to the
+integration-managed database** — running a migration against the wrong branch is precisely the
+accident the override exists to prevent. The fallback chain there mattered as much as the app's.
+
+### The fix
+
+Precedence everywhere: **`DATABASE_URL_OVERRIDE` → `POSTGRES_URL` → `DATABASE_URL`**.
+
+**Name is environment-NEUTRAL on purpose.** `PREVIEW_DATABASE_URL` would have solved today's
+problem and blocked the next one (staging, branch-per-PR). "Whatever environment sets it, wins."
+
+⚠️ **Disconnecting the integration was the alternative and was REJECTED.** It would mean
+re-creating **production's** database configuration by hand on a live product, where a mistake is
+an outage. The override touches nothing in production's path. Cost of the override: two lines.
+
+### 🔒 The guard — HARD FAIL, not a warning
+
+**`src/db/index.ts` refuses to boot** when `DATABASE_URL_OVERRIDE` is set and
+`VERCEL_ENV === 'production'`.
+
+Reasoning, and it generalises: a misdirected database is **the worst silent-failure shape found
+this session**. The cron fail-open let things run that shouldn't. The `sent` email status hid a
+truth. This one **corrupts data** — reads return someone else's rows, writes land where nobody
+looks — and it can run for days before anyone notices. Some of that is not reversible.
+
+**Loud and down beats quiet and wrong.** A boot failure is visible in seconds and fixed by deleting
+one variable, with zero data divergence.
+
+**Escape hatch is a SECOND variable** — `ALLOW_DATABASE_URL_OVERRIDE_IN_PRODUCTION=true`. Two
+variables cannot align by accident; you have to mean it. Legitimate uses: emergency failover to a
+replica, provider migration. While active it logs at **error** level on every cold start, so it
+appears in normal log filters rather than only when someone goes looking.
+
+⚠️ **Accepted tradeoff:** a module-scope throw means **every** request 500s, not just DB-touching
+ones. A fat-fingered production env var takes the site down rather than degrading it. Judged
+correct given what the alternative costs, but it is a real tradeoff and the one thing to flip if
+this ever proves too aggressive.
+
+**No guard in `drizzle.config.ts`** — drizzle-kit is a CLI a human runs deliberately, `VERCEL_ENV`
+isn't set there, and the guard belongs where an accident would be *silent*.
+
+### env-check now answers "which connection is in effect"
+
+```json
+"database": {
+  "host": "ep-xxx.neon.tech",
+  "effectiveSource": "DATABASE_URL_OVERRIDE",
+  "present": { "DATABASE_URL_OVERRIDE": true, "POSTGRES_URL": true, "DATABASE_URL": true },
+  "overrideAllowedInProduction": false
+}
+```
+
+⚠️ **`connectionSource` is IMPORTED from `@/db`, not re-derived.** A second copy of the precedence
+chain is exactly how a diagnostic goes stale and starts confidently reporting the wrong thing.
+
+Warnings added for: override active on production (both the permitted and the should-be-impossible
+case) and override active on any non-production environment (expected on preview, suspicious
+anywhere else).
+
+### Unblocks
+
+Preview can now point at its own Neon branch. Remaining preview steps are unchanged and all
+dashboard-side: Razorpay test keys, scoping the other vars, running the migration loop,
+`env-check` until `ok: true`, then repointing `.env.local`.
+
