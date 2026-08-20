@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Loader2, Megaphone, CheckCircle, XCircle, Upload, IndianRupee, Calendar, Target } from 'lucide-react'
 import { toast } from 'sonner'
+import { campaignStatusLabel } from '@/lib/campaigns/campaignStatus'
 
 export default function InfluencerCampaignDetailPage() {
   const { data: session, status } = useSession()
@@ -77,7 +78,7 @@ export default function InfluencerCampaignDetailPage() {
           {campaign.title}
         </h1>
         <div className="flex items-center gap-2 mt-2">
-          <Badge>{campaign.status}</Badge>
+          <Badge>{campaignStatusLabel(campaign.status)}</Badge>
           <Badge variant="outline">{invitation?.status}</Badge>
         </div>
       </div>

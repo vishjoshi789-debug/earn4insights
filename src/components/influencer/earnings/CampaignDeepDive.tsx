@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { X, Loader2, Eye, Heart, MessageSquare, Share2, Bookmark, MousePointerClick, Radio, Target } from 'lucide-react'
 import { LineChartCard } from './PerformanceCharts'
 import { formatCurrency } from '@/lib/currency'
+import { campaignStatusLabel } from '@/lib/campaigns/campaignStatus'
 
 interface CampaignDeepDiveProps {
   campaignId: string
@@ -138,7 +139,7 @@ export function CampaignDeepDive({ campaignId, onClose }: CampaignDeepDiveProps)
           <CardDescription className="flex items-center gap-2 flex-wrap">
             {campaign.brandName && <span>{campaign.brandName}</span>}
             <Badge variant="secondary" className={STATUS_COLORS[campaign.status] ?? ''}>
-              {campaign.status}
+              {campaignStatusLabel(campaign.status)}
             </Badge>
             {campaign.startDate && campaign.endDate && (
               <span className="text-xs">
