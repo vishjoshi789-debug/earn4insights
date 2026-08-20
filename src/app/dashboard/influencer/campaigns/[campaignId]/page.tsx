@@ -20,7 +20,7 @@ export default function InfluencerCampaignDetailPage() {
   const [acting, setActing] = useState(false)
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
   useEffect(() => {

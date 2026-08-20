@@ -67,7 +67,7 @@ export default function InfluencerEarningsPage() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
   useEffect(() => {

@@ -173,7 +173,7 @@ export default function PrivacyPage() {
   const userRole = (session?.user as any)?.role
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
     if (status === 'authenticated' && userRole && userRole !== 'consumer') router.push('/dashboard')
   }, [status, userRole, router])
 

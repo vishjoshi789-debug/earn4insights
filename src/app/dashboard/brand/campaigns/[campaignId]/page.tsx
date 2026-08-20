@@ -130,7 +130,7 @@ export default function BrandCampaignDetailPage() {
   const [editSaving, setEditSaving] = useState(false)
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
   const loadData = () => {

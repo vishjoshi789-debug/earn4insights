@@ -50,7 +50,7 @@ export default function MarketplacePage() {
   const [activeTab, setActiveTab] = useState('browse')
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
   // Load recommended
