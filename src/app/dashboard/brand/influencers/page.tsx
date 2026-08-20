@@ -19,7 +19,7 @@ export default function BrandInfluencerDiscoveryPage() {
   const [searchLocation, setSearchLocation] = useState('')
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
     if (status === 'authenticated' && (session?.user as any)?.role !== 'brand') router.push('/dashboard')
   }, [status, session, router])
 

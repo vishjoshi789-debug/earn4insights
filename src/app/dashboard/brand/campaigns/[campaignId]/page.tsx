@@ -27,6 +27,7 @@ import {
   arePaymentsEnabledClient,
   PAYMENTS_DISABLED_MESSAGE,
 } from '@/lib/payments/paymentsEnabled'
+import { campaignStatusLabel } from '@/lib/campaigns/campaignStatus'
 
 // Statuses where a brand may edit campaign details (3D, Q1).
 // Mirrors EDITABLE_STATUSES in campaignManagementService so the UI
@@ -130,7 +131,7 @@ export default function BrandCampaignDetailPage() {
   const [editSaving, setEditSaving] = useState(false)
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
   const loadData = () => {
@@ -523,7 +524,7 @@ export default function BrandCampaignDetailPage() {
         <div>
           <h1 className="text-2xl font-bold font-headline">{campaign.title}</h1>
           <div className="flex items-center gap-2 mt-1">
-            <Badge>{campaign.status}</Badge>
+            <Badge>{campaignStatusLabel(campaign.status)}</Badge>
             <span className="text-xs text-muted-foreground">
               <IndianRupee className="h-3 w-3 inline" /> {(campaign.budgetTotal / 100).toLocaleString()} {campaign.budgetCurrency}
             </span>

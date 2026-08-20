@@ -2426,3 +2426,117 @@ Preview can now point at its own Neon branch. Remaining preview steps are unchan
 dashboard-side: Razorpay test keys, scoping the other vars, running the migration loop,
 `env-check` until `ok: true`, then repointing `.env.local`.
 
+---
+
+## 🧰 The PowerShell bracket trap — how two findings today were WRONG (2026-08-20)
+
+### The trap
+
+```powershell
+Select-String -Path "src\app\dashboard\brand\campaigns\[campaignId]\page.tsx" -Pattern "Activate"
+```
+
+returns **nothing**. Not an error — an empty result. PowerShell treats `[` and `]` in `-Path` as a
+**wildcard character class**, so `[campaignId]` means "any one of the characters c,a,m,p,i,g,n,I,d",
+the path matches no file, and `Select-String` reports no matches exactly as if the pattern were
+absent.
+
+⚠️ **Every Next.js dynamic route in this repo has square brackets** — `[campaignId]`, `[productId]`,
+`[icpId]`, `[milestoneId]`, `[orderId]`, `[id]`, `[pid]`, `[category]`. Any `-Path` search touching
+one silently returns nothing.
+
+### Why it is dangerous rather than annoying
+
+An empty grep result is normally *evidence*: "the pattern isn't there." Here it is
+indistinguishable from "the file was never opened." The failure mode is a confident **proof of
+absence** — which is the worst possible shape in a codebase whose dominant defect class
+(§5 ignition-key pattern) is *things that look built but aren't*. It produces the exact same
+conclusion as a genuine ignition-key finding, so it passes the smell test.
+
+### The two wrong findings
+
+| Claim made | Reality |
+|---|---|
+| "There is **NO** campaign status-transition UI — a live production blocker; no brand can activate a campaign, so no brand can reach payment" | `[campaignId]/page.tsx:545-577` has **Publish / Activate / Complete / Cancel** buttons, a two-step confirm modal, `apiPatch` with CSRF, and a client mirror of `getMissingPublishFields` that disables Publish with a tooltip naming the missing fields |
+| "`/api/brand/campaigns/[campaignId]` has no handlers" | It has **GET and PATCH**; PATCH is CSRF-gated and calls `transitionCampaignStatus` |
+
+Both were escalated to the founder as blockers. **Neither was real.** The correct statement is that
+a brand reaches payment via **Publish → Activate → Create Payment Order**, and the payment blocker
+remains what it always was: the `campaign_payments` ledger gap.
+
+### 🔒 How to search these paths correctly
+
+**Pipe, don't `-Path`.** `Get-ChildItem` passes `FileInfo` objects, which `Select-String` consumes
+without wildcard expansion:
+
+```powershell
+Get-ChildItem -Path src -Recurse -Include *.ts,*.tsx -File |
+  Select-String -Pattern "openStatusConfirm"
+```
+
+Other correct forms:
+- `Select-String -LiteralPath "...\[campaignId]\page.tsx"` — `-LiteralPath` disables wildcards
+- `Get-Item -LiteralPath` / `Get-Content -LiteralPath` — same trap applies to **every** `-Path`
+  parameter in PowerShell, not just `Select-String`
+- Escape the brackets: `` `[campaignId`] `` (backtick each)
+- Prefer the **Grep tool (ripgrep)** with a *narrow* `path` — it has no bracket semantics. It times
+  out at 20s on the whole repo, but scoped to one directory it is fast and correct.
+
+### The general rule
+
+**A zero-result search of a SPECIFIC file is not evidence until you have confirmed the file was
+read.** Cheap confirmation: search the same file for something certain to be present (`import`,
+`export default`) and check you get hits. If that also returns zero, the path never resolved.
+
+Recorded in memory as `powershell-bracket-paths`.
+
+---
+
+## ✅ Preview environment — verified and migrated (2026-08-20)
+
+**URL:** `earn4insights-git-preview-env-joshis-projects-51800fce.vercel.app` · branch `preview-env`
+
+**Both STOP conditions cleared before migrating:** Razorpay `serverKeyMode`/`clientKeyMode` both
+read **`test`** (no real card can be charged), and `database.host` is `ep-wild-frog-ahia61pt` —
+**not** production's `ep-icy-salad-ahjb9nek` — with `effectiveSource: DATABASE_URL_OVERRIDE`, so the
+override wins in a real deployment.
+
+**Migrations:** all 35 (`002`–`024`, `026`–`037`) succeeded. The **entire loop was then run a second
+time: 35/35, zero failures** — that second pass is the real idempotency proof. 036 landed
+(`uniq_constraint_present=true`), and the state lines confirm `users`, `feedback`,
+`notification_queue`, `notification_preferences`, `brand_subscriptions` and `cron_runs` all exist
+and are empty.
+
+⚠️ **"Which migrations were no-ops" is NOT answerable** — most routes hardcode
+`status: 'created'` from a `CREATE TABLE IF NOT EXISTS` regardless of whether anything was created.
+Only 003 distinguishes (`skipped=10, ok=2`). Do not read `created` as "this ran".
+
+### Two corrections to the preview docs
+
+- 🔴 **`env-check` can NEVER return `ok: true` on preview.** The "override is active on a
+  non-production environment" warning fires *by design* whenever the override is set. The
+  instruction in `docs/PREVIEW_ENVIRONMENT_SETUP.md` to run "`env-check` until `ok: true`" is
+  unreachable; the correct target is **"until only the expected warnings remain."**
+- 🔴 **The branch-detection heuristic is a FALSE POSITIVE generator.** `env-check` warns when
+  `!/dev|test|staging|preview|branch/i.test(host)`, but Neon auto-names branch endpoints
+  `ep-wild-frog-…`, matching none of those words. It fires on every correct Neon branch and cannot
+  distinguish a branch from production. Reliable check is comparing against the known production
+  host.
+
+### Real config gap found
+
+**`PAYMENTS_ENABLED=true` but `NEXT_PUBLIC_PAYMENTS_ENABLED` unset** on Preview → the server accepts
+orders while the "Create Payment Order" button stays **hidden**. Both must be set for a UI payment
+rehearsal.
+
+### ⚠️ Preview shares the PRODUCTION Vercel Blob store
+
+`BLOB_READ_WRITE_TOKEN` is deliberately unscoped. Writers: `uploads/brand-logo` (in the brand
+onboarding path), `uploads/influencer-photo`, the three feedback-media routes, `dsarService`.
+
+🔴 **The two DELETE paths are the landmine:** `feedbackMediaRetentionService` and
+`api/jobs/dsar-cleanup` enumerate rows from the DB and delete the matching Blob objects. They are
+harmless **only because the preview DB is empty**. If production data is ever cloned into the
+preview branch, triggering either on preview would delete **real production media** — the same
+objects rotated in the v15 incident, equally unrecoverable. Defuse before any data clone.
+

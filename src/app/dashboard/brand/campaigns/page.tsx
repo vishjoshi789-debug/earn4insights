@@ -18,6 +18,7 @@ import { toast } from 'sonner'
 import { useEmailVerification } from '@/components/EmailVerificationProvider'
 import { EmailVerificationContextBanner } from '@/components/EmailVerificationContextBanner'
 import { openEmailVerificationPrompt } from '@/lib/email-verification-prompt'
+import { campaignStatusLabel } from '@/lib/campaigns/campaignStatus'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -47,7 +48,7 @@ export default function BrandCampaignsPage() {
   })
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
     if (status === 'authenticated' && (session?.user as any)?.role !== 'brand') router.push('/dashboard')
   }, [status, session, router])
 
@@ -274,7 +275,7 @@ export default function BrandCampaignsPage() {
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-sm font-semibold">{c.title}</CardTitle>
-                        <Badge className={STATUS_COLORS[c.status] ?? ''}>{c.status}</Badge>
+                        <Badge className={STATUS_COLORS[c.status] ?? ''}>{campaignStatusLabel(c.status)}</Badge>
                       </div>
                     </CardHeader>
                     <CardContent>

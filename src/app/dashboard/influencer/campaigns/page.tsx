@@ -26,7 +26,7 @@ export default function InfluencerCampaignsPage() {
   const [activeTab, setActiveTab] = useState('all')
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
   useEffect(() => {

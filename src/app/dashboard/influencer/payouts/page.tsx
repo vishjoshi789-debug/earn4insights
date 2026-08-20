@@ -196,7 +196,7 @@ export default function InfluencerPayoutsPage() {
   const currencies = getSupportedCurrencies()
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/signin')
+    if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
   // Load accounts on mount
