@@ -713,11 +713,11 @@ export default function BrandCampaignDetailPage() {
                         </Button>
                       </>
                     )}
-                    {ms.status === 'pending' && (
-                      <Button size="sm" variant="outline" onClick={() => milestoneAction(ms.id, 'escrow')} disabled={acting}>
-                        Escrow
-                      </Button>
-                    )}
+                    {/* The "Escrow" button was REMOVED in Phase 1. It called
+                        escrowForMilestone(), which wrote a campaign_payments row
+                        reading 'escrowed' without Razorpay ever holding a rupee —
+                        a brand could fabricate an escrow record by clicking it.
+                        Escrow now means a real paid order; see the Payment tab. */}
                   </div>
                 </div>
               ))}
@@ -807,11 +807,9 @@ export default function BrandCampaignDetailPage() {
                             </Button>
                           </>
                         )}
-                        {ms.status === 'pending' && (
-                          <Button size="sm" variant="outline" onClick={() => milestoneAction(ms.id, 'escrow')} disabled={acting}>
-                            Escrow
-                          </Button>
-                        )}
+                        {/* "Escrow" button removed in Phase 1 — see the note on the
+                            other milestone list above. It fabricated an escrowed
+                            ledger row with no money behind it. */}
                       </div>
                     </div>
                   ))}

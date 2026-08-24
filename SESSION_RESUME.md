@@ -2563,8 +2563,10 @@ The campaign-level path takes money and writes no ledger row. **Empirically conf
    only inside `if (order.milestoneId)` (`razorpayService.ts:335`). Together with finding 2, that
    means **`campaign_payments` has no reachable writer anywhere in the codebase.** This is not a
    campaign-level gap; the milestone path is equally dead, it just fails one step later.
-2. **`escrowForMilestone` has ZERO callers** — `campaignPaymentService.ts:141` is the only
-   occurrence in the repo.
+2. ~~**`escrowForMilestone` has ZERO callers**~~ — ❌ **THIS WAS WRONG. See the correction below.**
+   It had one caller, reachable from a button. The claim came from a PowerShell scan that **timed
+   out partway** plus two path-scoped greps reported as exhaustive — the same "an unfinished search
+   is not evidence of absence" failure as the bracket trap, recorded two sections above.
 3. 🔴 **No duplicate guard on campaign-level orders.** `createOrder`'s duplicate check sits inside
    `if (milestoneId)` (`razorpayService.ts:149`). Nothing stops a second charge on the same campaign.
 4. 🔴 **The release path is milestone-ONLY.** `/api/payments/release/[campaignId]` requires
@@ -2638,6 +2640,32 @@ that moves money without writing, and one corpse that writes without moving mone
 | 1 | Ledger write (create `pending`, flip at capture + webhook); delete `escrowForMilestone` | approved, not built |
 | 2 | Campaign-level release path + `process-payouts` per-payment dedup | approved, not built |
 | 3 | Backfill + standing invariant script ("every `paid` order has exactly one ledger row") | **scope now known — see below** |
+
+### ❌ CORRECTION — `escrowForMilestone` was REACHABLE, and was a live defect
+
+The Phase 1 build found the caller that the earlier search missed:
+
+```
+UI "Escrow" button  (campaigns/[campaignId]/page.tsx:717 and :811, shown when ms.status='pending')
+  → PATCH /api/brand/campaigns/{campaignId}/milestones/{milestoneId}  { action: 'escrow' }
+  → escrowForMilestone()
+  → campaign_payments row, status:'escrowed' — no Razorpay, no money, no influencerAmount
+```
+
+**A brand could fabricate an escrow record by clicking a button.** So this was never a corpse; it
+was an active false-ledger path, and defect #1 (writes `'escrowed'` with no money moved) was live
+rather than hypothetical. The deletion decision is unchanged and strengthened — but the framing
+"deleting a function with no callers" was wrong and the deletion required removing the affordance.
+
+Handled in Phase 1: both buttons removed; the route's `'escrow'` action now returns **410** with a
+message pointing at the Payment tab, deliberately not falling through to the generic "Invalid
+action" so an old client is told what happened.
+
+⚠️ **Method lesson, now twice in one session:** an unfinished or path-scoped search is not evidence
+of absence. The first instance (the bracket trap) produced a false "this UI does not exist"; this
+one produced a false "this function has no callers" **that was committed to this document as
+fact**. Before writing "zero callers" anywhere, the search must be one that demonstrably completed
+over the whole tree.
 
 ### ✅ Backfill diagnostic — PRODUCTION IS CLEAN (2026-08-20)
 
