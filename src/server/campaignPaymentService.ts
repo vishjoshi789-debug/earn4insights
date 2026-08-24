@@ -24,7 +24,9 @@ import {
   deleteMilestone,
 } from '@/db/repositories/campaignMilestoneRepository'
 import {
-  createPayment,
+  // createPayment intentionally NOT imported here any more — the only user was
+  // escrowForMilestone. The ledger row is written by razorpayService.createOrder,
+  // where a real Razorpay order backs it.
   getPaymentsByCampaign,
   getPaymentByMilestone,
   updatePaymentStatus,
@@ -137,36 +139,29 @@ export async function removeMilestone(milestoneId: string, brandId: string): Pro
 }
 
 // ── Escrow payments ──────────────────────────────────────────────
-
-export async function escrowForMilestone(
-  milestoneId: string,
-  brandId: string
-): Promise<CampaignPayment> {
-  const milestone = await getMilestoneById(milestoneId)
-  if (!milestone) throw new Error('Milestone not found')
-
-  const campaign = await getCampaignById(milestone.campaignId)
-  if (!campaign) throw new Error('Campaign not found')
-  if (campaign.brandId !== brandId) throw new Error('Not authorized')
-
-  // Check not already escrowed
-  const existing = await getPaymentByMilestone(milestoneId)
-  if (existing) throw new Error('Payment already exists for this milestone')
-
-  const feePct = Number(campaign.platformFeePct)
-  const platformFee = Math.round(milestone.paymentAmount * (feePct / 100))
-
-  return createPayment({
-    campaignId: milestone.campaignId,
-    milestoneId,
-    amount: milestone.paymentAmount,
-    currency: campaign.budgetCurrency,
-    paymentType: 'milestone',
-    status: 'escrowed',
-    platformFee,
-    escrowedAt: new Date(),
-  })
-}
+//
+// ⚠️⚠️ `escrowForMilestone()` WAS HERE AND WAS DELETED (Phase 1, 2026-08-24).
+// THIS DID NOT REMOVE ESCROW. Escrow is Razorpay holding the funds PLUS a
+// campaign_payments row recording that hold. Both still exist; the second one
+// started working for the first time in this same change. What was deleted is
+// a pre-Razorpay artifact that would have written FALSE ledger entries.
+//
+// It had zero callers anywhere in the codebase, and three independent defects:
+//
+//   1. It wrote status:'escrowed' with NO MONEY HAVING MOVED. Wiring it up
+//      would have made the ledger assert funds were held that Razorpay never
+//      took — worse than an empty table, because an empty table is honestly
+//      empty.
+//   2. It never set `influencerAmount`, which is the column process-payouts
+//      actually pays out — so a row it created would have produced a NULL
+//      payout.
+//   3. It computed fees from `campaign.platformFeePct` while createOrder uses
+//      FEE_SCHEDULE — two disagreeing sources of truth for the same number.
+//
+// The ledger row is now written by `createOrder` in razorpayService (status
+// 'pending', at order creation) and claimed to 'escrowed' by capture or the
+// Razorpay webhook, whichever wins. That is the only writer, and money has
+// provably moved before it says 'escrowed'.
 
 // ── Payment summary ───────────────────────────────��──────────────
 

@@ -13,7 +13,6 @@ import {
   approveMilestone,
   rejectMilestone,
   removeMilestone,
-  escrowForMilestone,
 } from '@/server/campaignPaymentService'
 
 type RouteParams = { params: Promise<{ campaignId: string; milestoneId: string }> }
@@ -48,12 +47,25 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ milestone })
     }
 
+    // ⚠️ action 'escrow' REMOVED in Phase 1 (2026-08-24). It called
+    // escrowForMilestone(), which wrote a campaign_payments row reading
+    // 'escrowed' without Razorpay holding anything — a brand could fabricate
+    // an escrow record with one PATCH. Kept as an explicit 410 rather than
+    // falling through to "Invalid action", so an old client or a bookmarked
+    // call gets told what happened instead of a generic rejection.
     if (body.action === 'escrow') {
-      const payment = await escrowForMilestone(milestoneId, authResult.userId)
-      return NextResponse.json({ payment })
+      return NextResponse.json(
+        {
+          error:
+            'Escrow is no longer set by hand. Funds are escrowed by paying the campaign through ' +
+            'the Payment tab, which records the payment against this campaign.',
+          code: 'escrow_action_removed',
+        },
+        { status: 410 }
+      )
     }
 
-    return NextResponse.json({ error: 'Invalid action. Use: approve, reject, escrow' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid action. Use: approve, reject' }, { status: 400 })
   } catch (error: any) {
     console.error('[MilestoneDetail PATCH]', error)
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 400 })

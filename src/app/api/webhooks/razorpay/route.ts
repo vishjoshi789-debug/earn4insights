@@ -20,7 +20,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyWebhookSignature } from '@/server/razorpayService'
 import { updateOrderStatus, getOrderByRazorpayId, updatePayoutStatus } from '@/db/repositories/razorpayRepository'
-import { updatePaymentStatus, getPaymentByMilestone } from '@/db/repositories/campaignPaymentRepository'
+import {
+  updatePaymentStatus,
+  getPaymentByRazorpayOrderId,
+  claimPaymentEscrowed,
+} from '@/db/repositories/campaignPaymentRepository'
 import { logDataAccess } from '@/lib/audit-log'
 
 // NOTE: No 'server-only' import — this route must be importable by Next.js edge runtime.
@@ -91,16 +95,22 @@ async function processWebhookAsync(rawBody: string, signature: string): Promise<
           paymentMethod,
         })
 
-        // Update campaign_payments to escrowed if milestone-linked
+        // ── Move the ledger row to 'escrowed' ──────────────────────
+        //
+        // Keyed on the ORDER. This used to look up via the milestone inside
+        // `if (order?.milestoneId)`, so campaign-level payments never reached
+        // the ledger. It also checked `status === 'pending'` — a state nothing
+        // created until Phase 1 — so this branch was dead twice over.
+        //
+        // Now it is the safety net for the capture path: if the brand closes
+        // the tab before returning from checkout, this is the only thing that
+        // records the money. The claim is conditional, so when both fire the
+        // loser simply gets null.
         const order = await getOrderByRazorpayId(razorpayOrderId)
-        if (order?.milestoneId) {
-          const campaignPayment = await getPaymentByMilestone(order.milestoneId)
-          if (campaignPayment && campaignPayment.status === 'pending') {
-            await updatePaymentStatus(campaignPayment.id, 'escrowed', {
-              razorpayOrderId,
-              razorpayPaymentId,
-              escrowedAt: new Date(),
-            })
+        if (order) {
+          const ledgerRow = await getPaymentByRazorpayOrderId(order.razorpayOrderId)
+          if (ledgerRow) {
+            await claimPaymentEscrowed(ledgerRow.id, { razorpayOrderId, razorpayPaymentId })
           }
         }
         break
@@ -115,14 +125,15 @@ async function processWebhookAsync(rawBody: string, signature: string): Promise<
 
         await updateOrderStatus(razorpayOrderId, { status: 'failed' })
 
-        // Mark linked campaign payment as failed too
+        // Mark the linked ledger row failed too — order-keyed, same reason as
+        // payment.captured. Still guarded on 'pending': a row that already
+        // reached 'escrowed' has money behind it and must not be downgraded
+        // by a late or out-of-order failure event.
         const order = await getOrderByRazorpayId(razorpayOrderId)
-        if (order?.milestoneId) {
-          const campaignPayment = await getPaymentByMilestone(order.milestoneId)
-          if (campaignPayment && campaignPayment.status === 'pending') {
-            await updatePaymentStatus(campaignPayment.id, 'failed', {
-              failureReason,
-            })
+        if (order) {
+          const ledgerRow = await getPaymentByRazorpayOrderId(order.razorpayOrderId)
+          if (ledgerRow && ledgerRow.status === 'pending') {
+            await updatePaymentStatus(ledgerRow.id, 'failed', { failureReason })
           }
         }
 

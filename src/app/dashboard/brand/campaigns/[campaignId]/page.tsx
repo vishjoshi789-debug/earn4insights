@@ -100,6 +100,10 @@ export default function BrandCampaignDetailPage() {
   // Payment tab state
   const [paymentSummary, setPaymentSummary] = useState<any>(null)
   const [razorpayOrder, setRazorpayOrder] = useState<any>(null)
+  // Any PAID order on this campaign, not just the latest one. Drives the
+  // "already paid" state and suppresses the pay button — see the route
+  // comment in api/brand/campaigns/[campaignId]/razorpay-order.
+  const [paidOrder, setPaidOrder] = useState<any>(null)
   const [paymentTabLoaded, setPaymentTabLoaded] = useState(false)
   const [creatingOrder, setCreatingOrder] = useState(false)
   // Read once at render: NEXT_PUBLIC_* is inlined at build time, so this is a
@@ -174,8 +178,9 @@ export default function BrandCampaignDetailPage() {
       ])
       if (summaryRes.ok) setPaymentSummary(await summaryRes.json())
       if (orderRes.ok) {
-        const { order } = await orderRes.json()
+        const { order, paidOrder: paid } = await orderRes.json()
         setRazorpayOrder(order)
+        setPaidOrder(paid ?? null)
       }
     } catch {
       toast.error('Failed to load payment data')
@@ -708,11 +713,11 @@ export default function BrandCampaignDetailPage() {
                         </Button>
                       </>
                     )}
-                    {ms.status === 'pending' && (
-                      <Button size="sm" variant="outline" onClick={() => milestoneAction(ms.id, 'escrow')} disabled={acting}>
-                        Escrow
-                      </Button>
-                    )}
+                    {/* The "Escrow" button was REMOVED in Phase 1. It called
+                        escrowForMilestone(), which wrote a campaign_payments row
+                        reading 'escrowed' without Razorpay ever holding a rupee —
+                        a brand could fabricate an escrow record by clicking it.
+                        Escrow now means a real paid order; see the Payment tab. */}
                   </div>
                 </div>
               ))}
@@ -802,11 +807,9 @@ export default function BrandCampaignDetailPage() {
                             </Button>
                           </>
                         )}
-                        {ms.status === 'pending' && (
-                          <Button size="sm" variant="outline" onClick={() => milestoneAction(ms.id, 'escrow')} disabled={acting}>
-                            Escrow
-                          </Button>
-                        )}
+                        {/* "Escrow" button removed in Phase 1 — see the note on the
+                            other milestone list above. It fabricated an escrowed
+                            ledger row with no money behind it. */}
                       </div>
                     </div>
                   ))}
@@ -934,6 +937,29 @@ export default function BrandCampaignDetailPage() {
                           <p className="font-medium">Payment Secured in Escrow</p>
                           <p className="text-xs mt-0.5 opacity-80">
                             {formatCurrency(escrowedPayment.amount, escrowedPayment.currency)} held securely · Released when milestones are approved
+                          </p>
+                        </div>
+                      </div>
+                    ) : paidOrder ? (
+                      /* Money HAS moved (a paid razorpay_orders row exists) but no
+                         campaign_payments row backs it — the ledger gap, confirmed on a
+                         real test payment 2026-08-20.
+
+                         Two things this branch must do, and the second is the urgent one:
+                         (1) not claim "funds in escrow", since nothing records that; and
+                         (2) sit AHEAD of the 'created' branch and the pay button below,
+                             so a brand who has already paid is never offered checkout
+                             again. Nothing server-side stops a second campaign-level
+                             charge, so this is the only thing standing between a paid
+                             brand and a duplicate payment until Phase 1 lands. */
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-sm">
+                        <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+                        <div>
+                          <p className="font-medium">Payment received — reconciling</p>
+                          <p className="text-xs mt-0.5 opacity-80">
+                            {formatCurrency(paidOrder.amount, paidOrder.currency)} paid on{' '}
+                            {new Date(paidOrder.createdAt).toLocaleDateString()} · No further payment is
+                            needed for this campaign.
                           </p>
                         </div>
                       </div>

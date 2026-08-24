@@ -17,7 +17,7 @@ import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { createOrder } from '@/server/razorpayService'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
 import { getMilestoneById } from '@/db/repositories/campaignMilestoneRepository'
-import { DuplicatePaymentError } from '@/server/razorpayService'
+import { DuplicatePaymentError, MixedPaymentGranularityError } from '@/server/razorpayService'
 import {
   requireEmailVerified,
   EmailNotVerifiedError,
@@ -138,6 +138,15 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (error instanceof DuplicatePaymentError) {
       return NextResponse.json({ error: error.message }, { status: 409 })
+    }
+    // 400, not 409: nothing is duplicated — the campaign is being paid at the
+    // wrong granularity. The message names the fix, because a bare "invalid
+    // request" would leave a brand with no way to work out what to do.
+    if (error instanceof MixedPaymentGranularityError) {
+      return NextResponse.json(
+        { error: error.message, code: 'mixed_payment_granularity' },
+        { status: 400 }
+      )
     }
     console.error('[CreateOrder POST]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

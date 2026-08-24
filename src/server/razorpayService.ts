@@ -27,9 +27,11 @@ import {
   updateOrderStatus,
 } from '@/db/repositories/razorpayRepository'
 import {
+  createPayment,
   updatePaymentStatus,
-  getPaymentByMilestone,
   getPaymentsByCampaign,
+  getPaymentByRazorpayOrderId,
+  claimPaymentEscrowed,
 } from '@/db/repositories/campaignPaymentRepository'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
 
@@ -46,6 +48,19 @@ export class DuplicatePaymentError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'DuplicatePaymentError'
+  }
+}
+
+/**
+ * A campaign may pay at the campaign level OR per milestone — never both.
+ * Distinct from DuplicatePaymentError because the caller's fix is different:
+ * a duplicate means "you already paid this", whereas this means "you are
+ * paying at the wrong granularity for this campaign". Routes map it to 400.
+ */
+export class MixedPaymentGranularityError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MixedPaymentGranularityError'
   }
 }
 
@@ -145,20 +160,61 @@ export async function createOrder(params: {
   if (!campaign) throw new Error('Campaign not found')
   if (campaign.brandId !== brandId) throw new Error('Not authorized')
 
-  // Check for duplicate: already-paid order for this campaign/milestone
+  // ── Duplicate + granularity guards ──────────────────────────────
+  //
+  // The duplicate check used to live entirely inside `if (milestoneId)`, so
+  // CAMPAIGN-LEVEL orders had no duplicate protection at all — a brand could
+  // pay the full budget twice. Phase 0 hid the button; this is the actual
+  // refusal, and it is the one that holds against a direct API call.
+  //
+  // 'pending' is deliberately NOT blocking: a row in that state is an
+  // abandoned checkout where no money moved, and a brand must be able to
+  // retry it.
+  const existingPayments = await getPaymentsByCampaign(campaignId)
+  const BLOCKING_STATUSES = new Set(['escrowed', 'released'])
+  const held = existingPayments.filter((p) => BLOCKING_STATUSES.has(p.status))
+  const heldCampaignLevel = held.find((p) => !p.milestoneId)
+  const heldMilestoneLevel = held.find((p) => p.milestoneId)
+
+  const blockDuplicate = async (message: string) => {
+    await logDataAccess({
+      userId: brandId,
+      action: 'write',
+      dataType: 'events',
+      accessedBy: brandId,
+      reason: 'Duplicate payment attempt blocked',
+      metadata: { campaignId, milestoneId: milestoneId ?? null, error: 'DuplicatePaymentError' },
+    })
+    throw new DuplicatePaymentError(message)
+  }
+
   if (milestoneId) {
-    const existingPayment = await getPaymentByMilestone(milestoneId)
-    if (existingPayment && (existingPayment.status === 'escrowed' || existingPayment.status === 'released')) {
-      await logDataAccess({
-        userId: brandId,
-        action: 'write',
-        dataType: 'events',
-        accessedBy: brandId,
-        reason: 'Duplicate payment attempt blocked',
-        metadata: { campaignId, milestoneId, error: 'DuplicatePaymentError' },
-      })
-      throw new DuplicatePaymentError(
-        `Payment already exists for milestone ${milestoneId} (status: ${existingPayment.status})`
+    // v1 forbids mixing the two models on one campaign. Releasing part of a
+    // campaign-level escrow against a milestone needs partial-release support
+    // (a released_amount column or child rows) that does not exist — so this
+    // refuses loudly rather than half-working and stranding the difference.
+    if (heldCampaignLevel) {
+      throw new MixedPaymentGranularityError(
+        'This campaign already has a campaign-level payment, so milestone payments cannot be added to it. ' +
+        'Refund the campaign-level payment first, or keep paying at the campaign level.'
+      )
+    }
+    const dup = held.find((p) => p.milestoneId === milestoneId)
+    if (dup) {
+      await blockDuplicate(
+        `Payment already exists for milestone ${milestoneId} (status: ${dup.status})`
+      )
+    }
+  } else {
+    if (heldMilestoneLevel) {
+      throw new MixedPaymentGranularityError(
+        'This campaign already has milestone payments, so it cannot also take a campaign-level payment. ' +
+        'Pay the remaining milestones individually.'
+      )
+    }
+    if (heldCampaignLevel) {
+      await blockDuplicate(
+        `Payment already exists for campaign ${campaignId} (status: ${heldCampaignLevel.status})`
       )
     }
   }
@@ -215,6 +271,44 @@ export async function createOrder(params: {
     platformFee,
     influencerAmount,
     status: 'created',
+    international: currency !== 'INR',
+  })
+
+  // ── THE LEDGER ROW ──────────────────────────────────────────────
+  //
+  // Written HERE, at order creation, as 'pending' — not at capture. Two
+  // reasons, and the second is the important one:
+  //
+  //   1. `paymentType` is in hand now; `razorpay_orders` does not store it,
+  //      so a capture-time write would need a new column to stay faithful.
+  //   2. It makes the webhook's `status === 'pending'` guard CORRECT. That
+  //      guard already existed and was dead code — nothing ever created a
+  //      'pending' row — so capture and the webhook both silently no-op'd.
+  //      Turning existing dead code into the idempotency mechanism beats
+  //      adding new machinery beside it.
+  //
+  // ⚠️ NOT wrapped in try/catch, deliberately. If this insert fails the whole
+  // call must fail, so no checkout ever opens for an order the ledger does
+  // not know about. At this point no money has moved, so failing loudly here
+  // is free — which is exactly the property the old code lacked.
+  //
+  // ⚠️ influencerAmount is set EXPLICITLY. `process-payouts` pays out this
+  // column, and the deleted escrowForMilestone never set it — a row it wrote
+  // would have produced a NULL payout. Fee fields all come from the single
+  // calculatePlatformFee() call above, so the ledger, the Razorpay order and
+  // the payout all agree by construction rather than by three matching
+  // calculations.
+  await createPayment({
+    campaignId,
+    milestoneId: milestoneId ?? null,
+    amount,
+    currency,
+    paymentType,
+    status: 'pending',
+    razorpayOrderId,
+    platformFee,
+    platformFeePercent: String(feePercent),
+    influencerAmount,
     international: currency !== 'INR',
   })
 
@@ -330,18 +424,34 @@ export async function capturePayment(params: {
     razorpaySignature,
   })
 
-  // Update or create campaign_payments record to escrowed
+  // ── Move the ledger row to 'escrowed' ───────────────────────────
+  //
+  // Keyed on the ORDER, not the milestone. The old lookup went via
+  // getPaymentByMilestone inside `if (order.milestoneId)`, so a
+  // campaign-level payment (milestone_id NULL) was invisible here and the
+  // ledger was never written — the gap confirmed on a real payment.
+  //
+  // The claim is conditional (WHERE status='pending'). This path and the
+  // Razorpay webhook are BOTH meant to fire and race by design; the database
+  // arbitrates, so whichever arrives second gets null and does nothing. A
+  // null here is the normal, correct outcome of losing that race — not an
+  // error, and deliberately not logged as one.
   let campaignPaymentId: string | undefined
-  if (order.milestoneId) {
-    const existingPayment = await getPaymentByMilestone(order.milestoneId)
-    if (existingPayment) {
-      const updated = await updatePaymentStatus(existingPayment.id, 'escrowed', {
-        razorpayOrderId: order.razorpayOrderId,
-        razorpayPaymentId,
-        escrowedAt: new Date(),
-      })
-      campaignPaymentId = updated.id
-    }
+  const ledgerRow = await getPaymentByRazorpayOrderId(order.razorpayOrderId)
+  if (ledgerRow) {
+    const claimed = await claimPaymentEscrowed(ledgerRow.id, {
+      razorpayOrderId: order.razorpayOrderId,
+      razorpayPaymentId,
+    })
+    campaignPaymentId = (claimed ?? ledgerRow).id
+  } else {
+    // Pre-Phase-1 order, or an order whose ledger insert predates this code.
+    // Worth seeing, since the invariant is "every paid order has exactly one
+    // ledger row" — but not worth failing a captured payment over.
+    console.warn(
+      `[capturePayment] No campaign_payments row for order ${order.razorpayOrderId} — ` +
+      'pre-Phase-1 order? Payment captured; ledger not updated.'
+    )
   }
 
   // Audit log
@@ -441,8 +551,11 @@ export async function refundPayment(params: {
   try {
     const order = await getOrderByRazorpayId(razorpayOrderId)
     const isFullRefund = amount === undefined || (order ? amount >= order.amount : false)
-    if (order && isFullRefund && order.milestoneId) {
-      const payment = await getPaymentByMilestone(order.milestoneId)
+    // Keyed on the order, not the milestone — a campaign-level refund used to
+    // leave its ledger row reading 'escrowed' forever, showing money held that
+    // had already gone back.
+    if (order && isFullRefund) {
+      const payment = await getPaymentByRazorpayOrderId(order.razorpayOrderId)
       if (payment && payment.status !== 'refunded') {
         await updatePaymentStatus(payment.id, 'refunded', { refundedAt: new Date() })
       }

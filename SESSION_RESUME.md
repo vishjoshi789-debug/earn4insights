@@ -2540,3 +2540,160 @@ harmless **only because the preview DB is empty**. If production data is ever cl
 preview branch, triggering either on preview would delete **real production media** — the same
 objects rotated in the v15 incident, equally unrecoverable. Defuse before any data clone.
 
+---
+
+## 💰 THE LEDGER GAP — proven on a real payment (2026-08-20)
+
+### No longer inference
+
+Live Razorpay **test** payment on preview, completed successfully:
+
+```
+razorpay_orders:    order_TS1GoYGUZ5vCwb
+                    campaign a98d5a83-347e-4d1b-be30-5d40714e4dbb
+                    milestone_id NULL | status 'paid' | amount 5000000 (₹50,000)
+campaign_payments:  ZERO ROWS
+```
+
+The campaign-level path takes money and writes no ledger row. **Empirically confirmed, not traced.**
+
+### Four findings from the full read that reshape the problem
+
+1. ⚠️ **`capturePayment` never CREATES a ledger row — on ANY path.** It only *updates* one, and
+   only inside `if (order.milestoneId)` (`razorpayService.ts:335`). Together with finding 2, that
+   means **`campaign_payments` has no reachable writer anywhere in the codebase.** This is not a
+   campaign-level gap; the milestone path is equally dead, it just fails one step later.
+2. ~~**`escrowForMilestone` has ZERO callers**~~ — ❌ **THIS WAS WRONG. See the correction below.**
+   It had one caller, reachable from a button. The claim came from a PowerShell scan that **timed
+   out partway** plus two path-scoped greps reported as exhaustive — the same "an unfinished search
+   is not evidence of absence" failure as the bracket trap, recorded two sections above.
+3. 🔴 **No duplicate guard on campaign-level orders.** `createOrder`'s duplicate check sits inside
+   `if (milestoneId)` (`razorpayService.ts:149`). Nothing stops a second charge on the same campaign.
+4. 🔴 **The release path is milestone-ONLY.** `/api/payments/release/[campaignId]` requires
+   `milestoneId` plus an *approved* milestone. A campaign-level payment has **no route to the
+   creator at all** — writing the ledger row does not make the money movable. Separate build.
+
+### The UI state was worse than reported
+
+With zero ledger rows: `allReleased`=false, `isEscrowed`=false, and
+`razorpayOrder.status === 'created'` is false (it is `'paid'`). So the Payment Status card fell
+through to the **final else** — the *pre-payment* card, **with the Create Payment Order button
+live**. Not a false escrow banner: an invitation to pay again, with finding 3 meaning nothing
+would have stopped it. Fixed in Phase 0.
+
+The Refund card (`page.tsx:1102`) is gated on `razorpayOrder.status === 'paid'` and was the one
+honest surface — it reflects a real order.
+
+### ⚠️⚠️ `escrowForMilestone` IS BEING DELETED — and this does NOT remove escrow
+
+**Read this before reacting to the word "deleted".** Escrow is *Razorpay holding the funds* plus
+*a `campaign_payments` row recording that hold*. Both survive; the second one starts working for
+the first time. `escrowForMilestone` was a **pre-Razorpay artifact** that would have written
+**false ledger entries**, and deleting it removes a corpse, not a capability.
+
+Three independent reasons, any one sufficient:
+
+1. It writes `status:'escrowed'` **without any money having moved.** Wiring it would make the
+   ledger assert that funds are held which Razorpay never took — a worse defect than the empty
+   table, because an empty table is honestly empty.
+2. It never sets `influencerAmount`, and `process-payouts` pays out **exactly that field** — so a
+   row it created would produce a **NULL payout**.
+3. It computes fees from `campaign.platformFeePct`, while `createOrder` uses `FEE_SCHEDULE`
+   (`razorpayService.ts:61`). **Two disagreeing fee sources**; deleting collapses to one.
+
+It also removes the misreading that this is *two mechanisms failing to reconcile*. It is one path
+that moves money without writing, and one corpse that writes without moving money.
+
+### Approved design (founder-approved 2026-08-20, pre-build)
+
+- **Granularity: 1:1 with `razorpay_orders`**, copying `milestone_id` (null for campaign-level).
+- **Create the row at ORDER CREATION with `status='pending'`**, not at capture. Chosen not merely
+  to avoid a migration but because it **turns the webhook's dead `status === 'pending'` guard into
+  the idempotency mechanism** — better than adding new machinery beside dead code. The existing
+  duplicate check already blocks only on `escrowed`/`released`, so a `pending` row from an
+  abandoned checkout correctly does not block a retry.
+- **Flip `pending → escrowed` in BOTH `capturePayment` AND the webhook**, via a conditional claim
+  (`UPDATE … WHERE status='pending' RETURNING`) — same shape as `claimResolutionNotification` (v16).
+  Both currently sit inside `if (order.milestoneId)` and must instead look up by
+  `razorpay_order_id` (new repo fn `getPaymentByRazorpayOrderId`).
+- **v1 FORBIDS mixing campaign-level and milestone payments on one campaign**, with an explicit
+  guard and a clear error. Partial-release machinery (`released_amount` or child rows) is a real
+  feature and will not be invented under time pressure.
+- ✅ **Migration 030 permits `'pending'`** — verified in the route source:
+  `CHECK (status IN ('pending','escrowed','released','refunded','failed'))`. **No migration needed
+  for Phase 1.**
+
+### Downstream needs TWO changes — ledger rows alone are not sufficient
+
+- Both `influencerEarningsRepository` (`:107`) and `process-payouts` (`:85`) **inner-join
+  `campaign_influencers`**. With no accepted creator on the campaign, a correct ledger row still
+  shows the creator nothing.
+- 🔴 **`process-payouts` dedups by `campaign_id`, NOT `payment_id`** (`route.ts:71`). For a
+  milestone campaign with several released payments, **only the first ever produces a payout** —
+  milestone campaigns would silently underpay. Must be fixed alongside.
+
+### Phasing
+
+| Phase | Content | Status |
+|---|---|---|
+| **0** | Hide the pay button whenever a paid order exists + honest "Payment received — reconciling" state | **shipped to `main`** |
+| 1 | Ledger write (create `pending`, flip at capture + webhook); delete `escrowForMilestone` | approved, not built |
+| 2 | Campaign-level release path + `process-payouts` per-payment dedup | approved, not built |
+| 3 | Backfill + standing invariant script ("every `paid` order has exactly one ledger row") | **scope now known — see below** |
+
+### ❌ CORRECTION — `escrowForMilestone` was REACHABLE, and was a live defect
+
+The Phase 1 build found the caller that the earlier search missed:
+
+```
+UI "Escrow" button  (campaigns/[campaignId]/page.tsx:717 and :811, shown when ms.status='pending')
+  → PATCH /api/brand/campaigns/{campaignId}/milestones/{milestoneId}  { action: 'escrow' }
+  → escrowForMilestone()
+  → campaign_payments row, status:'escrowed' — no Razorpay, no money, no influencerAmount
+```
+
+**A brand could fabricate an escrow record by clicking a button.** So this was never a corpse; it
+was an active false-ledger path, and defect #1 (writes `'escrowed'` with no money moved) was live
+rather than hypothetical. The deletion decision is unchanged and strengthened — but the framing
+"deleting a function with no callers" was wrong and the deletion required removing the affordance.
+
+Handled in Phase 1: both buttons removed; the route's `'escrow'` action now returns **410** with a
+message pointing at the Payment tab, deliberately not falling through to the generic "Invalid
+action" so an old client is told what happened.
+
+⚠️ **Method lesson, now twice in one session:** an unfinished or path-scoped search is not evidence
+of absence. The first instance (the bracket trap) produced a false "this UI does not exist"; this
+one produced a false "this function has no callers" **that was committed to this document as
+fact**. Before writing "zero callers" anywhere, the search must be one that demonstrably completed
+over the whole tree.
+
+### ✅ Backfill diagnostic — PRODUCTION IS CLEAN (2026-08-20)
+
+Run read-only against production (`ep-icy-salad-ahjb9nek`):
+
+```
+TOTALS: orders_total=0  orders_paid=0  orders_refunded=0  ledger_rows=0
+PAID/REFUNDED ORDERS WITH NO LEDGER ROW: 0
+UNRECORDED (status='paid'): 0 paise = INR 0
+```
+
+**`razorpay_orders` is entirely empty on production — no brand has ever paid.** So there is
+**no real money anywhere without a record**, and the ledger gap never reached a paying customer.
+The pre-beta hard gate ("no real brand payment until the ledger fix ships AND a rehearsal passes")
+held in practice, not just on paper. **The urgency does NOT escalate.**
+
+Consequence for Phase 3: the backfill has **exactly one row to reach, and it is on preview**
+(`order_TS1GoYGUZ5vCwb`, ₹50,000, from the rehearsal). Production needs no backfill at all — only
+the standing invariant script, which becomes a *regression guard* rather than a cleanup tool. If a
+future run of this diagnostic ever returns a non-zero count on production, that is real money with
+no record and is a different severity of problem.
+
+Also confirmed **live** (not just from the migration source):
+
+```
+chk_campaign_payments_status:       status IN ('pending','escrowed','released','refunded','failed')
+chk_campaign_payments_payment_type: payment_type IN ('escrow','milestone','direct')
+```
+
+Both present, and `'pending'` is permitted — Phase 1's create-at-order design needs **no migration**.
+
