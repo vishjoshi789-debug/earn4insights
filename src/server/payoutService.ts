@@ -74,7 +74,11 @@ const MAX_RETRY_COUNT = 3
 // TODO: Set to true when RazorpayX (Payouts API) is activated on your account.
 // When true, India INR payouts will be sent automatically via Razorpay Payouts API.
 // When false (current), ALL payouts go to admin manual queue.
-const RAZORPAYX_ENABLED = false
+// Single source of truth — see lib/payments/razorpayX.ts for why this is a
+// build-time constant and NOT an env var (flipping it is a code change, not a
+// configuration change, because the API call is unimplemented).
+export { RAZORPAYX_ENABLED } from '@/lib/payments/razorpayX'
+import { RAZORPAYX_ENABLED } from '@/lib/payments/razorpayX'
 
 // ═══════════════════════════════════════════════════════════════════
 // INITIATE RECIPIENT PAYOUT
@@ -91,12 +95,21 @@ const RAZORPAYX_ENABLED = false
  */
 export async function initiateRecipientPayout(params: {
   campaignId?: string
+  /**
+   * The campaign_payments row funding this payout (migration 038).
+   *
+   * ⚠️ Pass this for EVERY campaign payout. `process-payouts` dedups on it, and
+   * a payout created without it is invisible to that check — so the payment
+   * that funded it stays eligible and would be paid out again on the next tick.
+   * Omit it only for reward/consumer payouts, which have no funding ledger row.
+   */
+  campaignPaymentId?: string
   recipientId: string
   recipientType: 'influencer' | 'consumer'
   amount: number
   currency: string
 }): Promise<{ payoutId: string; method: string; status: string }> {
-  const { campaignId, recipientId, recipientType, amount, currency } = params
+  const { campaignId, campaignPaymentId, recipientId, recipientType, amount, currency } = params
 
   // Get recipient's primary payout account for this currency
   const account = await getPrimaryAccount(recipientId, currency)
@@ -142,6 +155,7 @@ export async function initiateRecipientPayout(params: {
   // Create payout record
   const payout = await createPayout({
     campaignId: campaignId ?? null,
+    campaignPaymentId: campaignPaymentId ?? null,
     recipientId,
     recipientType,
     payoutAccountId: account.id,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // Imported rather than re-derived: the reported connection source must be the
 // one the app is actually using, not a second copy of the precedence chain.
 import { connectionSource } from '@/db'
+import { RAZORPAYX_ENABLED, RAZORPAYX_STATUS } from '@/lib/payments/razorpayX'
 
 /**
  * GET /api/admin/env-check
@@ -247,7 +248,12 @@ export async function GET(request: NextRequest) {
       flags: {
         CSRF_ENFORCE: process.env.CSRF_ENFORCE ?? null,
         NEXT_PUBLIC_WHATSAPP_ENABLED: process.env.NEXT_PUBLIC_WHATSAPP_ENABLED ?? null,
-        RAZORPAYX_ENABLED: process.env.RAZORPAYX_ENABLED ?? null,
+        // ⚠️ NOT process.env. RazorpayX is a BUILD-TIME CONSTANT — reading the
+        // env var here always returned null, which made an unbuilt feature look
+        // merely unconfigured. Reported from the constant so the diagnostic
+        // tells the truth. See lib/payments/razorpayX.ts.
+        RAZORPAYX_ENABLED,
+        RAZORPAYX_STATUS,
         ADMIN_DIAGNOSTICS_ENABLED: process.env.ADMIN_DIAGNOSTICS_ENABLED ?? null,
       },
       warnings,
