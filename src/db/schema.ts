@@ -1991,6 +1991,11 @@ export type NewRazorpayOrder = typeof razorpayOrders.$inferInsert
 export const influencerPayouts = pgTable('influencer_payouts', {
   id: uuid('id').defaultRandom().primaryKey(),
   campaignId: uuid('campaign_id'),                      // → influencer_campaigns.id (nullable for reward payouts)
+  // → campaign_payments.id (migration 038). NULLABLE and staying that way:
+  // reward/consumer payouts have no funding ledger row at all. This is what
+  // process-payouts dedups on — correlating on campaign_id meant only the
+  // FIRST milestone of a campaign was ever paid out.
+  campaignPaymentId: uuid('campaign_payment_id'),
   recipientId: text('recipient_id').notNull(),          // → users.id
   recipientType: text('recipient_type').notNull().default('influencer')
     .$type<'influencer' | 'consumer'>(),

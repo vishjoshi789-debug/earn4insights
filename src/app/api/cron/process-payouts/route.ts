@@ -66,9 +66,20 @@ async function handleGET(request: NextRequest) {
       .where(
         and(
           eq(campaignPayments.status, 'released'),
+          // ⚠️ Correlates on the PAYMENT, not the campaign (migration 038).
+          //
+          // This previously read `influencerPayouts.campaignId =
+          // campaignPayments.campaignId`, so the moment ANY payout existed for
+          // a campaign, every later released payment on it was skipped —
+          // permanently. A campaign paid per milestone therefore paid out its
+          // FIRST milestone and silently never paid the rest.
+          //
+          // It was not a careless predicate: influencer_payouts had no column
+          // referencing campaign_payments, so the campaign was the only thing
+          // available to correlate on. 038 added the link.
           sql`NOT EXISTS (
             SELECT 1 FROM ${influencerPayouts}
-            WHERE ${influencerPayouts.campaignId} = ${campaignPayments.campaignId}
+            WHERE ${influencerPayouts.campaignPaymentId} = ${campaignPayments.id}
           )`
         )
       )
@@ -97,6 +108,10 @@ async function handleGET(request: NextRequest) {
 
         await initiateRecipientPayout({
           campaignId: payment.campaignId,
+          // Without this the payout is invisible to the NOT EXISTS above, and
+          // this payment would be picked up again on the next tick — paying
+          // the creator twice. The dedup is only as good as this line.
+          campaignPaymentId: payment.paymentId,
           recipientId: invitation[0].influencerId,
           recipientType: 'influencer',
           amount: influencerAmount,

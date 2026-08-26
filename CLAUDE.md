@@ -284,7 +284,7 @@ Shipped this wave: middleware revival (moved to `src/middleware.ts`, Edge-safe a
 
 **Parked features (intentional, env-flag controlled):**
 - WhatsApp UI (`NEXT_PUBLIC_WHATSAPP_ENABLED=false`)
-- RazorpayX automatic payouts (`RAZORPAYX_ENABLED=false` — all manual via admin queue)
+- RazorpayX automatic payouts — all manual via admin queue. ⚠️ **`RAZORPAYX_ENABLED` is a BUILD-TIME CONSTANT (`src/lib/payments/razorpayX.ts`), NOT an env var** — this doc previously said otherwise and `env-check` read `process.env.RAZORPAYX_ENABLED`, which is always null, making an *unbuilt* feature look merely *unconfigured*. Setting an env var enables nothing: the `razorpayXCreatePayout()` call is an unimplemented TODO that falls through to `status='pending'`, so an env flag would be a false affordance (§5). Enabling it is a **code change** requiring the API call, status polling, and an approved RazorpayX account.
 - Wise / PayPal integrations (stubs pending API credentials)
 
 ---
