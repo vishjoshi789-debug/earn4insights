@@ -2759,3 +2759,57 @@ index are still required for the dedup fix; the backfill is not.
   `milestone_id NULL`, and the old route required `milestoneId`. That money had no route out.
 - **Dedup fix** — latent defect, still wrong, still worth fixing.
 - **`RAZORPAYX_ENABLED`** — three sources disagreed; verified in code.
+
+---
+
+## ✅ PHASE 2 VERIFIED END-TO-END ON PREVIEW (2026-08-27)
+
+**Evidence, not assertion.** Founder-executed on the preview deployment; values below are the
+observed rows, not expected ones.
+
+### The run
+
+| Step | Result |
+|---|---|
+| Release (console `fetch`, campaign-level, `milestoneId` omitted) | succeeded |
+| `process-payouts` run 1 | `processed: 1, manual: 1` |
+| `process-payouts` run 2 | `processed: 0` — still exactly one payout row |
+
+### The payout row
+
+```
+campaign_payment_id : c1819e0a-557a-4141-b9d1-9d1794daa384   ← non-null
+amount              : 53640        (NET — not the 59600 gross)
+status              : pending      (admin manual queue)
+RazorpayX           : off          (build-time constant, correct)
+```
+
+### What each value proves
+
+- **`campaign_payment_id` non-null** — the job read the ledger and wrote the link. This is the
+  mechanism, not a side effect: it is what the new dedup predicate matches on.
+- **53640, not 59600** — paid from `campaign_payments.influencer_amount`, net of the 10% platform
+  fee, NOT from the gross order amount and not from `agreed_rate`.
+- **Second run `processed: 0`** — dedup by `payment_id` holds. Under the old `campaign_id`
+  predicate this row would have been invisible (its `campaign_payment_id` would not exist), so
+  this is the specific regression the migration guards.
+- **`status: pending`** — RazorpayX correctly off; payout sits in the admin manual queue.
+
+⚠️ **Campaign-level release had NO UI** — done from a browser console. See the missing-release-UI
+item; a brand cannot do this today.
+
+### Schema drift, both databases (founder-run)
+
+**Preview and production are identical — 17 rows each.** Not drifted from each other.
+
+- **6 "missing columns" are FALSE POSITIVES** — the generator reads index/constraint names out of
+  `schema.ts` comment lines as if they were columns. The extractor needs to skip comments.
+- **Extra columns are expected**: `search_vector` / `embedding` (created by raw SQL, deliberately
+  not Drizzle-declared) and the `retention_cohorts` day columns.
+- 🔎 **One real finding: `feedback.consent_images` exists in BOTH databases but is NOT declared in
+  `schema.ts`.** `survey_responses` declares all three consent flags (`schema.ts:158-160`);
+  `feedback` declares only `consent_audio` + `consent_video` (`:351-352`). Since the three bare
+  `db.select().from(feedback)` callers expand to declared columns only, a recorded image consent
+  is currently **absent from the DSAR export and the user data export** — a compliance-relevant
+  omission, not just tidiness. Adding it is the SAFE direction (database already has the column,
+  unlike `campaign_payment_id` where the schema led the DB and broke production).
