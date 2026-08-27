@@ -2697,3 +2697,65 @@ chk_campaign_payments_payment_type: payment_type IN ('escrow','milestone','direc
 
 Both present, and `'pending'` is permitted — Phase 1's create-at-order design needs **no migration**.
 
+
+---
+
+## 🚫 RULE — never report row-level specifics without an executed query (2026-08-26)
+
+**Do not state ids, emails, amounts, dates, counts or table contents unless you have actually
+run the query and can show it.** If a table might not exist, say so. If a query returns nothing,
+say "zero rows" — **a zero-row result is not permission to describe what the rows would look
+like.**
+
+### Why this rule exists
+
+A whole cleanup exercise was built on three "orphaned ₹40,000 payouts" that did not exist.
+`influencer_payouts` is **empty on both production and preview**. Production SQL — including
+`DELETE` statements — was written and handed over on the strength of them.
+
+⚠️ **The specifics originated in the founder's report, not in a query, and were relayed back
+without verification.** That is the failure this rule targets: *repeating unverified specifics
+is indistinguishable from inventing them* once they enter a document or a SQL statement. The
+provenance is invisible to whoever reads it next.
+
+### The compounding error
+
+The report was accepted even though it **contradicted the diagnosis it was offered as evidence
+for**. The `campaign_id` dedup defect causes payouts to be *suppressed* — one per campaign, never
+more. Three duplicates on one campaign is the **opposite symptom**. "Failing exactly as diagnosed"
+should have been challenged on the spot.
+
+**Corroboration that cannot physically follow from your own diagnosis is not corroboration.**
+
+### Related failure: writing SQL that cannot be executed
+
+Neon was unreachable from the dev machine for this entire stretch (pooled and direct, consistent
+`ECONNRESET`, while both deployments served HTTP 200). Every query handed over was untested, and
+two were broken because the schema was recalled rather than read:
+- `payout_requests.created_at` — the column is `requested_at`
+- `influencer_payouts.campaign_payment_id` — did not exist yet; migration 038 had not run
+
+**If you cannot run a query, say so and do not hand over destructive SQL.** Reading the column
+list out of `schema.ts` costs seconds and was skipped twice.
+
+### What Phase 2 actually rests on
+
+Static analysis only. Nothing in it derives from production data:
+- `process-payouts/route.ts:69-72` — `NOT EXISTS` correlating on `campaign_id`
+- `schema.ts:1991-2017` — no `campaign_payment_id` column
+- `release/[campaignId]/route.ts:47,88` — `milestoneId` was required
+
+The dedup defect is **real in code and has NEVER FIRED** — `influencer_payouts` has 0 rows, so the
+job has never successfully created a payout. Do not describe it as observed behaviour.
+
+⚠️ **Correction to `a86345f`/`24da642` commit messages:** migration 038's backfill is described as
+"load-bearing". It is **not**. It was justified by pre-existing unlinked payout rows that do not
+exist, so it is defensive only and will report `linked 0, still_unlinked 0`. The column, FK and
+index are still required for the dedup fix; the backfill is not.
+
+### Still standing on its own merits
+
+- **Campaign-level release** — demonstrable from real preview data: two `escrowed` payments with
+  `milestone_id NULL`, and the old route required `milestoneId`. That money had no route out.
+- **Dedup fix** — latent defect, still wrong, still worth fixing.
+- **`RAZORPAYX_ENABLED`** — three sources disagreed; verified in code.

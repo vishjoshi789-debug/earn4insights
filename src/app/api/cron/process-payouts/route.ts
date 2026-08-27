@@ -49,6 +49,7 @@ async function handleGET(request: NextRequest) {
   let failed = 0
   let manual = 0
   const errors: string[] = []
+  let criticalError = false
 
   try {
     // ── Step 1: Find released campaign_payments without payouts ──────
@@ -157,6 +158,11 @@ async function handleGET(request: NextRequest) {
   } catch (err) {
     console.error('[CRON] process-payouts critical error:', err)
     errors.push(`Critical: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    // Distinguishes "the job died" from "some individual payments failed".
+    // Without this the catch fell through to a hardcoded `success: true` and
+    // HTTP 200, so a crash was indistinguishable from a clean no-op run —
+    // and withCronRun recorded it as 'ok'.
+    criticalError = true
   }
 
   const duration = Date.now() - startTime
@@ -172,13 +178,23 @@ async function handleGET(request: NextRequest) {
 
   console.log(`[CRON] process-payouts done in ${duration}ms: processed=${processed} retried=${retried} failed=${failed}`)
 
-  return NextResponse.json({
-    success: true,
-    processed,
-    retried,
-    failed,
-    manual,
-    duration,
-    errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
-  })
+  // Three distinguishable outcomes, where there used to be one:
+  //   clean    → 200, success true
+  //   partial  → 200, success false, errors listed (some payments failed,
+  //              the job itself completed)
+  //   crashed  → 500, success false — which is what makes withCronRun record
+  //              status='error' rather than laundering it into 'ok'
+  return NextResponse.json(
+    {
+      success: !criticalError && errors.length === 0,
+      criticalError,
+      processed,
+      retried,
+      failed,
+      manual,
+      duration,
+      errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
+    },
+    { status: criticalError ? 500 : 200 },
+  )
 }

@@ -236,7 +236,31 @@ export function withCronRun(
         } catch {
           /* non-JSON response — record nothing rather than guess */
         }
-        await finishRun(runId, jobName, startedAt, 'ok', { result: parsed })
+        // ⚠️ A RETURNED 5xx IS A FAILED RUN, NOT AN 'ok' ONE.
+        //
+        // This previously recorded 'ok' for any response the handler
+        // RETURNED, reserving 'error' for ones that THREW. So a route that
+        // catches its own exception and returns — a 500, or worse a 200 with
+        // the error buried in the body — was recorded as a clean run.
+        //
+        // Found via process-payouts: it caught a missing-column error, pushed
+        // it into `errors[]`, and returned `success: true` with HTTP 200.
+        // cron_runs recorded 'ok'. That is exactly the state migration 037
+        // exists to make visible, so the wrapper must not launder it.
+        //
+        // Status is the only signal available here — the wrapper cannot know
+        // what an arbitrary route's body shape means. Routes that fail
+        // without a 5xx have to report that themselves.
+        const outcome = out.status >= 500 ? 'error' : 'ok'
+        await finishRun(
+          runId,
+          jobName,
+          startedAt,
+          outcome,
+          outcome === 'error'
+            ? { error: `handler returned HTTP ${out.status}`, result: parsed }
+            : { result: parsed },
+        )
         return out
       }
 
