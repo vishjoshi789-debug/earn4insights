@@ -350,6 +350,18 @@ export const feedback = pgTable('feedback', {
 
   consentAudio: boolean('consent_audio').default(false).notNull(),
   consentVideo: boolean('consent_video').default(false).notNull(),
+  // ⚠️ Added to schema.ts 2026-08-27. The COLUMN already existed in both
+  // production and preview — this closes drift in the ORM, not in the DB, so
+  // it is the SAFE direction: adding a declaration for a column the database
+  // already has cannot break a bare select. (The inverse — schema leading the
+  // DB — is what took /admin/payouts down with campaign_payment_id.)
+  //
+  // Why it matters beyond symmetry: api/user/export-data, dsarService and
+  // unifiedAnalyticsService all do bare `db.select().from(feedback)`, which
+  // Drizzle expands to DECLARED columns only. While this was undeclared, a
+  // recorded image consent was invisible to the DSAR and data exports — a
+  // consent value held but not disclosed (GDPR Art. 15 / DPDP).
+  consentImages: boolean('consent_images').default(false).notNull(),
   consentCapturedAt: timestamp('consent_captured_at'),
 
   multimodalMetadata: jsonb('multimodal_metadata').$type<Record<string, any>>(),
