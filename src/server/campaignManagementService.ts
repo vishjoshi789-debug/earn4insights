@@ -40,6 +40,7 @@ import {
   getTotalEscrowedForCampaign,
 } from '@/db/repositories/campaignPaymentRepository'
 import { getApplicationCount } from '@/db/repositories/campaignMarketplaceRepository'
+import { getBrandApprovedPostsByCampaign } from '@/db/repositories/contentApprovalRepository'
 import { getProfileByUserId } from '@/db/repositories/influencerProfileRepository'
 import { hasPayoutAccount } from '@/db/repositories/payoutAccountRepository'
 import { PayoutAccountRequiredError } from '@/server/payoutService'
@@ -61,6 +62,13 @@ export type CampaignSummary = {
   // 3D — surfaced so the edit dialog can warn before a brand mutates
   // budget on a campaign that has already received applications.
   applicationCount: number
+  // Content the BRAND has reviewed and approved on this campaign. Drives the
+  // campaign-level release control: a milestone payment is authorised by an
+  // approved milestone, and this is the campaign-level equivalent — the event
+  // that makes "release" mean "approve and pay" rather than just "pay".
+  // See getBrandApprovedPostsByCampaign for why the gate is reviewed_at, not
+  // status (an influencer can set their own status to 'published').
+  approvedContent: Awaited<ReturnType<typeof getBrandApprovedPostsByCampaign>>
 }
 
 // ── Valid status transitions ─────────────────────────────────────
@@ -134,14 +142,16 @@ export async function getCampaignSummary(campaignId: string): Promise<CampaignSu
   const campaign = await getCampaignById(campaignId)
   if (!campaign) return null
 
-  const [influencers, milestones, payments, totalPaid, totalEscrowed, applicationCount] = await Promise.all([
-    getInfluencersByCampaign(campaignId),
-    getMilestonesByCampaign(campaignId),
-    getPaymentsByCampaign(campaignId),
-    getTotalPaidForCampaign(campaignId),
-    getTotalEscrowedForCampaign(campaignId),
-    getApplicationCount(campaignId),
-  ])
+  const [influencers, milestones, payments, totalPaid, totalEscrowed, applicationCount, approvedContent] =
+    await Promise.all([
+      getInfluencersByCampaign(campaignId),
+      getMilestonesByCampaign(campaignId),
+      getPaymentsByCampaign(campaignId),
+      getTotalPaidForCampaign(campaignId),
+      getTotalEscrowedForCampaign(campaignId),
+      getApplicationCount(campaignId),
+      getBrandApprovedPostsByCampaign(campaignId),
+    ])
 
   return {
     campaign,
@@ -149,6 +159,7 @@ export async function getCampaignSummary(campaignId: string): Promise<CampaignSu
     milestones,
     payments: { records: payments, totalPaid, totalEscrowed },
     applicationCount,
+    approvedContent,
   }
 }
 

@@ -15,7 +15,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
 import { getCampaignById } from '@/db/repositories/influencerCampaignRepository'
-import { getInvitation } from '@/db/repositories/campaignInfluencerRepository'
+import { getInvitation, getInfluencersByCampaign } from '@/db/repositories/campaignInfluencerRepository'
+import { getBrandApprovedPostsByCampaign } from '@/db/repositories/contentApprovalRepository'
 import { getMilestoneById } from '@/db/repositories/campaignMilestoneRepository'
 import {
   getPaymentByMilestone,
@@ -112,6 +113,61 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: 'No escrowed payment found for this milestone' }, { status: 404 })
       }
     } else {
+      // ── Campaign-level authorisation ──────────────────────────────
+      //
+      // The milestone path is authorised by an APPROVED milestone. The
+      // campaign-level path had nothing equivalent, which made release a bare
+      // "pay now" and left the escrow promise ("released on approval")
+      // untrue for campaign-level work. Its equivalent is brand-approved
+      // content on the campaign.
+      //
+      // ⚠️ Enforced HERE, not only in the UI. A control that only hides its
+      // own button is not a control — same rule as the survey pause fix.
+      //
+      // ⚠️ The gate is reviewed_at/reviewed_by, NOT content status: PATCH
+      // /api/influencer/content/[postId] lets an influencer set their own post
+      // to 'published', so a status-based gate would let a creator authorise
+      // their own payment. See getBrandApprovedPostsByCampaign.
+      // ⚠️ ORDER MATTERS. Multi-creator is checked FIRST because it is a
+      // structural property of the campaign, while approved-content is
+      // per-creator. Telling a brand with two creators to "approve a
+      // submission" is wrong advice — approving one would not make the payment
+      // splittable. The UI reports the reasons in this same order; a
+      // disagreement between the two would have the button and the API naming
+      // different blockers for the same click.
+      //
+      // v1 refuses rather than guesses: one payment, no per-creator split, so
+      // "who gets it" has no defensible answer. Same reasoning as the mixed
+      // campaign/milestone refusal in Phase 1.
+      const activeCreators = (await getInfluencersByCampaign(campaignId)).filter((i) =>
+        ['accepted', 'active', 'completed'].includes(i.status),
+      )
+      if (activeCreators.length > 1) {
+        return NextResponse.json(
+          {
+            error:
+              `This campaign has ${activeCreators.length} active creators and a single campaign-level payment, ` +
+              'so it cannot be split automatically. Use milestone payments for multi-creator campaigns.',
+            code: 'multi_creator_campaign_level',
+          },
+          { status: 409 }
+        )
+      }
+
+      const approved = await getBrandApprovedPostsByCampaign(campaignId)
+      const approvedForThisCreator = approved.filter((p) => p.influencerId === influencerId)
+      if (approvedForThisCreator.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              'Approve at least one of this creator\'s submissions before releasing payment. ' +
+              'Campaign-level payments are released on approval, not on request.',
+            code: 'no_approved_content',
+          },
+          { status: 400 }
+        )
+      }
+
       const campaignLevel = (await getPaymentsByCampaign(campaignId))
         .filter((p) => !p.milestoneId)
       if (campaignLevel.length === 0) {
