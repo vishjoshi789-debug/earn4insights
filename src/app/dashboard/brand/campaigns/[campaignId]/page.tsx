@@ -112,6 +112,11 @@ export default function BrandCampaignDetailPage() {
   // Release payment state
   const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false)
   const [releaseMilestone, setReleaseMilestone] = useState<any>(null)
+  // Campaign-level release target (the payment row with milestone_id NULL).
+  // Kept as a separate slot rather than overloading releaseMilestone, because
+  // the two carry different authorisation: a milestone is authorised by its
+  // own 'approved' status, a campaign-level payment by brand-approved content.
+  const [releaseCampaignPayment, setReleaseCampaignPayment] = useState<any>(null)
   const [releaseInfluencerId, setReleaseInfluencerId] = useState('')
   const [releasing, setReleasing] = useState(false)
   // Refund state
@@ -208,14 +213,22 @@ export default function BrandCampaignDetailPage() {
   }
 
   const releasePayment = async () => {
-    if (!releaseMilestone || !releaseInfluencerId) return
+    if ((!releaseMilestone && !releaseCampaignPayment) || !releaseInfluencerId) return
     setReleasing(true)
     try {
-      const res = await apiPost(`/api/payments/release/${campaignId}`, { milestoneId: releaseMilestone.id, influencerId: releaseInfluencerId })
+      // milestoneId is OMITTED for a campaign-level release — its absence is
+      // what selects that path server-side. Sending it as undefined would be
+      // dropped by JSON.stringify anyway, but building the object explicitly
+      // keeps the intent visible.
+      const res = await apiPost(`/api/payments/release/${campaignId}`, {
+        ...(releaseMilestone ? { milestoneId: releaseMilestone.id } : {}),
+        influencerId: releaseInfluencerId,
+      })
       if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Payment released! Payout queued for admin processing.')
       setReleaseConfirmOpen(false)
       setReleaseMilestone(null)
+      setReleaseCampaignPayment(null)
       setReleaseInfluencerId('')
       loadPaymentTab()
       loadData()
@@ -1019,6 +1032,93 @@ export default function BrandCampaignDetailPage() {
                   </CardContent>
                 </Card>
 
+                {/* ── Section 2a: Campaign-level Release ─────────────── */}
+                {/* Renders when an escrowed payment has NO milestone. Before
+                    this existed the section below was gated on
+                    milestones.length > 0, so a campaign-level payment had no
+                    button at all — money could enter escrow and never leave.
+
+                    The control is DISABLED WITH THE REASON SHOWN rather than
+                    hidden: a brand who can't see why they can't pay assumes
+                    the product is broken. The server enforces the same rule
+                    (400 no_approved_content), so this is guidance, not the
+                    gate. */}
+                {(() => {
+                  const campaignLevel = payments.find(
+                    (p: any) => !p.milestoneId && p.status === 'escrowed',
+                  )
+                  if (!campaignLevel) return null
+
+                  const approved: any[] = data?.approvedContent ?? []
+                  const creator = acceptedInfluencers[0]
+                  const approvedForCreator = creator
+                    ? approved.filter((a: any) => a.influencerId === creator.influencerId)
+                    : []
+
+                  const tooManyCreators = acceptedInfluencers.length > 1
+                  const noCreator = acceptedInfluencers.length === 0
+                  const noApproved = approvedForCreator.length === 0
+                  const blocked = tooManyCreators || noCreator || noApproved
+
+                  const reason = tooManyCreators
+                    ? `This campaign has ${acceptedInfluencers.length} active creators and a single campaign-level payment, so it can't be split automatically. Use milestone payments for multi-creator campaigns.`
+                    : noCreator
+                      ? 'No creator has accepted this campaign yet.'
+                      : 'Available once you’ve approved at least one submission from this creator.'
+
+                  return (
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <ArrowDownToLine className="h-4 w-4" /> Release Payment
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                          Released to the creator once you&rsquo;ve approved their work.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex items-center justify-between border rounded-lg p-3 text-sm">
+                          <div className="min-w-0">
+                            <p className="font-medium">Campaign payment</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {formatCurrency(campaignLevel.influencerAmount ?? 0, campaignLevel.currency)} to the
+                              creator ·{' '}
+                              {formatCurrency(
+                                campaignLevel.amount - (campaignLevel.influencerAmount ?? 0),
+                                campaignLevel.currency,
+                              )}{' '}
+                              platform fee
+                            </p>
+                            {approvedForCreator.length > 0 && (
+                              <p className="text-xs text-green-700 dark:text-green-400 mt-1">
+                                {approvedForCreator.length} approved submission
+                                {approvedForCreator.length === 1 ? '' : 's'}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            className="ml-3 flex-shrink-0"
+                            disabled={acting || releasing || blocked}
+                            title={blocked ? reason : 'Release payment to the creator'}
+                            onClick={() => {
+                              setReleaseCampaignPayment(campaignLevel)
+                              setReleaseMilestone(null)
+                              setReleaseInfluencerId(creator?.influencerId ?? '')
+                              setReleaseConfirmOpen(true)
+                            }}
+                          >
+                            Release Payment
+                          </Button>
+                        </div>
+                        {blocked && (
+                          <p className="text-xs text-amber-700 dark:text-amber-400">{reason}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })()}
+
                 {/* ── Section 2: Milestone Release ───────────────────── */}
                 {isEscrowed && milestones && milestones.length > 0 && (
                   <Card>
@@ -1150,20 +1250,39 @@ export default function BrandCampaignDetailPage() {
                     <DialogHeader>
                       <DialogTitle>Release Payment</DialogTitle>
                     </DialogHeader>
-                    {releaseMilestone && (
+                    {(releaseMilestone || releaseCampaignPayment) && (
                       <div className="space-y-4 pt-1">
-                        <p className="text-sm text-muted-foreground">
-                          You are releasing{' '}
-                          <span className="font-semibold text-foreground">
-                            {formatCurrency(
-                              (releaseMilestone.paymentAmount ?? 0) -
-                              Math.round((releaseMilestone.paymentAmount ?? 0) * (Number(campaign?.platformFeePct ?? 10) / 100)),
-                              campaign?.budgetCurrency ?? 'INR'
-                            )}
-                          </span>{' '}
-                          for milestone:{' '}
-                          <span className="font-semibold text-foreground">&ldquo;{releaseMilestone.title}&rdquo;</span>
-                        </p>
+                        {releaseCampaignPayment ? (
+                          /* Campaign-level copy is deliberately blunter than the
+                             milestone copy. A milestone release is the last step of
+                             a flow the brand already gated by approving the
+                             milestone; this releases the ENTIRE campaign budget in
+                             one irreversible action, so the dialog says so. */
+                          <p className="text-sm text-muted-foreground">
+                            You are releasing{' '}
+                            <span className="font-semibold text-foreground">
+                              {formatCurrency(
+                                releaseCampaignPayment.influencerAmount ?? 0,
+                                releaseCampaignPayment.currency,
+                              )}
+                            </span>{' '}
+                            — the full campaign payment. This cannot be undone, and it queues a
+                            payout for admin processing.
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            You are releasing{' '}
+                            <span className="font-semibold text-foreground">
+                              {formatCurrency(
+                                (releaseMilestone.paymentAmount ?? 0) -
+                                Math.round((releaseMilestone.paymentAmount ?? 0) * (Number(campaign?.platformFeePct ?? 10) / 100)),
+                                campaign?.budgetCurrency ?? 'INR'
+                              )}
+                            </span>{' '}
+                            for milestone:{' '}
+                            <span className="font-semibold text-foreground">&ldquo;{releaseMilestone.title}&rdquo;</span>
+                          </p>
+                        )}
 
                         {acceptedInfluencers.length > 1 ? (
                           <div className="space-y-1.5">

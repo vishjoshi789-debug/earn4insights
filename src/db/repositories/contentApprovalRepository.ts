@@ -392,3 +392,46 @@ export async function getCampaignForPost(postId: string) {
 
   return rows[0] ?? null
 }
+
+/**
+ * Content on a campaign that the BRAND has actually reviewed and approved.
+ *
+ * ⚠️⚠️ THE GATE IS `reviewed_at` / `reviewed_by`, **NOT** `status`. This is a
+ * security boundary, not a stylistic choice.
+ *
+ * PATCH /api/influencer/content/[postId] lets an influencer set ANY status on
+ * their own post, including 'published', with no transition validation. So a
+ * status-based gate would let a creator authorise their own payment: create a
+ * post against the campaign, PATCH it to 'published', and the brand's release
+ * control unlocks.
+ *
+ * `reviewed_at` and `reviewed_by` are absent from that route's allow-list and
+ * are written ONLY by markPostApproved / markPostRejected, both of which sit
+ * behind brand-owned routes. They are therefore the only trustworthy evidence
+ * that a human on the brand side looked at the work.
+ *
+ * ⚠️ Note `status = 'published'`, not 'approved'. markPostApproved writes
+ * 'published'; NOTHING in the codebase ever writes 'approved', so that member
+ * of the status union is dead. Gating on 'approved' would silently match zero
+ * rows forever.
+ */
+export async function getBrandApprovedPostsByCampaign(campaignId: string) {
+  return db
+    .select({
+      id: influencerContentPosts.id,
+      influencerId: influencerContentPosts.influencerId,
+      title: influencerContentPosts.title,
+      reviewedAt: influencerContentPosts.reviewedAt,
+      reviewedBy: influencerContentPosts.reviewedBy,
+    })
+    .from(influencerContentPosts)
+    .where(
+      and(
+        eq(influencerContentPosts.campaignId, campaignId),
+        eq(influencerContentPosts.status, 'published' as any),
+        isNotNull(influencerContentPosts.reviewedAt),
+        isNotNull(influencerContentPosts.reviewedBy),
+      ),
+    )
+    .orderBy(desc(influencerContentPosts.reviewedAt))
+}
