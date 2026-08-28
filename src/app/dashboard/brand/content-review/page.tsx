@@ -26,9 +26,28 @@ type PendingPost = {
   campaignId: string
   reviewSlaHours: number | null
   autoApproveEnabled: boolean
-  hoursRemaining: number | null
-  slaPct: number | null
-  slaStatus: 'green' | 'yellow' | 'red' | 'expired' | 'no_sla'
+  // ⚠️ NESTED, and this interface previously said otherwise. The API returns
+  // `{ ...post, slaStatus }` where slaStatus is an OBJECT
+  // (api/brand/content/pending/route.ts:59). This file declared
+  // `slaStatus: string` plus flat `hoursRemaining` / `slaPct`, so:
+  //
+  //   SLA_BADGE[post.slaStatus]  →  indexed by "[object Object]"  →  undefined
+  //   → `sla.className` threw → EVERY post blanked the page via the error
+  //     boundary, regardless of SLA state.
+  //
+  // Two quieter consequences of the same mismatch: `post.hoursRemaining` was
+  // undefined, and `undefined !== null` is true, so the overdue branch ran and
+  // rendered "Overdue by NaNh"; and the Approaching/Expired counters compared
+  // an object to a string, so both sat permanently at 0.
+  //
+  // Root cause worth fixing structurally: this page declares its OWN copy of
+  // the response type instead of sharing one with the route, so both sides
+  // typechecked green against contradictory definitions.
+  slaStatus: {
+    hoursRemaining: number | null
+    slaPct: number | null
+    status: 'green' | 'yellow' | 'red' | 'expired' | 'no_sla' | string
+  }
 }
 
 const SLA_BADGE: Record<string, { label: string; className: string }> = {
@@ -38,6 +57,16 @@ const SLA_BADGE: Record<string, { label: string; className: string }> = {
   expired: { label: 'SLA Expired', className: 'bg-red-200 text-red-900' },
   no_sla: { label: 'No Deadline', className: 'bg-gray-100 text-gray-600' },
 }
+
+/**
+ * Never let an unrecognised SLA status blank the page again.
+ *
+ * The crash above was a missing map entry dereferenced without a guard. The
+ * type fix stops today's instance; this stops the whole class — a new status
+ * value added server-side degrades to a neutral badge instead of taking the
+ * brand's review queue down.
+ */
+const UNKNOWN_SLA = { label: 'Unknown', className: 'bg-gray-100 text-gray-600' }
 
 export default function BrandContentReviewPage() {
   const { data: session, status } = useSession()
@@ -115,8 +144,8 @@ export default function BrandContentReviewPage() {
   }
 
   const pendingCount = posts.length
-  const approachingCount = posts.filter(p => p.slaStatus === 'yellow' || p.slaStatus === 'red').length
-  const expiredCount = posts.filter(p => p.slaStatus === 'expired').length
+  const approachingCount = posts.filter(p => p.slaStatus?.status === 'yellow' || p.slaStatus?.status === 'red').length
+  const expiredCount = posts.filter(p => p.slaStatus?.status === 'expired').length
 
   if (loading) {
     return (
@@ -174,7 +203,7 @@ export default function BrandContentReviewPage() {
       ) : (
         <div className="space-y-3">
           {posts.map(post => {
-            const sla = SLA_BADGE[post.slaStatus]
+            const sla = SLA_BADGE[post.slaStatus?.status] ?? UNKNOWN_SLA
             const isRejecting = rejectingId === post.id
             const isLoading = actionLoading === post.id
 
@@ -204,14 +233,14 @@ export default function BrandContentReviewPage() {
                     <p className="text-xs text-muted-foreground line-clamp-3">{post.body}</p>
                   )}
 
-                  {post.hoursRemaining !== null && (
+                  {post.slaStatus?.hoursRemaining != null && (
                     <div className="flex items-center gap-1.5 text-xs">
                       <Clock className="h-3 w-3" />
-                      {post.hoursRemaining > 0 ? (
-                        <span>{Math.round(post.hoursRemaining)}h remaining</span>
+                      {post.slaStatus.hoursRemaining > 0 ? (
+                        <span>{Math.round(post.slaStatus.hoursRemaining)}h remaining</span>
                       ) : (
                         <span className="text-red-600 font-medium">
-                          Overdue by {Math.abs(Math.round(post.hoursRemaining))}h
+                          Overdue by {Math.abs(Math.round(post.slaStatus.hoursRemaining))}h
                         </span>
                       )}
                       {post.autoApproveEnabled && (
