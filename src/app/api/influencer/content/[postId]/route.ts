@@ -19,6 +19,53 @@ import {
 
 type RouteParams = { params: Promise<{ postId: string }> }
 
+/**
+ * Status transitions a CREATOR may perform directly on their own post.
+ *
+ * ⚠️ This is deliberately tiny, and smaller than it first looks like it should
+ * be. Before this existed the route accepted ANY status and passed it straight
+ * to updatePostStatus — ownership was checked, the transition was not. A
+ * creator could set 'published', 'approved', 'archived', 'removed', or flip a
+ * REJECTED post back to 'published'.
+ *
+ * Every legitimate creator transition already has a DEDICATED route that also
+ * performs the side effects this one would skip:
+ *
+ *   draft/rejected → pending_review   POST /api/influencer/posts/[id]/submit-review
+ *       (emits BRAND_CONTENT_PENDING_REVIEW — a PATCH straight to
+ *        pending_review submits work the brand is never told about)
+ *
+ *   rejected → pending_review         POST /api/influencer/posts/[id]/resubmit
+ *       (increments resubmission_count AND clears reviewed_at / reviewed_by /
+ *        rejection_reason — which is what stops a resubmitted post still
+ *        counting as payment authorisation)
+ *
+ * So those are NOT listed here. Routing them through the PATCH would duplicate
+ * the state machine and let the side effects be bypassed. Only draft ↔ archived
+ * remains, because it has no dedicated route and no side effects.
+ *
+ * ⚠️ 'published' is BRAND-ONLY here even though a creator can legitimately
+ * reach it for standalone content — that happens via submitForReview, which
+ * publishes directly only when the post has no campaignId and no brandId. A
+ * creator-set 'published' through this route would be indistinguishable from
+ * brand approval by status alone.
+ */
+const ALLOWED_INFLUENCER_TRANSITIONS: Record<string, string[]> = {
+  draft: ['archived'],
+  archived: ['draft'],
+}
+
+/** Points the caller at the route that DOES perform the transition. */
+const TRANSITION_HINTS: Record<string, string> = {
+  pending_review:
+    'Use POST /api/influencer/posts/[id]/submit-review (or /resubmit after a rejection) — ' +
+    'those notify the brand and maintain the resubmission count.',
+  published: 'Only a brand can publish campaign work, by approving it.',
+  approved: 'Only a brand can approve content.',
+  rejected: 'Only a brand can reject content.',
+  removed: 'Removal is a moderation action.',
+}
+
 async function getInfluencerUser(): Promise<{ userId: string } | NextResponse> {
   const session = await auth()
   if (!session?.user?.email) {
@@ -63,8 +110,19 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
     // Handle status change separately
     if (body.status && body.status !== existing.status) {
-      const publishedAt = body.status === 'published' ? new Date() : undefined
-      const post = await updatePostStatus(postId, body.status, publishedAt)
+      const allowed = ALLOWED_INFLUENCER_TRANSITIONS[existing.status] ?? []
+      if (!allowed.includes(body.status)) {
+        return NextResponse.json(
+          {
+            error:
+              `A creator cannot move a post from "${existing.status}" to "${body.status}". ` +
+              (TRANSITION_HINTS[body.status] ?? 'This transition is brand-only.'),
+            code: 'transition_not_allowed',
+          },
+          { status: 400 }
+        )
+      }
+      const post = await updatePostStatus(postId, body.status)
       return NextResponse.json({ post })
     }
 
