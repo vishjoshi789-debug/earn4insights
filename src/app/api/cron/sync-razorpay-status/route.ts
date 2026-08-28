@@ -19,6 +19,8 @@ import { withCronRun } from '@/lib/cron/withCronRun'
 import { logDataAccess } from '@/lib/audit-log'
 import { getProcessingPayoutsOlderThan, updatePayoutStatus } from '@/db/repositories/razorpayRepository'
 import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
+import { db } from '@/db'
+import { sql } from 'drizzle-orm'
 
 function verifyAuth(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization')
@@ -44,6 +46,7 @@ async function handleGET(request: NextRequest) {
   let checked = 0
   let updated = 0
   let errorCount = 0
+  let criticalError = false
   const errors: string[] = []
 
   try {
@@ -103,6 +106,76 @@ async function handleGET(request: NextRequest) {
   } catch (err) {
     console.error('[CRON] sync-razorpay-status critical error:', err)
     errors.push(`Critical: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    criticalError = true
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // PAYMENT LEDGER INVARIANTS
+  // ══════════════════════════════════════════════════════════════════
+  //
+  // 🔴 ESCALATION RULE — READ THIS BEFORE TRIAGING A FAILURE.
+  //
+  // A non-zero result ON PRODUCTION means REAL MONEY MOVED WITHOUT A LEDGER
+  // ROW. That is an ALARM, not a backlog item. Both invariants are supposed to
+  // be structurally impossible: violating one means the write path is broken,
+  // and every subsequent payment is at risk until it is found. Stop and
+  // investigate before the next payment is taken.
+  //
+  // A non-zero result on PREVIEW is almost always a test artefact and can be
+  // investigated at leisure.
+  //
+  // Why it lives HERE rather than in a script: a check someone has to remember
+  // to run is a check that stops being run. This cron already sits in the
+  // payment domain, runs at 07:00 UTC — one hour after process-payouts at
+  // 06:00, so it inspects the ledger immediately after the job that writes to
+  // it — and was otherwise a no-op while RAZORPAYX_ENABLED is false. It also
+  // costs no new vercel.json entry (there are already 33).
+  //
+  // Returning 500 is what makes withCronRun record status='error' rather than
+  // 'ok', so a violation is visible in cron_runs without anyone querying.
+  const invariantViolations: Record<string, unknown[]> = {}
+  try {
+    // (A) Every paid/refunded Razorpay order must have EXACTLY ONE ledger row.
+    // Zero = money moved and was never recorded. More than one = double-count.
+    const ledgerRaw = await db.execute(sql`
+      SELECT o.razorpay_order_id, o.status AS order_status, count(p.id)::int AS ledger_rows
+      FROM razorpay_orders o
+      LEFT JOIN campaign_payments p ON p.razorpay_order_id = o.razorpay_order_id
+      WHERE o.status IN ('paid','refunded')
+      GROUP BY o.razorpay_order_id, o.status
+      HAVING count(p.id) <> 1
+    `)
+    const ledgerRows = Array.isArray(ledgerRaw) ? ledgerRaw : ((ledgerRaw as any)?.rows ?? [])
+    if (ledgerRows.length > 0) invariantViolations.ordersWithoutOneLedgerRow = ledgerRows
+
+    // (B) No released payment may have more than one payout. This is the
+    // regression guard for the campaign_id-vs-payment_id dedup (migration 038)
+    // — under the old predicate a second payout was impossible for a different
+    // reason, so this only became meaningful once the dedup keyed on payment.
+    const payoutRaw = await db.execute(sql`
+      SELECT cp.id AS payment_id, cp.campaign_id, count(po.id)::int AS payouts
+      FROM campaign_payments cp
+      LEFT JOIN influencer_payouts po ON po.campaign_payment_id = cp.id
+      WHERE cp.status = 'released'
+      GROUP BY cp.id, cp.campaign_id
+      HAVING count(po.id) > 1
+    `)
+    const payoutRows = Array.isArray(payoutRaw) ? payoutRaw : ((payoutRaw as any)?.rows ?? [])
+    if (payoutRows.length > 0) invariantViolations.paymentsWithMultiplePayouts = payoutRows
+  } catch (err) {
+    // A guard that cannot run is not a passing guard. Surface it as a failure
+    // rather than letting a broken check read as a clean ledger.
+    console.error('[CRON] ledger invariant check FAILED to run:', err)
+    errors.push(`Invariant check failed to run: ${err instanceof Error ? err.message : 'Unknown'}`)
+    criticalError = true
+  }
+
+  const violationCount = Object.values(invariantViolations).reduce((n, v) => n + v.length, 0)
+  if (violationCount > 0) {
+    console.error(
+      `[CRON] 🔴 LEDGER INVARIANT VIOLATED — ${violationCount} row(s):`,
+      JSON.stringify(invariantViolations),
+    )
   }
 
   const duration = Date.now() - startTime
@@ -118,11 +191,24 @@ async function handleGET(request: NextRequest) {
 
   console.log(`[CRON] sync-razorpay-status done in ${duration}ms: checked=${checked} updated=${updated} errors=${errorCount}`)
 
-  return NextResponse.json({
-    success: true,
-    checked,
-    updated,
-    errors: errorCount,
-    duration,
-  })
+  // Same shape as the process-payouts fix: `success: true` used to be a
+  // hardcoded literal here too, so a crashed sync — or a violated invariant —
+  // returned 200 and was recorded as a clean run.
+  const failed = criticalError || violationCount > 0
+  return NextResponse.json(
+    {
+      success: !failed && errorCount === 0,
+      criticalError,
+      checked,
+      updated,
+      errors: errorCount,
+      errorDetail: errors.length > 0 ? errors.slice(0, 10) : undefined,
+      ledgerInvariants:
+        violationCount > 0
+          ? { violated: true, count: violationCount, ...invariantViolations }
+          : { violated: false },
+      duration,
+    },
+    { status: failed ? 500 : 200 },
+  )
 }

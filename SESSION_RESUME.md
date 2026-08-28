@@ -2813,3 +2813,86 @@ item; a brand cannot do this today.
   is currently **absent from the DSAR export and the user data export** — a compliance-relevant
   omission, not just tidiness. Adding it is the SAFE direction (database already has the column,
   unlike `campaign_payment_id` where the schema led the DB and broke production).
+
+---
+
+## 🔴 PAYMENT LEDGER INVARIANT GUARD — escalation rule (2026-08-28)
+
+Lives in **`/api/cron/sync-razorpay-status`**, not a script. A check someone has to remember
+to run is a check that stops being run.
+
+### 🔴 THE ESCALATION RULE
+
+**A non-zero result ON PRODUCTION means REAL MONEY MOVED WITHOUT A LEDGER ROW. That is an
+ALARM, not a backlog item.** Both invariants are supposed to be structurally impossible;
+violating one means the write path is broken and **every subsequent payment is at risk until
+it is found**. Stop and investigate before the next payment is taken.
+
+A non-zero result on **preview** is almost always a test artefact — investigate at leisure.
+
+### The two invariants
+
+**(A) Every `paid`/`refunded` razorpay_order has EXACTLY ONE `campaign_payments` row.**
+Zero = money moved and was never recorded (the original Phase 1 gap). More than one =
+double-count.
+
+**(B) No `released` payment has more than one payout.** Regression guard for the
+`campaign_id` → `payment_id` dedup (migration 038). Only became meaningful once the dedup
+keyed on payment — under the old predicate a second payout was impossible for a *different*
+reason, which is why this check would have been vacuous before.
+
+### Why this host
+
+- Payment domain already; **runs 07:00 UTC, one hour after `process-payouts` at 06:00**, so it
+  inspects the ledger immediately after the job that writes to it
+- Was otherwise a **no-op** while `RAZORPAYX_ENABLED` is false — an idle cron slot
+- Already `withCronRun`-wrapped, so a **500 records `status='error'`** rather than 'ok'
+- No 34th `vercel.json` entry (there are already 33)
+
+⚠️ **A guard that cannot run is not a passing guard.** If the invariant queries themselves
+throw, that is recorded as a failure rather than allowed to read as a clean ledger.
+
+### Same `success: true` bug found here
+
+`sync-razorpay-status` had the identical hardcoded `success: true` + swallowed-catch pattern
+as `process-payouts`. Fixed the same way: `criticalError` flag, `success` computed, **HTTP 500
+on crash or violation** so `withCronRun` records `'error'`.
+
+---
+
+## 📋 SCOPED, NOT BUILT — influencer content status PATCH (2026-08-28)
+
+`PATCH /api/influencer/content/[postId]` accepts **any** `body.status` and passes it straight
+to `updatePostStatus`. Ownership is checked; **the transition is not.** A creator can set
+`published`, `approved`, `archived`, `removed`, or flip a **rejected** post back to
+`published`.
+
+⚠️ **This does NOT compromise the release gate** — that keys on `reviewed_at`/`reviewed_by`,
+which are absent from the route's allow-list and written only by brand-owned
+`markPostApproved`/`markPostRejected`. Fixing the PATCH closes the hole properly; the gate
+never depended on it.
+
+Proposed split (founder decision pending):
+
+| Transition | Who |
+|---|---|
+| `draft → pending_review` | creator (the core submit action) |
+| `rejected → pending_review` | creator (`resubmission_count` / `previous_post_id` exist for this) |
+| `draft → archived` | creator |
+| `pending_review → approved` / `rejected` | **brand only** |
+| `→ published` | **brand only** (`markPostApproved` writes it) |
+| `approved`/`published` → anything | **brand only** — post-approval state is the payment gate |
+| `→ removed` | **brand/admin only** (moderation) |
+
+Two open judgement calls: (1) may a creator withdraw a `pending_review` post — races an
+in-progress review, and rejection already gives a path back; (2) may a creator archive an
+`approved` post — after Phase 2 an approved post is *payment authorisation*, so archiving one
+rewrites the audit trail.
+
+⚠️ **`approved` is DEAD** — nothing in the codebase writes it (`markPostApproved` writes
+`'published'`). Either wire it or drop it from the union. Leaving a dead member in a union
+that now gates payment is how the next person builds on a value that never occurs.
+
+Implementation when decided: an explicit `ALLOWED_INFLUENCER_TRANSITIONS: Record<from, to[]>`
+in the route, 400 naming the attempted transition — same idiom as `VALID_TRANSITIONS` in
+`campaignManagementService`, so there is one state-machine pattern rather than two.
