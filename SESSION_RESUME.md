@@ -2896,3 +2896,74 @@ that now gates payment is how the next person builds on a value that never occur
 Implementation when decided: an explicit `ALLOWED_INFLUENCER_TRANSITIONS: Record<from, to[]>`
 in the route, 400 naming the attempted transition — same idiom as `VALID_TRANSITIONS` in
 `campaignManagementService`, so there is one state-machine pattern rather than two.
+
+---
+
+## 🕵️ cron_runs WAS UNRELIABLE IN TWO DISTINCT WAYS (2026-08-28)
+
+Migration 037 exists so that *did nothing* / *crashed* / *never fired* are distinguishable.
+Twice that was silently untrue. **If `cron_runs` is ever wrong again, start here rather than
+rediscovering both.**
+
+### Failure 1 — a crashed run returned 200 and recorded 'ok'
+
+`withCronRun` recorded `status='ok'` for anything the handler **RETURNED**, reserving `'error'`
+for what **THREW**. Any route that caught its own exception and returned was written as a clean
+run.
+
+Observed on preview:
+```
+success: true, processed: 0,
+errors: {Critical: column influencer_payouts.campaign_payment_id does not exist}
+```
+HTTP 200, `cron_runs.status = 'ok'`. A crash that looked like a clean no-op.
+
+**Closed by** (`94b3ff3`): the wrapper now records `'error'` for a returned **5xx**; and
+`process-payouts` returns 500 with `criticalError: true` instead of a hardcoded
+`success: true`. Later the same treatment for `sync-razorpay-status` (`e1dc598`), which had
+the identical copied idiom.
+
+### Failure 2 — plain-object returns have no status to inspect
+
+⚠️ **The fix above only covers the `NextResponse` branch.** A handler returning a **plain
+object** goes through `finishRun(..., 'ok', { result: body })`, where there is no HTTP status,
+so a 5xx check cannot see it.
+
+**`cron/process-social-mentions` is in exactly this state and is NOT fixed**: two top-level
+catches push into `results.errors`, then it returns `{ success: true, ...results }` as a plain
+object. Errors present, recorded `'ok'`.
+
+Deliberately not "fixed" by teaching the wrapper to read `body.success`: the wrapper must not
+infer meaning from an arbitrary route's body shape — that is the same reasoning that made
+status the only signal it consults. The route should signal failure itself (throw, or return a
+`NextResponse` with 500).
+
+### Sweep of all 33 (2026-08-28)
+
+- **28** hardcode `success: true`, but **26 let exceptions propagate** → `withCronRun` records
+  `'error'` correctly. Those are fine.
+- **2** had the swallow-and-claim pattern: `process-payouts`, `sync-razorpay-status` — **both
+  fixed**.
+- **1** has it and remains open: **`process-social-mentions`** (plain-object return).
+- **3** catch and return 200 without claiming success — `cleanup-notifications`,
+  `compute-financial-snapshots`, `compute-platform-metrics`. Still recorded `'ok'` on a caught
+  failure. Lower severity, not fixed.
+
+---
+
+## ⚖️ OPEN DESIGN DECISION — the multi-creator 409 is UNTESTED, not validated
+
+`/api/payments/release/[campaignId]` returns **409 `multi_creator_campaign_level`** when a
+campaign-level payment has more than one active creator, on the grounds that one payment with
+no per-creator split has no defensible allocation.
+
+🔎 **Production evidence (founder-run, 2026-08-28): ZERO multi-creator campaigns, and 107
+campaigns with no creator at all.** So the rule has **never been exercised** — the door has
+not been used, which is not the same as the door being right.
+
+**Record this as open, not settled.** The first genuine two-creator campaign-level campaign
+will hit the 409 and be unable to pay anyone. At that point it needs either a creator picker
+or an explicit allocation rule; refusing is only defensible while the case is hypothetical.
+
+That 107 campaigns have no creator at all is worth its own look — it suggests campaigns are
+being created far more often than they are being staffed.

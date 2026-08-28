@@ -1600,6 +1600,20 @@ export const influencerContentPosts = pgTable('influencer_content_posts', {
   brandId: text('brand_id'),                            // → users.id (nullable)
   campaignId: uuid('campaign_id'),                      // → influencer_campaigns.id (nullable, FK deferred)
   tags: text('tags').array().default([]),
+  // ⚠️ 'published' means BRAND-APPROVED for campaign work — NOT "live on the
+  // creator's channel". markPostApproved() writes it as the outcome of brand
+  // review. External posting is tracked separately by external_post_urls and
+  // platforms_cross_posted.
+  //
+  // ⚠️ It is reached by TWO paths that mean different things, which is a known
+  // wart rather than a design: submitForReview() publishes STANDALONE posts
+  // (no campaign_id, no brand_id) directly, since they have no reviewer. So
+  // status='published' alone does NOT prove a brand approved anything —
+  // reviewed_at / reviewed_by do. Anything gating on approval (notably the
+  // campaign-level payment release) must key on those, never on this.
+  //
+  // ⚠️ 'approved' is DEAD — nothing in the codebase writes it. Do not build on
+  // it without wiring it first.
   status: text('status').notNull().default('draft')
     .$type<'draft' | 'pending_review' | 'approved' | 'rejected' | 'published' | 'archived' | 'removed'>(),
   publishedAt: timestamp('published_at'),
