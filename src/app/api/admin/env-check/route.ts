@@ -155,6 +155,20 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  // Real-time dies silently without all three: getPusherServer() throws and
+  // /api/pusher/auth returns a generic 500, which looks like a bug rather than
+  // a missing variable.
+  const pusherMissing = (
+    ['PUSHER_APP_ID', 'PUSHER_KEY', 'PUSHER_SECRET'] as const
+  ).filter((k) => !process.env[k])
+  if (pusherMissing.length > 0) {
+    warnings.push(
+      `Pusher is misconfigured — missing ${pusherMissing.join(', ')}. ` +
+      '/api/pusher/auth will 500 on every call and real-time notifications ' +
+      '(bell, presence) are down on this environment.'
+    )
+  }
+
   if (!process.env.RESEND_WEBHOOK_SECRET) {
     warnings.push(
       'RESEND_WEBHOOK_SECRET is unset — /api/webhooks/resend fails closed (503), ' +
@@ -222,7 +236,18 @@ export async function GET(request: NextRequest) {
         RESEND_WEBHOOK_SECRET: Boolean(process.env.RESEND_WEBHOOK_SECRET),
         BLOB_READ_WRITE_TOKEN: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
         OPENAI_API_KEY: Boolean(process.env.OPENAI_API_KEY),
+        // ⚠️ All THREE are required — getPusherServer() throws if any is
+        // missing (lib/pusher.ts:18), and /api/pusher/auth turns that into a
+        // generic 500, so real-time silently dies. Only PUSHER_SECRET was
+        // reported here, which is why a preview with the secret scoped but not
+        // the app id looked correctly configured. Same blind spot that hid
+        // RAZORPAY_KEY_SECRET.
+        PUSHER_APP_ID: Boolean(process.env.PUSHER_APP_ID),
+        PUSHER_KEY: Boolean(process.env.PUSHER_KEY),
         PUSHER_SECRET: Boolean(process.env.PUSHER_SECRET),
+        // Client-side half. Present in the bundle, so absence breaks
+        // subscription before the auth route is ever called.
+        NEXT_PUBLIC_PUSHER_KEY: Boolean(process.env.NEXT_PUBLIC_PUSHER_KEY),
         CURRENT_ENCRYPTION_KEY_ID: Boolean(process.env.CURRENT_ENCRYPTION_KEY_ID),
       },
       payments: {

@@ -38,6 +38,19 @@ import { eq } from 'drizzle-orm'
 
 // ── Types ─────────────────────────────────────────────────────────
 
+/**
+ * Maximum times a creator may resubmit one rejected post.
+ *
+ * ⚠️ Blocking at the cap leaves an escrowed campaign payment with no route
+ * out: no approved content means the campaign-level release gate stays shut,
+ * and the brand's money sits in escrow. The refund path exists
+ * (/api/payments/refund/[orderId]) but nothing routes a brand to it from here.
+ * Same "money with no way out" shape the campaign-level release fixed,
+ * arriving from the other direction — worth wiring when there is evidence
+ * creators actually hit this.
+ */
+const MAX_RESUBMISSIONS = 3
+
 interface ServiceResult {
   success: boolean
   error?: string
@@ -55,6 +68,33 @@ export async function submitForReview(
   if (post.influencerId !== influencerId) return { success: false, error: 'Not your post' }
   if (post.status !== 'draft' && post.status !== 'rejected') {
     return { success: false, error: `Cannot submit post with status "${post.status}" for review` }
+  }
+
+  // ── Completeness ────────────────────────────────────────────────
+  //
+  // Submission previously passed with no title, no media and an empty body —
+  // the brand got an empty card in their review queue, and approving it would
+  // have authorised a campaign-level payment against nothing.
+  //
+  // Title, plus at least ONE of body or media. Deliberately no minimum LENGTH:
+  // a campaign deliverable is normally a link to a posted reel, occasionally a
+  // short writeup, and an arbitrary character floor would obstruct legitimate
+  // short posts without stopping a determined empty one.
+  //
+  // ⚠️ Trimmed, because " " is not content. A whitespace-only body would
+  // otherwise satisfy a naive truthiness check and reintroduce exactly the
+  // empty submission this guards against.
+  const hasTitle = !!post.title?.trim()
+  const hasBody = !!post.body?.trim()
+  const hasMedia = Array.isArray(post.mediaUrls) && post.mediaUrls.some((u) => !!u?.trim())
+  if (!hasTitle) {
+    return { success: false, error: 'Add a title before submitting.' }
+  }
+  if (!hasBody && !hasMedia) {
+    return {
+      success: false,
+      error: 'Add a description or a content link before submitting — there is nothing to review yet.',
+    }
   }
 
   // Standalone post (no brand, no campaign) has no reviewer — publish it
@@ -214,6 +254,25 @@ export async function resubmitContent(
   if (post.influencerId !== influencerId) return { success: false, error: 'Not your post' }
   if (post.status !== 'rejected') {
     return { success: false, error: 'Only rejected posts can be resubmitted' }
+  }
+
+  // ── Resubmission cap ────────────────────────────────────────────
+  //
+  // Uncapped, a creator could resubmit indefinitely — each cycle re-enters the
+  // brand's review queue and resets the SLA clock, so a disagreement becomes a
+  // treadmill for both sides.
+  //
+  // Three attempts is enough for genuine iteration on feedback; past that the
+  // disagreement is not going to be resolved by another round. The message
+  // routes them to the brand rather than refusing silently, because the
+  // product has nowhere else to send them.
+  if ((post.resubmissionCount ?? 0) >= MAX_RESUBMISSIONS) {
+    return {
+      success: false,
+      error:
+        `You have resubmitted this content ${post.resubmissionCount} times, which is the limit. ` +
+        'Contact the brand directly to agree what they need before submitting again.',
+    }
   }
 
   const updated = await markPostResubmitted(postId, updates)

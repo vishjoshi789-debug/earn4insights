@@ -39,7 +39,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing socket_id or channel_name' }, { status: 400 })
     }
 
-    const pusher = getPusherServer()
+    // ⚠️ getPusherServer() THROWS when PUSHER_APP_ID / PUSHER_KEY /
+    // PUSHER_SECRET are missing, and the catch below turns that into a generic
+    // 500 — indistinguishable from a real bug. That is how a preview with only
+    // PUSHER_SECRET scoped presented as "real-time is broken" rather than
+    // "real-time is unconfigured". Name the cause instead of guessing at it.
+    let pusher: ReturnType<typeof getPusherServer>
+    try {
+      pusher = getPusherServer()
+    } catch {
+      const missing = (['PUSHER_APP_ID', 'PUSHER_KEY', 'PUSHER_SECRET'] as const)
+        .filter((k) => !process.env[k])
+      console.error(`[Pusher auth] Not configured — missing: ${missing.join(', ') || 'unknown'}`)
+      return NextResponse.json(
+        {
+          error: 'Real-time messaging is not configured on this environment.',
+          code: 'pusher_not_configured',
+          missing,
+        },
+        { status: 503 }
+      )
+    }
 
     // ── Private channels ────────────────────────────────────────────────
     // Only allow subscribing to your own user channel

@@ -17,6 +17,7 @@ import {
   deletePost,
 } from '@/db/repositories/influencerContentPostRepository'
 import { isCampaignParticipant } from '@/db/repositories/influencerCampaignRepository'
+import { isUuid } from '@/lib/validators'
 
 type RouteParams = { params: Promise<{ postId: string }> }
 
@@ -81,6 +82,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     if (authResult instanceof NextResponse) return authResult
 
     const { postId } = await params
+    if (!isUuid(postId)) {
+      return NextResponse.json({ error: 'Invalid post id' }, { status: 400 })
+    }
     const post = await getPostById(postId)
     if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 })
     if (post.influencerId !== authResult.userId) {
@@ -100,6 +104,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     if (authResult instanceof NextResponse) return authResult
 
     const { postId } = await params
+    if (!isUuid(postId)) {
+      return NextResponse.json({ error: 'Invalid post id' }, { status: 400 })
+    }
     const existing = await getPostById(postId)
     if (!existing) return NextResponse.json({ error: 'Post not found' }, { status: 404 })
     if (existing.influencerId !== authResult.userId) {
@@ -178,6 +185,9 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     if (authResult instanceof NextResponse) return authResult
 
     const { postId } = await params
+    if (!isUuid(postId)) {
+      return NextResponse.json({ error: 'Invalid post id' }, { status: 400 })
+    }
     const existing = await getPostById(postId)
     if (!existing) return NextResponse.json({ error: 'Post not found' }, { status: 404 })
     if (existing.influencerId !== authResult.userId) {
