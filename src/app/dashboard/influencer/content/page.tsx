@@ -322,7 +322,12 @@ export default function InfluencerContentPage() {
     thumbnailUrl: '',
     platforms: [] as string[],
     tags: [] as string[],
+    campaignId: '',     // '' = standalone
   })
+  // Campaigns the creator is actually ON (accepted/active/completed) — the
+  // server applies the same predicate at submit time, so this list and what
+  // the API will accept cannot drift apart.
+  const [myCampaigns, setMyCampaigns] = useState<{ id: string; title: string }[]>([])
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -334,6 +339,14 @@ export default function InfluencerContentPage() {
       .then(r => r.json())
       .then(data => setPosts(data.posts ?? []))
       .finally(() => setLoading(false))
+
+    // Separate from the posts fetch on purpose: if this one fails the creator
+    // can still see and create standalone content, rather than the whole page
+    // dying over a dropdown. Same lesson as the Content Review crash.
+    fetch('/api/influencer/campaigns?participating=true')
+      .then(r => (r.ok ? r.json() : { campaigns: [] }))
+      .then(data => setMyCampaigns(data.campaigns ?? []))
+      .catch(() => setMyCampaigns([]))
   }, [status])
 
   const handleCreate = async () => {
@@ -355,12 +368,21 @@ export default function InfluencerContentPage() {
           thumbnailUrl: form.thumbnailUrl || undefined,
           platformsCrossPosted: form.platforms,
           tags: form.tags,
+          // Omitted when blank so the post stays standalone. submitForReview
+          // branches on this: campaign-linked goes to the brand's review
+          // queue, standalone publishes directly.
+          campaignId: form.campaignId || undefined,
         }),
       })
-      if (!res.ok) throw new Error('Failed to create')
+      if (!res.ok) {
+        // Surface the server's reason — notably 403 not_campaign_participant,
+        // which a stale selector could otherwise turn into a silent failure.
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to create')
+      }
       const data = await res.json()
       setPosts(prev => [data.post, ...prev])
-      setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [] })
+      setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [], campaignId: '' })
       setDialogOpen(false)
       toast.success('Post created as draft')
     } catch (err: any) {
@@ -381,6 +403,9 @@ export default function InfluencerContentPage() {
       thumbnailUrl: post.thumbnailUrl ?? '',
       platforms: post.platformsCrossPosted ?? [],
       tags: post.tags ?? [],
+      // Populated so opening an existing post shows its campaign rather than
+      // silently resetting it to standalone on save.
+      campaignId: post.campaignId ?? '',
     })
     setDialogOpen(true)
   }
@@ -402,12 +427,18 @@ export default function InfluencerContentPage() {
           thumbnailUrl: form.thumbnailUrl || undefined,
           platformsCrossPosted: form.platforms,
           tags: form.tags,
+          campaignId: form.campaignId || null,
         }),
       })
-      if (!res.ok) throw new Error('Failed to save changes')
+      if (!res.ok) {
+        // 403 not_campaign_participant lands here — show the server's reason
+        // rather than a generic failure.
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to save changes')
+      }
       const data = await res.json()
       setPosts(prev => prev.map(p => p.id === editingId ? { ...p, ...data.post } : p))
-      setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [] })
+      setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [], campaignId: '' })
       setEditingId(null)
       setDialogOpen(false)
       toast.success('Draft updated')
@@ -497,7 +528,7 @@ export default function InfluencerContentPage() {
               size="sm"
               onClick={() => {
                 setEditingId(null)
-                setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [] })
+                setForm({ title: '', body: '', mediaType: 'image', mediaUrls: '', thumbnailUrl: '', platforms: [], tags: [], campaignId: '' })
               }}
             >
               <Plus className="h-3.5 w-3.5 mr-1" /> New Post
@@ -540,6 +571,39 @@ export default function InfluencerContentPage() {
 
               {/* Media Type — FIX 1: explicit bg + text colors so options are visible */}
               <div className="space-y-2">
+                <Label htmlFor="post-campaign">Campaign</Label>
+                {/* The gap this closes: POST /api/influencer/content has always
+                    accepted campaignId and no UI ever sent one, so a creator
+                    could not submit work against a campaign through the
+                    product at all — the brand review queue, and therefore the
+                    campaign-level release gate, were unreachable in practice.
+
+                    Only campaigns the creator is ON are listed, and the server
+                    re-checks membership on POST and on PATCH. Shown disabled
+                    with the reason rather than hidden when there are none:
+                    invisible state reads as breakage. */}
+                <select
+                  id="post-campaign"
+                  disabled={myCampaigns.length === 0}
+                  className="w-full rounded-md border border-input bg-background text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                  value={form.campaignId}
+                  onChange={e => setForm(f => ({ ...f, campaignId: e.target.value }))}
+                >
+                  <option value="">Standalone — not for a campaign</option>
+                  {myCampaigns.map(c => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {myCampaigns.length === 0
+                    ? "You're not on any campaigns yet, so this will be posted as standalone content."
+                    : form.campaignId
+                      ? 'Goes to the brand for review before it counts towards this campaign.'
+                      : 'Standalone posts publish immediately — no brand review.'}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
                 <Label htmlFor="post-media-type">Media Type *</Label>
                 <select
                   id="post-media-type"

@@ -16,6 +16,7 @@ import {
   updatePostStatus,
   deletePost,
 } from '@/db/repositories/influencerContentPostRepository'
+import { isCampaignParticipant } from '@/db/repositories/influencerCampaignRepository'
 
 type RouteParams = { params: Promise<{ postId: string }> }
 
@@ -130,6 +131,37 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     const updates: Record<string, any> = {}
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key]
+    }
+
+    // ⚠️ THE QUIETER HOLE. campaignId is in the allow-list above, so a creator
+    // can ATTACH a campaign to an existing post after creating it — bypassing
+    // any check that only guards creation. Same control as POST, and it has to
+    // be here too or the POST check is decorative: create standalone, then
+    // PATCH the campaign on.
+    //
+    // Only validated when the value actually CHANGES, so unrelated edits to a
+    // post already on a campaign are not re-gated (and a campaign the creator
+    // was removed from does not lock them out of fixing a typo).
+    if (
+      updates.campaignId !== undefined &&
+      updates.campaignId !== null &&
+      updates.campaignId !== existing.campaignId
+    ) {
+      if (typeof updates.campaignId !== 'string') {
+        return NextResponse.json({ error: 'campaignId must be a string' }, { status: 400 })
+      }
+      const isMember = await isCampaignParticipant(updates.campaignId, authResult.userId)
+      if (!isMember) {
+        return NextResponse.json(
+          {
+            error:
+              'You are not a participant on that campaign, so you cannot attach content to it. ' +
+              'Accept the campaign invitation first.',
+            code: 'not_campaign_participant',
+          },
+          { status: 403 }
+        )
+      }
     }
 
     const post = await updatePost(postId, updates)
