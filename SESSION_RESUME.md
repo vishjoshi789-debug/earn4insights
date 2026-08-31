@@ -2967,3 +2967,36 @@ or an explicit allocation rule; refusing is only defensible while the case is hy
 
 That 107 campaigns have no creator at all is worth its own look — it suggests campaigns are
 being created far more often than they are being staffed.
+
+---
+
+## ⚠️ THE 500 IS LOAD-BEARING — do not "tidy" it into a 200 (2026-08-31)
+
+**`sync-razorpay-status` returns HTTP 500 when a ledger invariant is violated. That status
+IS the alarm.** `withCronRun` decides `cron_runs.status` from the returned HTTP status —
+`>= 500` records `'error'`, anything else records `'ok'`. Change the violation path to a 200
+with the detail in the body and the run is recorded as **clean**; nothing anywhere would
+indicate the alarm had stopped working.
+
+This is not hypothetical. It is exactly the state the wrapper was in before `94b3ff3`:
+`process-payouts` caught a missing-column error, returned 200 with the error inside
+`errors[]`, and `cron_runs` said `'ok'`. A crashed job was indistinguishable from a clean
+no-op run.
+
+So the chain is: **violation → 500 → `withCronRun` records `'error'` → visible in
+`cron_runs` without anyone running a query.** Removing any link silences it.
+
+⚠️ The wrapper deliberately does NOT inspect `body.success` — it cannot know what an
+arbitrary route's body shape means, so status is the only signal it consults. That is also
+why `process-social-mentions` (plain-object return, no status) is still unprotected.
+
+Where to look if it fires:
+```sql
+SELECT started_at, status, duration_ms, result, error
+FROM cron_runs
+WHERE job_name = 'sync-razorpay-status' AND status = 'error'
+ORDER BY started_at DESC LIMIT 10;
+```
+Offending rows are under `result.ledgerInvariants`. ⚠️ `result` is **capped at 8000 chars**
+by `truncateForStorage` — a mass violation stores `{ truncated: true, preview: … }`, so the
+HTTP response is the complete record and `cron_runs` is the durable-but-capped one.

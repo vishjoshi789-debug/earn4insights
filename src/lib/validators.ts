@@ -88,3 +88,21 @@ export function safeValidate<T>(
   }
   return result.data
 }
+
+/**
+ * Is this string a syntactically valid UUID?
+ *
+ * ⚠️ Route params are user input. Passing a malformed one to a query on a
+ * `uuid` column makes Postgres raise `invalid input syntax for type uuid`,
+ * which surfaces as a 500 — the API telling the caller "we broke" when the
+ * truth is "you sent nonsense". Validate at the boundary and return 400.
+ *
+ * Accepts any RFC 4122 variant, since ids here come from `defaultRandom()`
+ * (v4) but nothing should depend on the version digit.
+ */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+export function isUuid(value: string | null | undefined): boolean {
+  return !!value && UUID_RE.test(value)
+}
