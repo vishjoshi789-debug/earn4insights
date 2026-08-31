@@ -87,13 +87,24 @@ export async function submitForReview(
   const hasTitle = !!post.title?.trim()
   const hasBody = !!post.body?.trim()
   const hasMedia = Array.isArray(post.mediaUrls) && post.mediaUrls.some((u) => !!u?.trim())
+  // ⚠️ externalPostUrls counts as content. A LINK-BASED CROSS-POST is a
+  // supported path: the creator posts a reel on their own channel and records
+  // the URL here, so the deliverable legitimately has no body and no
+  // mediaUrls. Requiring one of those would refuse real work — a reel with a
+  // one-word caption is still the thing the brand commissioned.
+  const hasExternalLink =
+    !!post.externalPostUrls &&
+    Object.values(post.externalPostUrls).some((u) => !!String(u ?? '').trim())
+
   if (!hasTitle) {
     return { success: false, error: 'Add a title before submitting.' }
   }
-  if (!hasBody && !hasMedia) {
+  if (!hasBody && !hasMedia && !hasExternalLink) {
     return {
       success: false,
-      error: 'Add a description or a content link before submitting — there is nothing to review yet.',
+      error:
+        'Add a description, a content link, or the URL of your published post before submitting — ' +
+        'there is nothing to review yet.',
     }
   }
 

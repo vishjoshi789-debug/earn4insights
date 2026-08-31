@@ -3000,3 +3000,69 @@ ORDER BY started_at DESC LIMIT 10;
 Offending rows are under `result.ledgerInvariants`. ⚠️ `result` is **capped at 8000 chars**
 by `truncateForStorage` — a mass violation stores `{ truncated: true, preview: … }`, so the
 HTTP response is the complete record and `cron_runs` is the durable-but-capped one.
+
+---
+
+## 🔴 RULE — env-check must report EVERY variable a feature needs, not a subset
+
+**Silently omitting a required variable has now cost three separate debugging rounds:**
+
+| Round | Reported | Actually missing | Symptom |
+|---|---|---|---|
+| 1 | `RAZORPAY_KEY_ID` mode only | **`RAZORPAY_KEY_SECRET`** (not reported at all) | `create-order` 500s; "both keys read test" was true and useless |
+| 2 | — | **`RESEND_WEBHOOK_SECRET`** | `/api/webhooks/resend` fails closed (503); delivery state blind |
+| 3 | `PUSHER_SECRET` only | **`PUSHER_APP_ID` / `PUSHER_KEY`** | `/api/pusher/auth` 500s; real-time silently down |
+
+⚠️ **The pattern is identical each time and it is worse than reporting nothing:** a partial
+report reads as a *clean* report. Round 3's preview had `PUSHER_SECRET` scoped, so env-check
+said the secret was present and the environment looked correctly configured — while
+`getPusherServer()` was throwing on a different variable it never mentioned.
+
+### The rule
+
+**When a feature requires N variables, env-check reports all N — and warns naming the
+missing ones.** A diagnostic that answers "is this configured?" with a subset is not a
+diagnostic; it is a false negative generator.
+
+Corollary: **a variable that cannot be read is still worth reporting as a presence
+boolean.** `RAZORPAY_KEY_SECRET` has no safe mode to display, but `present: true/false`
+would have ended round 1 immediately.
+
+Now enforced for Pusher (all three server vars + `NEXT_PUBLIC_PUSHER_KEY`, with a warning
+naming the missing ones) and Razorpay. **Apply it to the next feature that gets an
+env-check entry.**
+
+---
+
+## 📋 SHARED RESPONSE TYPES — Tier 1 approved, and what stays unfixed
+
+Root cause of the Content Review crash: a page declared its OWN copy of a route's response
+shape, so both sides typechecked green against contradictory definitions.
+
+**Measured across `src/app/dashboard/**/page.tsx`:** 37 files declare 85 local types; 38
+files make 105 API calls; **~28 pages both fetch and declare a response shape.** 371 route
+handlers exist across 303 files.
+
+**Agreed approach: Tier 1 (≈10 pages) + the defensive pattern everywhere.**
+
+⚠️ **This REDUCES the class, it does not eliminate it.** Recording the position explicitly
+so it is a known trade rather than an assumption someone later mistakes for coverage:
+
+- **Tier 1 (~10 pages)** get a shared response type — the pages that dereference nested or
+  derived fields, where a mismatch THROWS rather than rendering blank.
+- **The remaining ~18** keep their local copies and are protected only by the defensive
+  pattern (fallbacks on map lookups, null-guards on nested dereferences). They can still
+  silently render *wrong* data on a shape change — they just will not blank the page.
+- **The other ~340 handlers** are not retrofitted at all.
+
+⚠️ **The estimate is UNVERIFIED in one respect:** whether these routes return inline object
+literals (likely — `NextResponse.json({ ...post, slaStatus })`) or already-typed service
+results. If inline, each needs its RETURN ANNOTATED before a shared type means anything;
+otherwise the page's guess has merely moved to a new file and the two still cannot disagree
+detectably. Read the route before trusting the 1–2 day figure.
+
+**Tier 1, ranked by crash risk** (money-adjacent first — `brand/campaigns/[campaignId]`,
+`influencer/payouts`, `influencer/earnings`), then `analytics/consumer-intelligence`,
+`competitive-intelligence`, `competitive-intelligence/competitors/[id]`, `rewards`,
+`my-signals`, `settings`. `brand/content-review` is already done — it is the one that
+surfaced this.
