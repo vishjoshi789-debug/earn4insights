@@ -13,6 +13,7 @@ import {
   createPost,
   getPostsByInfluencer,
 } from '@/db/repositories/influencerContentPostRepository'
+import { isCampaignParticipant } from '@/db/repositories/influencerCampaignRepository'
 
 async function getInfluencerUser(): Promise<{ userId: string } | NextResponse> {
   const session = await auth()
@@ -53,6 +54,35 @@ export async function POST(req: NextRequest) {
 
     if (!title || typeof title !== 'string') {
       return NextResponse.json({ error: 'title is required' }, { status: 400 })
+    }
+
+    // ⚠️ SERVER-SIDE MEMBERSHIP CHECK. The campaign selector only shapes what
+    // is OFFERED; nothing stops a creator POSTing any campaignId directly.
+    //
+    // This matters more than an ordinary ownership check because of what a
+    // campaign-linked post can become: submitting one puts it in the brand's
+    // review queue, and a brand-approved post on a campaign is what authorises
+    // the campaign-level payment release. Letting a creator attach work to a
+    // campaign they are not on would let them manufacture the artefact that
+    // unlocks someone else's money.
+    //
+    // 'invited' does NOT count — see lib/campaigns/participation.
+    if (campaignId) {
+      if (typeof campaignId !== 'string') {
+        return NextResponse.json({ error: 'campaignId must be a string' }, { status: 400 })
+      }
+      const isMember = await isCampaignParticipant(campaignId, authResult.userId)
+      if (!isMember) {
+        return NextResponse.json(
+          {
+            error:
+              'You are not a participant on that campaign, so you cannot submit content against it. ' +
+              'Accept the campaign invitation first.',
+            code: 'not_campaign_participant',
+          },
+          { status: 403 }
+        )
+      }
     }
 
     const post = await createPost({

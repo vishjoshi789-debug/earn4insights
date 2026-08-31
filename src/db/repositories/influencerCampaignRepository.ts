@@ -7,7 +7,11 @@ import {
   type InfluencerCampaign,
   type NewInfluencerCampaign,
 } from '@/db/schema'
-import { eq, and, desc, count } from 'drizzle-orm'
+import { eq, and, desc, count, inArray } from 'drizzle-orm'
+import {
+  PARTICIPATING_INVITATION_STATUSES,
+  isParticipatingStatus,
+} from '@/lib/campaigns/participation'
 
 // ── Create ───────────────────────────────────────────────────────
 
@@ -130,4 +134,65 @@ export async function deleteCampaign(id: string): Promise<void> {
   await db
     .delete(influencerCampaigns)
     .where(eq(influencerCampaigns.id, id))
+}
+
+/**
+ * Campaigns the creator is actually ON — accepted, active or completed.
+ *
+ * Distinct from getCampaignsByInfluencer, which takes a SINGLE optional status
+ * and therefore cannot express this set: unfiltered it returns everything
+ * including 'invited' and 'rejected', and `?status=accepted` misses 'active'
+ * and 'completed'. That gap is why this exists rather than reusing it.
+ *
+ * Backs both the content-submission campaign selector AND the server-side
+ * membership check behind it, so the list a creator is offered and the list
+ * the API will accept cannot drift apart.
+ */
+export async function getParticipatingCampaignsForInfluencer(
+  influencerId: string,
+): Promise<{ id: string; title: string; invitationStatus: string }[]> {
+  const rows = await db
+    .select({
+      id: influencerCampaigns.id,
+      title: influencerCampaigns.title,
+      invitationStatus: campaignInfluencers.status,
+    })
+    .from(campaignInfluencers)
+    .innerJoin(influencerCampaigns, eq(campaignInfluencers.campaignId, influencerCampaigns.id))
+    .where(
+      and(
+        eq(campaignInfluencers.influencerId, influencerId),
+        // Spread, NOT a widening cast. `as unknown as string[]` compiles the
+        // constant down to string[] and Drizzle rejects it, because the column
+        // is typed to its own literal union — the spread keeps the literals.
+        inArray(campaignInfluencers.status, [...PARTICIPATING_INVITATION_STATUSES]),
+      ),
+    )
+    .orderBy(desc(influencerCampaigns.createdAt))
+
+  return rows
+}
+
+/**
+ * Is this creator a participating member of this campaign?
+ *
+ * ⚠️ This is the SERVER-SIDE control. The selector only shapes what is offered;
+ * a creator can POST any campaignId, and campaignId is in the PATCH allow-list
+ * so it can also be attached after the fact. Both paths must call this.
+ */
+export async function isCampaignParticipant(
+  campaignId: string,
+  influencerId: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ status: campaignInfluencers.status })
+    .from(campaignInfluencers)
+    .where(
+      and(
+        eq(campaignInfluencers.campaignId, campaignId),
+        eq(campaignInfluencers.influencerId, influencerId),
+      ),
+    )
+    .limit(1)
+  return isParticipatingStatus(rows[0]?.status)
 }
