@@ -3066,3 +3066,86 @@ detectably. Read the route before trusting the 1–2 day figure.
 `competitive-intelligence`, `competitive-intelligence/competitors/[id]`, `rewards`,
 `my-signals`, `settings`. `brand/content-review` is already done — it is the one that
 surfaced this.
+
+---
+
+## 🔗 SHARED RESPONSE TYPES — the pattern, proven on `payments` first (2026-09-01)
+
+Location: **`src/lib/api-types/`**. A neutral directory, deliberately not `src/server/*`:
+a client page importing from a server module is exactly what `'server-only'` exists to
+prevent, and a neutral module removes the temptation **structurally** rather than relying
+on everyone remembering. Types are pulled in with `import type`, which is fully erased, so
+no server code reaches the client bundle.
+
+### ⚠️⚠️ NEVER share a service's return type with a client page directly
+
+The obvious move produces a contradiction that **TYPECHECKS** — quieter and worse than the
+untyped `any` it replaces:
+
+```
+server:  { createdAt: Date }        ← what the service returns
+wire:    { createdAt: "2026-…" }    ← JSON has no Date
+client:  page believes Date, calls .toISOString(), throws at runtime
+```
+
+TypeScript cannot catch it: the shared type asserts the *server's* shape and nothing checks
+it against what crosses the wire. Same class as the Content Review crash — page and route
+disagreeing while both compile — but **harder to spot**, because there the mismatch sat in
+two files and here it hides inside one shared definition that looks authoritative.
+
+**So: a client page imports `Serialized<ServiceReturn>`, never `ServiceReturn`.**
+
+### Why a mapped type, not a hand-written response type per endpoint
+
+Hand-written types drift from the service the moment someone adds a field, and the drift is
+**silent** — precisely the failure being removed. Deriving means a new server field appears
+on the client type automatically, and a REMOVED field breaks compilation at the page. The
+transform is mechanical, so it is expressed once rather than ~10 times.
+
+`Serialized<T>` handles `Date → string`, `Date | null → string | null` (conditional types
+distribute over unions), and arrays/nested objects recursively.
+
+⚠️ **Not modelled:** `undefined`-valued keys are DROPPED by `JSON.stringify`, so a required
+field assigned `undefined` is absent on the client. Declared-optional (`?:`) fields already
+read correctly; a required field holding `undefined` is a server-side bug worth fixing
+there rather than modelling here.
+
+### What `payments` showed
+
+⚠️ This endpoint was **not** a page/route contradiction — the page held `useState<any>` and
+`const payments: any[]`. That is the **other** failure mode: no false safety, but no check
+at all. Nothing was wrong; nothing was verified either. Both modes are in scope for Tier 1,
+and the `any` ones are the easier win.
+
+`getCampaignPaymentSummary` has an **inferred** return type, so the response type is derived
+via `Awaited<ReturnType<typeof …>>` rather than requiring the service be annotated first.
+That is why the "must annotate every route's return" cost estimate was pessimistic for
+routes that return a single service result verbatim (`NextResponse.json(summary)`) — those
+are minutes each. Routes composing an inline literal (`{ payouts, balance, reputation }`)
+still need a declared type and are the ~30-minute case.
+
+### ✅ The pattern was PROVEN, not assumed (2026-09-01)
+
+A clean typecheck after replacing `any` with a derived type proves nothing on its own: if
+`Serialized<T>` had silently collapsed to `any`, tsc would be **equally green** and the
+pattern would be worthless — applied to nine more endpoints on false confidence.
+
+So it was checked with an assertion that had to FAIL:
+
+```ts
+const good: string | null = ... as CampaignPaymentRow['escrowedAt']   // must pass
+const bad:  Date   | null = ... as CampaignPaymentRow['escrowedAt']   // must FAIL
+```
+
+Result:
+```
+__probe.ts(11,7): error TS2322: Type 'string | null' is not assignable to type 'Date | null'.
+```
+
+`escrowedAt` resolves to **`string | null`** on the client, from `Date | null` on the
+server. That confirms the type is live, `Date → string` works, and conditional-type union
+distribution works. Probe deleted; it existed only to make the check falsifiable.
+
+⚠️ **Reuse this before trusting any type-level utility.** A check that cannot fail is not a
+check — the same reason the ledger invariant guard must return 500 rather than a 200 with
+the violation in the body.
