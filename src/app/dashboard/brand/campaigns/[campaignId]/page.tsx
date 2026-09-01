@@ -28,6 +28,10 @@ import {
   PAYMENTS_DISABLED_MESSAGE,
 } from '@/lib/payments/paymentsEnabled'
 import { campaignStatusLabel } from '@/lib/campaigns/campaignStatus'
+import type {
+  CampaignPaymentSummaryResponse,
+  CampaignPaymentRow,
+} from '@/lib/api-types/campaign-payments'
 
 // Statuses where a brand may edit campaign details (3D, Q1).
 // Mirrors EDITABLE_STATUSES in campaignManagementService so the UI
@@ -98,7 +102,10 @@ export default function BrandCampaignDetailPage() {
   const [activeSection, setActiveSection] = useState('overview')
 
   // Payment tab state
-  const [paymentSummary, setPaymentSummary] = useState<any>(null)
+  // Shared with the route via the service's return type, serialised — see
+  // lib/api-types/serialized. Was `useState<any>`, which meant the page and the
+  // endpoint could disagree freely and nothing would say so.
+  const [paymentSummary, setPaymentSummary] = useState<CampaignPaymentSummaryResponse | null>(null)
   const [razorpayOrder, setRazorpayOrder] = useState<any>(null)
   // Any PAID order on this campaign, not just the latest one. Drives the
   // "already paid" state and suppresses the pay button — see the route
@@ -916,7 +923,7 @@ export default function BrandCampaignDetailPage() {
           ) : (() => {
             const campaign = data?.campaign
             const acceptedInfluencers = (data?.influencers ?? []).filter((i: any) => i.status === 'accepted')
-            const payments: any[] = paymentSummary?.payments ?? []
+            const payments: CampaignPaymentRow[] = paymentSummary?.payments ?? []
             const escrowedPayment = payments.find((p: any) => p.status === 'escrowed')
             const releasedPayments = payments.filter((p: any) => p.status === 'released')
             const hasAnyPayment = payments.length > 0
