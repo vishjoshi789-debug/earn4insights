@@ -13,6 +13,7 @@
  * Auth: consumer role + isInfluencer = true
  */
 
+import type { InfluencerPayoutProjection } from '@/lib/api-types/payouts'
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -47,7 +48,9 @@ export async function GET(req: NextRequest) {
     const payouts = await getPayoutsForRecipient(userId, { status, from, to, limit, offset })
 
     // Strip internal fields — never return account details
-    const safePayouts = payouts.map((p) => ({
+    // Annotated so the route is checked against the published contract:
+    // adding an unredacted field here becomes a compile error, not a leak.
+    const safePayouts: InfluencerPayoutProjection[] = payouts.map((p) => ({
       id: p.id,
       campaignId: p.campaignId,
       amount: p.amount,

@@ -8,46 +8,19 @@ import { X, Loader2, Eye, Heart, MessageSquare, Share2, Bookmark, MousePointerCl
 import { LineChartCard } from './PerformanceCharts'
 import { formatCurrency } from '@/lib/currency'
 import { campaignStatusLabel } from '@/lib/campaigns/campaignStatus'
+import type { CampaignDeepDiveResponse } from '@/lib/api-types/influencer-earnings'
 
 interface CampaignDeepDiveProps {
   campaignId: string
   onClose: () => void
 }
 
-interface DeepDiveData {
-  campaign: {
-    id: string
-    title: string
-    brandName: string | null
-    status: string
-    budgetTotal: number
-    budgetCurrency: string
-    startDate: string | null
-    endDate: string | null
-    targetPlatforms: string[]
-  }
-  totals: {
-    views: number
-    likes: number
-    comments: number
-    shares: number
-    saves: number
-    clicks: number
-    reach: number
-    impressions: number
-    icpMatchedViewers: number
-    engagementRate: number
-    icpMatchRate: number
-  }
-  timeSeries: Array<{
-    metricDate: string
-    platform: string
-    views: number
-    likes: number
-    comments: number
-    shares: number
-  }>
-}
+// DeepDiveData was a hand-copy of the server's CampaignDeepDive, field for
+// field. It agreed with the server the day it was written — which is exactly
+// the shape that produced the Content Review crash once the two stopped
+// agreeing. Now derived from the service type, so a server-side change either
+// appears here automatically or breaks compilation.
+type DeepDiveData = CampaignDeepDiveResponse
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',

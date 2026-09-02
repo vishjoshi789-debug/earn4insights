@@ -3149,3 +3149,54 @@ distribution works. Probe deleted; it existed only to make the check falsifiable
 ⚠️ **Reuse this before trusting any type-level utility.** A check that cannot fail is not a
 check — the same reason the ledger invariant guard must return 500 rather than a 200 with
 the violation in the body.
+
+---
+
+## 🧪 STANDING RULE — a check that cannot fail is not a check
+
+**Before trusting any guard, assertion, heuristic or type-level utility, ask: could this
+produce the opposite result for the right reason?** If it can only ever pass, or can only
+ever fire, it carries no information — and a green run is then indistinguishable from a
+broken check.
+
+**Three instances in this session alone**, which is why it is written down rather than
+rediscovered a fourth time:
+
+### 1. The ledger invariant guard's 500 (`e1dc598`)
+
+`withCronRun` derives `cron_runs.status` from the returned HTTP status. Had the violation
+path returned 200 with the detail in the body, a violated invariant would record `'ok'` —
+an alarm that can never fire. That was not hypothetical: it is exactly the state
+`process-payouts` was in before `94b3ff3`, returning 200 with a fatal error inside
+`errors[]`.
+
+### 2. The env-check branch heuristic (still unfixed)
+
+`!/dev|test|staging|preview|branch/i.test(host)` warns that a database "does not look like
+a branch". Neon auto-names branch endpoints `ep-wild-frog-…`, matching none of those words,
+so it fires on **every correct Neon branch** and cannot distinguish a branch from
+production. **A check that always fires is as useless as one that never does** — both are
+ignored within a week. The reliable form is comparing against the known production host.
+
+### 3. `Serialized<T>` — green typecheck was ambiguous (`730576b`)
+
+Replacing `any` with a derived type and getting `TSC_EXIT=0` is consistent with two
+opposite realities: the type works, **or** the utility collapsed to `any` and nothing is
+checked. Both compile clean. Resolved with an assertion that had to fail:
+
+```
+__probe.ts(11,7): error TS2322: Type 'string | null' is not assignable to type 'Date | null'
+```
+
+Line 11 (`bad: Date | null`) errored; line 8 (`good: string | null`) did not. The
+asymmetry is the proof — and the message naming `string | null` shows the transform and
+union distribution both worked. Probe deleted afterwards; it existed only to make the
+check falsifiable.
+
+### How to apply it
+
+- **A passing test you have never seen fail is an untested test.** Break it once on purpose.
+- **A guard that returns success on the failure path is decoration.** Check the status, not
+  just the body.
+- **A heuristic that fires on every correct case is worse than none** — it trains people to
+  ignore the real one.

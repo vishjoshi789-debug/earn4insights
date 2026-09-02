@@ -1,5 +1,6 @@
 'use client'
 
+import type { InfluencerPayoutRow } from '@/lib/api-types/payouts'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -70,19 +71,11 @@ interface PayoutAccount {
   createdAt: string
 }
 
-interface Payout {
-  id: string
-  campaignId: string | null
-  amount: number
-  currency: string
-  payoutMethod: string
-  status: PayoutStatus
-  failureReason?: string | null
-  retryCount: number
-  initiatedAt: string | null
-  completedAt: string | null
-  createdAt: string
-}
+// Was a hand-copy of the route's redacted projection. It happened to agree —
+// including the string dates — but nothing enforced that. Now shared with the
+// route, which annotates its projection with the same definition, so the two
+// cannot drift apart silently.
+type Payout = InfluencerPayoutRow
 
 // ── Icons & display helpers ───────────────────────────────────────
 
