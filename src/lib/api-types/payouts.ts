@@ -54,3 +54,50 @@ export type InfluencerPayoutsResponse = Serialized<{
 
 /** One payout row as the client receives it. */
 export type InfluencerPayoutRow = InfluencerPayoutsResponse['payouts'][number]
+
+/**
+ * GET /api/payouts/accounts
+ *
+ * ⚠️⚠️ THIS IS A REDACTION BOUNDARY, NOT JUST A RESPONSE SHAPE.
+ *
+ * The route decrypts stored account numbers and returns only MASKED forms
+ * (`accountNumberMasked`, `ibanMasked`), deliberately omitting the raw
+ * `accountNumber`, `iban` and `encryptionKeyId`. Those omissions are the whole
+ * point of the projection.
+ *
+ * So this type must NEVER be derived from `influencer_payout_accounts` or from
+ * a service returning the row: a derived type would model the UNREDACTED shape
+ * as the published contract, describing exactly the fields the route exists to
+ * strip — and inviting a page to read one.
+ *
+ * The route annotates its projection with this type, so contextual typing
+ * applies excess property checking to the mapped object literal. Adding
+ * `accountNumber: acc.accountNumber` to that map becomes a COMPILE ERROR
+ * rather than a silent leak of decrypted banking data. The annotation is what
+ * makes hand-writing this safe; without it, this is the drift the pattern
+ * exists to prevent.
+ *
+ * ⚠️ Serialized<> is LOAD-BEARING here — `createdAt` is a real Date server-side.
+ */
+export type PayoutAccountProjection = {
+  id: string
+  accountType: 'bank_account' | 'upi' | 'paypal' | 'wise' | 'swift'
+  userRole: string
+  currency: string
+  isPrimary: boolean
+  isVerified: boolean
+  accountHolderName: string | null
+  accountNumberMasked: string | null
+  ifscCode: string | null
+  upiId: string | null
+  paypalEmail: string | null
+  wiseEmail: string | null
+  swiftCode: string | null
+  ibanMasked: string | null
+  bankName: string | null
+  bankCountry: string | null
+  createdAt: Date
+}
+
+/** One payout account as the client receives it. */
+export type PayoutAccountRow = Serialized<PayoutAccountProjection>
