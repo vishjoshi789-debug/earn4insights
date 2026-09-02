@@ -1,6 +1,6 @@
 'use client'
 
-import type { InfluencerPayoutRow } from '@/lib/api-types/payouts'
+import type { InfluencerPayoutRow, PayoutAccountRow } from '@/lib/api-types/payouts'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -51,25 +51,10 @@ import { EmailVerificationContextBanner } from '@/components/EmailVerificationCo
 type AccountType = 'bank_account' | 'upi' | 'paypal' | 'wise' | 'swift'
 type PayoutStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
-interface PayoutAccount {
-  id: string
-  accountType: AccountType
-  userRole: string
-  currency: string
-  isPrimary: boolean
-  isVerified: boolean
-  accountHolderName: string | null
-  accountNumberMasked: string | null
-  ifscCode: string | null
-  upiId: string | null
-  paypalEmail: string | null
-  wiseEmail: string | null
-  swiftCode: string | null
-  ibanMasked: string | null
-  bankName: string | null
-  bankCountry: string | null
-  createdAt: string
-}
+// Was a hand-copy of the accounts projection — the security-critical one that
+// masks account numbers. Shared with the route, which annotates the same type,
+// so a field the route stops redacting cannot silently appear here.
+type PayoutAccount = PayoutAccountRow
 
 // Was a hand-copy of the route's redacted projection. It happened to agree —
 // including the string dates — but nothing enforced that. Now shared with the

@@ -9,6 +9,7 @@
  * Validates format per account type.
  */
 
+import type { PayoutAccountProjection } from '@/lib/api-types/payouts'
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -94,7 +95,9 @@ export async function GET(req: NextRequest) {
     const accounts = await getPayoutAccounts(userId)
 
     // Mask sensitive fields — decrypt then show only last 4 digits
-    const safeAccounts = await Promise.all(
+    // Annotated so the REDACTION is enforced by the compiler: adding an
+    // unmasked field here becomes an excess-property error, not a data leak.
+    const safeAccounts: PayoutAccountProjection[] = await Promise.all(
       accounts.map(async (acc) => ({
         id: acc.id,
         accountType: acc.accountType,

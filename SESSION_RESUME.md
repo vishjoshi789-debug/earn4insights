@@ -3200,3 +3200,57 @@ check falsifiable.
   just the body.
 - **A heuristic that fires on every correct case is worse than none** — it trains people to
   ignore the real one.
+
+---
+
+## 📐 TIER 1 — the three shapes, and the FINAL POSITION on what stays unfixed
+
+### Every endpoint falls into one of three shapes. No fourth was found.
+
+**A — absence of typing.** Page held `useState<any>`. No false safety, but nothing checked
+either. **Only `payments`** was in this state; the survey found ZERO `useState<any>` across
+the other Tier 1 pages.
+
+**B — duplicate definition.** Page hand-copies the server type; they agree the day it is
+written. This is the Content Review shape and **the majority**. Fixed by deriving:
+`Serialized<ServiceReturn>`, or `Serialized<Awaited<ReturnType<typeof svc>>>` when the
+service return is inferred. Sub-case: routes returning `{ key: serviceResult }` — still
+derivable, just wrapped.
+
+**C — composed literal over a REDACTED projection.** ⚠️ **Deriving here is ACTIVELY WRONG.**
+`/api/payouts/accounts` decrypts account numbers and returns only masked forms, omitting
+`accountNumber`, `iban`, `encryptionKeyId`. A derived type would publish the UNREDACTED
+shape as the contract. The response type must describe the **projection**, and the route
+must be **ANNOTATED** with it — contextual typing then applies excess-property checking, so
+adding an unmasked field becomes a compile error rather than a silent leak of decrypted
+banking data.
+
+⚠️ **Hand-writing is safe in C and only in C, because the annotation checks it.** Elsewhere
+hand-written types drift silently — that is the failure being removed. The annotation is
+the difference; remove it and C degrades into B.
+
+### `Serialized<>` is inert in some files and load-bearing in others
+
+- `influencer-earnings` — **inert**: `CampaignDeepDive` already declares `string | null`
+  dates.
+- `payouts` — **load-bearing**: `initiatedAt` / `completedAt` / `createdAt` are real `Date`s.
+
+⚠️ **The inert cases are the ones at risk of being removed as dead weight**, and removal is
+invisible until someone later adds a `Date` to that service. The reasoning is therefore
+written into EACH file rather than stated once centrally.
+
+### 🔻 FINAL POSITION — what is NOT covered
+
+Recorded so a future session does not mistake this for coverage:
+
+- **Tier 1 (~10 pages)** get shared types. Page and route can no longer disagree silently.
+- **The remaining ~18 pages that both fetch and declare a response shape keep their local
+  copies.** They are protected ONLY by the defensive pattern (fallbacks on map lookups,
+  null-guards on nested dereferences). ⚠️ **They can still render WRONG DATA on a shape
+  change — they just will not blank the page.** That is a deliberate trade, not an
+  oversight.
+- **~340 route handlers with no dashboard-page consumer are not retrofitted at all.**
+- **Nothing here validates at RUNTIME.** These are compile-time contracts. A route that
+  returns something other than its declared type — a hand-built literal in an un-annotated
+  branch, say — still reaches the client unchecked. Runtime validation (zod at the fetch
+  boundary) was NOT done and would be the next tier if this class recurs.
