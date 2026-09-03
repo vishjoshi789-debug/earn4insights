@@ -3254,3 +3254,44 @@ Recorded so a future session does not mistake this for coverage:
   returns something other than its declared type — a hand-built literal in an un-annotated
   branch, say — still reaches the client unchecked. Runtime validation (zod at the fetch
   boundary) was NOT done and would be the next tier if this class recurs.
+
+---
+
+## 🔒 RULE — a redacted projection's response type describes the PROJECTION, never the source
+
+**Where a route returns a deliberately narrowed or masked view of a record, the shared
+response type must describe that projection. NEVER derive it from the service, repository
+or table type.**
+
+### Why, and it is not a style preference
+
+Deriving from the source **makes the redaction look like a deviation from the contract
+rather than the contract itself.** The published type would name `accountNumber`, `iban`,
+`encryptionKeyId` — fields the route exists to strip — so the route appears to be *failing
+to return* them. Sooner or later someone reconciles the two in the obvious direction and
+starts sending the real fields. The type would have invited the leak.
+
+Describing the projection inverts that: the masked shape IS the contract, and the raw
+fields are simply not part of it.
+
+### The annotation is what makes it safe
+
+⚠️ Elsewhere in this codebase hand-written types are warned against, because they drift
+silently. In this case they are correct — **but only because the ROUTE IS ANNOTATED with
+the projection type.** Contextual typing then applies excess-property checking to the
+mapped object literal, so adding an unmasked field becomes a **compile error rather than a
+silent leak**.
+
+**Remove the annotation and this degrades into exactly the drift the pattern exists to
+prevent.** If you are reviewing one of these files, the annotation is the load-bearing
+part, not the type.
+
+### Known instance
+
+`/api/payouts/accounts` — `safeAccounts` decrypts stored account numbers and returns only
+`accountNumberMasked` / `ibanMasked`, omitting `accountNumber`, `iban`,
+`encryptionKeyId`. Typed by `PayoutAccountProjection`, route annotated.
+
+⚠️ **It was found by NOTICING A VARIABLE NAME**, not by any systematic check — which is
+why the sweep below exists. Redaction is invisible in a route's signature; the only
+signals are naming (`safe*`, `*Masked`), a decrypt call, or reading the mapper.

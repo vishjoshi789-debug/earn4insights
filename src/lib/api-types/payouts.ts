@@ -101,3 +101,60 @@ export type PayoutAccountProjection = {
 
 /** One payout account as the client receives it. */
 export type PayoutAccountRow = Serialized<PayoutAccountProjection>
+
+/**
+ * GET /api/admin/payouts/pending — the admin manual-payout queue.
+ *
+ * ⚠️ THE MOST PII-DENSE PROJECTION IN THE CODEBASE. It carries recipient name
+ * and email ALONGSIDE banking details, and it decrypts stored account numbers
+ * (`decryptFromStorage`) before masking them. Same rule as
+ * PayoutAccountProjection: describe the PROJECTION, never derive from the
+ * account/user rows — a derived type would name `accountNumber`, `iban` and
+ * `encryptionKeyId`, making the redaction look like a deviation from the
+ * contract rather than the contract itself.
+ *
+ * ⚠️⚠️ BUT THE ANNOTATION PROTECTS LESS HERE THAN IT DOES FOR
+ * PayoutAccountProjection, AND THAT IS WORTH UNDERSTANDING BEFORE RELYING ON IT.
+ *
+ * This route does not return structured masked fields. It CONCATENATES them
+ * into one display string:
+ *
+ *   accountDisplay = `Bank: ${holderName} | IFSC: ${ifsc} | A/C: ${maskedAccNum}`
+ *
+ * So `accountDisplay: string` says nothing about what is inside it. Adding the
+ * UNMASKED number to that template is a one-line edit that no type can catch —
+ * the excess-property check that makes the sibling projection safe simply does
+ * not apply inside a template literal. The type still pins the OUTER shape (a
+ * new top-level field cannot appear silently), which is why it is worth having,
+ * but the string's contents remain guarded only by review.
+ *
+ * Restructuring accountDisplay into discrete fields would make its redaction
+ * type-checkable. Deliberately NOT done — founder decision 2026-09-03; it is a
+ * behaviour change to a live admin surface, not a typing change.
+ *
+ * ⚠️ Serialized<> is load-bearing — createdAt and initiatedAt are real Dates.
+ */
+export type AdminPendingPayoutProjection = {
+  id: string
+  recipientId: string
+  recipientName: string
+  recipientEmail: string
+  // Narrow unions, mirroring the columns' own $type<> — consumers index
+  // Record<PayoutStatus, …> and switch on recipientType without casts.
+  recipientType: 'influencer' | 'consumer'
+  campaignId: string | null
+  amount: number
+  currency: string
+  payoutMethod: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  /** Pre-masked, pre-flattened. See the warning above: contents are not type-checked. */
+  accountDisplay: string | null
+  retryCount: number
+  failureReason: string | null
+  adminNote: string | null
+  createdAt: Date
+  initiatedAt: Date | null
+}
+
+/** One admin queue row as the client receives it. */
+export type AdminPendingPayoutRow = Serialized<AdminPendingPayoutProjection>
