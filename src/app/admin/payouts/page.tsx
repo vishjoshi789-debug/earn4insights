@@ -33,8 +33,40 @@ type RecipientType = 'influencer' | 'consumer'
 // Was a hand-copy of the route's projection — the most PII-dense one in the
 // codebase (recipient name + email alongside banking details). Shared with the
 // route, which annotates the same type, so its OUTER shape cannot drift.
-// ⚠️ accountDisplay is a concatenated string; its CONTENTS are not type-checked.
 type AdminPayout = AdminPendingPayoutRow
+
+/**
+ * Compose the payout-account label for display.
+ *
+ * ⚠️ This composition MOVED HERE FROM THE ROUTE deliberately. The route used to
+ * return a single concatenated `accountDisplay` string, which meant no type
+ * could describe what was inside it — swapping the masked account number for
+ * the decrypted one was a one-line server edit nothing would catch, on the most
+ * PII-dense endpoint in the codebase.
+ *
+ * The route now returns discrete MASKED fields (a Pick<> of the
+ * redaction-checked projection), so an unmasked field cannot be added without a
+ * compile error. Formatting is a presentation concern and belongs here; the
+ * redaction is a security concern and belongs in the type.
+ *
+ * Only ever reads `accountNumberMasked` — there is no unmasked field on this
+ * type to read.
+ */
+function accountLabel(acc: AdminPayout['account']): string | null {
+  if (!acc) return null
+  switch (acc.accountType) {
+    case 'upi':
+      return `UPI: ${acc.upiId ?? '—'}`
+    case 'bank_account':
+      return `Bank: ${acc.accountHolderName ?? '—'} | IFSC: ${acc.ifscCode ?? '—'} | A/C: ${acc.accountNumberMasked ?? '—'}`
+    case 'paypal':
+      return `PayPal: ${acc.paypalEmail ?? '—'}`
+    case 'wise':
+      return `Wise: ${acc.wiseEmail ?? '—'} (${acc.currency})`
+    case 'swift':
+      return `SWIFT: ${acc.swiftCode ?? '—'} | ${acc.bankName ?? '—'}, ${acc.bankCountry ?? '—'}`
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -502,8 +534,8 @@ export default function AdminPayoutsPage() {
                     </td>
                     <td className="px-4 py-3 text-xs whitespace-nowrap">{methodLabel(p.payoutMethod)}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground max-w-[180px]">
-                      <span className="truncate block" title={p.accountDisplay ?? undefined}>
-                        {p.accountDisplay ?? '—'}
+                      <span className="truncate block" title={accountLabel(p.account) ?? undefined}>
+                        {accountLabel(p.account) ?? '—'}
                       </span>
                     </td>
                     <td className="px-4 py-3">{ageBadge(p.createdAt)}</td>

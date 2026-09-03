@@ -7,7 +7,10 @@
  * Auth: admin role only
  */
 
-import type { AdminPendingPayoutProjection } from '@/lib/api-types/payouts'
+import type {
+  AdminPendingPayoutProjection,
+  AdminPayoutAccountFields,
+} from '@/lib/api-types/payouts'
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -63,40 +66,52 @@ export async function GET(req: NextRequest) {
     // Fetch payout accounts (masked) for display
     // Annotated so the OUTER shape is checked — a new top-level field cannot
     // appear silently. See the type: this protects less than the sibling
-    // projection because accountDisplay is a concatenated string.
+    // projection. accountDisplay is gone — the account field is now discrete
+    // masked fields, so the redaction is type-checked like its sibling.
     const enrichedPayouts: AdminPendingPayoutProjection[] = await Promise.all(
       payouts.map(async (payout) => {
         const recipient = recipientMap[payout.recipientId]
-        let accountDisplay: string | null = null
+        // ⚠️ DISCRETE MASKED FIELDS, NOT A CONCATENATED STRING.
+        //
+        // This previously built `accountDisplay` as a template literal:
+        //   `Bank: ${holder} | IFSC: ${ifsc} | A/C: ${maskedAccNum ?? '—'}`
+        //
+        // That defeated the protection the rest of this work exists to provide.
+        // `accountDisplay: string` says nothing about its contents, so swapping
+        // maskedAccNum for account.accountNumber — the DECRYPTED value, already
+        // in scope — was a one-line edit no type system could catch, on the
+        // most PII-dense endpoint in the codebase.
+        //
+        // Returning discrete fields typed by AdminPayoutAccountFields (a Pick<>
+        // of the redaction-checked PayoutAccountProjection) means an unmasked
+        // field cannot be added without an excess-property error. The admin
+        // page composes the display string from these.
+        let account: AdminPayoutAccountFields | null = null
 
         try {
           // Get account by ID directly (admin context)
-          const account = payout.payoutAccountId
+          const acc = payout.payoutAccountId
             ? await getAccountById(payout.payoutAccountId, payout.recipientId)
             : null
 
-          if (account) {
-            const maskedAccNum = await decryptAndMask(account.accountNumber, account.encryptionKeyId)
-            switch (account.accountType) {
-              case 'upi':
-                accountDisplay = `UPI: ${account.upiId}`
-                break
-              case 'bank_account':
-                accountDisplay = `Bank: ${account.accountHolderName} | IFSC: ${account.ifscCode} | A/C: ${maskedAccNum ?? '—'}`
-                break
-              case 'paypal':
-                accountDisplay = `PayPal: ${account.paypalEmail}`
-                break
-              case 'wise':
-                accountDisplay = `Wise: ${account.wiseEmail} (${account.currency})`
-                break
-              case 'swift':
-                accountDisplay = `SWIFT: ${account.swiftCode} | ${account.bankName}, ${account.bankCountry}`
-                break
+          if (acc) {
+            account = {
+              accountType: acc.accountType,
+              accountHolderName: acc.accountHolderName,
+              // The ONLY form of the account number that leaves this route.
+              accountNumberMasked: await decryptAndMask(acc.accountNumber, acc.encryptionKeyId),
+              ifscCode: acc.ifscCode,
+              upiId: acc.upiId,
+              paypalEmail: acc.paypalEmail,
+              wiseEmail: acc.wiseEmail,
+              swiftCode: acc.swiftCode,
+              bankName: acc.bankName,
+              bankCountry: acc.bankCountry,
+              currency: acc.currency,
             }
           }
         } catch {
-          // Non-fatal — account display is best-effort
+          // Non-fatal — account details are best-effort
         }
 
         return {
@@ -110,7 +125,7 @@ export async function GET(req: NextRequest) {
           currency: payout.currency,
           payoutMethod: payout.payoutMethod,
           status: payout.status,
-          accountDisplay,
+          account,
           retryCount: payout.retryCount,
           failureReason: payout.failureReason,
           adminNote: payout.adminNote,
