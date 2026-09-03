@@ -7,6 +7,7 @@
  * Auth: admin role only
  */
 
+import type { AdminPendingPayoutProjection } from '@/lib/api-types/payouts'
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -60,7 +61,10 @@ export async function GET(req: NextRequest) {
     const recipientMap = Object.fromEntries(recipientRows.map((r) => [r.id, r]))
 
     // Fetch payout accounts (masked) for display
-    const enrichedPayouts = await Promise.all(
+    // Annotated so the OUTER shape is checked — a new top-level field cannot
+    // appear silently. See the type: this protects less than the sibling
+    // projection because accountDisplay is a concatenated string.
+    const enrichedPayouts: AdminPendingPayoutProjection[] = await Promise.all(
       payouts.map(async (payout) => {
         const recipient = recipientMap[payout.recipientId]
         let accountDisplay: string | null = null

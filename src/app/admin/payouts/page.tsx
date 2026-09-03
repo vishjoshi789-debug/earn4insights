@@ -1,5 +1,6 @@
 'use client'
 
+import type { AdminPendingPayoutRow } from '@/lib/api-types/payouts'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -29,24 +30,11 @@ import { apiPost } from '@/lib/api-client'
 type PayoutStatus = 'pending' | 'processing' | 'completed' | 'failed'
 type RecipientType = 'influencer' | 'consumer'
 
-interface AdminPayout {
-  id: string
-  recipientId: string
-  recipientName: string
-  recipientEmail: string
-  recipientType: RecipientType
-  campaignId: string | null
-  amount: number
-  currency: string
-  payoutMethod: string
-  status: PayoutStatus
-  accountDisplay: string | null
-  retryCount: number
-  failureReason: string | null
-  adminNote: string | null
-  createdAt: string
-  initiatedAt: string | null
-}
+// Was a hand-copy of the route's projection — the most PII-dense one in the
+// codebase (recipient name + email alongside banking details). Shared with the
+// route, which annotates the same type, so its OUTER shape cannot drift.
+// ⚠️ accountDisplay is a concatenated string; its CONTENTS are not type-checked.
+type AdminPayout = AdminPendingPayoutRow
 
 // ── Helpers ────────────────────────────────────────────────────────
 
