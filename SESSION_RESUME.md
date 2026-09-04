@@ -3360,3 +3360,55 @@ Observed failure modes:
 **Use the Edit tool for anything spanning lines.** Slower per call, but it fails loudly on a
 non-match instead of producing syntactically plausible garbage. If sed/perl is unavoidable,
 `grep` the result immediately — do not assume a zero exit code means the edit landed.
+
+---
+
+## 🏁 SHARED RESPONSE TYPES — FINAL POSITION (2026-09-04)
+
+### Shipped: 7 endpoints, 4 categories, every one verified green before commit
+
+| Endpoint | Category | Note |
+|---|---|---|
+| `campaigns/[id]/payments` | **A** absence (`useState<any>`) | pattern proven with a falsifiable probe |
+| `influencer/earnings` | **B** duplicate | `Serialized<>` inert here — documented in-file |
+| `influencer/payouts` | **C** projection | |
+| `payouts/accounts` | **C** REDACTION | unmasked field ⇒ compile error |
+| `admin/payouts/pending` | **C** REDACTION | `accountDisplay` string → discrete fields |
+| `consumer/signals` | **D** INVERSION | route was `any`; page's type became the contract |
+| `rewards` → `PayoutAccount` | Pick<> subset | fixed a real nullability lie |
+
+Two hand-copies of the payout-accounts projection existed (influencer/payouts,
+rewards); both now Pick<> the one redaction-checked type.
+
+### 🔻 NOT DONE — deliberately, and this is the trade
+
+**Five Tier-1 pages remain incomplete: ~20 local types across ~20 call sites.**
+
+- `rewards` — 4 more types (`RewardItem`, `ChallengeItem`, `PointTransaction`, `Redemption`)
+- `analytics/consumer-intelligence` — 4 types / 3 endpoints
+- `competitive-intelligence` — 6 types / 3 endpoints
+- `competitive-intelligence/competitors/[id]` — 4 types / 3 endpoints
+- `settings` — 2 types / **10 call sites** (highest drift exposure remaining)
+
+⚠️ **Why stopped, so this is not mistaken for an oversight:** everything remaining is
+ordinary display data — reward names, challenge counts, competitor scores. **None is
+money-adjacent, none is a redaction boundary**, and the defensive pattern already prevents
+the blank-page failure. All four categories are proven and documented, so the remainder is
+mechanical rather than exploratory — an afternoon's work for anyone following the method
+above.
+
+⚠️ **`competitive-intelligence` (2 of the 5 pages, 10 types) covers a feature with 0 ROWS
+IN ALL NINE OF ITS TABLES.** Typing it protects a surface nobody currently reaches. If only
+some of these get done, do `settings` and the rest of `rewards`; leave competitive
+intelligence.
+
+### 🔻 STILL NOT COVERED AT ALL (unchanged, restated so it is not lost)
+
+- **~18 other pages** that both fetch and declare a response shape keep local copies. They
+  are protected ONLY by the defensive pattern. ⚠️ **They can still render WRONG DATA on a
+  shape change — they just will not blank the page.**
+- **~340 route handlers** with no dashboard-page consumer: not retrofitted.
+- ⚠️ **NOTHING HERE VALIDATES AT RUNTIME.** These are compile-time contracts. A route
+  returning something other than its declared type — an un-annotated branch, a hand-built
+  literal — still reaches the client unchecked. Runtime validation (zod at the fetch
+  boundary) was NOT done and is the next tier if this class recurs.
