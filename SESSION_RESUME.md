@@ -3295,3 +3295,68 @@ part, not the type.
 ⚠️ **It was found by NOTICING A VARIABLE NAME**, not by any systematic check — which is
 why the sweep below exists. Redaction is invisible in a route's signature; the only
 signals are naming (`safe*`, `*Masked`), a decrypt call, or reading the mapper.
+
+---
+
+## 🔄 INVERSION RULE — when the ROUTE is less precise than the page
+
+**Default: the server type is authoritative and the page derives from it. But where the
+route is LESS precise than the page, the PAGE's type becomes the contract and the ROUTE is
+annotated against it.**
+
+⚠️ **Do not read "derive from the route" as universal.** `/api/consumer/signals` built its
+responses into `Record<string, any>` accumulators, so deriving would have produced **`any`
+— a shared type that checks nothing**. That is the World-2 case the `Serialized<T>` probe
+was built to catch: it compiles green while verifying nothing, and looks identical to
+success.
+
+The page's hand-written types were strictly more precise than the server's, so they were
+promoted to `api-types/consumer-signals.ts` and the route now carries the annotations.
+
+**Sweep result (2026-09-04): `consumer/signals` was the ONLY response-side `any`
+accumulator.** The other six `Record<string, any>` hits across all routes are **request-side**
+(`updates`, `updateData`, `body`) — building a payload *from* a request, not a response
+contract. Control is satisfied by construction: the pattern matched `consumer/signals`
+before the fix and no longer does because of it.
+
+### ⚠️ Two layers, and the mistake worth not repeating
+
+The first attempt annotated the **server accumulator with the CLIENT type** and failed:
+
+```
+route.ts(92,22): Type 'Date' is not assignable to type 'string'   // snapshotAt
+```
+
+**Nothing was rendering wrongly.** `snapshotAt` is a real `Date` in the accumulator,
+`NextResponse.json()` serialises it, and the page correctly expects `string`. Both ends were
+right about their own side; the MODELLING was wrong. Hence two layers in that file:
+
+- `…Payload` — pre-serialisation, what the accumulator holds (`snapshotAt: Date`) → the ROUTE
+- `…Response = Serialized<…Payload>` — post-serialisation, what arrives → the PAGE
+
+🔎 Also surfaced: the route assigns the FULL snapshot row into `latest`, so `id`, `userId`
+and `schemaVersion` genuinely cross the wire although the page reads only three fields. Now
+modelled as optional rather than omitted — a type that under-describes its payload is how
+someone later "discovers" a field and assumes it is new.
+
+---
+
+## 🧰 sed / perl multiline edits corrupt these files — use the Edit tool
+
+Four misfires this session on CRLF-line-ending sources. Same family as the PowerShell
+bracket trap: **the tool behaves correctly by its own rules, in a way that does not match
+intent, and fails SILENTLY-PLAUSIBLY** rather than erroring.
+
+Observed failure modes:
+- **Duplicated instead of replaced** — a `perl -0pi` substitution left both the old and new
+  field blocks, producing nine cascading `Duplicate identifier` errors and one type split
+  across two lines (`| null` orphaned).
+- **Backticks executed** — a `sed` replacement containing a markdown-style `` `any` `` in a
+  comment ran it as shell command substitution (`any: command not found`) and silently
+  emptied that word from the inserted comment.
+- **Pattern simply did not match**, leaving the file untouched while the command reported
+  success — indistinguishable from a no-op edit unless verified afterwards.
+
+**Use the Edit tool for anything spanning lines.** Slower per call, but it fails loudly on a
+non-match instead of producing syntactically plausible garbage. If sed/perl is unavoidable,
+`grep` the result immediately — do not assume a zero exit code means the edit landed.

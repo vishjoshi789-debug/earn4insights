@@ -10,6 +10,12 @@
  * with a link to /dashboard/privacy to grant it.
  */
 
+import type {
+  SignalSnapshot,
+  SignalCategoryData,
+  ConsumerSignalsHistoryResponse,
+  ConsumerSignalsLatestResponse,
+} from '@/lib/api-types/consumer-signals'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -27,27 +33,17 @@ import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────
 
-type Snapshot = {
-  id?: string
-  signalCategory: string
-  signals: Record<string, unknown>
-  snapshotAt: string
-  triggeredBy: string
-  schemaVersion?: string
-}
-
-type CategoryData = {
-  snapshots: Snapshot[]
-  reason?: 'consent_not_granted'
-}
-
-type SignalsResponse = {
-  signals: Record<string, CategoryData>
-}
-
-type LatestResponse = {
-  latest: Record<string, { signals: Record<string, unknown>; snapshotAt: string; triggeredBy: string } | null>
-}
+// Promoted to lib/api-types/consumer-signals and shared with the route.
+//
+// ⚠️ The direction is INVERTED here versus every other shared type in this
+// codebase. The route builds its responses into `Record<string, any>`
+// accumulators, so there was nothing to derive — these page-side types were
+// strictly MORE precise than the server's. They became the contract, and the
+// route is annotated against them.
+type Snapshot = SignalSnapshot
+type CategoryData = SignalCategoryData
+type SignalsResponse = ConsumerSignalsHistoryResponse
+type LatestResponse = ConsumerSignalsLatestResponse
 
 // ── Category config ───────────────────────────────────────────────
 
