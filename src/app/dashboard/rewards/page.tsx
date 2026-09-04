@@ -1,5 +1,6 @@
 'use client'
 
+import type { PayoutAccountRow } from '@/lib/api-types/payouts'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -39,11 +40,19 @@ type PointTransaction = {
   id: string; amount: number; type: string
   source: string; description: string | null; createdAt: string
 }
-type PayoutAccount = {
-  id: string; accountType: string; currency: string; isPrimary: boolean
-  upiId?: string; paypalEmail?: string; wiseEmail?: string
-  accountHolderName?: string
-}
+// Second hand-copy of the payout-accounts projection (the other was in
+// dashboard/influencer/payouts). Now a Pick<> of the shared redaction-checked
+// type instead of a re-declaration.
+//
+// ⚠️ This copy was also WRONG about nullability: it declared `upiId?: string`
+// where the route returns `upiId: string | null`. Absent and null are not the
+// same thing, and nothing was checking which one arrived. Pick<> carries the
+// route's real nullability across.
+type PayoutAccount = Pick<
+  PayoutAccountRow,
+  'id' | 'accountType' | 'currency' | 'isPrimary'
+  | 'upiId' | 'paypalEmail' | 'wiseEmail' | 'accountHolderName'
+>
 type Redemption = {
   id: string; points: number; value: number; currency: string
   redemptionType: string; status: string; voucherCode: string | null
