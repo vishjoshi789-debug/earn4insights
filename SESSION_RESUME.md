@@ -3412,3 +3412,80 @@ intelligence.
   returning something other than its declared type — an un-annotated branch, a hand-built
   literal — still reaches the client unchecked. Runtime validation (zod at the fetch
   boundary) was NOT done and is the next tier if this class recurs.
+
+---
+
+# 🏁 SHARED RESPONSE TYPES — DEFINITIVE FINAL POSITION (2026-09-04)
+
+**Supersedes the earlier "FINAL POSITION" entry above**, which was written before
+`rewards` and `settings` were completed.
+
+## Shipped — 9 endpoints, all four categories proven
+
+| Endpoint | Cat | Note |
+|---|---|---|
+| `campaigns/[id]/payments` | A | was `useState<any>`; pattern proven with a falsifiable probe |
+| `influencer/earnings` | B | `Serialized<>` inert here — reasoning written in-file |
+| `influencer/payouts` | C | |
+| `payouts/accounts` | C **redaction** | unmasked field ⇒ compile error |
+| `admin/payouts/pending` | C **redaction** | `accountDisplay` string → discrete fields |
+| `consumer/signals` | D **inversion** | route was `any`; page's type became the contract |
+| `rewards` (5 endpoints) | B + Pick<> | |
+| `brand/alert-rules` | B | |
+
+**13 local type declarations removed.** Real defects found and fixed along the way: a
+nullability lie (`upiId?: string` vs `string | null`), an uncheckable redaction
+(`accountDisplay`), and two same-named `redemptions` payloads on one page describing
+different shapes.
+
+## ⚠️ WHAT IS **NOT** COVERED — do not read "type sharing done" as coverage
+
+**Three Tier-1 pages deferred**, ~14 local types:
+`analytics/consumer-intelligence` (4 types / 3 endpoints),
+`competitive-intelligence` (6 / 3), `competitive-intelligence/competitors/[id]` (4 / 3).
+
+**~18 further pages** that both fetch and declare a response shape keep their local copies.
+⚠️ **They can still render WRONG DATA on a shape change — the defensive pattern only stops
+them BLANKING the page.** That is a deliberate trade, not an oversight.
+
+**~340 route handlers** with no dashboard-page consumer: not retrofitted at all.
+
+⚠️⚠️ **NOTHING HERE VALIDATES AT RUNTIME.** These are compile-time contracts only. A route
+returning something other than its declared type — an un-annotated branch, a hand-built
+literal, a hotfix — still reaches the client unchecked. **Runtime validation (zod at the
+fetch boundary) was NOT done** and is the next tier if this class recurs.
+
+## ⚠️ Why `competitive-intelligence` is deferred — READ THIS BEFORE ENABLING THAT FEATURE
+
+**It is deferred because the feature HAS NO DATA — not because it is low-risk.**
+
+All nine of its tables are empty (0 rows), gated on `competitor_profiles` which nothing
+populates. Typing it today protects a surface no user can reach, which is why it lost to
+`rewards` and `settings` on priority.
+
+🔴 **That reasoning EXPIRES the moment the feature is switched on.** It carries 10 local
+types across 6 endpoints — the largest untyped surface remaining — and it is the pattern
+this whole exercise exists to prevent. **If competitive intelligence is ever enabled, do
+the types FIRST**, before it has users. Do not treat the deferral as a judgement that the
+risk is small.
+
+## Method, for whoever finishes the rest
+
+Four categories, no fifth was found:
+
+- **A — absence** (`useState<any>`): derive; nothing to unpick.
+- **B — duplicate definition**: `Serialized<ServiceReturn>`, or
+  `Serialized<Awaited<ReturnType<typeof svc>>>` when the return is inferred. Sub-case:
+  `{ key: serviceResult }` is still derivable, just wrapped.
+- **C — composed / REDACTED projection**: describe the PROJECTION, annotate the route.
+  ⚠️ Deriving from the source is actively wrong here.
+- **D — inversion**: route less precise than the page (`Record<string, any>`) ⇒ the PAGE's
+  type becomes the contract and the route is annotated against it.
+
+⚠️ Two layers where the route holds pre-serialisation values: `…Payload` (`Date`) annotates
+the route, `…Response = Serialized<…Payload>` is used by the page.
+
+🔎 **Call-site count is NOT a proxy for typing surface.** `settings` was ranked highest-risk
+on ten call sites and turned out to have ONE response type — the other calls are mutations
+whose responses the page never models. Size this work by counting *declared response
+types*, not fetches.

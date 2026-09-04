@@ -1,5 +1,6 @@
 'use client'
 
+import type { AlertRuleResponse } from '@/lib/api-types/alert-rules'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,13 +24,10 @@ import { NotificationPreferencesCard } from '@/components/notifications/Notifica
 
 // ── Types ──────────────────────────────────────────────────────────
 
-type AlertRule = {
-  id: string
-  alertType: string
-  channels: string[]
-  enabled: boolean
-  productId: string | null
-}
+// Shared with /api/brand/alert-rules via the service's return type.
+// (AlertTypeConfig below is deliberately NOT shared — it is local UI config,
+// not a payload.)
+type AlertRule = AlertRuleResponse
 
 type AlertTypeConfig = {
   label: string
