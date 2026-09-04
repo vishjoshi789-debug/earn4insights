@@ -16,6 +16,10 @@
  * Consent-gated: only returns signals for categories the consumer has consented to.
  */
 
+import type {
+  ConsumerSignalsHistoryPayload,
+  ConsumerSignalsLatestPayload,
+} from '@/lib/api-types/consumer-signals'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import {
@@ -81,7 +85,8 @@ export async function GET(req: NextRequest) {
       const allLatest = await getAllLatestSignals(userId)
 
       // Filter out categories without consent
-      const filtered: Record<string, any> = {}
+      // Annotated against the published contract — see api-types/consumer-signals.
+      const filtered: ConsumerSignalsLatestPayload['latest'] = {}
       for (const [cat, snap] of Object.entries(allLatest)) {
         const allowed = await checkSignalConsent(userId, cat as SignalCategory)
         if (allowed) filtered[cat] = snap
@@ -95,7 +100,9 @@ export async function GET(req: NextRequest) {
       ? [categoryParam as SignalCategory]
       : VALID_CATEGORIES
 
-    const result: Record<string, any> = {}
+    // Annotated against the published contract — without this both sides are
+    // untyped accumulators and agree only by luck.
+    const result: ConsumerSignalsHistoryPayload['signals'] = {}
 
     for (const category of categoriesToFetch) {
       const allowed = await checkSignalConsent(userId, category)

@@ -134,6 +134,30 @@ export type PayoutAccountRow = Serialized<PayoutAccountProjection>
  *
  * ⚠️ Serialized<> is load-bearing — createdAt and initiatedAt are real Dates.
  */
+/**
+ * The masked account fields the admin queue needs, as a Pick<> of the
+ * redaction-checked projection.
+ *
+ * ⚠️ Deriving via Pick<> rather than re-declaring is the point: it inherits
+ * PayoutAccountProjection's guarantee that only MASKED forms exist in the type,
+ * so `accountNumber` cannot be named here even by accident — there is no such
+ * key to pick. Re-declaring these fields by hand would reopen that door.
+ */
+export type AdminPayoutAccountFields = Pick<
+  PayoutAccountProjection,
+  | 'accountType'
+  | 'accountHolderName'
+  | 'accountNumberMasked'
+  | 'ifscCode'
+  | 'upiId'
+  | 'paypalEmail'
+  | 'wiseEmail'
+  | 'swiftCode'
+  | 'bankName'
+  | 'bankCountry'
+  | 'currency'
+>
+
 export type AdminPendingPayoutProjection = {
   id: string
   recipientId: string
@@ -147,8 +171,17 @@ export type AdminPendingPayoutProjection = {
   currency: string
   payoutMethod: string
   status: 'pending' | 'processing' | 'completed' | 'failed'
-  /** Pre-masked, pre-flattened. See the warning above: contents are not type-checked. */
-  accountDisplay: string | null
+  /**
+   * Discrete MASKED fields. The admin page composes its own display string.
+   *
+   * ⚠️ Previously a single concatenated `accountDisplay: string`, which is why
+   * the warning above used to say the annotation protected less here. It no
+   * longer does: because this is a Pick<> of PayoutAccountProjection, adding an
+   * unmasked field is an excess-property error just as it is on
+   * /api/payouts/accounts. Do NOT flatten this back into a string — that would
+   * silently restore the gap on the most PII-dense endpoint in the codebase.
+   */
+  account: AdminPayoutAccountFields | null
   retryCount: number
   failureReason: string | null
   adminNote: string | null
