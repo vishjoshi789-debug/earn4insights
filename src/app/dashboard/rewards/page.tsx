@@ -1,6 +1,12 @@
 'use client'
 
 import type { PayoutAccountRow } from '@/lib/api-types/payouts'
+import type {
+  RewardItemResponse,
+  ChallengeItemResponse,
+  PointTransactionResponse,
+  ConsumerRedemptionResponse,
+} from '@/lib/api-types/rewards'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -27,19 +33,13 @@ import { openEmailVerificationPrompt } from '@/lib/email-verification-prompt'
 
 // ── Types ─────────────────────────────────────────────────────────
 
-type RewardItem = {
-  id: string; name: string; description: string | null
-  pointsCost: number; stock: number | null; isActive: boolean
-}
-type ChallengeItem = {
-  id: string; title: string; description: string | null
-  pointsReward: number; targetCount: number; sourceType: string
-  currentCount: number; completed: boolean
-}
-type PointTransaction = {
-  id: string; amount: number; type: string
-  source: string; description: string | null; createdAt: string
-}
+// Shared with the routes. These are WIDER than the previous local copies,
+// which listed only the fields this page reads — the routes return full
+// Drizzle rows, so the schema type is the contract and the narrower copies
+// were under-describing what actually arrives.
+type RewardItem = RewardItemResponse
+type ChallengeItem = ChallengeItemResponse
+type PointTransaction = PointTransactionResponse
 // Second hand-copy of the payout-accounts projection (the other was in
 // dashboard/influencer/payouts). Now a Pick<> of the shared redaction-checked
 // type instead of a re-declaration.
@@ -53,11 +53,11 @@ type PayoutAccount = Pick<
   'id' | 'accountType' | 'currency' | 'isPrimary'
   | 'upiId' | 'paypalEmail' | 'wiseEmail' | 'accountHolderName'
 >
-type Redemption = {
-  id: string; points: number; value: number; currency: string
-  redemptionType: string; status: string; voucherCode: string | null
-  createdAt: string
-}
+// ⚠️ Comes from /api/consumer/payment-history, NOT from /api/rewards — that
+// endpoint also returns a `redemptions` key but with entirely different fields
+// (rewardId, pointsSpent). Two same-named payloads on one page; the local copy
+// gave no hint which it described.
+type Redemption = ConsumerRedemptionResponse
 type RedemptionType = 'platform_credits' | 'voucher' | 'cash_payout'
 
 // ── Constants ──────────────────────────────────────────────────────
