@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/csrf'
+import { isAdminSession } from '@/lib/auth/roles'
 import { db } from '@/db'
 import { payoutRequests, users, userReputation } from '@/db/schema'
 import { eq, desc, sql } from 'drizzle-orm'
 import { getUserBalance, deductPoints, POINTS_PER_DOLLAR } from '@/server/pointsService'
 
-// GET /api/payouts — list payout requests (consumers see own, brands see all)
+// GET /api/payouts — list payout requests (consumers see own, ADMINS see all)
 export async function GET() {
   try {
     const session = await auth()
@@ -14,10 +15,20 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const role = (session.user as any).role
-
-    if (role === 'brand') {
-      // Brand view: see all payouts with user info
+    // ⚠️ ADMIN, NOT BRAND. This branch returns EVERY consumer's payout requests
+    // — id, points, amount, status and the consumer's NAME — with no scoping of
+    // any kind. It was gated on `role === 'brand'`, so any brand account could
+    // list the entire platform's consumer payout history.
+    //
+    // A brand has no legitimate interest here at all: these are platform-points
+    // payouts funded by us, not by any brand, and the requesting consumer need
+    // never have interacted with that brand. Cross-tenant financial data plus
+    // PII, in one query.
+    //
+    // Uses isAdminSession() rather than a local role cast — the single home for
+    // that check since v15 (lib/auth/roles.ts).
+    if (isAdminSession(session)) {
+      // Admin view: all payout requests, for processing the queue
       const payouts = await db
         .select({
           id: payoutRequests.id,
@@ -111,7 +122,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/payouts — approve/deny a payout (brand only)
+// PATCH /api/payouts — approve/deny a payout (ADMIN only)
 export async function PATCH(req: NextRequest) {
   if (!validateCsrfToken(req)) return csrfErrorResponse()
   try {
@@ -120,9 +131,23 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const role = (session.user as any).role
-    if (role !== 'brand') {
-      return NextResponse.json({ error: 'Only brand users can process payouts' }, { status: 403 })
+    // ⚠️ ADMIN, NOT BRAND — and this fixes two defects at once.
+    //
+    // (1) SECURITY: the check was `role !== 'brand'`, so ANY brand account
+    //     could approve or deny ANY consumer's payout request. There was no
+    //     ownership check and no relationship required — it fetched by
+    //     payoutId and updated. Financial control over other people's money.
+    //
+    // (2) NOBODY COULD PROCESS THEM: the same strict check EXCLUDED admins, so
+    //     the one role that should action this queue got a 403. That is why the
+    //     oldest pending request sat unprocessed for over six weeks — the role
+    //     that could act had no reason to, and the role that should act was
+    //     locked out.
+    if (!isAdminSession(session)) {
+      return NextResponse.json(
+        { error: 'Only admins can process payout requests' },
+        { status: 403 }
+      )
     }
 
     const { payoutId, action, note } = await req.json()
