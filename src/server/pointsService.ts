@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { userPoints, pointTransactions, userChallengeProgress, challenges, auditLog } from '@/db/schema'
-import { eq, and, gte, sql } from 'drizzle-orm'
+import { eq, and, gte, sql, inArray } from 'drizzle-orm'
 
 // Point values for different actions
 export const POINT_VALUES = {
@@ -247,49 +247,85 @@ async function advanceChallenges(userId: string, source: string) {
     .from(challenges)
     .where(and(eq(challenges.sourceType, challengeSource), eq(challenges.isActive, true)))
 
-  for (const challenge of activeChallenges) {
-    // Upsert progress
-    const existing = await db
-      .select()
-      .from(userChallengeProgress)
-      .where(
-        and(
-          eq(userChallengeProgress.userId, userId),
-          eq(userChallengeProgress.challengeId, challenge.id),
+  if (activeChallenges.length === 0) return
+
+  // ⚠️ ONE CHALLENGE PER ACTION. This used to `for (const challenge of
+  // activeChallenges)` — advancing and awarding EVERY matching challenge on a
+  // single action.
+  //
+  // Combined with target_count defaulting to 1, one feedback submission
+  // completed three challenges 40ms apart and paid 700 points. Even with
+  // target_count >= 2 (migration 039) the loop would still advance every
+  // challenge in lockstep, so a user working through three challenges would
+  // finish all three simultaneously and collect three rewards for the same
+  // work. The default was the trigger; the loop is the multiplier.
+  //
+  // One action advances exactly one challenge, so rewards track effort.
+  const progressRows = await db
+    .select()
+    .from(userChallengeProgress)
+    .where(
+      and(
+        eq(userChallengeProgress.userId, userId),
+        inArray(
+          userChallengeProgress.challengeId,
+          activeChallenges.map((c) => c.id),
         ),
-      )
-      .limit(1)
+      ),
+    )
+  const progressByChallenge = new Map(progressRows.map((p) => [p.challengeId, p]))
 
-    if (existing.length === 0) {
-      // First time — create progress
-      const completed = 1 >= challenge.targetCount
-      await db.insert(userChallengeProgress).values({
-        userId,
-        challengeId: challenge.id,
-        currentCount: 1,
-        completed,
-        completedAt: completed ? new Date() : null,
-      })
-      if (completed) {
-        // Award challenge bonus (don't recurse — use direct insert)
-        await directAwardPoints(userId, challenge.pointsReward, 'challenge_complete', challenge.id, `Completed: ${challenge.title}`)
-      }
-    } else if (!existing[0].completed) {
-      const newCount = existing[0].currentCount + 1
-      const completed = newCount >= challenge.targetCount
-      await db
-        .update(userChallengeProgress)
-        .set({
-          currentCount: newCount,
-          completed,
-          completedAt: completed ? new Date() : null,
-        })
-        .where(eq(userChallengeProgress.id, existing[0].id))
+  // Lowest progress first, so a user completes one challenge at a time rather
+  // than creeping all of them forward together.
+  //
+  // ⚠️ The id tiebreak is deliberate, not decoration: without it, which
+  // challenge advances depends on the order Postgres happens to return rows,
+  // making the behaviour non-deterministic and untestable.
+  const candidate = activeChallenges
+    .filter((c) => !progressByChallenge.get(c.id)?.completed)
+    .sort((a, b) => {
+      const pa = progressByChallenge.get(a.id)?.currentCount ?? 0
+      const pb = progressByChallenge.get(b.id)?.currentCount ?? 0
+      return pa !== pb ? pa - pb : a.id.localeCompare(b.id)
+    })[0]
 
-      if (completed) {
-        await directAwardPoints(userId, challenge.pointsReward, 'challenge_complete', challenge.id, `Completed: ${challenge.title}`)
-      }
+  if (!candidate) return // every challenge for this source already complete
+
+  const existing = progressByChallenge.get(candidate.id)
+
+  if (!existing) {
+    // First qualifying action for this challenge.
+    // ⚠️ `1 >= targetCount` can no longer be true: migration 039 enforces
+    // target_count >= 2. Kept as a computed value rather than hardcoded false
+    // so the logic stays correct if that floor is ever revisited.
+    const completed = 1 >= candidate.targetCount
+    await db.insert(userChallengeProgress).values({
+      userId,
+      challengeId: candidate.id,
+      currentCount: 1,
+      completed,
+      completedAt: completed ? new Date() : null,
+    })
+    if (completed) {
+      // Award challenge bonus (don't recurse — use direct insert)
+      await directAwardPoints(userId, candidate.pointsReward, 'challenge_complete', candidate.id, `Completed: ${candidate.title}`)
     }
+    return
+  }
+
+  const newCount = existing.currentCount + 1
+  const completed = newCount >= candidate.targetCount
+  await db
+    .update(userChallengeProgress)
+    .set({
+      currentCount: newCount,
+      completed,
+      completedAt: completed ? new Date() : null,
+    })
+    .where(eq(userChallengeProgress.id, existing.id))
+
+  if (completed) {
+    await directAwardPoints(userId, candidate.pointsReward, 'challenge_complete', candidate.id, `Completed: ${candidate.title}`)
   }
 }
 
