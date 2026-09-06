@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
 import { rewards, rewardRedemptions } from '@/db/schema'
-import { eq, desc, sql } from 'drizzle-orm'
+import { eq, and, desc, sql } from 'drizzle-orm'
 import { getUserBalance, deductPoints } from '@/server/pointsService'
 
 // GET /api/rewards — list available rewards
@@ -73,34 +73,68 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Out of stock' }, { status: 400 })
     }
 
-    // Deduct points
-    const success = await deductPoints(
-      session.user.id,
-      r.pointsCost,
-      'reward_redeem',
-      r.id,
-      `Redeemed: ${r.name}`,
-    )
+    // ── Deduct, decrement stock, and record — ONE transaction ──────
+    //
+    // ⚠️ These were THREE independent writes. deductPoints was internally
+    // transactional so the deduction committed alone, and a failure in either
+    // later write left the user with points gone and either stock silently
+    // decremented for a redemption that does not exist, or no record of what
+    // they redeemed at all. All three now commit together or not at all.
+    //
+    // ⚠️ Stock is decremented with a GUARDED update (`stock > 0`) rather than
+    // a bare decrement. The earlier `if (r.stock <= 0)` check read a value
+    // fetched before the deduction, so two concurrent redemptions of the last
+    // item could both pass it and drive stock to -1. Inside the transaction
+    // the row lock plus the WHERE makes the loser's update affect 0 rows,
+    // which we surface as out-of-stock and roll back.
+    let insufficientPoints = false
+    let outOfStock = false
 
-    if (!success) {
+    await db.transaction(async (tx) => {
+      const success = await deductPoints(
+        session.user.id,
+        r.pointsCost,
+        'reward_redeem',
+        r.id,
+        `Redeemed: ${r.name}`,
+        tx,
+      )
+      if (!success) {
+        insufficientPoints = true
+        return
+      }
+
+      if (r.stock !== null) {
+        const decremented = await tx
+          .update(rewards)
+          .set({ stock: sql`${rewards.stock} - 1` })
+          .where(and(eq(rewards.id, r.id), sql`${rewards.stock} > 0`))
+          .returning({ stock: rewards.stock })
+
+        if (decremented.length === 0) {
+          outOfStock = true
+          throw new Error('ROLLBACK_OUT_OF_STOCK') // roll the deduction back
+        }
+      }
+
+      await tx.insert(rewardRedemptions).values({
+        userId: session.user.id,
+        rewardId: r.id,
+        pointsSpent: r.pointsCost,
+        status: 'pending',
+      })
+    }).catch((err) => {
+      // Only our own rollback signal is expected here; anything else is a real
+      // failure and must not be swallowed into a misleading 400.
+      if (!outOfStock) throw err
+    })
+
+    if (insufficientPoints) {
       return NextResponse.json({ error: 'Insufficient points' }, { status: 400 })
     }
-
-    // Decrement stock if limited
-    if (r.stock !== null) {
-      await db
-        .update(rewards)
-        .set({ stock: sql`${rewards.stock} - 1` })
-        .where(eq(rewards.id, r.id))
+    if (outOfStock) {
+      return NextResponse.json({ error: 'Out of stock' }, { status: 400 })
     }
-
-    // Create redemption record
-    await db.insert(rewardRedemptions).values({
-      userId: session.user.id,
-      rewardId: r.id,
-      pointsSpent: r.pointsCost,
-      status: 'pending',
-    })
 
     const newBalance = await getUserBalance(session.user.id)
 

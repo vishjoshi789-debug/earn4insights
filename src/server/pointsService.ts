@@ -2,6 +2,13 @@ import { db } from '@/db'
 import { userPoints, pointTransactions, userChallengeProgress, challenges, auditLog } from '@/db/schema'
 import { eq, and, gte, sql, inArray } from 'drizzle-orm'
 
+/**
+ * A Drizzle transaction handle, derived from `db.transaction`'s own callback
+ * signature rather than hand-written — so it cannot drift from the driver.
+ * Lets a caller span its own writes and a points movement in one commit.
+ */
+export type PointsTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
 // Point values for different actions
 export const POINT_VALUES = {
   feedback_submit: 25,
@@ -114,6 +121,20 @@ export async function deductPoints(
   source: string,
   sourceId?: string,
   description?: string,
+  /**
+   * Run inside an EXISTING transaction instead of opening one.
+   *
+   * ⚠️ Pass this whenever the deduction must be atomic with something the
+   * CALLER writes — a redemption record, a stock decrement. Without it the
+   * deduction commits on its own, and a later failure in the caller leaves
+   * points gone with nothing recording why: the balance moves, the user has
+   * nothing to show for it, and the 500 they see gives no clue that half the
+   * operation succeeded.
+   *
+   * Reuses the handle rather than nesting, so there is one commit boundary
+   * and no savepoint semantics to reason about.
+   */
+  existingTx?: PointsTx,
 ): Promise<boolean> {
   // Defensive entry guard. A caller passing 0 or negative would
   // bypass the balance check (UPDATE x - 0 always succeeds, UPDATE
@@ -124,7 +145,7 @@ export async function deductPoints(
     throw new Error(`deductPoints: amount must be a positive integer (got ${amount})`)
   }
 
-  return db.transaction(async (tx) => {
+  const run = async (tx: PointsTx): Promise<boolean> => {
     // ── Atomic UPDATE with inline balance guard ───────────────────
     // RETURNING gives us the new balance; the row count tells us
     // whether the guard passed (1 row) or blocked (0 rows).
@@ -189,7 +210,10 @@ export async function deductPoints(
     })
 
     return true
-  })
+  }
+
+  // Join the caller's transaction when given one, otherwise own the boundary.
+  return existingTx ? run(existingTx) : db.transaction(run)
 }
 
 /**
