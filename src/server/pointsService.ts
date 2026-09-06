@@ -25,8 +25,12 @@ export const MEDIA_BONUS_POINTS = {
   image: 5,
 } as const
 
-// Conversion: 100 points = $1 USD
-export const POINTS_PER_DOLLAR = 100
+// The points → money rate lives in lib/points/rate so CLIENT pages can import
+// it without dragging `db` and the schema into the browser bundle. Re-exported
+// here for server callers that already import from this module.
+// ⚠️ Do not redeclare the number here — see that file for why there must be
+// exactly one definition.
+export { PAISE_PER_POINT, POINTS_TO_RUPEES } from '@/lib/points/rate'
 
 /**
  * Award points to a user and log the transaction.

@@ -18,7 +18,8 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
-import { getUserBalance, deductPoints, POINTS_PER_DOLLAR } from '@/server/pointsService'
+import { getUserBalance, deductPoints } from '@/server/pointsService'
+import { PAISE_PER_POINT, MINIMUM_REDEMPTION_POINTS } from '@/lib/points/rate'
 import {
   createRedemption,
   getPendingRedemptions,
@@ -33,9 +34,12 @@ import {
 import { convertToMinor } from '@/lib/currency'
 import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 
-const MINIMUM_REDEMPTION_POINTS = 500
-// 10 points = ₹1 = 100 paise → 1 point = 10 paise (matches UI POINTS_TO_INR = 0.10)
-const PAISE_PER_POINT = 10
+// MINIMUM_REDEMPTION_POINTS now shared — see lib/points/rate.
+// ⚠️ PAISE_PER_POINT now comes from lib/points/rate — it used to be redeclared
+// HERE while this file simultaneously imported POINTS_PER_DOLLAR (100 pts =
+// $1) and never used it. Two rates in one file, one live and one dead beside
+// it, is how the wrong constant gets picked. One definition now; do not
+// reintroduce a local copy.
 
 export async function POST(req: NextRequest) {
   try {
