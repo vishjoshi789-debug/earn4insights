@@ -7,13 +7,21 @@ import {
   type NewPaymentRedemption,
 } from '@/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
+import type { PointsTx } from '@/server/pointsService'
 
 // ── Create ───────────────────────────────────────────────────────
 
 export async function createRedemption(
-  data: Omit<NewPaymentRedemption, 'id' | 'createdAt' | 'updatedAt'>
+  data: Omit<NewPaymentRedemption, 'id' | 'createdAt' | 'updatedAt'>,
+  /**
+   * ⚠️ Pass the caller's transaction so this row and the points deduction
+   * commit together. Without it they are two independent writes: the points
+   * leave the balance, this insert fails, and there is no record of what the
+   * user redeemed — a silent loss the user only sees as a 500.
+   */
+  tx?: PointsTx,
 ): Promise<PaymentRedemption> {
-  const [row] = await db
+  const [row] = await (tx ?? db)
     .insert(paymentRedemptions)
     .values(data)
     .returning()

@@ -3489,3 +3489,145 @@ the route, `…Response = Serialized<…Payload>` is used by the page.
 on ten call sites and turned out to have ONE response type — the other calls are mutations
 whose responses the page never models. Size this work by counting *declared response
 types*, not fetches.
+
+---
+
+# 💰 CONSUMER REWARDS AUDIT — findings, fixes and standing decisions (2026-09-05)
+
+## ⚖️ STANDING DECISION — the ₹84.90 owed to mercy09055679@gmail.com is HONOURED
+
+**Founder decision, 2026-09-05. Do not reverse this.**
+
+That consumer created an account at 19:26, held 849 points by 19:37 and redeemed at
+19:40 — fourteen minutes, 700 of those points from three `challenge_complete` awards
+triggered by a single feedback submission.
+
+**Every one of those transactions was legitimate under the rules as they stood. The rules
+were wrong, not the user.** Fix forward, never claw back. A future session finding this
+account in the ledger must not "correct" the balance, reverse the transactions, or treat
+it as fraud — it is the product's own defect, honoured deliberately.
+
+⚠️ The temptation to reverse will look reasonable in isolation ("this was clearly a bug,
+the points were unearned"). It is not reasonable: the user did exactly what the product
+invited them to do.
+
+---
+
+## 🔴 FIXED — challenge auto-completion (`9879fee`, migration 039)
+
+**Two causes, either one sufficient to reproduce it.**
+
+**(1) `target_count` DEFAULTED TO 1** while `advanceChallenges` tests
+`1 >= challenge.targetCount`. Any challenge created without an explicit target completed
+on the user's FIRST qualifying action. Migration 039 raises existing rows to 2, **DROPS
+THE DEFAULT** and adds `CHECK (target_count >= 2)`. Dropping the default is the real fix —
+a challenge's target is a design decision, and inheriting 1 silently is what caused this.
+
+**(2) THE LOOP AWARDED EVERY MATCHING CHALLENGE.** `for (const challenge of
+activeChallenges)` advanced and paid all of them on one action — the 40ms-apart double
+award. The default was the trigger; **the loop was the multiplier**. Even with
+`target_count >= 2` a user would still finish three challenges simultaneously. One action
+now advances exactly ONE challenge: incomplete only, lowest progress, with a deterministic
+id tiebreak (without it, which challenge advances depends on Postgres row order).
+
+### ⚠️ NOT DONE — the point values are still unbalanced
+
+Challenges were **77% of all points ever awarded** (2,560 of 3,306) against 475 for
+`feedback_submit`. That is DRIFT, not design: the base rates (25/50/10/5/2) are
+proportioned to effort; challenge rewards sit outside that scale with no relationship to
+it. A 500-point challenge is **20× a feedback submission**.
+
+**Recommended rule, not yet applied:** `points_reward <= base_value × target_count`. A
+challenge can then at most DOUBLE the earnings for the work it requires, never 20× them —
+and it self-balances, since a bigger reward demands more actions. Migration 039 returns
+every challenge with its `target_count` and `points_reward` to make this one UPDATE.
+
+---
+
+## 🔴 FIXED — redemption writes are now atomic (`3b47eea`)
+
+⚠️ **`deductPoints` was ALREADY internally transactional** — balance UPDATE +
+`point_transactions` INSERT + `audit_log` INSERT in one `db.transaction()`. So the
+deduction was atomic *with itself* and **committed on its own**; the redemption record was
+a separate write afterwards. A failure there returned a 500 with the points gone and
+nothing recording what was redeemed.
+
+The fix was therefore **not "add a transaction"** but "let the CALLER own the boundary":
+`deductPoints` and `createRedemption` take an optional `PointsTx` and join the caller's
+transaction. `/api/rewards` had THREE unguarded writes (deduction, stock decrement,
+record).
+
+⚠️ **Second defect found while wrapping it:** the stock check read `r.stock` fetched
+BEFORE the deduction, so two concurrent redemptions of the last item both passed
+`if (r.stock <= 0)` and drove stock to **-1**. Same TOCTOU class `deductPoints` already
+documented fixing for balances — never applied to stock. Decrement is now guarded
+(`WHERE stock > 0`) inside the transaction.
+
+---
+
+## 🔴 KNOWN DEFECT — TWO TABLES BOTH MEANING "REDEMPTION"
+
+**This is what made a working system look like data loss. Read it before investigating any
+redemption question.**
+
+| Table | Written by | Source string | Means |
+|---|---|---|---|
+| `reward_redemptions` | `/api/rewards` POST | `reward_redeem` | **catalog item** — `reward_id`, `points_spent` |
+| `payment_redemptions` | `/api/consumer/rewards/redeem` → `createRedemption()` | `reward_redemption` | **cash / voucher / credits** — `points`, `value` in paise |
+
+⚠️ **`createRedemption` does NOT write `reward_redemptions`.** It writes
+`payment_redemptions`. The names differ by one character in the source string
+(`reward_redeem` vs `reward_redemption`) and the table names are near-synonyms.
+
+A 849-point deduction with source `reward_redemption` was investigated against
+`reward_redemptions` (0 rows) and diagnosed as **points vanishing with no record**. The
+record was in the other table. The concepts are genuinely distinct and both are needed —
+it is the NAMING that is the defect, and it will mislead the next person identically.
+
+---
+
+## ✅ CLOSED — the 14 null-user upvote transactions are SEED RESIDUE, not a bug
+
+**Do not re-open this.** Evidence, all confirmed:
+
+- Nulls appear on **`community_upvote_received` ONLY**. No other source has any — which
+  rules out account erasure, since deleting a user nulls ALL their transactions.
+- `source_id` resolves to **no post and no reply**; both author-exists flags false.
+- **12 of the 14 share ONE `source_id`** (`c8c8bd47-…`) — twelve upvotes on a single post
+  over ~16 hours, 16–20 June. Same window as the 459 seeded `social_posts` and the CSV
+  feedback import.
+
+**How null rows were written despite the `if (authorId && authorId !== userId)` guard:**
+they were not. A repo-wide sweep confirms **only three writers of `point_transactions`,
+all inside `pointsService.ts`** (`awardPoints`, `deductPoints`, `directAwardPoints`) — no
+script, no migration writes it directly. The rows were written with a REAL authorId; the
+`user_id` was nulled LATER by `ON DELETE SET NULL` (migration 031) when those seeded
+author accounts were erased.
+
+That also explains why only upvotes are null: the seeded posts were inserted directly into
+`community_posts`, bypassing the API, so their authors never earned `community_post`
+points. Upvotes received were their only transactions.
+
+**The 28-point `ledger_net` (1016) vs `balance_total` (988) gap is fully explained** and is
+correct behaviour: `user_points` CASCADEs on delete, `point_transactions` SET NULLs, so
+the audit trail outlives the erased balance by design. **Nothing owed. No live path can
+write a null-user row.** The 14 rows are KEPT — anonymised money history is exactly what
+SET NULL is for.
+
+---
+
+## ⚠️ OPEN — anti-gaming checks do NOT gate base points or challenges
+
+`recordContribution` (contributionPipeline) runs a **velocity check** (flags
+`velocity_abuse`, silently drops), a **duplicate-content check** (`duplicate_farming`) and
+an **authenticity floor** (<20 flags `low_effort_pattern`).
+
+🔴 **`feedback/submit:380` calls `awardPoints` DIRECTLY**, before and independently of that
+pipeline. So those checks gate the **AI quality bonus only** — base points and challenge
+progress fire even for content the pipeline would reject as duplicate or velocity abuse.
+
+⚠️ **Not a simple call move.** `recordContribution` returns early and silently on
+violation, so routing base awards through it means a legitimate-but-fast user gets **no
+points and no explanation** — currently they at least get base points. That needs a
+user-visible failure mode designed. It also touches the highest-traffic path in the
+product and should stay independently revertable.

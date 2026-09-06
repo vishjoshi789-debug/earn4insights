@@ -18,6 +18,7 @@ import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+import { db } from '@/db'
 import { getUserBalance, deductPoints } from '@/server/pointsService'
 import { PAISE_PER_POINT, MINIMUM_REDEMPTION_POINTS } from '@/lib/points/rate'
 import {
@@ -129,33 +130,60 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Deduct points (atomic balance check inside deductPoints) ──
-    const deducted = await deductPoints(
-      consumerId,
-      points,
-      'reward_redemption',
-      undefined,
-      `Redeemed ${points} points for ${redemptionType}`
-    )
-    if (!deducted) {
+    // ── Deduct points AND record the redemption in ONE transaction ──
+    //
+    // ⚠️ These were two independent writes. deductPoints was internally
+    // transactional, so the deduction committed on its own — and if
+    // createRedemption then threw, the catch below returned a 500 with the
+    // points already gone and NOTHING recording what the user redeemed. The
+    // user sees an error, their balance is lower, and there is no row to
+    // reconcile against or refund from.
+    //
+    // Both now share one commit boundary: either the balance moves and the
+    // record exists, or neither happened.
+    //
+    // ⚠️ insufficientBalance is returned as a VALUE rather than thrown. A
+    // throw would roll back correctly but land in the generic catch as a 500,
+    // turning "you don't have enough points" into "the server broke".
+    // ⚠️ The result is RETURNED from the transaction rather than assigned to an
+    // outer `let`. TypeScript's control-flow analysis does not track
+    // assignments made inside a closure, so a `let redemption: T | null = null`
+    // written to in the callback still reads as `null` afterwards and any
+    // property access on it is an error on type `never`. Returning the value
+    // keeps the narrowing honest and removes the mutable outer state.
+    const outcome = await db.transaction(async (tx) => {
+      const deducted = await deductPoints(
+        consumerId,
+        points,
+        'reward_redemption',
+        undefined,
+        `Redeemed ${points} points for ${redemptionType}`,
+        tx,
+      )
+      if (!deducted) return { insufficientBalance: true as const, redemption: null }
+
+      const created = await createRedemption({
+        consumerId,
+        points,
+        value: valueInPaise,
+        currency: 'INR',
+        redemptionType: redemptionType as any,
+        status: 'pending',
+        payoutId: null,
+        voucherCode: null,
+        brandId: null,
+        failureReason: null,
+        processedAt: null,
+        adminNote: null,
+      }, tx)
+
+      return { insufficientBalance: false as const, redemption: created }
+    })
+
+    if (outcome.insufficientBalance || !outcome.redemption) {
       return NextResponse.json({ error: 'Failed to deduct points — insufficient balance' }, { status: 400 })
     }
-
-    // ── Create redemption record ──────────────────────────────────
-    const redemption = await createRedemption({
-      consumerId,
-      points,
-      value: valueInPaise,
-      currency: 'INR',
-      redemptionType: redemptionType as any,
-      status: 'pending',
-      payoutId: null,
-      voucherCode: null,
-      brandId: null,
-      failureReason: null,
-      processedAt: null,
-      adminNote: null,
-    })
+    const redemption = outcome.redemption
 
     // ── For cash payout: create payout record ─────────────────────
     let payoutId: string | undefined

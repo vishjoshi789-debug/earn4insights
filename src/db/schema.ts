@@ -1012,7 +1012,13 @@ export const challenges = pgTable('challenges', {
   title: text('title').notNull(),
   description: text('description'),
   pointsReward: integer('points_reward').notNull(),
-  targetCount: integer('target_count').notNull().default(1), // e.g. submit 5 feedbacks
+  // ⚠️ NO DEFAULT, MINIMUM 2 (migration 039). This defaulted to 1, and
+  // advanceChallenges tests `1 >= targetCount` — so any challenge created
+  // without an explicit target completed on the user's FIRST action. A new
+  // account took 550 points for one feedback submission, and challenges became
+  // 77% of all points ever awarded. A challenge completable in one action is a
+  // signup bonus, not a challenge. Inserts must now state the target.
+  targetCount: integer('target_count').notNull(), // e.g. submit 5 feedbacks; >= 2
   sourceType: text('source_type').notNull(),  // 'feedback' | 'survey' | 'community_post' | 'community_reply'
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
