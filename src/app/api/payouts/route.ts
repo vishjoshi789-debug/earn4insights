@@ -5,7 +5,8 @@ import { isAdminSession } from '@/lib/auth/roles'
 import { db } from '@/db'
 import { payoutRequests, users, userReputation } from '@/db/schema'
 import { eq, desc, sql } from 'drizzle-orm'
-import { getUserBalance, deductPoints, POINTS_PER_DOLLAR } from '@/server/pointsService'
+import { getUserBalance, deductPoints } from '@/server/pointsService'
+import { PAISE_PER_POINT, MINIMUM_REDEMPTION_POINTS } from '@/lib/points/rate'
 
 // GET /api/payouts — list payout requests (consumers see own, ADMINS see all)
 export async function GET() {
@@ -87,11 +88,19 @@ export async function POST(req: NextRequest) {
     }
 
     const { points } = await req.json()
-    if (!points || points < 500) {
-      return NextResponse.json({ error: 'Minimum payout is 500 points ($5)' }, { status: 400 })
+    if (!points || points < MINIMUM_REDEMPTION_POINTS) {
+      return NextResponse.json({ error: 'Minimum payout is 500 points (₹50)' }, { status: 400 })
     }
 
-    const amount = (points / POINTS_PER_DOLLAR).toFixed(2)
+    // ⚠️ ₹ NOT $. This computed `points / POINTS_PER_DOLLAR` — 100 points = $1
+    // — while /api/consumer/rewards/redeem paid 10 paise per point for the
+    // same points. An ~8x difference decided only by which screen the consumer
+    // used. Single rate now lives in lib/points/rate.
+    //
+    // `payout_requests.amount` is a decimal column commented "USD"; it is now
+    // RUPEES. The two pre-existing rows were recorded under the old rate — see
+    // the recompute note in SESSION_RESUME.
+    const amount = (points * PAISE_PER_POINT / 100).toFixed(2)
 
     // Deduct points
     const success = await deductPoints(
@@ -99,7 +108,7 @@ export async function POST(req: NextRequest) {
       points,
       'payout',
       undefined,
-      `Payout request: $${amount}`,
+      `Payout request: ₹${amount}`,
     )
 
     if (!success) {

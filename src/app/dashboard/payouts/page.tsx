@@ -1,5 +1,6 @@
 'use client';
 
+import { POINTS_TO_RUPEES } from '@/lib/points/rate'
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -141,7 +142,7 @@ export default function PayoutsPage() {
   }
 
   const requestedPoints = Number(payoutPoints || 0);
-  const requestedAmount = Number.isFinite(requestedPoints) ? (requestedPoints / 100).toFixed(2) : '0.00';
+  const requestedAmount = Number.isFinite(requestedPoints) ? (requestedPoints * POINTS_TO_RUPEES).toFixed(2) : '0.00';
 
   return (
     <div className="space-y-6">
@@ -153,7 +154,7 @@ export default function PayoutsPage() {
         <p className="text-muted-foreground">
           {isBrand
             ? 'Review and manage user payout requests'
-            : 'Redeem your earned survey points for cash (100 points = $1)'}
+            : 'Redeem your earned points for cash (10 points = ₹1)'}
         </p>
       </div>
 
@@ -168,10 +169,14 @@ export default function PayoutsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Current balance: <strong>{balance.toLocaleString()} pts</strong> &middot; Min payout: 500 pts ($5)
+              Current balance: <strong>{balance.toLocaleString()} pts</strong> &middot; Min payout: 500 pts (₹50)
             </p>
             <p className="text-sm text-muted-foreground">
-              Available cash-out value: <strong>${(balance / 100).toFixed(2)} USD</strong>
+              {/* ⚠️ ₹, not $. This page advertised "100 points = $1" and computed
+                  `balance / 100` as USD, while /dashboard/rewards showed ₹0.10 per
+                  point for the same balance — the two consumer screens quoted
+                  values ~8x apart. Both now read the single PAISE_PER_POINT rate. */}
+              Available cash-out value: <strong>₹{(balance * POINTS_TO_RUPEES).toFixed(2)}</strong>
             </p>
             <div className="flex gap-3">
               <Input
@@ -189,7 +194,7 @@ export default function PayoutsPage() {
                 disabled={requesting || !payoutPoints || !Number.isInteger(requestedPoints) || requestedPoints < 500 || requestedPoints > balance}
               >
                 {requesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Request ${payoutPoints ? requestedAmount : '0.00'}
+                Request ₹{payoutPoints ? requestedAmount : '0.00'}
               </Button>
             </div>
           </CardContent>
@@ -224,7 +229,7 @@ export default function PayoutsPage() {
 
                 <div className="flex justify-between items-center">
                   <div>
-                    <p className="font-medium">${request.amount} USD</p>
+                    <p className="font-medium">₹{request.amount}</p>
                     <p className="text-sm text-muted-foreground">{request.points} points</p>
                   </div>
 
