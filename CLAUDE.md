@@ -240,9 +240,21 @@ Shipped in v17:
 **v17 open — mostly console/verification, not code:**
 - ⚠️ **Nothing is browser-verified.** Local login now works (`AUTH_URL` fixed), so this is finally cheap.
 - **Resend webhook + `RESEND_WEBHOOK_SECRET` not yet configured** → email delivery is still blind.
-- **Preview environment not built** → blocks the payment rehearsal, the ledger fix, and mobile capture testing.
-- **Payment ledger still unfixed** — highest-severity item; design-first (campaign vs milestone granularity + `escrowForMilestone` reconciliation), blocked on preview.
+- ✅ **CLOSED in v18 — preview environment built, and the payment ledger is FIXED.** Both items below are historical; see §6 v18. Do not re-open them from this list.
 - **Auth-absorbing pass + closing the `cronSecret &&` fail-open** — queued as one security-shaped change.
+
+**Previous (v18): THE PAYMENT LEDGER — FIXED, REHEARSED, AND GUARDED.** The item that had been "highest-severity, blocked on preview" through three doc revisions. Four commits:
+
+- `a86345f` **write the ledger** — `campaign_payments` now has a real writer. `createOrder` in `razorpayService` writes the row at order creation with `status:'pending'`; capture or the Razorpay webhook claims it to `'escrowed'`, whichever wins. **That is the ONLY writer**, and money has provably moved before it reads `'escrowed'`.
+- `24da642` **pay every milestone, not just the first** — campaign-level release.
+- `2a9d48a` **release UI gated on brand-approved work.**
+- `e1dc598` **ledger invariant guard** in `sync-razorpay-status` — a 500 on violation is load-bearing, not noise.
+
+⚠️⚠️ **`escrowForMilestone()` WAS DELETED (Phase 1) AND THIS DID NOT REMOVE ESCROW.** Escrow is Razorpay holding funds **plus** a `campaign_payments` row recording the hold; both exist, and the second started working in this same change. What was deleted was a pre-Razorpay artifact with three defects: it wrote `status:'escrowed'` **with no money having moved** (worse than an empty table, because an empty table is honestly empty), it never set `influencerAmount` (the column `process-payouts` actually pays from, so its rows produced NULL payouts), and it computed fees from `campaign.platformFeePct` while `createOrder` uses `FEE_SCHEDULE` — two disagreeing sources of truth for one number. Full reasoning is in-code at `campaignPaymentService.ts:143`. **Do not "restore" it.**
+
+Verified end-to-end on preview: `campaign_payment_id c1819e0a-…`, 53640 net, second run returning `processed: 0` (the dedup holding). Migration **038** links `influencer_payouts` to `campaign_payments` with a self-limiting backfill — without it the new dedup would have **re-paid** unlinked rows.
+
+⚠️ **Doc-drift lesson, recorded because it cost real credibility.** §6 and §11 continued to state "payment ledger still unfixed — highest-severity item" for the whole session *after* it was fixed, and that stale line was repeated back to the founder as current fact while advising on a startup-competition submission — nearly under-claiming a working capability in a public application. **CLAUDE.md is a snapshot, not an oracle: trace a caller before repeating any status claim from it, including this one.** The codebase's own §5 ignition-key rule applies to the docs describing it.
 
 **Previous (v16):** **Feedback identity + the resolution loop — COMPLETE and VERIFIED IN PRODUCTION** (`ffe606b`→`1f22751`). Closes step 4 of the "real-time three-way connection": submit → brand notified → brand acts → **the consumer finds out**. Steps 1–3 were already built; step 4 had no event, no handler and no trigger.
 
@@ -268,8 +280,8 @@ Shipped in v15:
 
 Shipped this wave: middleware revival (moved to `src/middleware.ts`, Edge-safe auth/CSRF split, **CSRF enforced on prod**); security batch B1–B9; money + data integrity (migrations 029/030/031 — money CHECKs + FK on-delete GDPR policy + `process-deletions` rewrite); `ADMIN_API_KEY` + `CRON_SECRET` rotation; admin 2FA recovery + prod 2FA interlock verified; brand-flow fixes (survey product picker, GSTIN field errors, product double-submit guard); survey lifecycle (live-on-create). A9 (influencer verification) was the final Tier A item.
 
-**Pre-beta HARD GATES still in force:**
-- **Payment ledger** — campaign-level Razorpay pay creates no `campaign_payments` row; fix deferred to post-launch week-1, **gated**. App is on **LIVE** Razorpay keys (`rzp_live_`) with no test env — **no real brand payment until the ledger fix ships AND an end-to-end rehearsal passes**. (Detail in `SESSION_RESUME.md`.)
+**Pre-beta HARD GATES — ledger gate LIFTED in v18:**
+- ✅ **Payment ledger — FIXED AND REHEARSED (v18).** Campaign-level Razorpay pay used to create no `campaign_payments` row. `createOrder` is now the single writer (`status:'pending'` at order creation), claimed to `'escrowed'` by capture or the webhook, whichever wins. Verified end-to-end on preview. The gate that required "ledger fix ships AND an end-to-end rehearsal passes" is **satisfied**. ⚠️ `PAYMENTS_ENABLED` remains OFF by default — that is now a deliberate go-live switch, no longer a block on unfinished work.
 
 **Beta-launch open items (non-blocking):**
 - **Survey Pause/Activate toggle (Tier-B)** — `toggleSurveyActive` exists, no UI caller (see §11)
@@ -454,7 +466,7 @@ Sub-daily crons (e.g. `publish-scheduled-launches` at 15-min cadence) are driven
 
 **🔴 Nothing from v17 is browser-verified.** Not the preference toggles, survey pause, summary scope fix, payment gate, or the `?highlight=` deep link. Local login works now (`AUTH_URL` fixed), so this is cheap — and it is the single largest confidence gap.
 
-**Blocked on the preview environment** (not built): the payment rehearsal, the **payment-ledger fix** (highest-severity item overall), and mobile capture testing. 🔴 **`.env.local` still points at the PRODUCTION database with LIVE Razorpay + live Resend keys** — local dev is production with a different frontend; repoint it the moment a preview branch exists.
+✅ **CLOSED IN v18 — the preview environment is built and the payment-ledger fix shipped and was rehearsed on it.** This paragraph previously listed both as the highest-severity open items; they are done. Mobile capture testing remains outstanding. 🔴 **`.env.local` may still point at the PRODUCTION database with LIVE Razorpay + live Resend keys** — verify and repoint it at the preview branch.
 
 **Queued as one security-shaped change:** absorb the duplicated cron auth into `withCronRun` **and** close the `cronSecret &&` fail-open (24 routes publicly triggerable if the secret is unset, **including account deletion**).
 
