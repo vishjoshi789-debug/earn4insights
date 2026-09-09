@@ -3711,3 +3711,61 @@ progress -50 (~₹5). No completion reversed, no awarded point moved.
   production-only, undocumented and unreproducible; preview has 0 rows. Any
   new row must now supply `target_count` explicitly (>= 2), and `overCap` in
   the 040 route is the only thing that would surface a future violation.
+
+---
+
+## ✅ RESOLVED (2026-09-09) — the 849 points were NEVER LOST
+
+`payment_redemptions` **contains the row** (`points = 849`). Confirmed by
+founder query on the `main` branch.
+
+**Finding 2 was a MISDIAGNOSIS caused entirely by the two-tables naming
+defect**, not a data loss. The investigation queried `reward_redemptions`
+(0 rows) for a deduction whose source string was `reward_redemption` — which
+belongs to the OTHER table. Nothing vanished; nothing extra is owed beyond the
+₹84.90 that redemption represents, which the founder had already decided to
+honour.
+
+⚠️ **The transactional fix (`3b47eea`) was still correct and still needed.**
+It closed a LATENT risk, not an observed loss: the deduction and the record
+were two independent writes and could still have diverged — they simply had
+not yet. Do not read "nothing was lost" as "the fix was unnecessary."
+
+**This is the strongest possible argument for renaming the tables.** The naming
+cost a full investigation, produced a wrong conclusion about lost user money,
+and that wrong conclusion was carried into analysis and nearly into a
+compensation decision. It will do the same to the next person.
+
+### 🔴 NEW FINDING — no redemption queue can actually be actioned
+
+Tracing how to FULFIL the pending ₹84.90 found that it cannot be done through
+the product at all:
+
+| queue | can list? | can pay? |
+|---|---|---|
+| `payout_requests` | no admin UI (`/admin/payouts` reads a different table) | approval writes status only, moves NO money |
+| `influencer_payouts` | `/admin/payouts` ✓ | `RAZORPAYX_ENABLED` is an unimplemented build-time constant |
+| `payment_redemptions` | **no UI at all** | **`updateRedemptionStatus` has ZERO callers** |
+
+`getPendingRedemptions()` is called only by the redeem route itself, for its
+duplicate check — never to display a queue.
+
+**So every consumer-facing money path ends in a row nobody can action.** Points
+leave the balance, a record is written, and there the money stops. This is the
+ignition-key pattern (§5) applied to the payout surface: complete-looking
+machinery with no operator.
+
+⚠️ At current volume (2 payout requests + 1 redemption, ~₹229 total) the manual
+path is entirely viable and the urgency is the RECORD, not the automation. But
+this must be built before any consumer-facing launch, or the platform will
+accrue redemption liabilities it has no mechanism to discharge.
+
+**To fulfil the ₹84.90 today:** pay the consumer manually (UPI/bank), then in
+the Neon console:
+
+```sql
+UPDATE payment_redemptions
+   SET status = 'completed', processed_at = now(),
+       admin_note = 'Paid manually — no admin UI exists (see SESSION_RESUME)'
+ WHERE id = '<the redemption id>';
+```
