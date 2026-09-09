@@ -3631,3 +3631,83 @@ violation, so routing base awards through it means a legitimate-but-fast user ge
 points and no explanation** — currently they at least get base points. That needs a
 user-visible failure mode designed. It also touches the highest-traffic path in the
 product and should stay independently revertable.
+
+---
+
+## ✅ APPLIED IN PRODUCTION (2026-09-09) — migrations 039 + 040, challenge vector CLOSED
+
+Applied via the **Neon console** on the `main` branch, not the routes (the
+routes exist and are deployed for repeatability; the console was used because
+the `ADMIN_API_KEY` in `.env.local` is stale and the Neon path avoids the
+deploy-timing ambiguity). Founder ran all steps and confirmed the verification
+output matched the expected table. **Both the over-cap check and the final
+state were verified by the founder; this session did not see the raw output —
+Neon has been unreachable from the dev machine throughout.**
+
+**The vector is closed by TWO independent layers, and it needed both:**
+
+1. **Code** (`9879fee`, deployed to production and preview) — one action
+   advances exactly ONE challenge, lowest-progress first with a deterministic
+   id tiebreak. Removes the *multiplier*.
+2. **Data** (039 + 040) — `target_count >= 2` enforced by CHECK with no
+   default, so no challenge can complete on a single action. Removes the
+   *auto-completion*.
+
+⚠️ **Neither alone was sufficient.** With only the code fix, a new account
+still auto-completed ONE challenge on its first submission (500 points instead
+of 700). With only the data fix, a user would still finish multiple challenges
+simultaneously once they hit the targets.
+
+**Final state — five active challenges, all at exactly 0.8x base:**
+
+| title | source | target | reward | per action | base |
+|---|---|---|---|---|---|
+| Survey Champion | survey | 3 | 120 | 40 | 50 |
+| Feedback Starter *(was Video Reviewer, 1/500)* | feedback | 3 | 60 | 20 | 25 |
+| Feedback Regular *(was Photo Reviewer, 5/150)* | feedback | 5 | 100 | 20 | 25 |
+| Community Starter | community_post | 3 | 24 | 8 | 10 |
+| Active Participant | community_reply | 10 | 40 | 4 | 5 |
+| First Feedback | — | — | — | **is_active = false** | — |
+
+A new account's first feedback now earns **25 + media bonus + AI bonus**, not
+550. A user completing all five earns **344 points (~₹34.40), once.**
+
+⚠️ **The rename did NOT make the behaviour media-specific.** `sourceTypeMap`
+still collapses every submission to `'feedback'`, so no challenge can
+distinguish video from photo from text. The names are now HONEST rather than
+enforceable — "Video Reviewer" was paying 500 points for feedback that need
+never have contained video. Making it real means emitting
+`feedback_video`/`feedback_photo` from `modalityPrimary`, which changes the
+awarding path. **Not done. Do not assume the new names imply enforcement.**
+
+**The 77% figure was VERIFIED, not estimated** — `challenge_complete` was
+2,560 of 3,306 total credits (12 txns, 4 users) against `feedback_submit` 475
+(19 txns). ⚠️ It originally reached this session as a founder-supplied number
+that was repeated and built upon **before** being verified; the later query
+happened to confirm it. Being right does not make relaying it right — ask for
+the query output first.
+
+⚠️ **A related premise was WRONG and nearly changed the design:**
+`user_challenge_progress` was reported as empty. It has **15 rows, 12
+completed, 4 users** — the 0-row reading came from the preview branch, which
+has no challenges. `completed_rows = 12` matches `challenge_complete txns = 12`
+exactly, confirming the mechanism works as designed. **Always confirm which
+Neon branch a query ran against before drawing a conclusion from it.**
+
+**In-progress impact, measured before applying:** 3 rows, **no target raised**
+(5->5, 5->5, 3->3), so no goalposts moved — only unearned future rewards
+shrank: the founder's own account -130 points, one external user at 1/5
+progress -50 (~₹5). No completion reversed, no awarded point moved.
+
+### Still open on challenge economics
+- **Media incentive is the wrong lever today.** Only **6 of 19** submissions
+  carried any media (`media_bonus` = 75 points total). To get richer feedback,
+  raise the MEDIA BONUS (audio +20, video +20, image +5) — it fires on actual
+  media presence and scales with value delivered. Challenge rewards are
+  one-time-per-user, so they are pure **acquisition** cost, paid before any
+  brand pays us: ~₹34.40 x every consumer who ever joins.
+- **`challenges` rows are hand-inserted.** Nothing in the codebase creates
+  them — no seed script, no admin route, no migration. The configuration is
+  production-only, undocumented and unreproducible; preview has 0 rows. Any
+  new row must now supply `target_count` explicitly (>= 2), and `overCap` in
+  the 040 route is the only thing that would surface a future violation.
