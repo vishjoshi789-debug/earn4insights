@@ -10,6 +10,7 @@ import {
   type NewInfluencerPayout,
 } from '@/db/schema'
 import { eq, and, desc, sql, lt } from 'drizzle-orm'
+import type { DbTx } from '@/db/tx'
 
 // ═══════════════════════════════════════════════════════════════════
 // RAZORPAY ORDERS
@@ -94,9 +95,16 @@ export async function updatePayoutStatus(
     'status' | 'razorpayPayoutId' | 'wiseTransferId' |
     'failureReason' | 'retryCount' | 'initiatedAt' |
     'completedAt' | 'adminNote' | 'processedBy'
-  >>
+  >>,
+  /**
+   * ⚠️ Pass the caller's transaction when a linked `payment_redemptions` row
+   * must move with this one. A consumer cash redemption writes BOTH rows, and
+   * completing the payout without closing the redemption is exactly the drift
+   * that left a paid redemption reading 'pending' forever.
+   */
+  tx?: DbTx,
 ): Promise<InfluencerPayout> {
-  const [updated] = await db
+  const [updated] = await (tx ?? db)
     .update(influencerPayouts)
     .set({ ...updates, updatedAt: new Date() })
     .where(eq(influencerPayouts.id, id))

@@ -19,6 +19,11 @@
 
 import 'server-only'
 
+import { db } from '@/db'
+import {
+  getRedemptionByPayoutId,
+  updateRedemptionStatus,
+} from '@/db/repositories/rewardRedemptionRepository'
 import { logDataAccess } from '@/lib/audit-log'
 import { emit, PLATFORM_EVENTS } from '@/server/eventBus'
 import {
@@ -331,12 +336,41 @@ export async function markPayoutCompleted(
     throw new Error('Can only complete pending or processing payouts')
   }
 
-  await updatePayoutStatus(payoutId, {
-    status: 'completed',
-    completedAt: new Date(),
-    processedBy: adminId,
-    wiseTransferId: transferReference ?? null,
-    adminNote: note ?? null,
+  // ⚠️ THE PAYOUT AND THE REDEMPTION IT SATISFIES MOVE TOGETHER.
+  //
+  // A consumer cash redemption writes TWO rows: `payment_redemptions` (status
+  // 'pending') and this `influencer_payouts` row, linked by `payout_id`. This
+  // function used to update only the payout — so an admin could pay a consumer,
+  // mark the payout completed, and the redemption would sit at 'pending'
+  // FOREVER. The consumer's own redemption history showed "pending" for money
+  // they had already received, and `updateRedemptionStatus` had zero callers
+  // anywhere in the codebase: the completion path existed but stopped one
+  // table short.
+  //
+  // One transaction, because doing it as two writes reintroduces exactly the
+  // drift being fixed — just less often, which is worse than never, since a
+  // rare inconsistency is the one nobody goes looking for.
+  await db.transaction(async (tx) => {
+    await updatePayoutStatus(payoutId, {
+      status: 'completed',
+      completedAt: new Date(),
+      processedBy: adminId,
+      wiseTransferId: transferReference ?? null,
+      adminNote: note ?? null,
+    }, tx)
+
+    // Null for campaign/influencer payouts — they have no redemption behind
+    // them. A normal case, not an error, so this is a silent skip.
+    const redemption = await getRedemptionByPayoutId(payoutId, tx)
+    if (redemption && redemption.status !== 'completed') {
+      await updateRedemptionStatus(redemption.id, {
+        status: 'completed',
+        processedAt: new Date(),
+        adminNote: transferReference
+          ? `Paid — transfer ref ${transferReference}`
+          : (note ?? 'Paid by admin'),
+      }, tx)
+    }
   })
 
   await logDataAccess({
@@ -376,10 +410,24 @@ export async function markPayoutFailed(
     throw new Error('Cannot mark a completed payout as failed')
   }
 
-  await updatePayoutStatus(payoutId, {
-    status: 'failed',
-    failureReason: reason,
-    processedBy: adminId,
+  // Same pairing as completion — a failed payout must not leave its redemption
+  // reading 'pending', or the consumer sees an in-flight redemption that will
+  // never move and support has nothing to explain it with.
+  await db.transaction(async (tx) => {
+    await updatePayoutStatus(payoutId, {
+      status: 'failed',
+      failureReason: reason,
+      processedBy: adminId,
+    }, tx)
+
+    const redemption = await getRedemptionByPayoutId(payoutId, tx)
+    if (redemption && redemption.status !== 'completed') {
+      await updateRedemptionStatus(redemption.id, {
+        status: 'failed',
+        failureReason: reason,
+        processedAt: new Date(),
+      }, tx)
+    }
   })
 
   await logDataAccess({
