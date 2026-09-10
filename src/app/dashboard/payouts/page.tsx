@@ -10,6 +10,37 @@ import { Input } from '@/components/ui/input';
 import { Loader2, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiPost, apiPatch } from '@/lib/api-client';
+import { getSupportedCurrencies } from '@/lib/currency';
+import {
+  AddAccountForm, EMPTY_FORM, type PayoutAccountForm,
+} from '@/components/payouts/AddAccountForm';
+import { Wallet, Plus, CheckCircle2, AlertTriangle } from 'lucide-react';
+
+/**
+ * ⚠️ THE ACCOUNT SECTION BELOW IS NOT A NICETY — IT CLOSES A BROKEN CIRCUIT.
+ *
+ * This page deducts a consumer's points the moment they request a cash-out,
+ * but the only form for adding the payout account needed to RECEIVE that money
+ * lived on /dashboard/influencer/payouts, behind an influencer-only layout
+ * guard. So a pure consumer could spend their points on a payout that could
+ * never be paid, and had no way to fix it from anywhere in the product.
+ *
+ * The API always allowed it (/api/payouts/accounts — "any authenticated role").
+ * Only the UI was missing.
+ */
+
+type PayoutAccountRow = {
+  id: string;
+  accountType: string;
+  currency: string;
+  isPrimary: boolean;
+  isVerified: boolean;
+  upiId?: string | null;
+  paypalEmail?: string | null;
+  wiseEmail?: string | null;
+  bankName?: string | null;
+  accountNumberMasked?: string | null;
+};
 
 type PayoutRow = {
   id: string;
@@ -35,6 +66,42 @@ export default function PayoutsPage() {
   const [processing, setProcessing] = useState<string | null>(null);
   const [payoutPoints, setPayoutPoints] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // ── Payout accounts ────────────────────────────────────────────
+  const [accounts, setAccounts] = useState<PayoutAccountRow[]>([]);
+  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [accountForm, setAccountForm] = useState<PayoutAccountForm>({ ...EMPTY_FORM });
+  const [addingAccount, setAddingAccount] = useState(false);
+  const currencies = getSupportedCurrencies();
+
+  const loadAccounts = useCallback(async () => {
+    if (status !== 'authenticated') return;
+    try {
+      const res = await fetch('/api/payouts/accounts');
+      const data = await res.json();
+      if (res.ok) setAccounts(data.accounts || []);
+    } catch {
+      // Non-fatal: the cash-out flow still works, the section just shows empty.
+    }
+  }, [status]);
+
+  const handleAddAccount = async () => {
+    if (!accountForm.accountType) return;
+    setAddingAccount(true);
+    try {
+      const res = await apiPost('/api/payouts/accounts', { ...accountForm });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add account');
+      toast.success('Payout account added');
+      setAccountForm({ ...EMPTY_FORM });
+      setShowAddAccount(false);
+      await loadAccounts();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add account');
+    } finally {
+      setAddingAccount(false);
+    }
+  };
 
   const loadPayouts = useCallback(async () => {
     if (status !== 'authenticated') {
@@ -64,10 +131,11 @@ export default function PayoutsPage() {
   useEffect(() => {
     if (status === 'authenticated') {
       void loadPayouts();
+      void loadAccounts();
     } else if (status === 'unauthenticated') {
       setLoading(false);
     }
-  }, [loadPayouts, status]);
+  }, [loadPayouts, loadAccounts, status]);
 
   const handleRequestPayout = async () => {
     const pts = Number(payoutPoints);
@@ -157,6 +225,70 @@ export default function PayoutsPage() {
             : 'Redeem your earned points for cash (10 points = ₹1)'}
         </p>
       </div>
+
+      {/* PAYOUT ACCOUNTS — where the money will actually go.
+          Rendered ABOVE the request form deliberately: requesting a cash-out
+          with no account on file produces a request nobody can pay, which is
+          precisely the state two real consumers are stuck in. */}
+      {!isBrand && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Wallet className="h-4 w-4" />
+              Payout Accounts
+            </CardTitle>
+            <Button variant="outline" size="sm" onClick={() => setShowAddAccount(v => !v)}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              {showAddAccount ? 'Cancel' : 'Add Account'}
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {accounts.length === 0 && !showAddAccount && (
+              <div className="flex gap-3 rounded-md border border-amber-800 bg-amber-950/40 p-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-amber-200">No payout account yet</p>
+                  <p className="text-amber-200/80">
+                    Add one before cashing out — without it we have nowhere to send your money,
+                    and your request cannot be paid.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {accounts.map(acc => (
+              <div key={acc.id} className="flex items-center justify-between rounded-md bg-background/40 p-3">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">
+                    {acc.accountType === 'upi' ? `UPI: ${acc.upiId ?? '—'}`
+                      : acc.accountType === 'paypal' ? `PayPal: ${acc.paypalEmail ?? '—'}`
+                      : acc.accountType === 'wise' ? `Wise: ${acc.wiseEmail ?? '—'}`
+                      : [acc.bankName, acc.accountNumberMasked].filter(Boolean).join(' ') || acc.accountType}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{acc.currency}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {acc.isPrimary && (
+                    <Badge variant="outline" className="border-emerald-700 text-emerald-400">
+                      <CheckCircle2 className="mr-1 h-3 w-3" />Primary
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {showAddAccount && (
+              <AddAccountForm
+                form={accountForm}
+                setForm={setAccountForm}
+                currencies={currencies}
+                onSubmit={handleAddAccount}
+                submitting={addingAccount}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* REQUEST PAYOUT (consumer only) */}
       {!isBrand && (
