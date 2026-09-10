@@ -246,7 +246,16 @@ export default function AdminPayoutRequestsPage() {
                     Approve
                   </Button>
                 )}
-                <Button disabled={busy === r.id || !r.account}
+                {/* ⚠️ NOT disabled when the account is missing. This button
+                    RECORDS a payment you already made; it does not send one.
+                    Gating it on an account on file prevented logging a
+                    transfer arranged out-of-band (over email, a different
+                    channel) — which blocks the record from matching reality,
+                    the exact failure this queue exists to fix. The account is
+                    guidance for WHERE to send, not a precondition for having
+                    sent. The required transaction reference is the real
+                    control. */}
+                <Button disabled={busy === r.id}
                   onClick={() => { setPayTarget(r); setPayReference('') }}>
                   Mark Paid
                 </Button>
@@ -288,9 +297,17 @@ export default function AdminPayoutRequestsPage() {
             <p className="text-sm text-muted-foreground">
               Confirm you have already sent{' '}
               <strong className="text-foreground">₹{payTarget?.amount}</strong> to{' '}
-              <strong className="text-foreground">{accountLabel(payTarget?.account ?? null) ?? 'the consumer'}</strong>.
+              <strong className="text-foreground">{accountLabel(payTarget?.account ?? null) ?? 'this consumer'}</strong>.
               This records the payment; it does not send it.
             </p>
+            {/* Says why there is no account rather than blocking — an
+                out-of-band transfer is legitimate and must still be loggable. */}
+            {!payTarget?.account && (
+              <p className="rounded-md border border-amber-800 bg-amber-950/40 p-2.5 text-xs text-amber-200">
+                No payout account is on file for this consumer. Only record this if you
+                arranged the transfer another way — put that channel&apos;s reference below.
+              </p>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="ref">Transaction reference <span className="text-red-400">*</span></Label>
               <Input id="ref" value={payReference} placeholder="UTR / UPI transaction id"
