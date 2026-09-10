@@ -3769,3 +3769,141 @@ UPDATE payment_redemptions
        admin_note = 'Paid manually — no admin UI exists (see SESSION_RESUME)'
  WHERE id = '<the redemption id>';
 ```
+
+---
+
+# 💸 THE PAYOUT SURFACE — three fixes, two naming traps, one broken circuit (2026-09-10)
+
+Grew out of trying to actually PAY two real consumers with pending requests.
+Every defect below was found by attempting the operation, not by reading code.
+
+## ✅ SHIPPED
+
+| commit | what |
+|---|---|
+| `4a17e54` | completing a payout closes the redemption it satisfies (one tx) |
+| `dabfff7` | `/admin/payout-requests` — the consumer payout queue + migration 041 |
+| `59056a6` | Mark Paid works without an account on file |
+| `70ad296` | consumers can add a payout account themselves |
+| `0b24cec` | one shared `AddAccountForm` — duplicate removed |
+
+## 🔴 THE BROKEN CIRCUIT — consumers could spend points they could never receive
+
+`/dashboard/payouts` deducts points the moment a consumer requests a cash-out.
+The only form for adding the payout account needed to RECEIVE that money lived
+on `/dashboard/influencer/payouts`, behind an **influencer-only layout guard**.
+
+So a pure consumer could spend their points on a payout that could never be
+paid, with no way to fix it from anywhere in the product. Two real consumers
+were sitting in that state.
+
+⚠️ **The API was never the problem.** `/api/payouts/accounts` documents itself
+as *"any authenticated role (influencer, consumer, brand)"* and writes
+`userRole 'influencer' | 'consumer'`. It accepted consumers all along — only
+the UI was missing. **This is why it read as a missing feature rather than a
+broken circuit, and why "no page, no API" was stated twice and was wrong both
+times. Check the API's own auth line before concluding a capability is absent.**
+
+## 🔴 TWO TABLE-NAMING TRAPS — both cost real investigation time
+
+**1. `reward_redemptions` vs `payment_redemptions`** — see the earlier record.
+A 849-point deduction was diagnosed as vanished money; the row was in the other
+table. **Resolved: nothing was lost.**
+
+**2. `payoutAccounts` (Drizzle) → `influencer_payout_accounts` (Postgres)**, and
+it holds CONSUMER accounts too, distinguished by `user_role`. A query written
+against the code-side name errors; a reader assuming it is influencer-only
+draws the wrong conclusion about consumer capability. Same class as #1.
+
+**Rule: before writing SQL against a table, check `pgTable('<real name>')` in
+schema.ts. The Drizzle export name is not the table name.**
+
+## ⚖️ THE $8.41 EXPECTATION GAP — founder decision recorded
+
+Both pending requests were made when `/dashboard/payouts` computed
+`points / 100` as **dollars** and the button read "Request $8.41". Those rows
+said `amount = 8.41` until they were recomputed to `84.10` after the rate
+converged to ₹0.10/point.
+
+**So both consumers believe they are owed ~8x what the record now says.**
+
+⚠️ This is distinct from the in-progress challenge rewards, where reducing an
+unearned future prize was fine. Here the consumer **pressed a button showing a
+price and the platform accepted the request** — much closer to a promise.
+Raised late; it should have been caught when the recompute was called "safe".
+
+**FOUNDER DECISION: pay ₹84.10 and ₹60.00 (the corrected INR amounts), and
+state the discrepancy plainly in the email rather than let them discover it.**
+Do not quietly reverse this.
+
+## 🌐 INTERNATIONAL PAYOUTS ARE NOT VIABLE AT THIS SIZE
+
+`g18355203@gmail.com` (Josiah) has a **SWIFT / GBP / United Kingdom** account.
+Three blockers, in order:
+
+1. **`account_holder_name` is EMPTY** — no bank will process a SWIFT transfer
+   without it. Technically impossible, not merely expensive.
+2. **₹84.10 ≈ £0.79.** SWIFT fees are £15–40. The fee is ~30x the payment.
+3. `is_verified: false`; no PayPal/Wise/UPI on file as an alternative.
+
+`payout_requests` has **no currency column** — the amount is always rupees, and
+there is no conversion logic in that path at all. Asked him to add PayPal or
+Wise instead.
+
+## ✅ UNGUARDED CONSUMER ENDPOINTS — real, but zero instances. Tripwire kept.
+
+`POST /api/payouts` and `/api/feedback/submit` have **no role check**, and
+`/dashboard/payouts` has no `layout.tsx`. The sidebar hides the link
+(`role: 'consumer'`) and nothing else enforces it — the same class as
+*"a control that only hides its own button is not a control"* (`09b2649`).
+
+**Measured before acting:** `pure_influencers_earning: 0`,
+`points_to_pure_influencers: null`. Nobody has ever exploited it. **Deliberately
+NOT closed** — guarding a case that has never occurred is the ignition-key
+pattern in reverse. Re-run the tripwire occasionally:
+
+```sql
+SELECT count(DISTINCT pt.user_id) FILTER (WHERE u.is_influencer AND NOT u.is_consumer) AS pure_influencers_earning,
+       sum(pt.amount) FILTER (WHERE u.is_influencer AND NOT u.is_consumer AND pt.amount > 0) AS points_to_pure_influencers
+FROM point_transactions pt JOIN users u ON u.id = pt.user_id WHERE pt.amount > 0;
+```
+
+Non-null means it has started; close the endpoints then.
+
+## ⚠️ MARK PAID WAS DISABLED EXACTLY WHEN NEEDED — design error, mine
+
+The admin button was gated on the consumer having a payout account. It RECORDS
+a payment already made; it does not send one. Gating it prevented logging an
+out-of-band transfer — stopping the record from matching reality, which is the
+entire purpose of the queue. **The account says WHERE to send; it is not
+evidence money was sent. The transaction reference is the real control.**
+
+## 🔧 TOOLING TRAPS HIT THIS SESSION
+
+- ⚠️ **Multiline regex on CRLF files fails SILENTLY.** Removing three
+  declarations with `\n`-based regexes matched nothing, leaving shared imports
+  AND local declarations both present (a redeclaration error) — while the line
+  count still dropped from a separate deletion, so it **looked like success**.
+  Caught by grepping for the declarations, not by trusting the count. **Use
+  line-based edits that report which lines they took.** Third form of this trap
+  after `perl`/`sed`.
+- ⚠️ **A Bash tool timeout does NOT kill the process.** Several `tsc` runs
+  accumulated to 25 minutes each, thrashing until even `date` timed out. Check
+  `ps -W | grep node` before re-running; kill by WINPID, not `taskkill /IM
+  node.exe` (which also kills the Claude session).
+- ⚠️ **`git push` output could not be trusted three times.** Once it reported
+  nothing while succeeding, once "Everything up-to-date" on the wrong branch,
+  once cut off mid-push. **Always verify with `git ls-remote origin <branch>`.**
+- ⚠️ `${PIPESTATUS[0]}` after `| head` has misreported tsc status. Redirect to
+  a file and read `$?` directly.
+
+## 📋 OPEN
+
+- **Josiah** — asked to add PayPal/Wise; pay ₹84.10 and Mark Paid with the ref.
+- **Pooran** (`pooranprasad@gmail.com`, 600 pts → ₹60.00) — can now add an
+  account himself; he does not know the blocker was ours. Email him.
+- **Voucher redemptions have no issuing flow** — 0 rows, volume-gated.
+- **`/dashboard/influencer/payouts` not re-checked after the extraction.**
+  Verified pre-extraction (all five account types render); the move itself is
+  unverified in a browser.
+- **§4, §5 and the rest of §6 of the consumer audit remain unstarted.**
