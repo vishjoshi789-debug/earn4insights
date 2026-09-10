@@ -103,6 +103,7 @@ const PUBLIC_API_ADMIN_PATHS = new Set<string>([
   '/api/admin/run-migration-038',
   '/api/admin/run-migration-039',
   '/api/admin/run-migration-040',
+  '/api/admin/run-migration-041',
   '/api/admin/env-check',
 ])
 

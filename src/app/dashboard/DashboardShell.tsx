@@ -52,6 +52,7 @@ import {
   BarChart2,
   CalendarClock,
   Timer,
+  IndianRupee,
   Banknote,
   HelpCircle,
   Lock,
@@ -189,6 +190,10 @@ const menuItems: MenuItem[] = [
   { href: '/admin/platform-analytics', label: 'Platform Analytics', icon: BarChart3, tourId: 'nav-admin-platform-analytics', role: 'admin' },
   { href: '/admin/analytics', label: 'Traffic Analytics', icon: BarChart2, tourId: 'nav-admin-analytics', role: 'admin' },
   { href: '/admin/payouts', label: 'Payout Queue', icon: Banknote, tourId: 'nav-admin-payouts', role: 'admin' },
+  // Consumer points cash-outs — a DIFFERENT table (payout_requests) from the
+  // Payout Queue above (influencer_payouts). Had no admin surface at all until
+  // now, so requests sat unreadable by anyone who could act on them.
+  { href: '/admin/payout-requests', label: 'Consumer Payouts', icon: IndianRupee, tourId: 'nav-admin-payout-requests', role: 'admin' },
   { href: '/admin/community-deals', label: 'Community Deals', icon: Flame, tourId: 'nav-admin-community-deals', role: 'admin' },
   { href: '/admin/campaigns/schedule', label: 'Campaign Schedule', icon: CalendarClock, tourId: 'nav-admin-campaign-schedule', role: 'admin' },
   { href: '/admin/campaigns/analytics', label: 'Campaign Analytics', icon: TrendingUp, tourId: 'nav-admin-campaign-analytics', role: 'admin' },
