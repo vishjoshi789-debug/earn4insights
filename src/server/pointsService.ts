@@ -1,13 +1,14 @@
 import { db } from '@/db'
 import { userPoints, pointTransactions, userChallengeProgress, challenges, auditLog } from '@/db/schema'
 import { eq, and, gte, sql, inArray } from 'drizzle-orm'
+import type { DbTx } from '@/db/tx'
 
 /**
  * A Drizzle transaction handle, derived from `db.transaction`'s own callback
  * signature rather than hand-written — so it cannot drift from the driver.
  * Lets a caller span its own writes and a points movement in one commit.
  */
-export type PointsTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+export type { DbTx as PointsTx } from '@/db/tx'
 
 // Point values for different actions
 export const POINT_VALUES = {
@@ -134,7 +135,7 @@ export async function deductPoints(
    * Reuses the handle rather than nesting, so there is one commit boundary
    * and no savepoint semantics to reason about.
    */
-  existingTx?: PointsTx,
+  existingTx?: DbTx,
 ): Promise<boolean> {
   // Defensive entry guard. A caller passing 0 or negative would
   // bypass the balance check (UPDATE x - 0 always succeeds, UPDATE
@@ -145,7 +146,7 @@ export async function deductPoints(
     throw new Error(`deductPoints: amount must be a positive integer (got ${amount})`)
   }
 
-  const run = async (tx: PointsTx): Promise<boolean> => {
+  const run = async (tx: DbTx): Promise<boolean> => {
     // ── Atomic UPDATE with inline balance guard ───────────────────
     // RETURNING gives us the new balance; the row count tells us
     // whether the guard passed (1 row) or blocked (0 rows).

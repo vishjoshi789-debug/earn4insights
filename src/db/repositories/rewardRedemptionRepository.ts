@@ -7,7 +7,7 @@ import {
   type NewPaymentRedemption,
 } from '@/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
-import type { PointsTx } from '@/server/pointsService'
+import type { DbTx } from '@/db/tx'
 
 // ── Create ───────────────────────────────────────────────────────
 
@@ -19,7 +19,7 @@ export async function createRedemption(
    * leave the balance, this insert fails, and there is no record of what the
    * user redeemed — a silent loss the user only sees as a 500.
    */
-  tx?: PointsTx,
+  tx?: DbTx,
 ): Promise<PaymentRedemption> {
   const [row] = await (tx ?? db)
     .insert(paymentRedemptions)
@@ -49,6 +49,27 @@ export async function getRedemptionsForConsumer(
     .orderBy(desc(paymentRedemptions.createdAt))
 }
 
+/**
+ * The redemption a payout was created to satisfy, if any.
+ *
+ * A consumer cash redemption writes TWO rows — this one and an
+ * `influencer_payouts` row linked by `payout_id`. Completing the payout
+ * without closing this row is the drift that left a paid redemption reading
+ * 'pending' forever. Returns null for campaign/influencer payouts, which have
+ * no redemption behind them — a normal case, not an error.
+ */
+export async function getRedemptionByPayoutId(
+  payoutId: string,
+  tx?: DbTx,
+): Promise<PaymentRedemption | null> {
+  const rows = await (tx ?? db)
+    .select()
+    .from(paymentRedemptions)
+    .where(eq(paymentRedemptions.payoutId, payoutId))
+    .limit(1)
+  return rows[0] ?? null
+}
+
 export async function getPendingRedemptions(): Promise<PaymentRedemption[]> {
   return db
     .select()
@@ -65,9 +86,11 @@ export async function updateRedemptionStatus(
     PaymentRedemption,
     'status' | 'payoutId' | 'voucherCode' | 'failureReason' |
     'processedAt' | 'adminNote'
-  >>
+  >>,
+  /** Pass the caller's transaction so this lands with the payout it mirrors. */
+  tx?: DbTx,
 ): Promise<PaymentRedemption> {
-  const [updated] = await db
+  const [updated] = await (tx ?? db)
     .update(paymentRedemptions)
     .set({ ...updates, updatedAt: new Date() })
     .where(eq(paymentRedemptions.id, id))

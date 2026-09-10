@@ -998,12 +998,28 @@ export const payoutRequests = pgTable('payout_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: text('user_id'),                    // nullable: ON DELETE SET NULL (B33)
   points: integer('points').notNull(),
-  amount: decimal('amount', { precision: 10, scale: 2 }).notNull(), // USD
-  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'denied'
+  // ⚠️ RUPEES, not USD. The comment here said USD and the route computed
+  // `points / 100` as dollars, while /api/consumer/rewards/redeem paid 10 paise
+  // per point for the same points — the same balance was worth ~8x more
+  // depending on which screen the consumer used. Converged on ₹0.10/point; the
+  // single rate lives in lib/points/rate.
+  amount: decimal('amount', { precision: 10, scale: 2 }).notNull(), // INR
+  // Migration 041 pins this vocabulary with a CHECK.
+  // 'approved' means an admin authorised it; 'paid' means the money actually
+  // left. Deliberately distinct — collapsing them would make the queue claim
+  // money had moved the instant someone clicked approve.
+  status: text('status').notNull().default('pending'), // 'pending'|'approved'|'paid'|'denied'
   requestedAt: timestamp('requested_at').defaultNow().notNull(),
   processedAt: timestamp('processed_at'),
   processedBy: text('processed_by'),          // admin user id
   note: text('note'),
+  // ⚠️ Migration 041. Both nullable with NO default — a default would assert
+  // that every existing row carries a bank reference or was paid at a known
+  // time. RUN THE MIGRATION BEFORE DEPLOYING THIS: /api/payouts does a bare
+  // db.select().from(payoutRequests) in two places, which Drizzle expands to
+  // every column here.
+  paymentReference: text('payment_reference'), // bank/UPI transaction ref
+  paidAt: timestamp('paid_at', { withTimezone: true }),
 })
 
 // ── Challenges ───────────────────────────────────────────────────
