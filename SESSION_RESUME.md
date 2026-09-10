@@ -3903,7 +3903,8 @@ evidence money was sent. The transaction reference is the real control.**
 - **Pooran** (`pooranprasad@gmail.com`, 600 pts → ₹60.00) — can now add an
   account himself; he does not know the blocker was ours. Email him.
 - **Voucher redemptions have no issuing flow** — 0 rows, volume-gated.
-- **`/dashboard/influencer/payouts` not re-checked after the extraction.**
-  Verified pre-extraction (all five account types render); the move itself is
-  unverified in a browser.
+- ✅ **`/dashboard/influencer/payouts` VERIFIED after the extraction**
+  (2026-09-10). All five account types selectable and each renders its own
+  fields. Verified both before and after the move, so the extraction is
+  confirmed behaviour-preserving, not just type-correct.
 - **§4, §5 and the rest of §6 of the consumer audit remain unstarted.**
