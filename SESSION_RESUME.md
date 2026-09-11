@@ -3908,3 +3908,31 @@ evidence money was sent. The transaction reference is the real control.**
   fields. Verified both before and after the move, so the extraction is
   confirmed behaviour-preserving, not just type-correct.
 - **§4, §5 and the rest of §6 of the consumer audit remain unstarted.**
+
+---
+
+## ⚠️ CONSTRAINT — 1 of 9 consumers has granted personalization consent (2026-09-11)
+
+**Not a bug. A constraint on the entire personalization value proposition, and
+it needs investigating before acquisition scales.**
+
+Verified: `consents_granted` **15** across 9 consumers (~1.7 categories each);
+`personalization` granted by **1**. All 9 completed onboarding, so the profile
+data exists — **consent, not data, is the blocker.**
+
+What this gates, today:
+- `getPersonalizedRecommendations` enforces `personalization` and refuses for
+  8 of 9 — see the Item 1 fix, which stops the UI fabricating over that refusal
+- Any brand-facing claim about personalized reach is bounded by this number,
+  not by the consumer count
+
+⚠️ **The question to answer before spending on acquisition:** is the low grant
+rate caused by the consent UI (wording, defaults, timing — asked during
+onboarding when the consumer has no context for what they gain), or is it a
+genuine informed refusal? Those have opposite remedies, and scaling acquisition
+multiplies whichever it is. **Nobody has looked.**
+
+⚠️ Do NOT "fix" this by defaulting the toggle on, pre-ticking it, or re-prompting
+users who declined. Consent provenance is the platform's stated differentiator;
+a grant rate bought that way is worth less than the low one, and it would
+contradict the §7 record of what the consent architecture is for.
