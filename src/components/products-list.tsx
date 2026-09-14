@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Search } from 'lucide-react'
+import { WatchButton } from '@/components/WatchButton'
 
 type ProductStats = {
   totalCount: number
@@ -130,6 +131,15 @@ export function ProductsList({
                         View details
                       </Link>
                     </Button>
+                    {/* ⚠️ Consumer-only, matching `POST /api/watchlist`, which
+                        403s anything but role 'consumer'. WatchButton has no
+                        role awareness of its own, so an ungated mount would
+                        show brands and admins a button that always fails.
+                        Gated on `role` rather than the isConsumer capability
+                        flag because `role` is what the API tests. */}
+                    {userRole === 'consumer' && (
+                      <WatchButton productId={product.id} size="sm" />
+                    )}
                     {userRole === 'consumer' && (
                       <Button asChild size="sm">
                         <Link

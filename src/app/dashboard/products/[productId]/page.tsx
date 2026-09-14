@@ -40,10 +40,26 @@ export default async function ProductPage({
   )
   const canManage = isOwner || isAdminSession(session)
 
+  // ⚠️ WATCH BUTTON IS CONSUMER-ONLY, AND THE GATE MIRRORS THE API EXACTLY.
+  //
+  // `POST /api/watchlist` rejects anything but `role === 'consumer'` with a 403
+  // ("Only consumers can watch products"). WatchButton itself has no role
+  // awareness — it takes a productId and posts. So rendering it unconditionally
+  // on this SHARED catalog page would show every brand and admin a button that
+  // always fails: a false affordance of the same class this codebase keeps
+  // removing.
+  //
+  // Matched on `role`, not the `isConsumer` capability flag, because `role` is
+  // what the API actually tests. A dual-capability account (role 'consumer',
+  // is_influencer true) passes both; a pure influencer is refused by both.
+  // Gating on the capability flag instead would render the button for accounts
+  // the API then rejects.
+  const canWatch = (session?.user as any)?.role === 'consumer'
+
   return (
     <>
       <DashboardProductViewTracker productId={productId} />
-      <ProductOverview product={product} canManage={canManage} />
+      <ProductOverview product={product} canManage={canManage} canWatch={canWatch} />
       {/* Recent feedback with full media (audio/video/images) — owner/admin only */}
       {canManage && (
         <div className="max-w-6xl mx-auto py-6 px-0">
