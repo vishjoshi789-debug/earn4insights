@@ -8,14 +8,25 @@ import { Badge } from '@/components/ui/badge'
 import { Quote } from 'lucide-react'
 import type { Product } from '@/lib/types/product'
 import { ProductHealthCard } from '@/components/analytics/ProductHealthCard'
+import { WatchButton } from '@/components/WatchButton'
 
 export default function ProductOverview({
   product,
   canManage = false,
+  canWatch = false,
 }: {
   product: Product
   /** Owner (or admin) — gates the brand-management Quick-actions card. */
   canManage?: boolean
+  /**
+   * Consumer role — gates the Watch button.
+   *
+   * ⚠️ Defaults to FALSE. `POST /api/watchlist` is consumer-only and 403s
+   * everyone else, and WatchButton has no role awareness of its own, so a
+   * caller that forgets this prop renders nothing rather than a button that
+   * cannot work.
+   */
+  canWatch?: boolean
 }) {
   // ✅ Safety check - provide default profile if missing
   const profile = product.profile || {
@@ -64,6 +75,9 @@ export default function ProductOverview({
             )}
             <h1 className="text-3xl font-bold">{product.name}</h1>
             <Badge variant="secondary">LIVE</Badge>
+            {/* Consumer-only. See canWatch above for why this is gated on
+                `role`, not on the isConsumer capability flag. */}
+            {canWatch && <WatchButton productId={product.id} size="sm" />}
           </div>
 
           <p className="text-muted-foreground max-w-2xl">
