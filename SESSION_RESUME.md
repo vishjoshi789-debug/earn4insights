@@ -3936,3 +3936,80 @@ multiplies whichever it is. **Nobody has looked.**
 users who declined. Consent provenance is the platform's stated differentiator;
 a grant rate bought that way is worth less than the low one, and it would
 contradict the §7 record of what the consent architecture is for.
+
+---
+
+## 🔌 FOURTH IGNITION-KEY INSTANCE THIS SESSION — `notifyWatchersOnLaunch` (2026-09-15)
+
+**Standing check, adopted by founder decision. Ask it before any feature is
+called done:**
+
+> **"What causes the first row to exist, and can a user trigger it?"**
+
+If the answer is "nothing" or "no", the feature is not built — it is a
+component waiting for an ignition key nobody can turn. This session found four:
+`icp_match_scores` (0 rows; only writer is a manual per-consumer POST),
+`payment_redemptions` closing (no caller for `updateRedemptionStatus`),
+`consumer_signal_snapshots` → recommendations (parallel stores that never meet),
+and now this one.
+
+**The instance.** `notifyWatchersOnLaunch(productId)` is complete — finds
+active watchers, fans out per `notifyChannels`, queues email/WhatsApp, marks
+`notifiedAt`. It is called in two places and **can never have a recipient at
+either**:
+
+| call site | why the watcher set is empty |
+|---|---|
+| `launch.actions.ts:178`, immediately after `createProduct` | the product did not exist a second ago; nobody could have watched it |
+| `publish-scheduled-launches` cron, on flip to `'live'` | `getAllProducts()` filters `launchStatus = 'live'` (`productRepository.ts:86`), so scheduled products are invisible to consumers and cannot be watched before launch |
+
+**Consumers can only watch products that have already launched, and launch is
+the only trigger.** The other three `watchType` values — `price_drop`,
+`feature`, `update` — have **no emitter at all**.
+
+🔴 **The WatchButton tooltip said "Get notified when this product launches or
+updates." Neither happens.** A false claim on a working control, live since
+Phase 1A, and mounting the button on two more surfaces (`ef67b5c`) put it in
+front of more consumers. Removed in `ded3441`; explanatory copy HELD until
+launch notifications ship with real recipients.
+
+**What watching actually does today, traced:**
+1. ✅ populates `/dashboard/watchlist`
+2. ✅ counts toward "community engagement" in `rankingService` (consumer-invisible)
+3. ❌ nothing else — no notification, no personalization effect
+
+**Founder direction (2026-09-15): build launch notifications first, with real
+recipients, then plug `price_drop` and `feature_update` in as EMITTERS on the
+same machinery — not as a second system.** The analysis for that is in the
+session transcript; the load-bearing findings:
+
+- `POST /api/watchlist` never touches `products` — it does not check
+  `launchStatus`, and does not even verify the product exists. Visibility is
+  the ONLY thing stopping a consumer watching a scheduled product.
+- `publish-scheduled-launches` already calls `notifyWatchersOnLaunch` after the
+  status flip, inside its own try/catch. **It works unchanged once watchers
+  exist.** (`summary.watchersNotified` counts products, not watchers — misnamed.)
+- `launchStatus` is `'live' | 'scheduled'` only; the schema comment says
+  scheduled = *"hidden from public, visible only to owner"*. **There is no
+  "visible but unreleased" state** — a brand cannot choose to reveal a
+  scheduled product. That is the missing piece, and it is a product decision
+  (opt-in reveal), not a bug.
+- 🔴 **`products` has NO price column.** Not on the table, not in the profile
+  JSONB, not in `lib/types/product.ts`. The only price table is
+  `competitor_price_history` — competitors, not ours. **`price_drop` needs
+  schema (current price + history) before it needs an emitter.** Nothing to
+  compare against exists.
+- `notifyWatchersOnLaunch` is ~70% generic: watcher lookup, channel fan-out,
+  `queueNotification`, `notifiedAt` mark are all event-agnostic. The
+  **launch-specific parts** are the `watchType` filter (`'launch' || 'any'`),
+  the `subject`/`body` copy, and `type: 'watchlist_match'`. Refactor: extract
+  `notifyWatchers(productId, { watchTypes, buildMessage })` and make the
+  launch function a thin wrapper — then `price_drop` is a second wrapper.
+- ⚠️ It calls `queueNotification` directly, NOT `dispatchToUser` — so the
+  per-event **notification preferences UI shipped in v17 is bypassed**. A
+  consumer who turned email off still gets watchlist email. And there is **no
+  in-app bell** — email only, drained by a DAILY cron. The resolution loop
+  (v16) does in-app + email; this should match it. Consent: a watchlist
+  notification is DPDP §7 service communication (recipient derived from their
+  own prior act, not selected from an audience) — the same test that justified
+  `bypassPersonalizationConsent`. Apply it explicitly, don't assume it.
