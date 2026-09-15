@@ -76,9 +76,23 @@ export function WatchButton({ productId, size = 'default', className }: WatchBut
     })
   }
 
+  // ⚠️ An icon-only button with no accessible name is a control that does
+  // something real and communicates nothing — the inverse of the false claims
+  // this codebase keeps removing. Verified in production: the bell rendered
+  // and worked, and the founder could not find it. The aria-label tracks
+  // state so a screen reader hears the ACTION, not "button".
+  const ariaLabel = watching ? 'Stop watching this product' : 'Watch this product'
+
   if (loading) {
     return (
-      <Button variant="ghost" size={size === 'sm' ? 'icon' : 'default'} disabled className={className}>
+      <Button
+        variant="ghost"
+        size={size === 'sm' ? 'icon' : 'default'}
+        disabled
+        className={className}
+        aria-label="Checking watchlist"
+        aria-busy="true"
+      >
         <Loader2 className="h-4 w-4 animate-spin" />
       </Button>
     )
@@ -94,6 +108,8 @@ export function WatchButton({ productId, size = 'default', className }: WatchBut
             onClick={toggle}
             disabled={isPending}
             className={className}
+            aria-label={ariaLabel}
+            aria-pressed={watching}
           >
             {isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -110,10 +126,20 @@ export function WatchButton({ productId, size = 'default', className }: WatchBut
             )}
           </Button>
         </TooltipTrigger>
+        {/* \u26a0\ufe0f The previous copy said "Get notified when this product launches
+            or updates." NEITHER HAPPENS TODAY. notifyWatchersOnLaunch fires
+            only at product creation (zero watchers by definition) and on
+            scheduled-launch publish (scheduled products are hidden, so cannot
+            be watched first); price_drop / feature / update have no emitter at
+            all. That tooltip was a false claim on a working control.
+
+            Reduced to what watching actually does. The explanatory copy is
+            deliberately HELD until launch notifications ship with real
+            recipients \u2014 write it then, from behaviour, not intent. */}
         <TooltipContent>
           {watching
-            ? 'You\u2019re watching this product. Click to stop.'
-            : 'Get notified when this product launches or updates.'}
+            ? 'On your watchlist. Click to remove.'
+            : 'Save this product to your watchlist.'}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

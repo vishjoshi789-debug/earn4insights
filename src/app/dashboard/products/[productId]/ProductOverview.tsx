@@ -77,7 +77,7 @@ export default function ProductOverview({
             <Badge variant="secondary">LIVE</Badge>
             {/* Consumer-only. See canWatch above for why this is gated on
                 `role`, not on the isConsumer capability flag. */}
-            {canWatch && <WatchButton productId={product.id} size="sm" />}
+            {canWatch && <WatchButton productId={product.id} size="default" />}
           </div>
 
           <p className="text-muted-foreground max-w-2xl">
