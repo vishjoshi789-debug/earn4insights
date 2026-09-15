@@ -4037,3 +4037,57 @@ Deliberately held until step 2 gives it recipients:
 Before step 2 the founder runs `SELECT count(*) FROM products WHERE launch_status =
 'scheduled'` to decide the `reveal_before_launch` default: **0 → defaulting true
 is safe; non-zero → those brands scheduled expecting hidden, default false.**
+
+---
+
+## ✅ VERIFIED IN PRODUCTION (2026-09-15 12:37:13 UTC) — the watchlist launch loop has its first real recipient
+
+Steps 1–3 complete. `notifyWatchersOnLaunch` — which had existed since Phase 1A
+and **never reached a person** — delivered to a real consumer in production.
+
+**The run** (`publish-scheduled-launches`, fired manually with the Vercel
+`CRON_SECRET`): `found 1 · published 1 · watchersNotified 1 · watchersSkipped 0 ·
+errors []`, 420ms wall time.
+
+**Four traces, one per table, all within that window:**
+
+| trace | before | after |
+|---|---|---|
+| `product_watchlist.notified_at` | NULL | 12:37:13 |
+| `notification_inbox` | — | `consumer.watchlist.launched`, "Insights is now live", `is_read=false` |
+| `notification_queue` | — | `consumer.watchlist.launched`, `channel=email`, `pending` |
+| `products.launch_status` | `scheduled` | `live` |
+
+Cron start → inbox row: **365ms**. → queue row: **411ms**. The bell (Pusher) is
+instant; the email drains on the daily 06:00 UTC `process-notifications` cron.
+
+**What was proven, end to end:** brand schedules with *Show as Coming Soon*
+ticked → product visible to a consumer with the Coming Soon badge, Watch
+present, Give Feedback absent → consumer watches → cron flips status → the
+refactored notifier routes through `dispatchToUser` → preferences honoured,
+`bypassPersonalizationConsent` applied as §7 service communication → inbox +
+Pusher + email queue → `notified_at` set **on delivery**.
+
+**Test method:** the form enforces a 1-hour minimum on scheduled time (§5, by
+design), so the test pulled `scheduled_launch_at` into the past via the Neon
+console (`now() - interval '1 minute'`, scoped by `launch_status='scheduled'
+AND lower(trim(name))`) and fired the cron manually. Everything the hour would
+have exercised was exercised; only the timer was skipped.
+
+⚠️ **Two things the test surfaced:**
+- **Neon branch confusion cost ~10 minutes.** Three queries returned nothing
+  because the console was on `preview-env` while the site wrote to `main`.
+  Every query in a verification must be on the branch the live site reads.
+  Now the second time this session a "no rows" result was a branch mismatch,
+  not an absence.
+- **Product names are not trimmed on save.** The product is stored as
+  `"Insights "` (trailing space), so the notification title reads
+  `"Insights  is now live"` with a double space. Same class as the
+  `"Josiah Okoku "` user name. Cosmetic; unfixed; noting so the next person
+  who sees the double space knows where it comes from.
+
+**Now real and demonstrable:** revealed purchase intent on a named product
+from a consumer who has never bought it, and a service notification the
+consumer asked for, delivered to the bell in under half a second. The
+price_drop and feature_update emitters plug in as wrappers on the same
+machine — pending a price column for the former.
