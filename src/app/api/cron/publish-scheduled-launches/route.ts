@@ -54,6 +54,10 @@ async function handleGET(request: NextRequest) {
     emailsSent: 0,
     notificationsTriggered: 0,
     watchersNotified: 0,
+    // Watchers who qualified but were delivered nowhere — preferences off, or
+    // every channel failed. Surfaced so a preference-filtered watcher is
+    // visible in the run summary rather than silently absent.
+    watchersSkipped: 0,
     skipped: 0,
     errors: [] as Array<{ productId: string; step: string; message: string }>,
   }
@@ -108,8 +112,11 @@ async function handleGET(request: NextRequest) {
 
       // Watchlist fan-out.
       try {
-        await notifyWatchersOnLaunch(product.id)
-        summary.watchersNotified += 1
+        // ⚠️ Counts PEOPLE, not products. The previous `+= 1` per product made
+        // `watchersNotified` a product count with a watcher name.
+        const fanout = await notifyWatchersOnLaunch(product.id)
+        summary.watchersNotified += fanout.notified
+        summary.watchersSkipped  += fanout.skipped
       } catch (err) {
         summary.errors.push({
           productId: product.id,

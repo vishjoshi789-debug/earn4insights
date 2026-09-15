@@ -8,7 +8,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
-import { addToWatchlist, getWatchlist, removeFromWatchlist, isWatching } from '@/server/watchlistService'
+import {
+  addToWatchlist, getWatchlist, removeFromWatchlist, isWatching,
+  ProductNotFoundError,
+} from '@/server/watchlistService'
 
 export async function GET(req: NextRequest) {
   try {

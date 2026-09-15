@@ -6,7 +6,6 @@ import { Product } from '@/lib/types/product'
 import { initializeProductData } from '@/lib/product/initProduct'
 import { createProduct } from '@/db/repositories/productRepository'
 import { triggerProductLaunchNotifications } from '@/lib/personalization/smartDistributionService'
-import { notifyWatchersOnLaunch } from '@/server/watchlistService'
 import { auth } from '@/lib/auth/auth.config'
 import { sendProductLaunchedEmail } from '@/server/productNotifications'
 
@@ -174,10 +173,12 @@ export async function launchProduct(formData: FormData) {
     console.error('[LaunchProduct] Smart notification failed (non-blocking):', err)
   })
 
-  // Notify watchlist subscribers about the launch (non-blocking — queued).
-  notifyWatchersOnLaunch(product.id).catch((err) => {
-    console.error('[LaunchProduct] Watchlist notification failed (non-blocking):', err)
-  })
+  // ⚠️ NO watchlist fan-out here, on purpose. It used to call
+  // notifyWatchersOnLaunch(product.id) at this point — but a product that did
+  // not exist a second ago has zero watchers by definition, so the call could
+  // never do anything and only implied that creation notifies someone. The
+  // ONLY real trigger is the publish-scheduled-launches cron, which fires when
+  // a product consumers could already see (and watch) flips to live.
 
   redirect(`/dashboard/products/${product.id}`)
 }
