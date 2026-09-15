@@ -138,7 +138,7 @@ export function ProductsList({
                         Gated on `role` rather than the isConsumer capability
                         flag because `role` is what the API tests. */}
                     {userRole === 'consumer' && (
-                      <WatchButton productId={product.id} size="sm" />
+                      <WatchButton productId={product.id} size="default" />
                     )}
                     {userRole === 'consumer' && (
                       <Button asChild size="sm">
