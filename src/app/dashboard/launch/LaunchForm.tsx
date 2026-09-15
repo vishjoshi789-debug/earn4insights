@@ -185,6 +185,32 @@ export default function LaunchForm() {
                 : <>Timezone detection unavailable — time will be interpreted as UTC. Cron pickup runs every 15 minutes after the chosen time.</>
               }
             </p>
+
+            {/* ⚠️ THE IGNITION KEY for watchlist notifications. Consumers can
+                only watch products they can see; before this, a scheduled
+                product was hidden until launch, so nobody could watch it and
+                the launch notification never had a recipient. Checked by
+                default (0 scheduled products existed when it shipped, so no
+                brand loses a choice). Unticking is the stealth-launch path:
+                hidden from every consumer surface until it goes live.
+                Migration 042. */}
+            <label className="flex items-start gap-2 pt-2 cursor-pointer">
+              <input
+                type="checkbox"
+                name="revealBeforeLaunch"
+                value="true"
+                defaultChecked
+                className="mt-1 rounded"
+              />
+              <span className="text-sm">
+                <span className="font-medium">Show as Coming Soon</span>
+                <span className="block text-xs text-muted-foreground">
+                  Consumers can see this product and watch it before launch.
+                  Watchers are notified when it goes live. Untick for a stealth
+                  launch — hidden from consumers until the scheduled time.
+                </span>
+              </span>
+            </label>
           </div>
         )}
       </div>

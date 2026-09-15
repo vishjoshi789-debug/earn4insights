@@ -22,6 +22,9 @@ type ProductItem = {
   name: string
   platform: string | null
   created_at: string | null
+  /** Coming Soon (migration 042): watchable, not reviewable, badged. */
+  launchStatus?: 'live' | 'scheduled'
+  scheduledLaunchAt?: string | null
   stats: ProductStats | null
 }
 
@@ -79,7 +82,15 @@ export function ProductsList({
               <Card key={product.id} className="hover:shadow-md transition-shadow">
                 <CardHeader className="pb-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <CardTitle className="text-base sm:text-lg">{product.name}</CardTitle>
+                    <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                      {product.name}
+                      {product.launchStatus === 'scheduled' && (
+                        <Badge variant="outline" className="border-amber-700 text-amber-400 text-xs font-normal">
+                          Coming Soon
+                          {product.scheduledLaunchAt && <> · {new Date(product.scheduledLaunchAt).toLocaleDateString()}</>}
+                        </Badge>
+                      )}
+                    </CardTitle>
                     {stats && stats.totalCount > 0 && (
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-0.5">
@@ -140,7 +151,11 @@ export function ProductsList({
                     {userRole === 'consumer' && (
                       <WatchButton productId={product.id} size="default" />
                     )}
-                    {userRole === 'consumer' && (
+                    {/* No feedback on a product that has not launched. Hidden here AND
+                        rejected by /api/feedback/submit — a control that only hides its
+                        own button is not a control (09b2649). Watch stays: that is the
+                        whole point of Coming Soon. */}
+                    {userRole === 'consumer' && product.launchStatus !== 'scheduled' && (
                       <Button asChild size="sm">
                         <Link
                           href={`/dashboard/submit-feedback?productId=${product.id}&productName=${encodeURIComponent(product.name)}`}

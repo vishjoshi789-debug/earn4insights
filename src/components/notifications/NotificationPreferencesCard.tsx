@@ -65,6 +65,17 @@ const CONSUMER_CATEGORIES: Category[] = [
     description: 'Confirmations when you redeem points.',
     events: ['consumer.reward.redeemed'],
   },
+  // Listed only now that the emitter can reach someone: Coming Soon products
+  // (migration 042) can be watched before launch, so the launch notification
+  // finally has a possible recipient. Was deliberately held back in the
+  // notifier refactor because this file's rule — no toggle for an event that
+  // cannot fire — would have been violated.
+  {
+    key: 'watchlist',
+    label: 'Products you are watching',
+    description: 'When a Coming Soon product on your watchlist goes live.',
+    events: ['consumer.watchlist.launched'],
+  },
   {
     key: 'new_things',
     label: 'New products to review',

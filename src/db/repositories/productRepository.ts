@@ -34,6 +34,7 @@ function toProduct(dbProduct: DBProduct): Product {
     nameNormalized: dbProduct.nameNormalized || undefined,
     launchStatus: (dbProduct.launchStatus || 'live') as ProductLaunchStatus,
     scheduledLaunchAt: dbProduct.scheduledLaunchAt?.toISOString(),
+    revealBeforeLaunch: dbProduct.revealBeforeLaunch,
   }
 }
 
@@ -59,6 +60,7 @@ function toDBProduct(product: Partial<Product>): Partial<NewProduct> {
   if (product.createdBy !== undefined) result.createdBy = product.createdBy
   if (product.creationSource !== undefined) result.creationSource = product.creationSource
   if (product.launchStatus !== undefined) result.launchStatus = product.launchStatus
+  if (product.revealBeforeLaunch !== undefined) result.revealBeforeLaunch = product.revealBeforeLaunch
   if (product.scheduledLaunchAt !== undefined) {
     result.scheduledLaunchAt = product.scheduledLaunchAt ? new Date(product.scheduledLaunchAt) : null
   }
@@ -80,10 +82,34 @@ function toDBProduct(product: Partial<Product>): Partial<NewProduct> {
  * 'live' when the scheduled time arrives, at which point they reappear
  * here. Pass `{ includeScheduled: true }` for admin / debugging surfaces.
  */
+/**
+ * THE ONE PREDICATE for "may a consumer see this product?"
+ *
+ *   live, OR scheduled AND the brand opted to reveal it as Coming Soon.
+ *
+ * ⚠️ Every consumer-facing product read MUST use this, or the brand's
+ * reveal_before_launch choice is a hidden button rather than a hidden product.
+ * Before this existed, /dashboard/recommendations and personalizationEngine
+ * did bare selects with no launch filter at all, so a scheduled product would
+ * have appeared in "For You" even with reveal OFF. One predicate, every call
+ * site, so they cannot drift — the same rule as parseFeedbackFilters.
+ *
+ * Does NOT filter lifecycleStatus; callers add ne(lifecycleStatus, 'merged')
+ * as they already do, because "merged" is a different question from "visible".
+ */
+export function consumerVisibleProducts() {
+  return or(
+    eq(products.launchStatus, 'live'),
+    and(eq(products.launchStatus, 'scheduled'), eq(products.revealBeforeLaunch, true)),
+  )
+}
+
 export async function getAllProducts(opts?: { includeScheduled?: boolean }): Promise<Product[]> {
   const conditions: any[] = [ne(products.lifecycleStatus, 'merged')]
   if (!opts?.includeScheduled) {
-    conditions.push(eq(products.launchStatus, 'live'))
+    // Consumer catalog: live + revealed-Coming-Soon. includeScheduled is the
+    // owner/admin view and skips the visibility predicate entirely.
+    conditions.push(consumerVisibleProducts())
   }
   const dbProducts = await db
     .select()

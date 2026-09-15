@@ -158,6 +158,23 @@ export async function POST(request: Request) {
       )
     }
 
+    // ⚠️ No feedback on a product that has not launched. A Coming Soon product
+    // (migration 042) is visible and watchable so the launch notification has
+    // a recipient — but "watchable" is not "reviewable". The list hides the
+    // Give Feedback button; this is the control behind it, because a control
+    // that only hides its own button is not a control (09b2649).
+    const [launchRow] = await db
+      .select({ launchStatus: products.launchStatus })
+      .from(products)
+      .where(eq(products.id, productId))
+      .limit(1)
+    if (launchRow?.launchStatus === 'scheduled') {
+      return NextResponse.json(
+        { error: 'This product has not launched yet. You can watch it to be told when it does.' },
+        { status: 400 }
+      )
+    }
+
     if (!feedbackText || typeof feedbackText !== 'string') {
       return NextResponse.json(
         { error: 'feedbackText is required' },
