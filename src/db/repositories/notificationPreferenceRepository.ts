@@ -36,6 +36,12 @@ export const NOTIFIABLE_EVENT_TYPES = [
   // Consumer
   'consumer.feedback.submitted',
   'consumer.feedback.addressed',
+  // A watched product went live (watchlistService.notifyWatchersOnLaunch).
+  // ⚠️ Registered here so the consumer CAN turn it off. Deliberately NOT yet
+  // listed in NotificationPreferencesCard — that file only shows toggles for
+  // events with a reachable emitter, and this one has no reachable recipients
+  // until scheduled products can be revealed and watched before launch.
+  'consumer.watchlist.launched',
   'consumer.survey.completed',
   'consumer.product.searched',
   'consumer.product.browsed',
