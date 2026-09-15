@@ -96,6 +96,13 @@ export async function launchProduct(formData: FormData) {
     launchStatus = 'scheduled'
   }
 
+  // Coming Soon opt-in (migration 042). An unchecked checkbox is simply absent
+  // from FormData, so absence = false = stealth launch. Only meaningful when
+  // scheduled; for an instant launch the product is live immediately and the
+  // flag is irrelevant, so it is left at the column default.
+  const revealBeforeLaunch =
+    launchStatus === 'scheduled' ? formData.get('revealBeforeLaunch') === 'true' : undefined
+
   const product: Product = {
     id: crypto.randomUUID(),
     name: productName,
@@ -109,6 +116,7 @@ export async function launchProduct(formData: FormData) {
     created_at: new Date().toISOString(),
     launchStatus,
     scheduledLaunchAt: scheduledAt?.toISOString(),
+    revealBeforeLaunch,
     features: {
       nps: true,
       feedback: true,

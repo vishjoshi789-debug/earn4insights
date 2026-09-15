@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { db } from '@/db'
 import { userProfiles, products } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import { consumerVisibleProducts } from '@/db/repositories/productRepository'
 import { getPersonalizedRecommendations } from '@/server/personalizationEngine'
 import { checkConsent } from '@/lib/consent-enforcement'
 import { RecommendationCard } from '@/components/recommendation-card'
@@ -75,7 +76,10 @@ export default async function RecommendationsPage() {
     reasons?: string[]
   }> = []
 
-  const allProducts = await db.select().from(products)
+  // ⚠️ Was a bare select with NO launch filter — a scheduled product with
+  // reveal OFF would have appeared in "For You". The brand's choice must hold
+  // on every consumer surface, not just the catalogue.
+  const allProducts = await db.select().from(products).where(consumerVisibleProducts())
   const productMap = new Map(allProducts.map(p => [p.id, p]))
 
   const consent = await checkConsent(session.user.id, 'personalization')

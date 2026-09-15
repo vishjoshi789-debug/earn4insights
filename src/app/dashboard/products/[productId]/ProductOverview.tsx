@@ -74,7 +74,20 @@ export default function ProductOverview({
               </div>
             )}
             <h1 className="text-3xl font-bold">{product.name}</h1>
-            <Badge variant="secondary">LIVE</Badge>
+            {/* ⚠️ This badge was HARDCODED "LIVE" — it said LIVE on scheduled
+                products. Now reflects launchStatus. A Coming Soon product is
+                watchable but not reviewable: Give Feedback is hidden on the
+                list and rejected server-side by /api/feedback/submit. */}
+            {product.launchStatus === 'scheduled' ? (
+              <Badge variant="outline" className="border-amber-700 text-amber-400">
+                Coming Soon
+                {product.scheduledLaunchAt && (
+                  <> · launches {new Date(product.scheduledLaunchAt).toLocaleDateString()}</>
+                )}
+              </Badge>
+            ) : (
+              <Badge variant="secondary">LIVE</Badge>
+            )}
             {/* Consumer-only. See canWatch above for why this is gated on
                 `role`, not on the isConsumer capability flag. */}
             {canWatch && <WatchButton productId={product.id} size="default" />}

@@ -94,4 +94,6 @@ export type Product = {
   // Scheduled launch (migration 016)
   launchStatus?: ProductLaunchStatus
   scheduledLaunchAt?: string
+  /** Coming Soon opt-in (migration 042). Meaningful only when launchStatus is 'scheduled'. */
+  revealBeforeLaunch?: boolean
 }

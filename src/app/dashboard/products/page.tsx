@@ -119,6 +119,8 @@ export default async function ProductsPage() {
           name: product.name,
           platform: product.platform || null,
           created_at: product.created_at || null,
+          launchStatus: product.launchStatus,
+          scheduledLaunchAt: product.scheduledLaunchAt ?? null,
           stats: statsMap.get(product.id) || null,
         }))}
         userRole={userRole}

@@ -93,6 +93,13 @@ export const products = pgTable('products', {
   // launchStatus: 'live' (visible everywhere) | 'scheduled' (hidden from public,
   // visible only to owner; cron flips to 'live' when scheduledLaunchAt arrives)
   launchStatus: text('launch_status').default('live').notNull(),
+  // Migration 042. "Coming Soon" opt-in: when TRUE, a scheduled product is
+  // visible to consumers (and watchable) before it launches, badged Coming
+  // Soon. When FALSE, the old behaviour — hidden from every consumer surface,
+  // visible only to owner/admin. Default true: verified 0 scheduled rows at
+  // the time, so no brand loses a choice. ⚠️ NEVER add a column here before
+  // the SQL has run — 19 bare selects on this table expand to every column.
+  revealBeforeLaunch: boolean('reveal_before_launch').default(true).notNull(),
   scheduledLaunchAt: timestamp('scheduled_launch_at'),
 
   // Product profile (stored as JSONB)

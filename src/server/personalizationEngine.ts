@@ -1,6 +1,7 @@
 import { db } from '@/db'
 import { userProfiles, products, feedback, surveyResponses } from '@/db/schema'
 import { eq, and, sql, inArray, desc, gte } from 'drizzle-orm'
+import { consumerVisibleProducts } from '@/db/repositories/productRepository'
 import { getUserEventCounts, calculateCategoryInterests } from './analyticsService'
 import { enforceConsent } from '@/lib/consent-enforcement'
 import { aggregateUserSignals, type UserSignalVector } from '@/lib/personalization/userSignalAggregator'
@@ -221,7 +222,10 @@ export async function getPersonalizedRecommendations(
   const allProducts = await db
     .select()
     .from(products)
-    .where(sql`${products.lifecycleStatus} != 'merged'`)
+    // ⚠️ Filtered only on merged before — a scheduled product with reveal OFF
+    // could be scored and recommended. Visibility is the brand's call, and it
+    // must hold in the engine as well as the page that renders its output.
+    .where(and(sql`${products.lifecycleStatus} != 'merged'`, consumerVisibleProducts()))
 
   // Calculate scores for each product
   const scoredProducts = allProducts.map(product => {

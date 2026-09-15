@@ -126,20 +126,17 @@ export function WatchButton({ productId, size = 'default', className }: WatchBut
             )}
           </Button>
         </TooltipTrigger>
-        {/* \u26a0\ufe0f The previous copy said "Get notified when this product launches
-            or updates." NEITHER HAPPENS TODAY. notifyWatchersOnLaunch fires
-            only at product creation (zero watchers by definition) and on
-            scheduled-launch publish (scheduled products are hidden, so cannot
-            be watched first); price_drop / feature / update have no emitter at
-            all. That tooltip was a false claim on a working control.
-
-            Reduced to what watching actually does. The explanatory copy is
-            deliberately HELD until launch notifications ship with real
-            recipients \u2014 write it then, from behaviour, not intent. */}
+        {/* Written from behaviour, not intent. Since migration 042 a Coming
+            Soon product can be watched before launch, and the cron notifies
+            watchers when it goes live \u2014 so the launch promise is now TRUE, but
+            ONLY for Coming Soon products. Watching a product that has already
+            launched does nothing beyond the list, and the copy must not imply
+            otherwise. price_drop / feature updates still have no emitter and
+            are not mentioned. */}
         <TooltipContent>
           {watching
             ? 'On your watchlist. Click to remove.'
-            : 'Save this product to your watchlist.'}
+            : 'Save to your watchlist. If it\u2019s Coming Soon, we\u2019ll tell you when it launches.'}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

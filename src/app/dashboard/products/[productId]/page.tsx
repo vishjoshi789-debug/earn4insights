@@ -40,6 +40,19 @@ export default async function ProductPage({
   )
   const canManage = isOwner || isAdminSession(session)
 
+  // ⚠️ A stealth-scheduled product (reveal OFF) is "visible only to owner" —
+  // the schema comment has promised that since migration 016, and until now
+  // nothing enforced it on this page: anyone with the URL could open it.
+  // Hiding it from the list is not a control (09b2649); this is. 404, not 403,
+  // so the id cannot be probed for existence.
+  if (
+    product.launchStatus === 'scheduled' &&
+    product.revealBeforeLaunch === false &&
+    !canManage
+  ) {
+    notFound()
+  }
+
   // ⚠️ WATCH BUTTON IS CONSUMER-ONLY, AND THE GATE MIRRORS THE API EXACTLY.
   //
   // `POST /api/watchlist` rejects anything but `role === 'consumer'` with a 403
