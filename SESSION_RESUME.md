@@ -4013,3 +4013,27 @@ session transcript; the load-bearing findings:
   notification is DPDP §7 service communication (recipient derived from their
   own prior act, not selected from an audience) — the same test that justified
   `bypassPersonalizationConsent`. Apply it explicitly, don't assume it.
+
+### ⚠️ STEP 1 SHIPPED (`bffdd28`) — an emitter with no reachable recipients, ON PURPOSE
+
+`notifyWatchers` is now one generic machine (lookup → `dispatchToUser` → `notifiedAt`
+on delivery) and `notifyWatchersOnLaunch` a six-line wrapper. It is routed through
+preferences, applies `bypassPersonalizationConsent` as DPDP §7 service
+communication, and the two bookkeeping defects (notifiedAt-on-attempt,
+products-counted-as-watchers) are fixed. Orphan watchlist rows are closed and the
+dead creation-time call is gone.
+
+**Nothing can reach a consumer through it yet.** That is the same shape as the
+four ignition-key instances found this session — the difference is that this one
+is **intentional and scheduled**: step 2 (a brand-opt-in "Coming Soon" reveal so
+consumers can watch a scheduled product before it launches) is what puts fuel in
+it. **If step 2 does not ship, this becomes the fifth instance for real.**
+
+Deliberately held until step 2 gives it recipients:
+- the `consumer.watchlist.launched` toggle in `NotificationPreferencesCard` (that
+  file only lists events with a reachable emitter — its own rule)
+- the explanatory tooltip copy on WatchButton (write it from behaviour, not intent)
+
+Before step 2 the founder runs `SELECT count(*) FROM products WHERE launch_status =
+'scheduled'` to decide the `reveal_before_launch` default: **0 → defaulting true
+is safe; non-zero → those brands scheduled expecting hidden, default false.**
