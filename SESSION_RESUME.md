@@ -4165,3 +4165,69 @@ the ignition-key check ("what causes the first row to exist?") has a twin:
 Architecture-for-later, proven end to end, with the empty pixels accepted over
 building it blind. **T2 and T3 are a config change plus a consent prompt**; the
 prompt is the part that is not optional.
+
+---
+
+## ✅ SHIPPED — deal notifications on the same machine, and two honest empty states (2026-09-16)
+
+**`notifyWatchersOnDeal(deal)`** — the second emitter on `notifyWatchers`, six lines
+plus a guard. Called from `publishDeal` after the status flip, non-blocking. Takes
+the deal `publishDeal` already loaded — no second read. `watchTypes: ['deal',
+'any']`; **`'deal'` added to the `WatchType` vocabulary** so a consumer can opt
+into deal alerts without receiving every other kind (before this, only `'any'`
+watchers would have been reached, with no way to want just those).
+
+**Explicit null-productId guard**, not a silent skip inside `notifyWatchers` (which
+takes a string): a brand-wide deal with no product has no watchers by definition.
+
+⚠️ **OVERLAP WITH `BRAND_DISCOUNT_CREATED` — recorded, not filtered.** `publishDeal`
+also emits that event, whose handler dispatches to consumers matching the brand's
+ICPs (an AUDIENCE, consent-gated, no bypass). The watcher path reaches people who
+watched THIS product (their own act, §7 bypass). Different populations, both
+legitimate, and they can overlap. **Today the overlap cannot occur** —
+`icp_match_scores` is 0 rows, so the ICP handler finds nobody. **When Item 3 (bulk
+ICP scoring) ships, the ICP handler must EXCLUDE product watchers** — they have
+already been told, more specifically. That filter belongs with Item 3; building it
+now would be a filter against a condition that cannot occur.
+
+**Preferences:** `'consumer.watchlist.deal_posted'` registered; the existing
+*"Products you are watching"* toggle governs both launch and deal events.
+
+**Two empty states, written from behaviour:**
+- **Deals & Offers** — promo code → clipboard, link → new tab, redeem → 10 points
+  (`awardPoints(…, 10)` in `redeemDeal`). Every clause traces to code. ⚠️ The
+  points line is contractual under the claims policy; if points are ever disabled
+  per-deal the copy changes with it. **No "notify me" control** — no deals emitter
+  exists for non-watchers, and a control without an emitter would have been the
+  sixth machine-without-fuel.
+- **Community Deals** — any role can post, posts are `pending` until an admin
+  approves on `/admin/community-deals`, then upvote/comment/save. The **Share a
+  deal** button is the existing create dialog surfaced from behind an empty grid.
+  0 rows here is a *participation* gap, not a supply gap.
+
+**Sidebar unchanged.** The landing page's `ComingSoon` badge is a local unexported
+function AND the wrong badge — it means "not built", and Deals is built and
+working. Badging it would be a false claim in the opposite direction.
+
+### 🔴 CLAUDE.md §11 WAS WRONG about `brand.discount.created` — and the list needs re-verifying
+
+§11 listed it as *"handlers wired, no `emit()` callers"*. **`publishDeal` emits it.**
+Corrected in CLAUDE.md. ⚠️ **Broader flag, founder-directed:** if that entry was
+stale, other entries in the §5/§11 ignition-key list may be too. That list is a
+snapshot of what was traced at the time, not a live inventory. **Re-verify each
+entry against a caller before treating it as current. Not now — recorded.**
+
+### Held until the deal loop is verified with a real notification
+
+**The WatchButton tooltip.** It says *"If it's Coming Soon, we'll tell you when it
+launches."* After this ships, watching a LIVE product also does something (deal
+alerts) — but that copy is not written on the strength of the wrapper compiling.
+Once a real deal notification has arrived on a watched product, it becomes *"We'll
+tell you when it launches or when a deal is posted."* Same rule as launch: verify
+the call site, then write the claim.
+
+**Verification plan:** publish a brand deal on the `Insights` product (it has a
+watcher). Expect a bell within a second, an inbox row of type
+`consumer.watchlist.deal_posted`, a queue row, and `notified_at` updated. Different
+call site, different trigger, same four traces — not shipped on the strength of
+the launch loop working.

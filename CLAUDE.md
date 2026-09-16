@@ -499,7 +499,7 @@ Sub-daily crons (e.g. `publish-scheduled-launches` at 15-min cadence) are driven
 
 ### Real-Time (Minor)
 - `ACTIVITY_FEED_UPDATE` Pusher event defined but unused (`ActivityFeed` polls)
-- `brand.member.active` / `brand.discount.created` emitters missing (handlers wired, no `emit()` callers)
+- `brand.member.active` emitter missing (handler wired, no `emit()` caller). ⚠️ **`brand.discount.created` DOES have an emitter** — `dealsService.publishDeal` emits it when a deal goes active; this line previously listed it as emitter-less and was wrong (corrected 2026-09-16). **The rest of the ignition-key list in §5/§11 needs re-verifying, not trusting** — if this entry was stale, others may be.
 - `dispatchToUsers` N+1 at scale — 2 DB + 2 Pusher per target; capped at CONCURRENCY=50
 
 ### Influencers Adda
