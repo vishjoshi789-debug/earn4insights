@@ -70,7 +70,21 @@ export default function BrandDealsPage() {
     title: '', description: '', dealType: 'percentage_off', discountValue: '',
     promoCode: '', redirectUrl: '', originalPrice: '', discountedPrice: '',
     maxRedemptions: '', validUntil: '', category: '',
+    // ⚠️ Was MISSING. The API accepted productId and the watcher notifier read
+    // it, but the form never collected it — every deal was born product_id =
+    // NULL and the deal notification could reach nobody. Optional: brand-wide
+    // deals with no product are legitimate.
+    productId: '',
   })
+
+  // The brand's own products, for the picker. Owner-scoped server-side.
+  const [ownedProducts, setOwnedProducts] = useState<Array<{ id: string; name: string; launchStatus?: string }>>([])
+  useEffect(() => {
+    fetch('/api/brand/products')
+      .then(r => r.ok ? r.json() : { products: [] })
+      .then(d => setOwnedProducts(d.products ?? []))
+      .catch(() => setOwnedProducts([]))
+  }, [])
 
   const loadDeals = useCallback(async () => {
     setLoading(true)
@@ -94,8 +108,10 @@ export default function BrandDealsPage() {
     setCreating(true)
     try {
       const body: any = {
-        title: form.title,
-        description: form.description,
+        // Trimmed: "new discounted offer " with a trailing space was stored
+        // verbatim — third instance of untrimmed input this session.
+        title: form.title.trim(),
+        description: form.description.trim(),
         dealType: form.dealType,
         category: form.category || null,
       }
@@ -106,6 +122,7 @@ export default function BrandDealsPage() {
       if (form.discountedPrice) body.discountedPrice = Number(form.discountedPrice)
       if (form.maxRedemptions) body.maxRedemptions = Number(form.maxRedemptions)
       if (form.validUntil) body.validUntil = form.validUntil
+      if (form.productId) body.productId = form.productId
 
       const res = await fetch('/api/brand/deals', {
         method: 'POST',
@@ -116,7 +133,7 @@ export default function BrandDealsPage() {
       if (!res.ok) throw new Error(data.error)
       toast.success('Deal created as draft')
       setShowCreate(false)
-      setForm({ title: '', description: '', dealType: 'percentage_off', discountValue: '', promoCode: '', redirectUrl: '', originalPrice: '', discountedPrice: '', maxRedemptions: '', validUntil: '', category: '' })
+      setForm({ title: '', description: '', dealType: 'percentage_off', discountValue: '', promoCode: '', redirectUrl: '', originalPrice: '', discountedPrice: '', maxRedemptions: '', validUntil: '', category: '', productId: '' })
       loadDeals()
     } catch (err: any) {
       toast.error(err.message || 'Failed to create deal')
@@ -234,6 +251,21 @@ export default function BrandDealsPage() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-background text-foreground">
                   {DEAL_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {/* Product picker. Attaching a deal to a product is what makes
+                  it reach that product's watchers — without it the deal is
+                  brand-wide and notifies nobody, which is a valid choice but
+                  must be a choice. Same picker pattern as the survey form. */}
+              <Select value={form.productId || '__none'} onValueChange={v => setForm(f => ({ ...f, productId: v === '__none' ? '' : v }))}>
+                <SelectTrigger><SelectValue placeholder="Product (optional)" /></SelectTrigger>
+                <SelectContent className="bg-background text-foreground">
+                  <SelectItem value="__none">No product — brand-wide</SelectItem>
+                  {ownedProducts.map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}{p.launchStatus === 'scheduled' ? ' (Coming Soon)' : ''}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
