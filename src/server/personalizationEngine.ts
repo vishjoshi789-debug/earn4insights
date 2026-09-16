@@ -40,9 +40,22 @@ function calculateProductMatchScore(
   const userInterests = userProfile.interests as any
   const userBehavioral = userProfile.behavioral as any
   const sensitiveData = userProfile.sensitiveData as any
-  const productCategory = product.profile?.category
-  const productTargetAudience = product.profile?.targetAudience
-  const productProfile = product.profile
+  // ⚠️ WRONG JSONB LEVEL, fixed 2026-09-16. ProductProfile is
+  // { currentStep, isComplete, data: { category, … } } — every field lives
+  // under `data`. This read `product.profile?.category`, which is always
+  // undefined, so the 25%-weight category match at the top of this function
+  // had NEVER fired for any consumer. Not thin data: a path that could not
+  // resolve. (The `any` on the `product` param is why it compiled.)
+  //
+  // ⚠️ SIX OF THE SEVEN INPUTS BELOW HAVE NO WRITER. targetAudience,
+  // culturalRelevance, aspirationAlignment, priceSegment, targetFrequency and
+  // brandType are not in the ProductProfile type and no form writes them. The
+  // level is corrected here so the reads are structurally right, but those
+  // blocks still score nothing until something populates the fields. Only
+  // `category` (and behavioral engagementScore) can currently contribute.
+  const productProfile = product.profile?.data
+  const productCategory = productProfile?.category
+  const productTargetAudience = productProfile?.targetAudience
 
   // 1. Category interest match (25% weight - reduced to make room for new factors)
   if (productCategory) {
