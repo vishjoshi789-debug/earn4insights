@@ -435,9 +435,21 @@ export default function CommunityDealsPage() {
           )}
         </div>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
-          <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p>No posts yet. Be the first to share a deal!</p>
+        <div className="mx-auto max-w-md py-12 text-center">
+          {/* Written from behaviour. Any role can post (the API accepts
+              consumer/influencer/brand); posts land as 'pending' and an admin
+              approves them on /admin/community-deals before they appear —
+              "reviewed before they appear" sets that expectation so a consumer
+              who posts and sees nothing does not think it vanished. Upvote,
+              comment, save are all real. The button is the EXISTING create
+              dialog, surfaced from behind an empty grid — not a new feature. */}
+          <MessageSquare className="mx-auto mb-3 h-10 w-10 opacity-40" />
+          <p className="mb-2 text-base font-medium text-foreground">Nothing shared yet</p>
+          <p className="mb-4 text-sm text-muted-foreground">
+            This is where members post deals they&apos;ve found — a code, a link, a tip.
+            Others can upvote, comment and save. Posts are reviewed before they appear.
+          </p>
+          <Button onClick={() => setShowCreate(true)}>Share a deal</Button>
         </div>
       )}
 

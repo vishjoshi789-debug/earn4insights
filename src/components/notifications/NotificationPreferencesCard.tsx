@@ -73,8 +73,8 @@ const CONSUMER_CATEGORIES: Category[] = [
   {
     key: 'watchlist',
     label: 'Products you are watching',
-    description: 'When a Coming Soon product on your watchlist goes live.',
-    events: ['consumer.watchlist.launched'],
+    description: 'When a product on your watchlist launches, or a deal is posted on it.',
+    events: ['consumer.watchlist.launched', 'consumer.watchlist.deal_posted'],
   },
   {
     key: 'new_things',

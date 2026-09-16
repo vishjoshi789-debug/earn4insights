@@ -42,6 +42,8 @@ export const NOTIFIABLE_EVENT_TYPES = [
   // events with a reachable emitter, and this one has no reachable recipients
   // until scheduled products can be revealed and watched before launch.
   'consumer.watchlist.launched',
+  // A brand deal was published on a watched product (notifyWatchersOnDeal).
+  'consumer.watchlist.deal_posted',
   'consumer.survey.completed',
   'consumer.product.searched',
   'consumer.product.browsed',

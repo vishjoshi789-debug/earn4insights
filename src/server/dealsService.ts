@@ -9,6 +9,7 @@
  */
 
 import 'server-only'
+import { notifyWatchersOnDeal } from '@/server/watchlistService'
 
 import {
   createDeal as createDealRepo,
@@ -68,12 +69,24 @@ export async function publishDeal(brandId: string, dealId: string) {
 
   const updated = await updateDealRepo(dealId, { status: 'active' })
 
+  // Audience path: consumers matching this brand's ICPs. Consent-gated, no
+  // bypass — correct for people who did not ask. (Inert today: icp_match_scores
+  // has 0 rows, so getConsumersForBrandViaIcps finds nobody.)
   emit(PLATFORM_EVENTS.BRAND_DISCOUNT_CREATED, {
     actorId: brandId,
     actorRole: 'brand',
     brandId,
     dealId,
     dealTitle: deal.title,
+  })
+
+  // Watcher path: consumers who watched THIS product. Their own act, so §7
+  // service communication with the personalization bypass. Passes the deal
+  // already in hand — no second read. Non-blocking: a notification failure
+  // must not un-publish the deal. See notifyWatchersOnDeal for the overlap
+  // note between these two paths.
+  notifyWatchersOnDeal(deal).catch((err) => {
+    console.error('[publishDeal] Watcher notification failed (non-blocking):', err)
   })
 
   return updated

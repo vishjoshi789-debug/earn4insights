@@ -390,9 +390,24 @@ export default function DealsClient() {
                 <DealSection title="For You" icon={<Star className="h-5 w-5 text-purple-400" />} deals={feed.forYou} onSave={handleSave} onRedeem={handleRedeem} />
               )}
               {!feed.featured.length && !feed.trending.length && !feed.newest.length && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Tag className="h-10 w-10 mx-auto mb-3 opacity-40" />
-                  <p>No deals available right now. Check back soon!</p>
+                <div className="mx-auto max-w-md py-12 text-center">
+                  {/* Written from behaviour, not intent — every clause traces to
+                      code. Promo code → copied to clipboard; link → opens in a
+                      new tab (handlers above); 10 points → dealsService.
+                      redeemDeal awardPoints(…, 10). "Check back" is deliberately
+                      weak: it promises nothing. ⚠️ The points line is real
+                      behaviour and therefore contractual under the claims policy;
+                      if points are ever disabled per-deal, this copy changes with
+                      it. No "notify me" control — no deals emitter exists for
+                      consumers who are not watching a product, and a control
+                      without an emitter is a false claim. */}
+                  <Tag className="mx-auto mb-3 h-10 w-10 opacity-40" />
+                  <p className="mb-2 text-base font-medium text-foreground">No deals yet</p>
+                  <p className="text-sm text-muted-foreground">
+                    When brands post offers here, you&apos;ll get promo codes to copy or links to
+                    follow. Redeeming a deal earns you 10 points. Nothing has been posted so far —
+                    check back, or save products you&apos;re interested in to your watchlist.
+                  </p>
                 </div>
               )}
             </>
