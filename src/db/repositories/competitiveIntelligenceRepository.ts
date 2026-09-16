@@ -37,7 +37,11 @@ import { eq, and, desc, gt, gte, inArray, isNull, isNotNull, or, sql as drizzleS
 // Access to aggregates is logged (logAggregateAccess) to support audit
 // trails for DPDP / GDPR compliance.
 
-export const MIN_COHORT_SIZE = 5
+// The floor is defined ONCE in lib/privacy/cohort. Re-exported here so the
+// four existing importers of this module keep working; new code should import
+// from lib/privacy/cohort directly.
+export { MIN_COHORT_SIZE } from '@/lib/privacy/cohort'
+import { MIN_COHORT_SIZE } from '@/lib/privacy/cohort'
 
 function logAggregateAccess(
   brandId: string,

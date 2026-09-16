@@ -7,9 +7,11 @@
  */
 
 import { db } from '@/db'
-import { productWatchlist, products, users } from '@/db/schema'
+import { productWatchlist, products } from '@/db/schema'
 import { eq, and, desc, count } from 'drizzle-orm'
 import { dispatchToUser } from '@/server/realtimeNotificationService'
+import { MIN_COHORT_SIZE } from '@/lib/privacy/cohort'
+import { WATCHER_INSIGHT_TIER, type WatcherInsight } from '@/lib/privacy/watcherInsight'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -144,8 +146,18 @@ export async function isWatching(userId: string, productId: string) {
   return entries.length > 0 ? entries : null
 }
 
-/** Count watchers for a product (used for brand dashboard + watchlist_milestone alerts) */
-export async function getWatcherCount(productId: string) {
+/**
+ * Raw active-watcher count for a product. PRIVATE — the only caller is
+ * watcherInsightFor, which applies the tier and the cohort floor.
+ *
+ * ⚠️ This used to be exported with the comment "used for brand dashboard +
+ * watchlist_milestone alerts". BOTH WERE FALSE: it had zero callers, the
+ * milestone alert was removed in a66114b, and no brand dashboard ever read
+ * it. A comment does not compile, so it stays true-looking after the code
+ * stops being true. It is un-exported now so the raw, unfloored number cannot
+ * reach a brand surface without passing the gate.
+ */
+async function countActiveWatchers(productId: string): Promise<number> {
   const [result] = await db
     .select({ total: count() })
     .from(productWatchlist)
@@ -157,6 +169,71 @@ export async function getWatcherCount(productId: string) {
     )
 
   return result?.total ?? 0
+}
+
+// ── THE ONE GATE for brand-facing watcher insight ───────────────────
+//
+// Follows consumerVisibleProducts() exactly: one exported function, every
+// brand-facing surface calls it, NO surface reads product_watchlist directly.
+// The tier and the floor are two separate knobs owned by lib/privacy — legal
+// sets the tier (a commit), the floor is platform policy shared with every
+// other aggregate. Changing either is a config change here, not a refactor
+// anywhere else.
+
+export interface WatcherInsightViewer {
+  userId: string
+  /**
+   * Owner or admin of the product. ⚠️ Defaults CLOSED — a non-owner is always
+   * suppressed. T0 is about a brand's OWN product. Whether a brand may see
+   * watcher counts on a competitor's product is a different product question
+   * with a different consent shape, not a config flip (founder decision,
+   * 2026-09-16).
+   */
+  isOwner: boolean
+}
+
+/**
+ * What this viewer may learn about who is watching this product.
+ *
+ * Never returns 0. Below the floor it returns `{ tier: 'suppressed' }`, the
+ * same contract as the ICP and CI repository helpers: zero is a claim, and a
+ * false one when the true count is 1–4.
+ */
+export async function watcherInsightFor(
+  productId: string,
+  viewer: WatcherInsightViewer,
+): Promise<WatcherInsight> {
+  if (!viewer.isOwner) return { tier: 'suppressed', reason: 'not_owner' }
+  if (WATCHER_INSIGHT_TIER === 'none') return { tier: 'suppressed', reason: 'tier_none' }
+
+  const watchers = await countActiveWatchers(productId)
+  if (watchers < MIN_COHORT_SIZE) return { tier: 'suppressed', reason: 'below_floor' }
+
+  switch (WATCHER_INSIGHT_TIER) {
+    case 'count':
+      return { tier: 'count', watchers }
+
+    // Designed, NOT BUILT. Fail loudly at the gate rather than silently
+    // downstream: a config change to an unbuilt tier must be impossible to
+    // miss. See lib/privacy/watcherInsight for what each tier requires —
+    // 'demographic' and 'identified' need a consent prompt that does not
+    // exist yet, and that prompt is the part that is not optional.
+    case 'trend':
+    case 'demographic':
+    case 'identified':
+      throw new Error(
+        `WATCHER_INSIGHT_TIER='${WATCHER_INSIGHT_TIER}' is designed but not implemented. ` +
+        `See lib/privacy/watcherInsight.ts before building it.`,
+      )
+
+    // 'none' is handled above. This default exists so that adding a tier to
+    // the union without adding a case here is a COMPILE error, not a runtime
+    // fall-through that returns undefined to a brand surface.
+    default: {
+      const unhandled: never = WATCHER_INSIGHT_TIER
+      throw new Error(`Unhandled WATCHER_INSIGHT_TIER: ${String(unhandled)}`)
+    }
+  }
 }
 
 // ── Watcher notification — ONE machine, many emitters ──────────────

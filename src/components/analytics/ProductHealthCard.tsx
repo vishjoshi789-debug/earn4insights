@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { TrendingUp, TrendingDown, Minus, Heart, AlertTriangle, Sparkles, Star, MessageSquare } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, Heart, AlertTriangle, Sparkles, Star, MessageSquare, Eye } from 'lucide-react'
 
 type HealthData = {
   healthScore: number
@@ -31,6 +31,8 @@ type SummaryData = {
   viewerScope: 'owner' | 'public'
   /** Aggregates withheld because the cohort is under MIN_COHORT_SIZE. */
   suppressedForCohortSize: boolean
+  /** Owner scope only; ABSENT for everyone else. Render only when tier === 'count'. */
+  watchers?: { tier: 'count'; watchers: number } | { tier: string }
 }
 
 export function ProductHealthCard({ productId }: { productId: string }) {
@@ -145,6 +147,17 @@ export function ProductHealthCard({ productId }: { productId: string }) {
               // rather than understanding that quotes are private to the brand.
               <p className="text-xs text-muted-foreground pt-1">
                 Aggregate view — individual feedback is private to the product&apos;s brand.
+              </p>
+            )}
+            {/* T0 watcher insight — owner only, above the cohort floor. Renders
+                ONLY on tier 'count'. A suppressed result renders NOTHING: no
+                "hidden for privacy" hint, because that alone tells the brand
+                that watchers exist. At n<5 this is invisible by design. */}
+            {summary.watchers?.tier === 'count' && 'watchers' in summary.watchers && (
+              <p className="flex items-center gap-1.5 pt-1 text-sm text-amber-300">
+                <Eye className="h-4 w-4" />
+                {summary.watchers.watchers}{' '}
+                {summary.watchers.watchers === 1 ? 'person is' : 'people are'} watching this product
               </p>
             )}
           </CardHeader>
