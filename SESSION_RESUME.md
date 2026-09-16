@@ -4231,3 +4231,57 @@ watcher). Expect a bell within a second, an inbox row of type
 `consumer.watchlist.deal_posted`, a queue row, and `notified_at` updated. Different
 call site, different trigger, same four traces — not shipped on the strength of
 the launch loop working.
+
+---
+
+## ✅ VERIFIED IN PRODUCTION (2026-09-16) — deal notifications, second emitter, own trigger
+
+Brand published a deal on `Insights` from Manage Deals → `publishDeal` →
+`notifyWatchersOnDeal` → `notifyWatchers` → the consumer's bell rang. All four
+traces as expected: inbox row `consumer.watchlist.deal_posted`, queue row
+(email, pending), `notified_at` advanced, deal `active`.
+
+**Both emitters are now verified on their own triggers** — launch via the cron
+(2026-09-15), deal via Publish (2026-09-16). Same machine, two call sites, a real
+recipient each time. The WatchButton tooltip now names both, and was not allowed
+to until both had been observed.
+
+### 🔴 SIXTH IGNITION-KEY INSTANCE — and I built it (`d5e3d64` fixes it)
+
+The deal wrapper reads `deal.productId`. The API accepted it, the schema had it,
+the wrapper guarded null. **The brand deal form never collected it** — eleven
+fields in state, `productId` not among them. Every deal created through the UI
+was born `product_id = NULL`; the null guard fired on every one; the emitter I
+had just shipped could reach nobody through the product.
+
+**Found by the founder trying to attach a deal to a product and finding no
+control.** The standing check — *"what causes the first row to exist, and can a
+USER trigger it?"* — would have caught it before they had to. I traced
+API → service → schema and stopped one layer short of the form.
+
+**Traced to the ROUTE, not the INPUT** — the mirror of "traced to the query, not
+the output" from two days earlier. Both are the same failure: verifying a path
+by reading the middle of it. **A feature is reachable when a user can cause the
+first row AND see the last one. Check both ends, not the code between.**
+
+Verified in the meantime by setting `product_id` in Neon on the draft, so the
+wrapper was tested on its real trigger without waiting for the form fix.
+
+**Fix:** `GET /api/brand/products` (new, owner-scoped via `getProductsByOwner`)
+and a product `<Select>` on the deal form — *"No product — brand-wide"* as the
+explicit default, Coming Soon products badged. Same defect class and same fix
+shape as the survey product picker (`3eefa3a`).
+
+**Also:** deal `title`/`description` now trimmed — `"new discounted offer "`
+was the **third** untrimmed input this session, after a user name and a product
+name. ⚠️ Pattern, not coincidence: **no form in this codebase trims text on
+save.** A repo-wide pass would be cheap and would close it everywhere at once.
+
+### What is now real, end to end
+
+A consumer can watch a product they have never bought — including one that
+does not yet exist commercially — and be told, in under a second, when it
+launches and when a brand puts a deal on it. Revealed intent, service
+notification, consent-correct, verified twice. **The brand cannot yet see who
+is watching** (T0 gate, floor of 5, one watcher) — that is the next thing that
+becomes real on its own as watchers accumulate.
