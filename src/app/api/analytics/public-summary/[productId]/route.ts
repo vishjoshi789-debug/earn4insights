@@ -57,7 +57,7 @@ export async function GET(
     const scope: SummaryViewerScope =
       isOwner || isAdminSession(session) ? 'owner' : 'public'
 
-    const summary = await generatePublicSummary(productId, scope)
+    const summary = await generatePublicSummary(productId, scope, session.user.id)
 
     return NextResponse.json(summary, {
       headers: {

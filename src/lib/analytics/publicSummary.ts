@@ -2,7 +2,9 @@ import 'server-only'
 
 import { db } from '@/db'
 import { extractedThemes, feedback, surveyResponses } from '@/db/schema'
-import { MIN_COHORT_SIZE } from '@/db/repositories/competitiveIntelligenceRepository'
+import { MIN_COHORT_SIZE } from '@/lib/privacy/cohort'
+import { watcherInsightFor } from '@/server/watchlistService'
+import type { WatcherInsight } from '@/lib/privacy/watcherInsight'
 import { eq, desc, gte } from 'drizzle-orm'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -50,6 +52,15 @@ export type PublicProductSummary = {
   viewerScope: SummaryViewerScope
   /** True when aggregates were withheld because the cohort is under the floor. */
   suppressedForCohortSize: boolean
+  /**
+   * Who is watching this product — OWNER SCOPE ONLY, and the key is ABSENT
+   * (not present-as-suppressed) for everyone else, so a non-owner payload
+   * cannot reveal that the field exists. Always produced by watcherInsightFor,
+   * the one gate: this file never reads product_watchlist. Suppressed below
+   * MIN_COHORT_SIZE — the card renders nothing in that case, and must not
+   * render "hidden for privacy", which is itself a disclosure.
+   */
+  watchers?: WatcherInsight
 }
 
 // ── Main function ─────────────────────────────────────────────────
@@ -96,7 +107,9 @@ export type PublicProductSummary = {
  */
 export async function generatePublicSummary(
   productId: string,
-  viewerScope: SummaryViewerScope = 'public'
+  viewerScope: SummaryViewerScope = 'public',
+  /** The viewer's user id — required for the owner-scoped watcher insight. */
+  viewerUserId?: string,
 ): Promise<PublicProductSummary> {
   const now = new Date()
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
@@ -215,6 +228,11 @@ export async function generatePublicSummary(
     lastUpdated: now.toISOString(),
     viewerScope,
     suppressedForCohortSize: false,
+    // Owner only. The spread keeps the key ABSENT for public scope rather
+    // than present with a suppressed value.
+    ...(isOwner && viewerUserId
+      ? { watchers: await watcherInsightFor(productId, { userId: viewerUserId, isOwner: true }) }
+      : {}),
   }
 }
 

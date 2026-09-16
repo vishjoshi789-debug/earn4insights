@@ -11,6 +11,7 @@
  */
 
 import 'server-only'
+import { MIN_COHORT_SIZE } from '@/lib/privacy/cohort'
 
 import {
   getPaymentsForInfluencer,
@@ -27,7 +28,8 @@ import type { PaymentFilters } from '@/db/repositories/influencerEarningsReposit
 
 // ── Constants ─────────────────────────────────────────────────────
 
-const MIN_COHORT_SIZE = 5
+// Was a local copy; now the single shared definition (lib/privacy/cohort).
+// (MIN_COHORT_SIZE is imported at the top of the file)
 
 // ── Types ─────────────────────────────────────────────────────────
 

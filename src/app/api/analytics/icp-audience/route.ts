@@ -27,9 +27,11 @@ import { getIcpById, getTopMatchesForIcp } from '@/db/repositories/icpRepository
 import { db } from '@/db'
 import { icpMatchScores } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
+import { MIN_COHORT_SIZE } from '@/lib/privacy/cohort'
 
-// Minimum cohort size to return aggregates (re-identification guard)
-const MIN_COHORT_SIZE = 5
+// Minimum cohort size to return aggregates (re-identification guard).
+// Was a local copy; now the single shared definition.
+// (MIN_COHORT_SIZE is imported at the top of the file)
 
 export async function GET(req: NextRequest) {
   try {

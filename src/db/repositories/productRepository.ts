@@ -44,7 +44,12 @@ function toProduct(dbProduct: DBProduct): Product {
 function toDBProduct(product: Partial<Product>): Partial<NewProduct> {
   const result: Partial<NewProduct> = {
     id: product.id,
-    name: product.name,
+    // ⚠️ Trimmed HERE, at the one write chokepoint for create AND update.
+    // Names were stored with trailing whitespace — "Insights " produced the
+    // notification title "Insights  is now live" with a double space, the
+    // second instance after the "Josiah Okoku " user name. nameNormalized
+    // already trimmed; the display name did not.
+    name: product.name?.trim(),
     description: product.description,
     platform: product.platform,
     npsEnabled: product.features?.nps ?? false,
@@ -73,15 +78,6 @@ function toDBProduct(product: Partial<Product>): Partial<NewProduct> {
 // BASIC CRUD (existing, backward compatible)
 // ============================================================================
 
-/**
- * Get all products (excludes merged AND scheduled by default).
- *
- * Scheduled products are owner-only — they should not appear in rankings,
- * top-products, public listings, or consumer-side discovery surfaces. The
- * cron at /api/cron/publish-scheduled-launches flips launch_status to
- * 'live' when the scheduled time arrives, at which point they reappear
- * here. Pass `{ includeScheduled: true }` for admin / debugging surfaces.
- */
 /**
  * THE ONE PREDICATE for "may a consumer see this product?"
  *
