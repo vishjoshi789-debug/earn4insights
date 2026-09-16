@@ -7,7 +7,7 @@
  */
 
 import { db } from '@/db'
-import { productWatchlist, products } from '@/db/schema'
+import { productWatchlist, products, type Deal } from '@/db/schema'
 import { eq, and, desc, count } from 'drizzle-orm'
 import { dispatchToUser } from '@/server/realtimeNotificationService'
 import { MIN_COHORT_SIZE } from '@/lib/privacy/cohort'
@@ -15,7 +15,10 @@ import { WATCHER_INSIGHT_TIER, type WatcherInsight } from '@/lib/privacy/watcher
 
 // ── Types ──────────────────────────────────────────────────────────
 
-export type WatchType = 'launch' | 'price_drop' | 'feature' | 'update' | 'any'
+// 'deal' added 2026-09-16 so a consumer can opt into deal alerts WITHOUT
+// receiving every other kind — before it existed, only 'any' watchers would
+// have received deal notifications, with no way to want just those.
+export type WatchType = 'launch' | 'price_drop' | 'feature' | 'update' | 'deal' | 'any'
 
 export interface AddToWatchlistInput {
   userId: string
@@ -401,6 +404,48 @@ export async function notifyWatchersOnLaunch(productId: string): Promise<NotifyW
       ctaUrl: `/dashboard/products/${product.id}`,
       emailSubject: `🚀 "${product.name}" just launched`,
       emailBody: `A product you've been watching — "${product.name}" — is now live. Check it out and share your feedback.`,
+    }),
+  })
+}
+
+/**
+ * A brand deal was published on a watched product.
+ *
+ * Second emitter on the same machine — the whole point of the refactor. Takes
+ * the already-loaded deal rather than a dealId, because publishDeal has just
+ * read it and a second read of the same row would be waste.
+ *
+ * ⚠️ EXPLICIT GUARD on a null productId, not a silent skip inside
+ * notifyWatchers (which takes a string and cannot be handed null). A
+ * brand-wide deal with no product has no watchers by definition — that is a
+ * normal case, named here, not an error. Same shape as the v16 null-user_id
+ * skips.
+ *
+ * ⚠️ OVERLAP WITH BRAND_DISCOUNT_CREATED, recorded not filtered. publishDeal
+ * also emits that event, whose handler dispatches to consumers matching the
+ * brand's ICPs — an AUDIENCE, consent-gated, no bypass. This wrapper reaches
+ * people who WATCHED the product — their own act, §7 bypass. Different
+ * populations, both legitimate, and they can overlap: a watcher who also
+ * ICP-matches would get two bells. Today that is impossible — icp_match_scores
+ * has 0 rows — so no filter is built against a condition that cannot occur.
+ * When bulk ICP scoring ships, the ICP handler must EXCLUDE product watchers;
+ * they have already been told, more specifically. That filter belongs with
+ * that work.
+ */
+export async function notifyWatchersOnDeal(
+  deal: Pick<Deal, 'id' | 'title' | 'productId'>,
+): Promise<NotifyWatchersResult> {
+  if (!deal.productId) return { total: 0, notified: 0, skipped: 0 }
+
+  return notifyWatchers(deal.productId, {
+    watchTypes: ['deal', 'any'],
+    eventType: 'consumer.watchlist.deal_posted',
+    buildMessage: (product) => ({
+      title: `New deal on ${product.name}`,
+      body: `${deal.title} — a deal was just posted on a product you're watching.`,
+      ctaUrl: '/dashboard/deals',
+      emailSubject: `🏷️ New deal on "${product.name}"`,
+      emailBody: `A product you're watching has a new deal: ${deal.title}. See it in Deals & Offers.`,
     }),
   })
 }

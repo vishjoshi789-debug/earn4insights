@@ -740,7 +740,8 @@ export const productWatchlist = pgTable('product_watchlist', {
   userId: text('user_id').notNull(),
   productId: text('product_id').notNull(),
   watchType: text('watch_type').notNull().default('launch'),
-  // 'launch' | 'price_drop' | 'feature' | 'update' | 'any'
+  // 'launch' | 'price_drop' | 'feature' | 'update' | 'deal' | 'any'
+  // ('deal' added 2026-09-16 so deal alerts can be opted into on their own)
   desiredFeature: text('desired_feature'),   // free-text: "dark mode", "iOS app", etc.
   notifyChannels: jsonb('notify_channels').$type<string[]>().default(['email']),
   // ['email'] | ['email','whatsapp'] | etc.
