@@ -126,17 +126,17 @@ export function WatchButton({ productId, size = 'default', className }: WatchBut
             )}
           </Button>
         </TooltipTrigger>
-        {/* Written from behaviour, not intent. Since migration 042 a Coming
-            Soon product can be watched before launch, and the cron notifies
-            watchers when it goes live \u2014 so the launch promise is now TRUE, but
-            ONLY for Coming Soon products. Watching a product that has already
-            launched does nothing beyond the list, and the copy must not imply
-            otherwise. price_drop / feature updates still have no emitter and
-            are not mentioned. */}
+        {/* Written from behaviour \u2014 two of them, each verified in production
+            on its own trigger before this copy was allowed to mention it:
+              launch  2026-09-15  cron publishes a Coming Soon product \u2192 bell
+              deal    2026-09-16  brand publishes a deal on the product \u2192 bell
+            "when it launches" is scoped to Coming Soon because a live product
+            has nothing left to launch. price_drop / feature updates still have
+            no emitter and are not mentioned. */}
         <TooltipContent>
           {watching
             ? 'On your watchlist. Click to remove.'
-            : 'Save to your watchlist. If it\u2019s Coming Soon, we\u2019ll tell you when it launches.'}
+            : 'Save to your watchlist. We\u2019ll tell you when a deal is posted on it, or when it launches if it\u2019s Coming Soon.'}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
