@@ -4091,3 +4091,77 @@ from a consumer who has never bought it, and a service notification the
 consumer asked for, delivered to the bell in under half a second. The
 price_drop and feature_update emitters plug in as wrappers on the same
 machine — pending a price column for the former.
+
+---
+
+## 🔴 RANKINGS HAS NEVER WORKED IN PRODUCTION (found 2026-09-16, NOT fixed — needs its own assessment)
+
+Found while tracing "who can see watcher counts". The answer is nobody, because
+the only reader outside the watchlist service is a pipeline that cannot run
+on Vercel.
+
+- **`rankingStore` persists with `fs.writeFile` to
+  `path.join(process.cwd(), 'data', 'rankings')`** — the local filesystem. On
+  Vercel `process.cwd()` is the read-only deployment bundle; writes fail or
+  land on an ephemeral instance and vanish. Same class as the §5
+  `fs.readFileSync` migration footgun.
+- **`weekly_rankings` and `ranking_history` exist in `schema.ts` and NOTHING
+  writes to them.** The DB-backed store was designed and never wired.
+- **No cron.** The only generator is `/api/admin/generate-rankings`, manual.
+- **`/api/rankings/[category]` has no `auth()` and no role check.** It returns
+  `getCurrentWeeklyRanking()` to anyone middleware lets through — moot only
+  because the store is always empty.
+- **`/top-products` (public) is downstream of the same empty store.**
+- ⚠️ **The raw per-product `watchlistCount` is in the ranking payload**
+  (`rankingEngine.ts:213`), **unfloored**, alongside the damped composite. If
+  rankings is fixed without gating that field first, the watcher-count consent
+  question goes live by accident. Hence **DECISION 1: gate before rankings.**
+
+**Do not absorb this into watchlist work.** It needs: a DB-backed store, a
+cron, auth on the route, and `watcherInsightFor` in the payload path. Separate
+piece.
+
+## 🔌 `getWatcherCount`'s false comment — the pattern, stated once
+
+Its docstring said *"used for brand dashboard + watchlist_milestone alerts"*.
+**Both false**: zero callers, the milestone alert was removed in `a66114b`, no
+brand dashboard ever read it. **A comment does not compile, so it stays
+true-looking after the code stops being true.** Now un-exported as
+`countActiveWatchers`, private to the gate, so the raw unfloored number cannot
+reach a brand surface without passing it.
+
+## ⚠️ My own correction — traced to the query, not the output
+
+I said watching *"counts toward Rankings"* three times this session, including
+in commit `ded3441`. It was true of the code path and false of production —
+the count is read by a query whose output never reaches anyone. **Trace to
+OUTPUT, not to the call site.** A query that runs is not a feature that works;
+the ignition-key check ("what causes the first row to exist?") has a twin:
+**"where does the last row go, and does anyone see it?"**
+
+## ✅ SHIPPED — `watcherInsightFor`, the one gate (2026-09-16)
+
+- **`lib/privacy/cohort.ts`** — `MIN_COHORT_SIZE = 5`, the ONE definition.
+  Was three real copies (not five — two of the five I counted were comments);
+  CI repository re-exports for its four importers; icp-audience and
+  influencerEarnings now import. Watchlist would have been a fourth.
+- **`lib/privacy/watcherInsight.ts`** — `WATCHER_INSIGHT_TIER = 'count'` as a
+  **build-time constant** (change = commit, reviewable, envs cannot drift), the
+  five-tier vocabulary, the discriminated `WatcherInsight` return type, and
+  **the T1→T2 consent boundary written in-code**: counting watchers describes
+  the product; profiling them describes people, who have not been asked.
+- **`watchlistService.watcherInsightFor(productId, { userId, isOwner })`** —
+  non-owner → suppressed (**defaults closed**; competitor-visible counts are a
+  different product question, founder decision); tier `none` → suppressed;
+  below floor → suppressed, **never 0**; `count` → `{ tier:'count', watchers }`.
+  Unbuilt tiers **throw at the gate**; a `never` default makes a new union
+  member a compile error.
+- **`publicSummary` → `ProductHealthCard`** — `watchers` field for owner scope
+  only, key **absent** for everyone else. Card renders on `tier === 'count'`
+  and NOTHING otherwise — no "hidden for privacy", which is itself a disclosure.
+- **`toDbProduct` trims `name`** at the one write chokepoint.
+
+**At n=9 this renders nothing** — Insights has 1 watcher, the floor is 5.
+Architecture-for-later, proven end to end, with the empty pixels accepted over
+building it blind. **T2 and T3 are a config change plus a consent prompt**; the
+prompt is the part that is not optional.
