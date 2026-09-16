@@ -72,7 +72,14 @@ export async function findIdealConsumers(
 
   if (!product) throw new Error(`Product ${productId} not found`)
 
-  const productProfile = product.profile as any || {}
+  // ⚠️ WRONG JSONB LEVEL, fixed 2026-09-16 — the same defect as
+  // personalizationEngine. ProductProfile is { currentStep, isComplete, data },
+  // and category lives at data.category. This read the top level, so
+  // productCategory was always undefined and the +15 interest match below
+  // never fired for any launch notification. targetAudience is not in the
+  // type at all and has no writer; the level is corrected but it still reads
+  // undefined until something populates it.
+  const productProfile = ((product.profile as any)?.data ?? {}) as any
   const productCategory = productProfile.category || productProfile.productCategory
   const targetAudience = productProfile.targetAudience || {}
 

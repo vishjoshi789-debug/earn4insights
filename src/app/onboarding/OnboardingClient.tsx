@@ -768,8 +768,14 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {CATEGORY_KEYS.map((key, index) => {
               const category = CATEGORY_VALUES[index]
-              const isSelected = selectedCategories.includes(category)
-              
+              // ⚠️ STORE THE KEY, DISPLAY THE NAME. This stored the display name
+              // ('SaaS & Productivity') while products store the key
+              // ('TECH_SAAS'), so the recommendation engine's
+              // `interests.includes(productCategory)` could never be true —
+              // the two sides of the same vocabulary, spelled differently.
+              // Fixed 2026-09-16; existing rows backfilled name→key in SQL.
+              const isSelected = selectedCategories.includes(key)
+
               return (
                 <label
                   key={key}
@@ -786,7 +792,7 @@ export default function OnboardingClient({ userRole }: { userRole?: string }) {
                     <Checkbox
                       id={`category-${key}`}
                       checked={isSelected}
-                      onCheckedChange={() => handleCategoryToggle(category)}
+                      onCheckedChange={() => handleCategoryToggle(key)}
                     />
                     <div className={`font-medium ${isSelected ? 'text-purple-900 dark:text-purple-100' : 'text-gray-900 dark:text-gray-100'}`}>
                       {category}
