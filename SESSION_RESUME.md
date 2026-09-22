@@ -4312,12 +4312,33 @@ a null `owner_id`, so every one of these was admin-only before today.
 
 `Metacog` deliberately excluded — it is two rows and waits for the merge.
 
-⚠️ **Still NOT established:** whether *every* non-null `owner_id` belongs to
-this one account. The founder's proposed plain statement — *"no external brand
-has ever seen any organic feedback"* — is very likely true but has not been
-confirmed by an executed query, so it is **not** recorded here as fact. The
-query is `SELECT u.email, count(p.id) FROM users u JOIN products p ON
-p.owner_id = u.id GROUP BY 1`. One row returned = the statement holds.
+### ✅ RESOLVED — ownership query run (2026-09-22). The conclusion holds; the reason I gave for it was wrong.
+
+**Three brand accounts own products, not one.**
+
+| Account | Products |
+|---|---|
+| `vishweshwar981+brand@gmail.com` (founder) | Computational, Insights, StartupsGurukul, new smartphone, test product |
+| `vishweshwar98765@gmail.com` (founder) | Earn4Insights, Step by step |
+| `waleharshit@gmail.com` (**external**, signed up 2026-08-02) | Match bae |
+
+**"No external brand has ever seen organic feedback" is TRUE — but not for the
+reason I assumed.** I predicted one owner. The real reason is narrower and more
+fragile: there **is** an external brand, and its single product has **zero
+feedback**. The statement is an accident of that product being empty, not a
+property of the ownership model. ⚠️ **It stops being true the moment anyone
+leaves feedback on `Match bae`** — no code change required, no warning. Do not
+re-use it as a standing claim; re-check it against data each time.
+
+⚠️ **The external brand never verified its email** (token issued 2026-08-02,
+never used). Email verification **hard-blocks feedback submission**, so that
+account cannot use the core loop — and it is exactly the population v17's
+delivery-truth work (035 + the Resend webhook) exists to make visible. With
+`RESEND_WEBHOOK_SECRET` still unset, we cannot tell whether that mail bounced,
+was suppressed, or was simply ignored. **One real external signup, and we are
+blind to why they never came back.**
+
+**Also applied:** the empty `test product` `1959528b` was deleted.
 
 ### 🔴 THREE FINDINGS FROM APPLYING IT — two are defects in my own SQL
 
