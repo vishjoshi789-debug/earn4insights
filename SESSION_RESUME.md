@@ -4285,3 +4285,120 @@ launches and when a brand puts a deal on it. Revealed intent, service
 notification, consent-correct, verified twice. **The brand cannot yet see who
 is watching** (T0 gate, floor of 5, one watcher) — that is the next thing that
 becomes real on its own as watchers accumulate.
+
+## ✅ GROUP C REASSIGNED — first organic feedback ever visible to a brand (2026-09-22)
+
+**Applied by the founder directly in the Neon console. NOT via a migration
+route** — no route exists for this and none should; it is a one-time data
+correction, not a schema change.
+
+`owner_id` (and `created_by`, via `COALESCE`) set to
+`user_1782381137847_bcpzpta` (`vishweshwar981+brand@gmail.com`) on three
+products:
+
+| id | name |
+|---|---|
+| `e2143ffd-9ac3-49f4-9ff9-684c6c91395c` | new smartphone |
+| `0bbd6be4-a146-4255-84b7-f1f3b536115b` | StartupsGurukul |
+| `5f55172d-2b74-41f6-97c4-ada648d19227` | Computational |
+
+**Verified in the browser**, not just in SQL: the feedback panel on
+`new smartphone` renders 2 items to the brand account. That is the first
+organic consumer feedback ever to reach a brand through the brand path —
+`canManage` (`dashboard/products/[productId]/page.tsx:39-41`) fails closed on
+a null `owner_id`, so every one of these was admin-only before today.
+
+**Organic feedback invisible to brands: 15/24 → 12/24.**
+
+`Metacog` deliberately excluded — it is two rows and waits for the merge.
+
+⚠️ **Still NOT established:** whether *every* non-null `owner_id` belongs to
+this one account. The founder's proposed plain statement — *"no external brand
+has ever seen any organic feedback"* — is very likely true but has not been
+confirmed by an executed query, so it is **not** recorded here as fact. The
+query is `SELECT u.email, count(p.id) FROM users u JOIN products p ON
+p.owner_id = u.id GROUP BY 1`. One row returned = the statement holds.
+
+### 🔴 THREE FINDINGS FROM APPLYING IT — two are defects in my own SQL
+
+**1. Matching on `name` silently under-matches. Use ids, or `btrim(name)`.**
+Two of the three names carry trailing spaces (`"new smartphone "`,
+`"Computational "`). The `UPDATE` I supplied matched on bare `name`, so it
+would have reassigned **1 of 3 products and reported success** — a silent
+partial write with no error to notice. The founder caught it and used
+`btrim(name)`.
+
+⚠️ **STANDING RULE: until the trim cleanup runs, every statement touching
+`products` matches on `id` or `btrim(name)`. Never bare `name`.** The trap is
+that `name_normalized` was *always* trimmed at write (`createProduct:130`,
+`createPlaceholderProduct:360`), so search works and the drift is invisible
+from the UI. Same applies to `deals.title` — `d5e3d64` fixed the form, not the
+existing rows.
+
+I had documented this exact hazard one message earlier and then wrote
+name-matching SQL anyway. **Writing a caveat down is not the same as applying
+it.**
+
+**2. The two `test product ` rows are a double submit — 2026-06-25 11:43:36.008
+and 11:43:38.347, 2.3 seconds apart.** ⚠️ **But the launch form is NOT
+currently unguarded** — `3eefa3a` shipped `SubmitButton` +
+`useFormStatus()` + `disabled={pending}` (`LaunchForm.tsx:11-14`) at **19:47
+that same day, eight hours after these rows were created.** So these two rows
+are the evidence of the bug that commit fixed. Do not re-open it.
+
+**What IS still open: there is no server-side idempotency.** `products.name`
+and `products.name_normalized` carry **no unique constraint** (`schema.ts` —
+`nameNormalized` is a plain `text`), so the guard is client-side only. Two
+tabs, a retry, or a direct `'use server'` invocation still duplicate. A
+partial unique index on `lower(btrim(name))` where `lifecycle_status <>
+'merged'` would close it — unscheduled, and it needs the duplicate cleanup
+first or it cannot be created.
+
+**3. My Metacog merge script omitted `influencer_content_posts` and
+`influencer_campaigns`** — both of which I had listed in my own audit, in the
+same message, as carrying `product_id` with no FK.
+
+⚠️⚠️ **THE COMPLETENESS GAP, stated as a rule: RESTRICT guards only 6 of the
+20 tables carrying `product_id`.** `feedback`, `surveys`, `survey_responses`,
+`community_posts`, `community_deals_posts` and `social_posts` will abort a
+premature `DELETE`. The other 14 will not — 9 CASCADE (silently destroyed) and
+**5 have no FK at all** (`product_watchlist`, `user_events`,
+`contribution_events`, `influencer_content_posts`, `influencer_campaigns`) and
+are left dangling with no error anywhere.
+
+**So any merge or delete is only as complete as the hand-written table list.**
+The transaction wrapper protects against a missed RESTRICT table; nothing
+protects against a missed no-FK table. Enumerate from `schema.ts` every time —
+`grep "productId: text('product_id')"` — and do not trust a list from memory,
+including one written earlier in the same session.
+
+### Corrected merge table list (20 + 1)
+
+`feedback`, `surveys`, `survey_responses`, `extracted_themes`, `social_posts`,
+`community_posts`, `community_deals_posts`, `deals`, `consumer_intents`,
+`user_events`, `contribution_events`, `brand_icps`, `brand_alerts`,
+`brand_alert_rules`, `brand_reward_configs`, `ranking_history`,
+`competitor_products`, **`influencer_content_posts`**,
+**`influencer_campaigns`**, `product_watchlist` (NOT NULL — move-then-delete
+with a `NOT EXISTS` guard), plus `import_jobs.default_product_id`.
+
+### Still open on the catalogue
+
+- **Metacog ×2** — merge blocked on the 13/13 survey-response question (two
+  surveys one cohort, vs a duplicated copy). Query is in the audit; the seed
+  row is identifiable by its **invalid UUID** `k0l1m2n3-4567-0123-8f45-0123456789f4`.
+- ⚠️ **`data/products.json` can resurrect deleted seed rows.** It still holds
+  StartupsGurukul, Earn4Insights and Metacog; `src/scripts/runMigration.ts` →
+  `migrateJSONData()` dedups on `id`, so deleting the Metacog seed row makes it
+  re-insertable. Remove those three entries from the fixture in the same change.
+- **Deletes not yet applied:** `Apple iPad air`, `soap`, `test product #2`
+  (+ its one orphan `user_events` row — no FK, so it must be deleted explicitly).
+- **`test product #1`** — 19 feedback, 18 of them imported third-party rows.
+  Provenance predicate is `multimodal_metadata->>'importSource' IS NOT NULL`;
+  `importSource` is **not a column**. Renaming the product in place is the
+  cheapest honest fix. **Must not be deleted.**
+- **The claim flow still has no UI** — 8 group-A products with real consumer
+  feedback wait on it. ⚠️ `POST /api/dashboard/products/claim` has **no
+  ownership proof of any kind**, so shipping the page unguarded turns it into a
+  land-grab primitive over rows named `Apple`, `Samsung` and `Walmart`. The gate
+  decision sets the build size.
