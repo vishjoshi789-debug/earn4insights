@@ -4423,3 +4423,90 @@ with a `NOT EXISTS` guard), plus `import_jobs.default_product_id`.
   ownership proof of any kind**, so shipping the page unguarded turns it into a
   land-grab primitive over rows named `Apple`, `Samsung` and `Walmart`. The gate
   decision sets the build size.
+
+## ✅ GROUP C — `contribution_events.brand_id` backfilled; reassignment now complete (2026-09-22)
+
+**Applied by the founder in the Neon console.** `contribution_events.brand_id`
+backfilled from `products.owner_id` for the three Group C products. It was
+**empty on all three rows** (2 × `new smartphone`, 1 × `Computational`).
+3 rows updated.
+
+**Verified zero for these products** in every other dual-key table:
+`brand_alert_rules`, `brand_reward_configs`, `influencer_content_posts`,
+`influencer_campaigns`, `competitor_products`, `community_deals_posts`.
+`brand_alerts`, `brand_icps` and `deals` were already zero from the dependency
+query.
+
+**Group C reassignment is complete across every brand-keyed table, not just
+`owner_id`.**
+
+### ⚠️⚠️ STANDING RULE — `owner_id` alone is never the whole operation
+
+**Any ownership change — reassign, merge, or claim — must backfill `brand_id`
+on the dual-key tables in the same operation.** There are two independent
+pointers at a brand: `products.owner_id` (one column) and `brand_id`
+(**23 tables**). Changing the first moves the product; it does not touch the
+second. Every reader I checked scopes by `brand_id` alone
+(`icpRepository.ts:99`, `dealsRepository.ts:41`,
+`competitiveIntelligenceRepository.ts:74`…), so a row left behind is invisible
+to the new owner *and* dangling for the old one, **with no error on either
+side**. The 11 dual-key tables are listed in the audit above.
+
+⚠️ **This applies to the claim flow before it ships.** `claimProduct()`
+(`productRepository.ts:382`) sets `owner_id`, `claimed_by`, `claimed_at`,
+`claimable`, `lifecycle_status` — and **no `brand_id` anywhere**. Every claim
+would reproduce exactly the gap this backfill just closed.
+
+### 🔍 Why those 3 rows were empty — NOT a writer bug
+
+`recordContribution` (`contributionPipeline.ts:278-285`) **does** resolve
+`brandId = product?.ownerId` at write time. The rows were empty because the
+products had `owner_id IS NULL` **when the contribution happened** — the
+pipeline read an empty field and correctly stored NULL. It is never recomputed
+afterwards.
+
+**So this is a standing condition, not a one-off.** Every contribution recorded
+against an ownerless product is born `brand_id = NULL` and stays that way. The
+8 remaining Group A products (`Apple`, `Samsung`, `Walmart`…) are accumulating
+exactly these rows right now, and each will need the same backfill at claim
+time.
+
+Second-order effect: `getBrandWeight()` (`contributionPipeline.ts:123-124`)
+returns `weight: 1.0` immediately on a null `brandId`, so those contributions
+were scored **without any brand priority weighting**. No practical difference
+here — `brand_reward_configs` is empty for these products so the weight would
+have been 1.0 regardless — but the mechanism means an ownerless product can
+never apply a reward config, even once one exists.
+
+### 🔌 EIGHTH IGNITION-KEY INSTANCE — the contribution intelligence layer has NO UI
+
+**Answering "which screen shows this": none. There is no screen.**
+
+`contribution_events` is touched by exactly **six files** in the repo:
+`schema.ts`, `run-migration-031`, `contributionPipeline.ts`,
+`aiScoringService.ts`, and two API routes. **No `.tsx` anywhere calls
+`/api/contribution/intelligence` or `/api/contribution/brand-feedback`** —
+verified by grep across `src/app` and `src/components`.
+
+The **write** side is fully wired and running: `recordContribution` is called
+from 4 real paths (`feedback/submit:418`, `community/posts:200`,
+`community/.../replies:86`, `community/react:129`). The AI scores it, computes
+quality/relevance/depth/clarity/novelty/actionability/authenticity, applies
+multipliers and awards `final_tokens`. **Nothing displays any of it to anyone.**
+
+So the backfill is invisible in the browser. What it actually did is narrower
+and worth recording:
+
+🔴 **It closed a FAIL-OPEN authorization check on 3 rows.**
+`api/contribution/brand-feedback/route.ts:54` reads:
+
+```ts
+if (event.brandId && event.brandId !== session.user.id) { return 403 }
+```
+
+That is the §5 fail-open shape verbatim — **a NULL `brand_id` passes the
+check**, so before the backfill *any* brand account could rate those three
+contributions as useful/insightful and feed the AI scoring model. Unreachable
+today (no UI calls the route), so it is a latent hole, not an incident. It
+should be `if (!event.brandId || event.brandId !== session.user.id)` per the
+fail-closed-on-null policy — **the backfill fixed the data, not the check.**
