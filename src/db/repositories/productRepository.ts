@@ -1,6 +1,7 @@
 import { eq, and, or, ilike, sql, ne, lte } from 'drizzle-orm'
 import { db } from '@/db'
 import { products } from '@/db/schema'
+import { rekeyBrandForProduct } from './brandKeyRepository'
 import type { Product as DBProduct, NewProduct } from '@/db/schema'
 import type { Product, ProductProfile, ProductLifecycleStatus, ProductCreationSource, ProductLaunchStatus } from '@/lib/types/product'
 
@@ -387,20 +388,50 @@ export async function claimProduct(
   if (!product) return null
   if (!product.claimable) return null
   if (product.lifecycleStatus === 'merged') return null
-  
-  const [updated] = await db
-    .update(products)
-    .set({
-      ownerId: claimedBy,
-      claimedBy,
-      claimedAt: new Date(),
-      claimable: false,
-      lifecycleStatus: 'verified',
-      updatedAt: new Date(),
-    })
-    .where(eq(products.id, productId))
-    .returning()
-  
+
+  // ⚠️ OWNERSHIP AND BRAND KEYS MOVE TOGETHER, OR NEITHER MOVES.
+  //
+  // Setting `owner_id` alone is not a claim — it is half of one. Ten tables
+  // carry a `brand_id` pointing at whoever owns this product, every reader
+  // scopes by that column alone, and nothing reconciles the two. A claim that
+  // updated only `owner_id` would hand the brand a product whose alerts, ICPs,
+  // deals and contribution events remain invisible to them and dangling for
+  // the previous owner — silently, on EVERY claim.
+  //
+  // So both writes share one commit boundary. If the re-key throws, the
+  // ownership change rolls back with it and the claim fails loudly: a
+  // half-claimed product is worse than an unclaimed one, because nothing
+  // downstream can tell it happened.
+  //
+  // Verified that `db.transaction()` works on the pooled Neon connection —
+  // `api/consumer/rewards/redeem/route.ts:154` has run this way in production
+  // since `3b47eea`. CLAUDE.md's transaction warning is about
+  // `pgClient.unsafe()` with inline BEGIN/COMMIT, which is a different
+  // mechanism.
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(products)
+      .set({
+        ownerId: claimedBy,
+        claimedBy,
+        claimedAt: new Date(),
+        claimable: false,
+        lifecycleStatus: 'verified',
+        updatedAt: new Date(),
+      })
+      .where(eq(products.id, productId))
+      .returning()
+
+    if (!row) return null
+
+    const moved = await rekeyBrandForProduct(productId, claimedBy, tx)
+    if (Object.keys(moved).length > 0) {
+      console.log(`[claimProduct] re-keyed brand records for ${productId}:`, moved)
+    }
+
+    return row
+  })
+
   return updated ? toProduct(updated) : null
 }
 

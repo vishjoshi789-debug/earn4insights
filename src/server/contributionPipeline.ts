@@ -142,8 +142,41 @@ async function getBrandWeight(brandId: string | null, productId: string | null |
 
   if (!config) return { weight: 1.0, priorityKeywords: [] }
   const bm = config.bonusMultiplier || 1.0
+
+  // ⚠️⚠️ SECURITY CLAMP — NOT THE FINAL CAP. Founder decides the real value.
+  //
+  // `weight × bonusMultiplier` was returned RAW and fed straight into
+  //   finalTokens = base × quality × brandWeight × reputation
+  // which credits real, redeemable points (10 pts = ₹1). Neither column has a
+  // CHECK constraint — migrations 029/030 added money CHECKs and never covered
+  // this table — so a brand writing `weight: 100` multiplied the PLATFORM's
+  // payout by 100. There is no billing link on `brand_reward_configs`: nobody
+  // is charged for the bonus, so this was a brand-controlled, unbounded
+  // multiplier on a platform-funded liability. Same class as the challenge
+  // auto-completion vector closed in 9879fee.
+  //
+  // `POST /api/contribution/brand-config` is reachable by any authenticated
+  // brand today. It has no UI, which is the only reason this was never
+  // exercised — and "no UI" is not a control.
+  //
+  // Clamping at 1.0 means a brand can only ever REDUCE a payout, never raise
+  // one. ⚠️ That makes brand weighting INERT as a feature: the default is 1.0,
+  // so nothing changes until a real cap is chosen. That is the deliberate
+  // trade — the EXISTENCE of a cap is a security decision and was taken now;
+  // its VALUE, and who funds the bonus, is a separate economics decision the
+  // founder has explicitly deferred. Raise MAX_BRAND_WEIGHT when that lands.
+  const MAX_BRAND_WEIGHT = 1.0
+  const raw = config.weight * bm
+  const weight = Number.isFinite(raw) ? Math.max(0, Math.min(raw, MAX_BRAND_WEIGHT)) : 1.0
+  if (raw > MAX_BRAND_WEIGHT) {
+    console.warn(
+      `[ContributionPipeline] brand_reward_configs weight ${raw} for brand ${brandId} ` +
+      `exceeds MAX_BRAND_WEIGHT ${MAX_BRAND_WEIGHT} — clamped.`,
+    )
+  }
+
   return {
-    weight: config.weight * bm,
+    weight,
     priorityKeywords: config.priorityKeywords ?? [],
   }
 }

@@ -64,12 +64,25 @@ export async function signProofCookie(
 }
 
 /**
- * Verify a proof cookie: signature valid, not expired, and — when a
- * loginNonce is supplied — bound to that login. Never throws.
+ * Verify a proof cookie: signature valid, not expired, and bound to this
+ * login's nonce. Never throws.
+ *
+ * ⚠️ THE NONCE IS REQUIRED AND THE CHECK FAILS CLOSED WITHOUT IT.
+ *
+ * This previously read `if (expectedLoginNonce && data.n !== expectedLoginNonce)`
+ * with the parameter optional — so a null nonce SKIPPED the binding entirely
+ * and any correctly-signed, unexpired cookie satisfied the 2FA interlock,
+ * regardless of which login minted it.
+ *
+ * It was never exploitable: the sole caller, `middleware.ts:252`, guards with
+ * `loginNonce ? await verifyProofCookie(…) : false`. But the safety lived in
+ * the caller, not here, and a SECOND caller written without that guard would
+ * have inherited a 2FA bypass. Same `if (x && x !== y)` family as the
+ * null-`brand_id` and `if (cronSecret && …)` holes.
  */
 export async function verifyProofCookie(
   cookieValue: string | null | undefined,
-  expectedLoginNonce: string | null | undefined,
+  expectedLoginNonce: string,
 ): Promise<boolean> {
   if (!cookieValue) return false
   const dot = cookieValue.indexOf('.')
@@ -91,7 +104,9 @@ export async function verifyProofCookie(
       e?: number
     }
     if (typeof data.e !== 'number' || Date.now() > data.e) return false
-    if (expectedLoginNonce && data.n !== expectedLoginNonce) return false
+    // Fail closed: no expected nonce means we cannot bind this cookie to a
+    // login, which is a reason to REJECT, not a reason to skip the check.
+    if (!expectedLoginNonce || data.n !== expectedLoginNonce) return false
     return true
   } catch {
     return false

@@ -4285,3 +4285,422 @@ launches and when a brand puts a deal on it. Revealed intent, service
 notification, consent-correct, verified twice. **The brand cannot yet see who
 is watching** (T0 gate, floor of 5, one watcher) — that is the next thing that
 becomes real on its own as watchers accumulate.
+
+## ✅ GROUP C REASSIGNED — first organic feedback ever visible to a brand (2026-09-22)
+
+**Applied by the founder directly in the Neon console. NOT via a migration
+route** — no route exists for this and none should; it is a one-time data
+correction, not a schema change.
+
+`owner_id` (and `created_by`, via `COALESCE`) set to
+`user_1782381137847_bcpzpta` (`vishweshwar981+brand@gmail.com`) on three
+products:
+
+| id | name |
+|---|---|
+| `e2143ffd-9ac3-49f4-9ff9-684c6c91395c` | new smartphone |
+| `0bbd6be4-a146-4255-84b7-f1f3b536115b` | StartupsGurukul |
+| `5f55172d-2b74-41f6-97c4-ada648d19227` | Computational |
+
+**Verified in the browser**, not just in SQL: the feedback panel on
+`new smartphone` renders 2 items to the brand account. That is the first
+organic consumer feedback ever to reach a brand through the brand path —
+`canManage` (`dashboard/products/[productId]/page.tsx:39-41`) fails closed on
+a null `owner_id`, so every one of these was admin-only before today.
+
+**Organic feedback invisible to brands: 15/24 → 12/24.**
+
+`Metacog` deliberately excluded — it is two rows and waits for the merge.
+
+### ✅ RESOLVED — ownership query run (2026-09-22). The conclusion holds; the reason I gave for it was wrong.
+
+**Three brand accounts own products, not one.**
+
+| Account | Products |
+|---|---|
+| `vishweshwar981+brand@gmail.com` (founder) | Computational, Insights, StartupsGurukul, new smartphone, test product |
+| `vishweshwar98765@gmail.com` (founder) | Earn4Insights, Step by step |
+| `waleharshit@gmail.com` (**external**, signed up 2026-08-02) | Match bae |
+
+**"No external brand has ever seen organic feedback" is TRUE — but not for the
+reason I assumed.** I predicted one owner. The real reason is narrower and more
+fragile: there **is** an external brand, and its single product has **zero
+feedback**. The statement is an accident of that product being empty, not a
+property of the ownership model. ⚠️ **It stops being true the moment anyone
+leaves feedback on `Match bae`** — no code change required, no warning. Do not
+re-use it as a standing claim; re-check it against data each time.
+
+⚠️ **The external brand never verified its email** (token issued 2026-08-02,
+never used). Email verification **hard-blocks feedback submission**, so that
+account cannot use the core loop — and it is exactly the population v17's
+delivery-truth work (035 + the Resend webhook) exists to make visible. With
+`RESEND_WEBHOOK_SECRET` still unset, we cannot tell whether that mail bounced,
+was suppressed, or was simply ignored. **One real external signup, and we are
+blind to why they never came back.**
+
+**Also applied:** the empty `test product` `1959528b` was deleted.
+
+### 🔴 THREE FINDINGS FROM APPLYING IT — two are defects in my own SQL
+
+**1. Matching on `name` silently under-matches. Use ids, or `btrim(name)`.**
+Two of the three names carry trailing spaces (`"new smartphone "`,
+`"Computational "`). The `UPDATE` I supplied matched on bare `name`, so it
+would have reassigned **1 of 3 products and reported success** — a silent
+partial write with no error to notice. The founder caught it and used
+`btrim(name)`.
+
+⚠️ **STANDING RULE: until the trim cleanup runs, every statement touching
+`products` matches on `id` or `btrim(name)`. Never bare `name`.** The trap is
+that `name_normalized` was *always* trimmed at write (`createProduct:130`,
+`createPlaceholderProduct:360`), so search works and the drift is invisible
+from the UI. Same applies to `deals.title` — `d5e3d64` fixed the form, not the
+existing rows.
+
+I had documented this exact hazard one message earlier and then wrote
+name-matching SQL anyway. **Writing a caveat down is not the same as applying
+it.**
+
+**2. The two `test product ` rows are a double submit — 2026-06-25 11:43:36.008
+and 11:43:38.347, 2.3 seconds apart.** ⚠️ **But the launch form is NOT
+currently unguarded** — `3eefa3a` shipped `SubmitButton` +
+`useFormStatus()` + `disabled={pending}` (`LaunchForm.tsx:11-14`) at **19:47
+that same day, eight hours after these rows were created.** So these two rows
+are the evidence of the bug that commit fixed. Do not re-open it.
+
+**What IS still open: there is no server-side idempotency.** `products.name`
+and `products.name_normalized` carry **no unique constraint** (`schema.ts` —
+`nameNormalized` is a plain `text`), so the guard is client-side only. Two
+tabs, a retry, or a direct `'use server'` invocation still duplicate. A
+partial unique index on `lower(btrim(name))` where `lifecycle_status <>
+'merged'` would close it — unscheduled, and it needs the duplicate cleanup
+first or it cannot be created.
+
+**3. My Metacog merge script omitted `influencer_content_posts` and
+`influencer_campaigns`** — both of which I had listed in my own audit, in the
+same message, as carrying `product_id` with no FK.
+
+⚠️⚠️ **THE COMPLETENESS GAP, stated as a rule: RESTRICT guards only 6 of the
+20 tables carrying `product_id`.** `feedback`, `surveys`, `survey_responses`,
+`community_posts`, `community_deals_posts` and `social_posts` will abort a
+premature `DELETE`. The other 14 will not — 9 CASCADE (silently destroyed) and
+**5 have no FK at all** (`product_watchlist`, `user_events`,
+`contribution_events`, `influencer_content_posts`, `influencer_campaigns`) and
+are left dangling with no error anywhere.
+
+**So any merge or delete is only as complete as the hand-written table list.**
+The transaction wrapper protects against a missed RESTRICT table; nothing
+protects against a missed no-FK table. Enumerate from `schema.ts` every time —
+`grep "productId: text('product_id')"` — and do not trust a list from memory,
+including one written earlier in the same session.
+
+### Corrected merge table list (20 + 1)
+
+`feedback`, `surveys`, `survey_responses`, `extracted_themes`, `social_posts`,
+`community_posts`, `community_deals_posts`, `deals`, `consumer_intents`,
+`user_events`, `contribution_events`, `brand_icps`, `brand_alerts`,
+`brand_alert_rules`, `brand_reward_configs`, `ranking_history`,
+`competitor_products`, **`influencer_content_posts`**,
+**`influencer_campaigns`**, `product_watchlist` (NOT NULL — move-then-delete
+with a `NOT EXISTS` guard), plus `import_jobs.default_product_id`.
+
+### Still open on the catalogue
+
+- **Metacog ×2** — merge blocked on the 13/13 survey-response question (two
+  surveys one cohort, vs a duplicated copy). Query is in the audit; the seed
+  row is identifiable by its **invalid UUID** `k0l1m2n3-4567-0123-8f45-0123456789f4`.
+- ⚠️ **`data/products.json` can resurrect deleted seed rows.** It still holds
+  StartupsGurukul, Earn4Insights and Metacog; `src/scripts/runMigration.ts` →
+  `migrateJSONData()` dedups on `id`, so deleting the Metacog seed row makes it
+  re-insertable. Remove those three entries from the fixture in the same change.
+- **Deletes not yet applied:** `Apple iPad air`, `soap`, `test product #2`
+  (+ its one orphan `user_events` row — no FK, so it must be deleted explicitly).
+- **`test product #1`** — 19 feedback, 18 of them imported third-party rows.
+  Provenance predicate is `multimodal_metadata->>'importSource' IS NOT NULL`;
+  `importSource` is **not a column**. Renaming the product in place is the
+  cheapest honest fix. **Must not be deleted.**
+- **The claim flow still has no UI** — 8 group-A products with real consumer
+  feedback wait on it. ⚠️ `POST /api/dashboard/products/claim` has **no
+  ownership proof of any kind**, so shipping the page unguarded turns it into a
+  land-grab primitive over rows named `Apple`, `Samsung` and `Walmart`. The gate
+  decision sets the build size.
+
+## ✅ GROUP C — `contribution_events.brand_id` backfilled; reassignment now complete (2026-09-22)
+
+**Applied by the founder in the Neon console.** `contribution_events.brand_id`
+backfilled from `products.owner_id` for the three Group C products. It was
+**empty on all three rows** (2 × `new smartphone`, 1 × `Computational`).
+3 rows updated.
+
+**Verified zero for these products** in every other dual-key table:
+`brand_alert_rules`, `brand_reward_configs`, `influencer_content_posts`,
+`influencer_campaigns`, `competitor_products`, `community_deals_posts`.
+`brand_alerts`, `brand_icps` and `deals` were already zero from the dependency
+query.
+
+**Group C reassignment is complete across every brand-keyed table, not just
+`owner_id`.**
+
+### ⚠️⚠️ STANDING RULE — `owner_id` alone is never the whole operation
+
+**Any ownership change — reassign, merge, or claim — must backfill `brand_id`
+on the dual-key tables in the same operation.** There are two independent
+pointers at a brand: `products.owner_id` (one column) and `brand_id`
+(**23 tables**). Changing the first moves the product; it does not touch the
+second. Every reader I checked scopes by `brand_id` alone
+(`icpRepository.ts:99`, `dealsRepository.ts:41`,
+`competitiveIntelligenceRepository.ts:74`…), so a row left behind is invisible
+to the new owner *and* dangling for the old one, **with no error on either
+side**. The 11 dual-key tables are listed in the audit above.
+
+⚠️ **This applies to the claim flow before it ships.** `claimProduct()`
+(`productRepository.ts:382`) sets `owner_id`, `claimed_by`, `claimed_at`,
+`claimable`, `lifecycle_status` — and **no `brand_id` anywhere**. Every claim
+would reproduce exactly the gap this backfill just closed.
+
+### 🔍 Why those 3 rows were empty — NOT a writer bug
+
+`recordContribution` (`contributionPipeline.ts:278-285`) **does** resolve
+`brandId = product?.ownerId` at write time. The rows were empty because the
+products had `owner_id IS NULL` **when the contribution happened** — the
+pipeline read an empty field and correctly stored NULL. It is never recomputed
+afterwards.
+
+**So this is a standing condition, not a one-off.** Every contribution recorded
+against an ownerless product is born `brand_id = NULL` and stays that way. The
+8 remaining Group A products (`Apple`, `Samsung`, `Walmart`…) are accumulating
+exactly these rows right now, and each will need the same backfill at claim
+time.
+
+Second-order effect: `getBrandWeight()` (`contributionPipeline.ts:123-124`)
+returns `weight: 1.0` immediately on a null `brandId`, so those contributions
+were scored **without any brand priority weighting**. No practical difference
+here — `brand_reward_configs` is empty for these products so the weight would
+have been 1.0 regardless — but the mechanism means an ownerless product can
+never apply a reward config, even once one exists.
+
+### 🔌 EIGHTH IGNITION-KEY INSTANCE — the contribution intelligence layer has NO UI
+
+**Answering "which screen shows this": none. There is no screen.**
+
+`contribution_events` is touched by exactly **six files** in the repo:
+`schema.ts`, `run-migration-031`, `contributionPipeline.ts`,
+`aiScoringService.ts`, and two API routes. **No `.tsx` anywhere calls
+`/api/contribution/intelligence` or `/api/contribution/brand-feedback`** —
+verified by grep across `src/app` and `src/components`.
+
+The **write** side is fully wired and running: `recordContribution` is called
+from 4 real paths (`feedback/submit:418`, `community/posts:200`,
+`community/.../replies:86`, `community/react:129`). The AI scores it, computes
+quality/relevance/depth/clarity/novelty/actionability/authenticity, applies
+multipliers and awards `final_tokens`. **Nothing displays any of it to anyone.**
+
+So the backfill is invisible in the browser. What it actually did is narrower
+and worth recording:
+
+🔴 **It closed a FAIL-OPEN authorization check on 3 rows.**
+`api/contribution/brand-feedback/route.ts:54` reads:
+
+```ts
+if (event.brandId && event.brandId !== session.user.id) { return 403 }
+```
+
+That is the §5 fail-open shape verbatim — **a NULL `brand_id` passes the
+check**, so before the backfill *any* brand account could rate those three
+contributions as useful/insightful and feed the AI scoring model. Unreachable
+today (no UI calls the route), so it is a latent hole, not an incident. It
+should be `if (!event.brandId || event.brandId !== session.user.id)` per the
+fail-closed-on-null policy — **the backfill fixed the data, not the check.**
+
+## 💰 CONTRIBUTION SCORING — measured, and it is paying real money (2026-09-23)
+
+Measured by the founder against production: **560 points total, ₹56 lifetime.**
+Every contribution type pays **BELOW** its base — feedback 23.0 vs base 25,
+community_post 3.0 vs 10, survey 25.0 vs 50. **Brand weight has never been
+set**, so the uncapped multiplier path was never exercised.
+
+**This is not a dormant feature.** `final_tokens` flows to `awardPoints()`
+(`contributionPipeline.ts:355`), which credits the live points ledger,
+redeemable at 10 pts = ₹1. Unlike every other ignition-key instance, the write
+side is fully live and consequential; only the reading side is missing.
+
+### ✅ RESOLVED — the "17 rewarded events with no payment" mismatch
+
+Reported: 23 feedback events `status='rewarded'`, `sum(final_tokens) = 529`,
+but only **6** rows of `ai_bonus_feedback_submit` totalling **48** points.
+
+**None of the three hypotheses. `final_tokens` is not the amount paid — it is
+the TARGET TOTAL.** The base was already credited by `feedback/submit` before
+the pipeline ran, so the pipeline pays only the difference:
+
+```ts
+const alreadyAwarded = POINT_VALUES[contributionType] ?? 0   // 25 for feedback
+const bonusTokens = finalTokens - alreadyAwarded
+if (bonusTokens > 0) await awardPoints(...)
+```
+
+| quality | multiplier | final_tokens | bonus paid |
+|---|---|---|---|
+| 20–39 | 0.5 | 13 | −12 → **nothing** |
+| 40–59 | 1.0 | 25 | 0 → **nothing** |
+| 60–74 | 1.3 | 33 | **8** |
+
+At avg quality 45.4 most events land on multiplier 1.0, so the bonus is exactly
+zero. The 6 that paid are the ones that cleared 60. **Working as written.**
+
+**Is any consumer owed points? Expected no — but the data cannot prove it**,
+because `status='rewarded'` is set at step 9 BEFORE the step-10 payment, and
+the outer `try/catch` swallows a thrown `awardPoints`. A genuine silent failure
+is **indistinguishable from a legitimate zero bonus**. Discriminating query —
+any row with `final_tokens > 25` and no matching transaction is a real loss:
+
+```sql
+SELECT ce.id, ce.quality_score, ce.final_tokens, pt.amount AS actually_paid
+FROM contribution_events ce
+LEFT JOIN point_transactions pt
+  ON pt.reference_id = ce.id AND pt.source = 'ai_bonus_feedback_submit'
+WHERE ce.contribution_type = 'feedback_submit' AND ce.status = 'rewarded'
+ORDER BY ce.final_tokens DESC;
+```
+
+⚠️ **`'rewarded'` means "the reward was computed", NOT "a payment happened".**
+
+**Real unit cost, recorded:** base and bonus DO stack — 600 base across 24
+submissions + 48 bonus across 6 = **27 points (₹2.70) per feedback item**, not
+₹2.50.
+
+### 🔴 FINDING — the penalty half of the quality curve is INERT
+
+**Recorded separately from the code because it is a design question, not a bug.**
+
+`qualityToMultiplier` returns 0.1 / 0.5 below quality 40. Those produce a
+NEGATIVE `bonusTokens`, `if (bonusTokens > 0)` is false, and nothing is clawed
+back — correctly; you cannot un-pay someone. But for the **five types that
+already award base points**, that means:
+
+> **Quality 25 and quality 55 have identical outcomes. Both pay exactly the
+> base and nothing more.**
+
+**The system can reward good work but cannot discourage bad work.** Half of the
+multiplier curve is decorative. Quality-over-quantity is therefore only
+half-working, and the measured data shows it: every type averages *below* base,
+which is the curve's floor being hit with no effect.
+
+⚠️ **Fixing it means withholding base points until scoring completes** — moving
+the award behind the AI call, with everything that implies for latency, for a
+consumer watching their balance, and for what happens when scoring strands.
+**Founder has explicitly NOT made that decision today.** This entry exists so
+the reason is on record rather than rediscovered.
+
+### 🔴 FINDING — two statuses can strand, nothing retries, nothing surfaces
+
+Reported: 2 `survey_complete` events stuck at `status='pending'` with NULL
+`final_tokens`. Those consumers **did** get their base 50 points
+(`responseService`, B23, awarded before the pipeline) — what they never got is
+the quality bonus, and nothing will ever retry it.
+
+| Status | Set where | Strands? |
+|---|---|---|
+| `pending` | insert, step 4 | 🔴 threw before `scoreAndPersist` committed |
+| `scored` | `scoreAndPersist` | 🔴 threw between scoring and step 9 |
+| `flagged` | authenticity < 20 | terminal by design |
+| `rewarded` | step 9 | terminal |
+| `rejected` | **nothing writes it** | dead status value |
+
+⚠️ **An OpenAI failure does NOT strand** — `aiScore` catches its own errors and
+falls back to heuristics. A `pending` row died in `getOrCreateReputation`,
+`getBrandWeight`, or the persist itself.
+
+**There is no retry, no cron, no admin view, no alert.** Only six files touch
+`contribution_events` and none is a job; the outer catch logs to console.
+
+### ⚠️ UNBOUNDED, UNFUNDED — why brandWeight was clamped (`d662e90`)
+
+```
+final_tokens = base × quality(≤2.5) × brandWeight(UNCAPPED) × reputation(≤2.0)
+```
+
+`brand_reward_configs.weight` and `.bonus_multiplier` are both `real` with **no
+CHECK** — 029/030 added money CHECKs and never covered this table — and
+`getBrandWeight` returned their product raw. **There is no billing link on that
+table: nobody is charged for the bonus, so this was a brand-controlled,
+unbounded multiplier on a PLATFORM-funded liability.** Same class as the
+challenge auto-completion vector (`9879fee`).
+
+`POST /api/contribution/brand-config` is reachable by any authenticated brand.
+It has no UI — and **"no UI" is not a control.**
+
+Clamped to **1.0** as a security stopgap. ⚠️ **This makes brand weighting inert**
+(default is 1.0, so a brand can only ever reduce a payout). Deliberate: the
+EXISTENCE of a cap is a security decision, taken now; its VALUE and who funds
+the bonus are economics decisions the founder has deferred. Raise
+`MAX_BRAND_WEIGHT` when that lands. Migration 043 adds CHECKs at a wider
+ceiling (10) as the outer backstop.
+
+### 🔌 NINTH IGNITION-KEY INSTANCE — the whole contribution surface has no UI
+
+Three routes, zero pages: `/api/contribution/intelligence`,
+`/api/contribution/brand-feedback`, `/api/contribution/brand-config`. Verified
+by grep across `src/app` and `src/components`.
+
+`brand_quality_feedback` is **write-only** — its docstring promises a
+"continuous learning loop" and nothing reads the table. The collection endpoint
+exists; there is no loop.
+
+**Unusual for this codebase: the machine is running and producing output.** The
+AI scores every contribution across seven dimensions and awards real points.
+It is the *observation* that is missing, not the ignition.
+
+### Shipped in `d662e90`
+
+- `rekeyBrandForProduct` — **10** dual-key tables (not 11; `competitor_products`
+  has `product_id` but no `brand_id`), one list, called by `claimProduct` inside
+  one transaction that **fails the claim** if the re-key fails.
+- Three `if (x && x !== y)` fail-open closures: `brand-feedback` ownership
+  (+ the `role !== 'brand'` gate that would have rejected admins first),
+  `proofCookie`'s optional nonce.
+- `brandWeight` clamp, empty-content guard on the paid API, `scored_by` column.
+- ⚠️ **Migration 043 must be applied in Neon BEFORE deploying** —
+  `contribution/intelligence/route.ts:37` is a bare `db.select()` on
+  `contribution_events` (§5 ordering rule).
+
+### Still open
+
+- **Run the discriminating query above** to close out "is anyone owed points".
+- **Enumerate `/api/jobs/*`** and confirm nothing passes `whenUnset: 'skip'` —
+  blocked while ripgrep was timing out; CLAUDE.md §5 now says the list is not
+  exhaustive rather than claiming 33.
+- **Wrap `/api/social/cron`** in `withCronRun` — the one confirmed cron-shaped
+  route outside the wrapper, still genuinely fail-open.
+- **Delete the dead inline cron auth blocks** (redundant, not dangerous).
+
+## ✅ CRON ENUMERATION FINISHED (2026-09-24) — the counts were never in conflict
+
+Left open when ripgrep was timing out; completed with `find`/`grep`.
+
+| Set | Count | Wrapped? |
+|---|---|---|
+| `/api/cron/*` | **31** `route.ts` | **all 31** — `grep -L withCronRun` returns nothing |
+| `/api/jobs/*` | **2** (`dsar-cleanup`, `process-deletions`) | **both** |
+| **Total** | **33** | ✅ matches §5's claim |
+
+✅ **`whenUnset` is passed NOWHERE** — zero occurrences across every route. All
+33 therefore use the `'enforce'` default and **fail closed**. The legacy
+`'skip'` escape hatch exists in the type and nothing reaches it, exactly as
+`CronAuthOptions` intends.
+
+**§5 (33) and §9 (32) were measuring different things** — 33 is the count of
+wrapped *routes*, 32 is the count of *schedule entries* (Vercel + cron-job.org).
+Not a contradiction, and I was wrong to flag it as one. Both docs now say which
+they mean.
+
+🔴 **`/api/social/cron` is the ONE cron-shaped route outside the wrapper** —
+established by sweeping every `route.ts` mentioning `CRON_SECRET` outside
+`cron/` and `jobs/`. The only other hit is `/api/admin/env-check`, which merely
+*reports* whether the secret is set and is `ADMIN_API_KEY`-gated. So the
+residual fail-open surface is exactly one route, and wrapping it closes the
+family for good.
+
+⚠️ Its exposure is narrower than the old §5 wording claimed: the path is not in
+`PUBLIC_PREFIXES`, so middleware 401s anonymous callers. The hole needs an
+**authenticated** user AND an unset `CRON_SECRET` — which is precisely the
+state of a fresh preview environment.
