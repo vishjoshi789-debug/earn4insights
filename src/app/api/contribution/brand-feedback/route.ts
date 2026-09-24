@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/auth.config'
 import { db } from '@/db'
 import { brandQualityFeedback, contributionEvents, products } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
+import { isAdminSession } from '@/lib/auth/roles'
 
 /**
  * POST /api/contribution/brand-feedback
@@ -19,8 +20,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Admin bypasses the role gate. Checking `role !== 'brand'` alone is the
+    // §5 trap that made the media proxy admin-inaccessible: an admin is not a
+    // brand, so a bare role check rejects them BEFORE the ownership check below
+    // can grant access, and the uniform admin-bypass policy never applies.
     const role = (session.user as any).role
-    if (role !== 'brand') {
+    const isAdmin = isAdminSession(session)
+    if (role !== 'brand' && !isAdmin) {
       return NextResponse.json({ error: 'Brand access only' }, { status: 403 })
     }
 
@@ -51,8 +57,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Contribution not found' }, { status: 404 })
     }
 
-    // Check brand owns the relevant product
-    if (event.brandId && event.brandId !== session.user.id) {
+    // ⚠️ FAIL CLOSED ON A NULL `brandId`. This was
+    // `if (event.brandId && event.brandId !== session.user.id)`, which PASSES
+    // when `brandId` is NULL — so any brand account could rate a contribution
+    // belonging to nobody, feeding the AI scoring model on someone else's data.
+    //
+    // NULL is not rare and not theoretical: `recordContribution` resolves
+    // `brandId` from `products.owner_id` at write time, so EVERY contribution
+    // on an unowned product is stored with a NULL brand. There are 8 such
+    // products today accumulating exactly these rows. A contribution that
+    // belongs to nobody belongs to NOBODY — not to whoever asks first.
+    //
+    // Same shape as the null-`owner_id` holes closed in v15 and the
+    // `if (cronSecret && …)` cron family: `&&` reads as "if we know the owner,
+    // check it" when the requirement is "we must know the owner".
+    if (!isAdmin && (!event.brandId || event.brandId !== session.user.id)) {
       return NextResponse.json({ error: 'You can only rate contributions related to your products' }, { status: 403 })
     }
 

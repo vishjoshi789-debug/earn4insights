@@ -1092,6 +1092,13 @@ export const contributionEvents = pgTable('contribution_events', {
   finalTokens: integer('final_tokens'),        // actual tokens awarded
   // Processing state
   scoredAt: timestamp('scored_at'),
+  // 'ai' | 'heuristic' — which scorer priced this contribution (migration 043).
+  // ⚠️ Nullable with no default ON PURPOSE. Rows written before 043 genuinely
+  // do not know, and a default of 'ai' or 'heuristic' would invent an answer
+  // for all of them. NULL means "not recorded", which is the truth.
+  // ⚠️ `api/contribution/intelligence/route.ts:37` does a bare `db.select()`
+  // on this table, so the SQL must be applied BEFORE the deploy (§5).
+  scoredBy: text('scored_by'),
   status: text('status').notNull().default('pending'),
   // statuses: 'pending' | 'scored' | 'rewarded' | 'flagged' | 'rejected'
   createdAt: timestamp('created_at').defaultNow().notNull(),
