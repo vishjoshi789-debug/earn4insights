@@ -4510,3 +4510,165 @@ contributions as useful/insightful and feed the AI scoring model. Unreachable
 today (no UI calls the route), so it is a latent hole, not an incident. It
 should be `if (!event.brandId || event.brandId !== session.user.id)` per the
 fail-closed-on-null policy — **the backfill fixed the data, not the check.**
+
+## 💰 CONTRIBUTION SCORING — measured, and it is paying real money (2026-09-23)
+
+Measured by the founder against production: **560 points total, ₹56 lifetime.**
+Every contribution type pays **BELOW** its base — feedback 23.0 vs base 25,
+community_post 3.0 vs 10, survey 25.0 vs 50. **Brand weight has never been
+set**, so the uncapped multiplier path was never exercised.
+
+**This is not a dormant feature.** `final_tokens` flows to `awardPoints()`
+(`contributionPipeline.ts:355`), which credits the live points ledger,
+redeemable at 10 pts = ₹1. Unlike every other ignition-key instance, the write
+side is fully live and consequential; only the reading side is missing.
+
+### ✅ RESOLVED — the "17 rewarded events with no payment" mismatch
+
+Reported: 23 feedback events `status='rewarded'`, `sum(final_tokens) = 529`,
+but only **6** rows of `ai_bonus_feedback_submit` totalling **48** points.
+
+**None of the three hypotheses. `final_tokens` is not the amount paid — it is
+the TARGET TOTAL.** The base was already credited by `feedback/submit` before
+the pipeline ran, so the pipeline pays only the difference:
+
+```ts
+const alreadyAwarded = POINT_VALUES[contributionType] ?? 0   // 25 for feedback
+const bonusTokens = finalTokens - alreadyAwarded
+if (bonusTokens > 0) await awardPoints(...)
+```
+
+| quality | multiplier | final_tokens | bonus paid |
+|---|---|---|---|
+| 20–39 | 0.5 | 13 | −12 → **nothing** |
+| 40–59 | 1.0 | 25 | 0 → **nothing** |
+| 60–74 | 1.3 | 33 | **8** |
+
+At avg quality 45.4 most events land on multiplier 1.0, so the bonus is exactly
+zero. The 6 that paid are the ones that cleared 60. **Working as written.**
+
+**Is any consumer owed points? Expected no — but the data cannot prove it**,
+because `status='rewarded'` is set at step 9 BEFORE the step-10 payment, and
+the outer `try/catch` swallows a thrown `awardPoints`. A genuine silent failure
+is **indistinguishable from a legitimate zero bonus**. Discriminating query —
+any row with `final_tokens > 25` and no matching transaction is a real loss:
+
+```sql
+SELECT ce.id, ce.quality_score, ce.final_tokens, pt.amount AS actually_paid
+FROM contribution_events ce
+LEFT JOIN point_transactions pt
+  ON pt.reference_id = ce.id AND pt.source = 'ai_bonus_feedback_submit'
+WHERE ce.contribution_type = 'feedback_submit' AND ce.status = 'rewarded'
+ORDER BY ce.final_tokens DESC;
+```
+
+⚠️ **`'rewarded'` means "the reward was computed", NOT "a payment happened".**
+
+**Real unit cost, recorded:** base and bonus DO stack — 600 base across 24
+submissions + 48 bonus across 6 = **27 points (₹2.70) per feedback item**, not
+₹2.50.
+
+### 🔴 FINDING — the penalty half of the quality curve is INERT
+
+**Recorded separately from the code because it is a design question, not a bug.**
+
+`qualityToMultiplier` returns 0.1 / 0.5 below quality 40. Those produce a
+NEGATIVE `bonusTokens`, `if (bonusTokens > 0)` is false, and nothing is clawed
+back — correctly; you cannot un-pay someone. But for the **five types that
+already award base points**, that means:
+
+> **Quality 25 and quality 55 have identical outcomes. Both pay exactly the
+> base and nothing more.**
+
+**The system can reward good work but cannot discourage bad work.** Half of the
+multiplier curve is decorative. Quality-over-quantity is therefore only
+half-working, and the measured data shows it: every type averages *below* base,
+which is the curve's floor being hit with no effect.
+
+⚠️ **Fixing it means withholding base points until scoring completes** — moving
+the award behind the AI call, with everything that implies for latency, for a
+consumer watching their balance, and for what happens when scoring strands.
+**Founder has explicitly NOT made that decision today.** This entry exists so
+the reason is on record rather than rediscovered.
+
+### 🔴 FINDING — two statuses can strand, nothing retries, nothing surfaces
+
+Reported: 2 `survey_complete` events stuck at `status='pending'` with NULL
+`final_tokens`. Those consumers **did** get their base 50 points
+(`responseService`, B23, awarded before the pipeline) — what they never got is
+the quality bonus, and nothing will ever retry it.
+
+| Status | Set where | Strands? |
+|---|---|---|
+| `pending` | insert, step 4 | 🔴 threw before `scoreAndPersist` committed |
+| `scored` | `scoreAndPersist` | 🔴 threw between scoring and step 9 |
+| `flagged` | authenticity < 20 | terminal by design |
+| `rewarded` | step 9 | terminal |
+| `rejected` | **nothing writes it** | dead status value |
+
+⚠️ **An OpenAI failure does NOT strand** — `aiScore` catches its own errors and
+falls back to heuristics. A `pending` row died in `getOrCreateReputation`,
+`getBrandWeight`, or the persist itself.
+
+**There is no retry, no cron, no admin view, no alert.** Only six files touch
+`contribution_events` and none is a job; the outer catch logs to console.
+
+### ⚠️ UNBOUNDED, UNFUNDED — why brandWeight was clamped (`d662e90`)
+
+```
+final_tokens = base × quality(≤2.5) × brandWeight(UNCAPPED) × reputation(≤2.0)
+```
+
+`brand_reward_configs.weight` and `.bonus_multiplier` are both `real` with **no
+CHECK** — 029/030 added money CHECKs and never covered this table — and
+`getBrandWeight` returned their product raw. **There is no billing link on that
+table: nobody is charged for the bonus, so this was a brand-controlled,
+unbounded multiplier on a PLATFORM-funded liability.** Same class as the
+challenge auto-completion vector (`9879fee`).
+
+`POST /api/contribution/brand-config` is reachable by any authenticated brand.
+It has no UI — and **"no UI" is not a control.**
+
+Clamped to **1.0** as a security stopgap. ⚠️ **This makes brand weighting inert**
+(default is 1.0, so a brand can only ever reduce a payout). Deliberate: the
+EXISTENCE of a cap is a security decision, taken now; its VALUE and who funds
+the bonus are economics decisions the founder has deferred. Raise
+`MAX_BRAND_WEIGHT` when that lands. Migration 043 adds CHECKs at a wider
+ceiling (10) as the outer backstop.
+
+### 🔌 NINTH IGNITION-KEY INSTANCE — the whole contribution surface has no UI
+
+Three routes, zero pages: `/api/contribution/intelligence`,
+`/api/contribution/brand-feedback`, `/api/contribution/brand-config`. Verified
+by grep across `src/app` and `src/components`.
+
+`brand_quality_feedback` is **write-only** — its docstring promises a
+"continuous learning loop" and nothing reads the table. The collection endpoint
+exists; there is no loop.
+
+**Unusual for this codebase: the machine is running and producing output.** The
+AI scores every contribution across seven dimensions and awards real points.
+It is the *observation* that is missing, not the ignition.
+
+### Shipped in `d662e90`
+
+- `rekeyBrandForProduct` — **10** dual-key tables (not 11; `competitor_products`
+  has `product_id` but no `brand_id`), one list, called by `claimProduct` inside
+  one transaction that **fails the claim** if the re-key fails.
+- Three `if (x && x !== y)` fail-open closures: `brand-feedback` ownership
+  (+ the `role !== 'brand'` gate that would have rejected admins first),
+  `proofCookie`'s optional nonce.
+- `brandWeight` clamp, empty-content guard on the paid API, `scored_by` column.
+- ⚠️ **Migration 043 must be applied in Neon BEFORE deploying** —
+  `contribution/intelligence/route.ts:37` is a bare `db.select()` on
+  `contribution_events` (§5 ordering rule).
+
+### Still open
+
+- **Run the discriminating query above** to close out "is anyone owed points".
+- **Enumerate `/api/jobs/*`** and confirm nothing passes `whenUnset: 'skip'` —
+  blocked while ripgrep was timing out; CLAUDE.md §5 now says the list is not
+  exhaustive rather than claiming 33.
+- **Wrap `/api/social/cron`** in `withCronRun` — the one confirmed cron-shaped
+  route outside the wrapper, still genuinely fail-open.
+- **Delete the dead inline cron auth blocks** (redundant, not dangerous).
