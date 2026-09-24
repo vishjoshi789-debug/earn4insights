@@ -4672,3 +4672,35 @@ It is the *observation* that is missing, not the ignition.
 - **Wrap `/api/social/cron`** in `withCronRun` — the one confirmed cron-shaped
   route outside the wrapper, still genuinely fail-open.
 - **Delete the dead inline cron auth blocks** (redundant, not dangerous).
+
+## ✅ CRON ENUMERATION FINISHED (2026-09-24) — the counts were never in conflict
+
+Left open when ripgrep was timing out; completed with `find`/`grep`.
+
+| Set | Count | Wrapped? |
+|---|---|---|
+| `/api/cron/*` | **31** `route.ts` | **all 31** — `grep -L withCronRun` returns nothing |
+| `/api/jobs/*` | **2** (`dsar-cleanup`, `process-deletions`) | **both** |
+| **Total** | **33** | ✅ matches §5's claim |
+
+✅ **`whenUnset` is passed NOWHERE** — zero occurrences across every route. All
+33 therefore use the `'enforce'` default and **fail closed**. The legacy
+`'skip'` escape hatch exists in the type and nothing reaches it, exactly as
+`CronAuthOptions` intends.
+
+**§5 (33) and §9 (32) were measuring different things** — 33 is the count of
+wrapped *routes*, 32 is the count of *schedule entries* (Vercel + cron-job.org).
+Not a contradiction, and I was wrong to flag it as one. Both docs now say which
+they mean.
+
+🔴 **`/api/social/cron` is the ONE cron-shaped route outside the wrapper** —
+established by sweeping every `route.ts` mentioning `CRON_SECRET` outside
+`cron/` and `jobs/`. The only other hit is `/api/admin/env-check`, which merely
+*reports* whether the secret is set and is `ADMIN_API_KEY`-gated. So the
+residual fail-open surface is exactly one route, and wrapping it closes the
+family for good.
+
+⚠️ Its exposure is narrower than the old §5 wording claimed: the path is not in
+`PUBLIC_PREFIXES`, so middleware 401s anonymous callers. The hole needs an
+**authenticated** user AND an unset `CRON_SECRET` — which is precisely the
+state of a fresh preview environment.
