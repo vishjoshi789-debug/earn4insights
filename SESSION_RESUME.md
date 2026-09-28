@@ -4547,17 +4547,34 @@ if (bonusTokens > 0) await awardPoints(...)
 At avg quality 45.4 most events land on multiplier 1.0, so the bonus is exactly
 zero. The 6 that paid are the ones that cleared 60. **Working as written.**
 
-**Is any consumer owed points? Expected no — but the data cannot prove it**,
-because `status='rewarded'` is set at step 9 BEFORE the step-10 payment, and
-the outer `try/catch` swallows a thrown `awardPoints`. A genuine silent failure
-is **indistinguishable from a legitimate zero bonus**. Discriminating query —
-any row with `final_tokens > 25` and no matching transaction is a real loss:
+### ✅ CLOSED 2026-09-28 — NOBODY IS OWED ANYTHING. Mechanism verified end to end.
+
+Run on production: **6 rows with `expected_bonus` 8 and `actually_paid` 8** —
+matching the 48 points in the ledger exactly. **Every row with
+`expected_bonus <= 0` has `actually_paid` NULL**, which is the guard working,
+not a failure. The pay-the-difference mechanism is correct end to end.
+
+⚠️ **My query had two wrong column assumptions and the founder corrected both:**
+`point_transactions` has **`source_id`, not `reference_id`**, and it is **text
+against a uuid**, so the join needs **`::text`**. I wrote the join from the
+column name on `contribution_events` without checking the ledger's own schema —
+the same "assumed the shape instead of reading it" error as the merge-script
+table list. **Read both sides of a join before writing it.**
+
+The original reasoning is kept below because the *ambiguity* it describes is
+real and still unfixed — `status='rewarded'` is set at step 9 BEFORE the step-10
+payment and the outer `try/catch` swallows a thrown `awardPoints`, so a genuine
+silent failure would still be **indistinguishable from a legitimate zero bonus**.
+It just has not happened yet. Corrected query:
 
 ```sql
-SELECT ce.id, ce.quality_score, ce.final_tokens, pt.amount AS actually_paid
+SELECT ce.id, ce.quality_score, ce.final_tokens,
+       ce.final_tokens - 25 AS expected_bonus,
+       pt.amount AS actually_paid
 FROM contribution_events ce
 LEFT JOIN point_transactions pt
-  ON pt.reference_id = ce.id AND pt.source = 'ai_bonus_feedback_submit'
+  ON pt.source_id = ce.id::text          -- source_id, NOT reference_id; text vs uuid
+ AND pt.source = 'ai_bonus_feedback_submit'
 WHERE ce.contribution_type = 'feedback_submit' AND ce.status = 'rewarded'
 ORDER BY ce.final_tokens DESC;
 ```
@@ -4568,9 +4585,36 @@ ORDER BY ce.final_tokens DESC;
 submissions + 48 bonus across 6 = **27 points (₹2.70) per feedback item**, not
 ₹2.50.
 
-### 🔴 FINDING — the penalty half of the quality curve is INERT
+### 🔴 FINDING — the penalty half of the quality curve is INERT (**confirmed with production data 2026-09-28**)
 
 **Recorded separately from the code because it is a design question, not a bug.**
+
+#### ✅ Measured on production — it is larger than first estimated
+
+| Measure | Value |
+|---|---|
+| Feedback events scored | **23** |
+| Scored by AI | **23 (100%)** — zero heuristic |
+| Quality score range | **15 → 70**, clustering on multiples of 5 |
+| **Scored below 60** (quality cannot raise payment) | **17 of 23 — 74%** |
+| Scored below 40 (quality is *supposed* to reduce payment) | **7** |
+| Worst case | quality **15** → priced at **3 points** → **received 25** |
+
+**That worst case is the finding in one line: the system valued a contribution
+at 3 points and paid 25 — 8.3× its own assessment — and had no mechanism to do
+otherwise.**
+
+⚠️ **74% of all scored feedback sits in the dead band.** Quality scoring runs,
+costs money, produces a defensible number, and changes the payment for roughly
+one contribution in four. For the other three it is a very expensive no-op.
+
+⚠️ **The "20.0 average = heuristic fallback" hypothesis is NOT confirmed and
+was probably wrong for feedback.** All 23 feedback events were AI-scored, and
+15–70 clustering on 5s is model behaviour, not a heuristic signature. The
+exactly-20.0 averages on `community_post` and `survey_complete` remain
+unexplained — plausibly the AI scoring genuinely short or absent content at the
+floor, which is a different problem. `scored_by` will settle it for new rows;
+the old rows cannot be attributed.
 
 `qualityToMultiplier` returns 0.1 / 0.5 below quality 40. Those produce a
 NEGATIVE `bonusTokens`, `if (bonusTokens > 0)` is false, and nothing is clawed
@@ -4704,3 +4748,55 @@ family for good.
 `PUBLIC_PREFIXES`, so middleware 401s anonymous callers. The hole needs an
 **authenticated** user AND an unset `CRON_SECRET` — which is precisely the
 state of a fresh preview environment.
+
+## ✅ `/api/social/cron` WRAPPED — the last fail-open, and it is probably dead (2026-09-28)
+
+Wrapped in `withCronRun('social/cron', handlePOST)` with the same `'enforce'`
+default as the other 33, and its inline `if (cronSecret && …)` deleted with the
+wrap — leaving it would have been dead code that still reads like the gate.
+
+### ⚠️ Four ways it differs from the 33 — flagged BEFORE changing it
+
+1. **Not in `vercel.json`.** All 33 wrapped routes are; this one is not.
+   Nothing in Vercel schedules it.
+2. **No caller anywhere in the repo** — no page, component, or service.
+3. **It drives a DIFFERENT service from the live social job.** This calls
+   `ingestSocialForAllEnabled` (`socialIngestionService`), whose **only caller
+   is this route**. The scheduled job — `/api/cron/process-social-mentions`,
+   which IS in `vercel.json` and IS wrapped — uses
+   `socialListeningRuleRepository` + the platform adapters + `createMention`.
+   **Two social-ingestion paths that do not agree.**
+4. **POST, not GET.** Harmless for the wrapper (3 wrapped routes are POST), but
+   ⚠️ **Vercel Cron issues GET**, so this could not fire from `vercel.json`
+   even if someone added it.
+
+**This is the ignition-key pattern inverted: a live endpoint with no trigger,
+duplicating a job that already runs elsewhere.**
+
+### ⚖️ Why wrapped and not deleted
+
+Deleting is the better end state and is the recommendation. It was not done
+because **cron-job.org's job list is not visible from the repo**, and "nothing
+in the repo calls it" does not rule out an external schedule pointing at it —
+that is exactly how the sub-daily jobs are driven. Deleting blind could
+silently stop social ingestion.
+
+**Next step is a console check, not a code change:** confirm against
+cron-job.org, then delete the route and decide whether
+`ingestSocialForAllEnabled` survives at all.
+
+⚠️ Left as-is deliberately: `detail: String(err)` returns raw internal error
+text to the caller. The wrapper already records the full stack in
+`cron_runs.error`, so the response detail buys nothing — but this change was
+kept auth-only.
+
+### 📋 Also established while checking it
+
+- **`vercel.json` holds 33 cron entries, not 32.** §9's "Total: 32" is stale.
+  The 33 paths line up 1:1 with the 33 `withCronRun` routes.
+- **7 routes pass `secretEnv: ['CRON_SECRET','AUTH_SECRET']`** to match their
+  inline `verifyAuth` fallback. Wrapper and inline agree — both take the first
+  non-empty of the two — so deleting those inline blocks is safe. ⚠️ But that
+  equivalence was **checked**, not assumed, and must be per route.
+- **The 33 inline blocks remain and are dead.** Removing them is hygiene, not
+  security. Queued as its own mechanical commit.
