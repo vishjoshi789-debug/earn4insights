@@ -1,5 +1,38 @@
 import 'server-only'
 
+/**
+ * ⚠️⚠️ THIS FILE WRITES `payment_redemptions`. NOT `reward_redemptions`.
+ *
+ * The filename is wrong and has cost real investigation time **three separate
+ * times** — most recently while answering "has a `db.transaction()` ever
+ * committed on the pooler?", where `reward_redemptions` showing **0 rows ever**
+ * looked like proof that the redemption transaction had never run. It was not:
+ * the 2026-08-23 row lives in `payment_redemptions`, which is what this
+ * repository actually touches.
+ *
+ * ── THE TWO TABLES ARE BOTH REAL AND BOTH LIVE ────────────────────────────
+ *
+ *   `payment_redemptions`   — cash payout / voucher redemptions.
+ *                             Written HERE, via `api/consumer/rewards/redeem`.
+ *                             1 row (2026-08-23).
+ *
+ *   `reward_redemptions`    — catalog rewards (spend points on an item).
+ *                             Written by `api/rewards/route.ts:120`, read by
+ *                             the same route at :27-35. **0 rows — unused, NOT
+ *                             unwired.**
+ *
+ * 🔴 **DO NOT DROP `reward_redemptions`.** It has a live reader and a live
+ * writer; dropping it breaks the rewards catalog redemption path. "Zero rows"
+ * means nobody has redeemed a catalog reward yet, not that nothing can.
+ *
+ * ⚠️ `updateRedemptionStatus` below is NOT uncalled — `payoutService.ts` calls
+ * it at :366 and :425. The "had zero callers" note at `payoutService.ts:346` is
+ * a historical remark from when that circuit was wired up, and reads as current
+ * if skimmed.
+ *
+ * Renaming this file to `paymentRedemptionRepository.ts` is the real fix.
+ */
+
 import { db } from '@/db'
 import {
   paymentRedemptions,

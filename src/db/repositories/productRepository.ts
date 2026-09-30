@@ -1,6 +1,7 @@
 import { eq, and, or, ilike, sql, ne, lte } from 'drizzle-orm'
 import { db } from '@/db'
 import { products } from '@/db/schema'
+import type { DbTx } from '@/db/tx'
 import { rekeyBrandForProduct } from './brandKeyRepository'
 import type { Product as DBProduct, NewProduct } from '@/db/schema'
 import type { Product, ProductProfile, ProductLifecycleStatus, ProductCreationSource, ProductLaunchStatus } from '@/lib/types/product'
@@ -382,7 +383,30 @@ export async function createPlaceholderProduct(params: {
  */
 export async function claimProduct(
   productId: string,
-  claimedBy: string
+  claimedBy: string,
+  /**
+   * Run inside an EXISTING transaction instead of opening one.
+   *
+   * ⚠️⚠️ **THE CALLER OWNS THE BOUNDARY. DO NOT NEST.**
+   *
+   * `approveClaim` must flip the request status and move ownership together, so
+   * it opens the transaction and passes the handle here. Wrapping ANOTHER
+   * `db.transaction()` around this one does not error — postgres.js turns the
+   * inner one into a SAVEPOINT — which is exactly why it is dangerous: the
+   * nesting silently becomes something nobody reasoned about, and the inner
+   * "commit" is not one.
+   *
+   * Same contract as `deductPoints` (`pointsService.ts:217`) and
+   * `createRedemption`: `existingTx ? run(existingTx) : db.transaction(run)`.
+   *
+   * ⚠️ The guards below run OUTSIDE the boundary even when a tx is passed, so
+   * there is a TOCTOU window between reading `claimable` and writing it.
+   * Accepted as a known gap, not an oversight: at admin-queue volume it is
+   * negligible, and the real serialization points are the `claimable = false`
+   * write inside the transaction plus migration 044's partial unique index on
+   * open requests.
+   */
+  existingTx?: DbTx,
 ): Promise<Product | null> {
   const product = await getProductById(productId)
   if (!product) return null
@@ -403,12 +427,23 @@ export async function claimProduct(
   // half-claimed product is worse than an unclaimed one, because nothing
   // downstream can tell it happened.
   //
-  // Verified that `db.transaction()` works on the pooled Neon connection —
-  // `api/consumer/rewards/redeem/route.ts:154` has run this way in production
-  // since `3b47eea`. CLAUDE.md's transaction warning is about
-  // `pgClient.unsafe()` with inline BEGIN/COMMIT, which is a different
-  // mechanism.
-  const updated = await db.transaction(async (tx) => {
+  // ── What is actually verified about `db.transaction()` on the pooler ─────
+  //
+  // ✅ COMMIT is proven by data: the 2026-08-23 row in `payment_redemptions` is
+  //    the output of the transaction at `api/consumer/rewards/redeem/route.ts:154`,
+  //    on production, through the pgBouncer pooler. (⚠️ Note the naming trap —
+  //    `rewardRedemptionRepository` writes `payment_redemptions`, NOT
+  //    `reward_redemptions`, which has 0 rows ever.)
+  //
+  // ⚠️ ROLLBACK is a DIFFERENT behaviour and pgBouncer in transaction mode can
+  //    break it while commit looks fine. `scripts/probe-transaction-rollback.ts`
+  //    settles it against the pooled endpoint. An earlier version of this
+  //    comment claimed the redeem route "has run this way in production" as
+  //    though that proved both — it proves commit only.
+  //
+  // CLAUDE.md's transaction warning is about `pgClient.unsafe()` with inline
+  // BEGIN/COMMIT, which is a different mechanism from this.
+  const run = async (tx: DbTx) => {
     const [row] = await tx
       .update(products)
       .set({
@@ -430,7 +465,12 @@ export async function claimProduct(
     }
 
     return row
-  })
+  }
+
+  // Join the caller's transaction when given one; otherwise own the boundary.
+  // Reuses the handle rather than nesting, so there is exactly one commit point
+  // and no savepoint semantics to reason about.
+  const updated = existingTx ? await run(existingTx) : await db.transaction(run)
 
   return updated ? toProduct(updated) : null
 }

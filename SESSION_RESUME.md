@@ -4890,3 +4890,61 @@ I wrote that §5's "33" and §9's "32" measured different things and were never 
 conflict. `vercel.json` has **33** entries; §9 was **stale**; I invented a
 distinction to explain away a mismatch one `grep` settles. Both corrected.
 **Count the file before reconciling a discrepancy.**
+
+## 🔴 NO DROP — `reward_redemptions` is LIVE, and the "dead table" premise was wrong (2026-09-30)
+
+Asked to prepare a `DROP` for the cleanup batch on the grounds that
+`reward_redemptions` has zero rows ever and `updateRedemptionStatus` has zero
+callers. **Both halves are wrong, and dropping it would break a live feature.**
+
+### `reward_redemptions` has a live writer AND a live reader
+
+| Site | What it does |
+|---|---|
+| `api/rewards/route.ts:120` | **INSERTs** into it, inside a transaction — the catalog-rewards path (spend points on an item) |
+| `api/rewards/route.ts:27-35` | **READs** it for the user's redemption history |
+
+**0 rows means nobody has redeemed a catalog reward yet — not that nothing
+can.** 🔴 `DROP` would remove the rewards catalog redemption feature.
+
+### `updateRedemptionStatus` has THREE callers
+
+`payoutService.ts:25` (import), `:366`, `:425` — wired up during the
+2026-09-10 payout work. And it operates on **`payment_redemptions`** anyway, so
+it was never evidence about `reward_redemptions` in either direction.
+
+⚠️ **The "zero callers" belief traces to a STALE COMMENT.**
+`payoutService.ts:346` reads *"`updateRedemptionStatus` had zero callers"* — a
+historical remark describing the state BEFORE that fix, which reads as current
+fact when skimmed. **Same class as the `brand.discount.created` §11 entry that
+was wrong.** A past-tense claim in a comment is not a present-tense fact.
+
+### The actual defect is the FILENAME
+
+Two real redemption tables, both with live paths, neither droppable:
+
+- **`payment_redemptions`** — cash payout / vouchers. Written by
+  `rewardRedemptionRepository` via `api/consumer/rewards/redeem`. 1 row.
+- **`reward_redemptions`** — catalog rewards. Written by `api/rewards`. 0 rows.
+
+`rewardRedemptionRepository.ts` handles the FIRST one. **Renaming it to
+`paymentRedemptionRepository.ts` is the cleanup item — not a DROP.** A header
+comment now states the mismatch plainly, because it has cost investigation time
+three times.
+
+### 🔴 A SECOND live production dependency on transaction ROLLBACK
+
+Found while checking the above. `api/rewards/route.ts:116` throws
+`ROLLBACK_OUT_OF_STOCK` **deliberately, to undo a points deduction** when the
+stock decrement finds nothing left:
+
+```
+deduct points → decrement stock → if stock was already 0, THROW to undo
+```
+
+**There the throw is not error handling — it IS the concurrency control against
+overselling.** If rollback is broken on the pooler, that consumer is charged
+points for an out-of-stock reward and receives a 400 saying it failed.
+
+So `scripts/probe-transaction-rollback.ts` now gates three live paths, not one:
+`deductPoints`, the rewards stock guard, and `claimProduct`.
