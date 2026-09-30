@@ -1,5 +1,19 @@
 /**
- * TEMPORARY read-only schema-drift sweep. Delete after use.
+ * Read-only schema-drift sweep. **KEEP THIS — it is not temporary.**
+ *
+ * (It said "TEMPORARY / delete after use" until 2026-09-30. Promoted because
+ * Drizzle-vs-Postgres drift turned out to be a standing condition, not a
+ * one-off. Confirmed instances so far:
+ *
+ *   • `notification_preferences` has `UNIQUE(user_id, event_type)` in the DB
+ *     (migration 005) and NOT in `schema.ts` — and `upsertPreference` silently
+ *     depends on it.
+ *   • `product_claim_requests_one_open_per_product` is a PARTIAL unique index
+ *     created by migration 044 and inexpressible in Drizzle, so it exists only
+ *     in the migration. **It is that feature's concurrency control.**
+ *
+ * A reader who trusts only `schema.ts` will not know either guarantee exists.
+ * This script is how that gap gets found rather than discovered by a bug.)
  *
  * Answers the question the migration-route grep only approximates:
  * which tables does the app EXPECT (schema.ts) that the database does NOT have,

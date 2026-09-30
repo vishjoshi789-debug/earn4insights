@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, sql, ne, lte } from 'drizzle-orm'
+import { eq, and, or, ilike, sql, ne, lte, isNull } from 'drizzle-orm'
 import { db } from '@/db'
 import { products } from '@/db/schema'
 import type { DbTx } from '@/db/tx'
@@ -381,6 +381,21 @@ export async function createPlaceholderProduct(params: {
 /**
  * Claim a product (brand takes ownership)
  */
+/**
+ * The ownership predicate in `claimProduct` did not match — the product was
+ * claimed or assigned by some other path between the request and the approval.
+ *
+ * Thrown rather than returned so it cannot be confused with "product not
+ * found", and so it rolls back the caller's transaction: an approval that loses
+ * this race must not leave the request marked approved.
+ */
+export class ProductAlreadyOwnedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ProductAlreadyOwnedError'
+  }
+}
+
 export async function claimProduct(
   productId: string,
   claimedBy: string,
@@ -454,10 +469,41 @@ export async function claimProduct(
         lifecycleStatus: 'verified',
         updatedAt: new Date(),
       })
-      .where(eq(products.id, productId))
+      // ⚠️⚠️ CONDITIONAL, NOT UNCONDITIONAL. The predicate IS the race guard.
+      //
+      // 044's partial unique index stops two OPEN REQUESTS on one product. It
+      // does not stop this sequence:
+      //
+      //   request created → product claimed by another route (admin assignment,
+      //   a direct owner_id write, the legacy claim path) → this request
+      //   approved → ownership SILENTLY OVERWRITTEN
+      //
+      // Same failure, different way in. Re-reading `claimable` above and then
+      // writing here is check-then-act; only the predicate is atomic.
+      //
+      // `claimable = true` alone is not enough: the Group C reassignment set
+      // `owner_id` directly in SQL without touching `claimable`, so a product
+      // can be owned AND still claimable. Both conditions are needed.
+      .where(
+        and(
+          eq(products.id, productId),
+          isNull(products.ownerId),
+          eq(products.claimable, true),
+        ),
+      )
       .returning()
 
-    if (!row) return null
+    // No row means the predicate did not match — someone got there first.
+    // ⚠️ THROW, do not return null. A null here would be indistinguishable from
+    // "product not found" and would let the caller treat a lost race as a soft
+    // failure. Throwing also rolls the caller's transaction back, so an
+    // approval that loses the race does not leave the request marked approved.
+    if (!row) {
+      throw new ProductAlreadyOwnedError(
+        `Product ${productId} is no longer claimable — it was claimed or assigned ` +
+        `by another path after this request was created.`,
+      )
+    }
 
     const moved = await rekeyBrandForProduct(productId, claimedBy, tx)
     if (Object.keys(moved).length > 0) {

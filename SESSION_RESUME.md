@@ -4948,3 +4948,98 @@ points for an out-of-stock reward and receives a 400 saying it failed.
 
 So `scripts/probe-transaction-rollback.ts` now gates three live paths, not one:
 `deductPoints`, the rewards stock guard, and `claimProduct`.
+
+## ✅ TRANSACTION ROLLBACK — VERIFIED ON PREVIEW, INFERRED FOR PRODUCTION (2026-09-30)
+
+`scripts/probe-transaction-rollback.ts`, run by the founder against the
+**preview** branch's **pooled** endpoint:
+
+```
+✅ ROLLBACK WORKS on the pooled endpoint. The row is gone.
+```
+
+A marked `cron_runs` row was inserted inside a real `db.transaction()`, the
+transaction threw on purpose, and the row was absent afterwards.
+
+⚠️⚠️ **WORDING IS DELIBERATE: verified on PREVIEW, INFERRED for PRODUCTION.**
+They are different Neon branches. The pooler behaviour is a property of the
+connection mode and almost certainly identical, but "almost certainly" is not
+"verified" — and this project has been bitten repeatedly by treating one
+environment's result as another's. Upgrade this line only after the probe runs
+against production.
+
+### Why the probe was worth the round trip
+
+**COMMIT was already proven and ROLLBACK was not, and they are different
+behaviours** — pgBouncer in transaction mode can break the second while the
+first looks fine. Commit was proven by data: the 2026-08-23 row in
+`payment_redemptions` is the output of the transaction at
+`api/consumer/rewards/redeem/route.ts:154`.
+
+### 🔴 Three LIVE paths depend on rollback, not one
+
+1. **`deductPoints`** (`pointsService.ts:217`) — in production, moving real
+   points. A partial failure leaves a balance decremented with **no
+   `point_transactions` row** explaining where the points went. Exactly the
+   silent loss `3b47eea` added the transaction to prevent.
+2. 🔴 **`api/rewards/route.ts:116` — `ROLLBACK_OUT_OF_STOCK`.** Found while
+   checking the DROP question. This throws **deliberately, to undo a points
+   deduction** when the stock decrement finds nothing left:
+   `deduct → decrement stock → if already 0, THROW to undo`. **There the throw
+   is not error handling — it IS the overselling guard.** Broken rollback means
+   a consumer is charged for an out-of-stock reward and shown a 400.
+3. **`claimProduct`** — ownership and the `brand_id` re-key must land together.
+
+### The probe's own guards, and why
+
+- 🔒 **Refuses any host without `-pooler`.** A direct Postgres connection always
+  honours rollback, so pointing it at the direct endpoint produces a confident
+  PASS that answers a question nobody asked.
+- 🔒 **Refuses to run without `DATABASE_URL_OVERRIDE`** and never falls back to
+  `POSTGRES_URL`/`DATABASE_URL`, because `.env.local` points at **production**.
+  A write-probe with a fallback is how a probe writes to prod.
+- **Prints the target before writing**, so a wrong branch can be aborted.
+- **Three named inconclusive outcomes** (A: throw did not propagate · B:
+  unexpected error type · C: no row id captured), each with its next step. A
+  probe that can say "I don't know" without defining when is a probe that leaves
+  you where you started.
+- Marker is `__rollback_probe_*`, never `social/cron`, so it cannot pollute the
+  separate `cron_runs` watch. ⚠️ **That watch is pointed at PRODUCTION**; the
+  probe runs on preview.
+
+### 🔴 THE `reward_redemptions` NEAR-MISS — founder-recorded, two distinct errors
+
+The founder proposed a `DROP` on the grounds that the table had zero rows and a
+dead writer. **Neither held**, and both mistakes generalise:
+
+**(a) Zero rows was read as zero capability.** `api/rewards/route.ts:120`
+**writes** the table; `:27-35` **reads** it. Zero rows meant nobody had redeemed
+a catalog reward yet. ⚠️ **New standing rule (now in §5): zero rows is NOT
+evidence of an ignition key; zero rows PLUS no writer in any reachable path is.
+The absence of the writer has to be FOUND, not inferred from emptiness.**
+
+**(b) Facts about two tables were fused because the names sounded related.**
+`updateRedemptionStatus` operates on `payment_redemptions`, has **3 callers**,
+and was never evidence about `reward_redemptions` either way. ✅ **It comes OFF
+the ignition-key list.**
+
+**Third instance of the stale-prose pattern.** The "zero callers" belief traces
+to `payoutService.ts:346`, a **past-tense** note from when that circuit was
+wired, which reads as current fact. With §9's 32-vs-33 and the
+`brand.discount.created` §11 entry, that is three. ⚠️ **Now a §5 rule: a
+past-tense claim in a comment or doc is not a present-tense fact — verify
+against the code before building on it. The ignition-key rule applies to the
+prose describing the code, not just the code.**
+
+**The real cleanup item is a RENAME, not a DROP:**
+`rewardRedemptionRepository.ts` → `paymentRedemptionRepository.ts`. A header
+comment now states the mismatch, since it has cost investigation time 3×.
+
+### 📌 `scripts/schema-drift.ts` PROMOTED — no longer temporary
+
+Header no longer says "delete after use". Drift is a standing condition, with
+two confirmed instances: `notification_preferences`' `UNIQUE` (in the DB since
+005, never in `schema.ts`, and `upsertPreference` depends on it) and
+**`product_claim_requests_one_open_per_product`**, a partial unique index that
+Drizzle cannot express, created by 044, and **that feature's concurrency
+control**. A reader trusting only `schema.ts` would not know either exists.
