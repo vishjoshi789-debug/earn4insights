@@ -4800,3 +4800,93 @@ kept auth-only.
   equivalence was **checked**, not assumed, and must be per route.
 - **The 33 inline blocks remain and are dead.** Removing them is hygiene, not
   security. Queued as its own mechanical commit.
+
+## 📌 043 applied · social/cron delete-on-evidence · the pooler question (2026-09-30)
+
+### ✅ Migration 043 applied on BOTH branches, by the founder in Neon
+
+Production got `contribution_events.scored_by` **and** all three constraints
+fresh; preview already had the column and got the constraints. Verified on both.
+
+⚠️ **Production now HAS `scored_by`, so the deploy-ordering hazard on the
+pending `main` merge is PRE-EMPTED.** The flag stays in the record anyway —
+**the reason it mattered applies to the NEXT column, not just this one.**
+`api/contribution/intelligence/route.ts:37` is still a bare
+`db.select().from(contributionEvents)`.
+
+### ⏳ `/api/social/cron` — KEEP WRAPPED, DELETE ON EVIDENCE
+
+Founder checked cron-job.org: **no job points at it.** Four independent signals
+now say nothing reaches it (no cron-job.org job · not in `vercel.json` · no
+caller in the repo · POST-only vs Vercel Cron's GET).
+
+⚖️ **Deleting still waits on measurement, not inference — and the wrap is
+itself the test.** `withCronRun` writes a `cron_runs` row per invocation, so
+once live the table answers directly instead of by absence of evidence.
+
+> **Plan:** merge → wrap live on production → watch `cron_runs` one week →
+> delete if empty, and decide whether `ingestSocialForAllEnabled` survives.
+
+```sql
+SELECT started_at, triggered_by, status FROM cron_runs
+WHERE job_name = 'social/cron' ORDER BY started_at DESC;
+```
+
+⚠️ **Zero rows means nothing until the wrap is live in production.**
+
+### 🔑 THE POOLER QUESTION — commit is PROVEN, rollback is NOT
+
+**Both of us had the framing wrong, in different ways.**
+
+I claimed in `productRepository.ts` that `redeem/route.ts:154` "has run this way
+in production since `3b47eea`". I had verified the code *exists* in a production
+path — not that it executed. **An overclaim in a code comment.**
+
+The founder's correction was right and sharper: `deductPoints` was **already
+transactional before `3b47eea`** (`pointsService.ts:217` —
+`existingTx ? run(existingTx) : db.transaction(run)`), so the deploy date is
+irrelevant to the question.
+
+🔴 **And the table names nearly buried it.** `reward_redemptions` has **0 rows,
+ever** — but `rewardRedemptionRepository.createRedemption` writes
+**`payment_redemptions`**, not the table its file is named after. The
+**2026-08-23 `payment_redemptions` row IS that route's output.** Third time the
+two-redemption-tables trap has cost investigation time.
+
+✅ **So: a `db.transaction()` COMMITTED on the pgBouncer pooler, in production,
+on 2026-08-23. Proven by data, not inference.**
+
+⚠️⚠️ **That proves COMMIT ONLY.** `approveClaim` depends on **ROLLBACK** — a
+failure partway through must leave nothing written — and pgBouncer in
+transaction mode can break rollback while commit looks fine. **Proving commit
+and assuming rollback is the same "verified the middle of the path" error this
+project keeps repeating.**
+
+**`scripts/probe-transaction-rollback.ts`** answers it: opens a real
+`db.transaction()` with the app's exact client options, inserts a marked
+`cron_runs` row, throws inside, then checks whether the row survived. 🔒 It
+**refuses to run without `DATABASE_URL_OVERRIDE`** and never falls back to
+`POSTGRES_URL`/`DATABASE_URL`, because `.env.local` points at **production** —
+a write-probe with a fallback is how a probe ends up writing to prod. Refusal
+verified. **Phase 1 will not build on rollback until this reports.**
+
+### 📐 Two plan amendments from the founder
+
+1. **The cohort floor applies at the CONFIRM step too, not just the list.** My
+   example ("Apple — 2 pieces of feedback") contradicted my own rule: Apple has
+   2, the floor is 5. At confirm time the claimant is **still unverified**, so a
+   raw sub-floor count leaks exactly what the floor protects. To be explicit in
+   the implementation, not implied.
+2. **The claim-approved consumer notification will reach ~1 of 9 consumers**
+   at current personalization-grant rates. **Accepted deliberately** — routing
+   through the preference system is worth more than the reach, and grant rates
+   change. ⚠️ **Must be recorded in code**, so a future reader who finds a
+   notification that mostly cannot fire does not assume it is a bug and strip
+   the gate out.
+
+### 📐 Doc correction — my "different measurements" reconciliation was WRONG
+
+I wrote that §5's "33" and §9's "32" measured different things and were never in
+conflict. `vercel.json` has **33** entries; §9 was **stale**; I invented a
+distinction to explain away a mismatch one `grep` settles. Both corrected.
+**Count the file before reconciling a discrepancy.**
