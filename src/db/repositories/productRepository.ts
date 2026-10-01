@@ -102,6 +102,102 @@ export function consumerVisibleProducts() {
   )
 }
 
+/**
+ * ⚠️⚠️ THE ONE DEFINITION OF "CLAIMABLE". EVERY CALLER READS THIS LINE.
+ *
+ * The brand-facing search, the single-product eligibility check, and the
+ * ownership UPDATE inside `claimProduct` all apply THIS predicate. They cannot
+ * disagree, because there is nothing to disagree with.
+ *
+ * ── WHY IT IS A PREDICATE AND NOT ALSO A TS BOOLEAN ──────────────────────
+ * A matching `isProductClaimable(product)` helper was considered and REJECTED:
+ * two expressions of one rule is the problem, not the solution. A future
+ * condition gets added to the SQL and not the boolean, nothing errors, and the
+ * search starts offering products the approval will refuse — a false affordance
+ * hitting a prospective paying brand at their first real interaction.
+ *
+ * So there is no boolean. To ask "is THIS product claimable?", call
+ * `getClaimableProductById()`, which applies this same predicate with an id
+ * filter. One rule, read three ways, defined once. Same consolidation as
+ * `MIN_COHORT_SIZE`.
+ *
+ * ── WHY ALL THREE CONDITIONS, AND WHY NONE IS REDUNDANT ──────────────────
+ *
+ * `claimable = true` — "offered to the claim flow at all", NOT "unclaimed".
+ *   The column defaults to FALSE (`schema.ts`), so brand-launched products are
+ *   never claimable; only `createPlaceholderProduct` sets it true. It is the
+ *   opt-in, and it is what excludes test/internal products by construction.
+ *
+ * `owner_id IS NULL` — "not yet claimed". NOT implied by the above: the Group C
+ *   reassignment set `owner_id` directly in SQL without touching `claimable`,
+ *   so a product can be owned AND still flagged claimable. Without this, those
+ *   rows would appear in the search and fail on approval.
+ *
+ * `lifecycle_status = 'pending_verification'` — only consumer-created
+ *   placeholders. Also excludes `'merged'` for free. Moves together with
+ *   `claimable` in code (`createPlaceholderProduct`, `claimProduct`,
+ *   `mergeProduct` all set both), but manual SQL can desync them — as Group C
+ *   proved — so it is asserted rather than assumed.
+ *
+ * ✅ `claimProduct` sets `claimable: false` in the same `.set()` as `ownerId`,
+ * so a successful claim removes the product from this predicate on both counts.
+ */
+export function claimableProductCondition() {
+  return and(
+    eq(products.claimable, true),
+    isNull(products.ownerId),
+    eq(products.lifecycleStatus, 'pending_verification'),
+  )
+}
+
+/**
+ * One claimable product by id, or null. **This is how you ask "is this product
+ * claimable?"** — it applies `claimableProductCondition()`, so the answer can
+ * never drift from what the search lists or what the approval will accept.
+ *
+ * ⚠️ A null result means "not claimable", which includes "does not exist".
+ * Callers that need to tell those apart for a user-facing message do a separate
+ * `getProductById` AFTERWARDS — that is a message concern, not an eligibility
+ * decision, and it must not re-implement the rule.
+ */
+export async function getClaimableProductById(id: string): Promise<Product | null> {
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, id), claimableProductCondition()))
+    .limit(1)
+  return rows[0] ? toProduct(rows[0]) : null
+}
+
+/**
+ * The brand-facing claimable list, optionally filtered by name.
+ *
+ * Built as SEARCH-AND-CONFIRM, not a discovery feed: at the time of writing all
+ * 8 claimable products carry 1–2 feedback items, so a count column would read
+ * "Fewer than 5" on every row and rank nothing. A brand arrives looking for
+ * their OWN product. An empty query returns everything, because 8 is browsable
+ * and an empty box that reveals nothing reads as a broken feature.
+ *
+ * ⚠️ This lets any brand enumerate consumer-created product names. Already true
+ * of `/dashboard/products` (§11 — productIds are enumerable by design), so no
+ * new exposure, but it is now a SECOND surface with that property: closing the
+ * first without closing this one would be a false fix.
+ */
+export async function listClaimableProducts(search?: string): Promise<Product[]> {
+  const conditions = [claimableProductCondition()]
+  const q = search?.trim().toLowerCase()
+  if (q) conditions.push(ilike(products.name, `%${q}%`))
+
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(...conditions))
+    .orderBy(products.name)
+    .limit(50)
+
+  return rows.map(toProduct)
+}
+
 export async function getAllProducts(opts?: { includeScheduled?: boolean }): Promise<Product[]> {
   const conditions: any[] = [ne(products.lifecycleStatus, 'merged')]
   if (!opts?.includeScheduled) {
@@ -324,19 +420,22 @@ export async function getProductsByOwner(ownerId: string): Promise<Product[]> {
 }
 
 /**
- * Get claimable products (pending verification, not yet claimed)
+ * Get claimable products.
+ *
+ * 🔴 **THIS FUNCTION ALREADY HAD THE DRIFT.** Its docstring said "not yet
+ * claimed" and its predicate did not check `owner_id` — it asserted only
+ * `claimable = true AND lifecycle_status = 'pending_verification'`. So it would
+ * have listed the Group C products (owner set directly in SQL, `claimable`
+ * untouched) as claimable, and every claim on one would have failed at the
+ * ownership UPDATE. **A live false affordance waiting for the UI that would
+ * have exposed it** — found by consolidating rather than by a bug report.
+ *
+ * Now delegates to `claimableProductCondition()`. Kept as a thin alias because
+ * `/api/dashboard/products/claim` calls it; prefer `listClaimableProducts()`,
+ * which supports search.
  */
 export async function getClaimableProducts(): Promise<Product[]> {
-  const results = await db
-    .select()
-    .from(products)
-    .where(
-      and(
-        eq(products.claimable, true),
-        eq(products.lifecycleStatus, 'pending_verification')
-      )
-    )
-  return results.map(toProduct)
+  return listClaimableProducts()
 }
 
 /**
@@ -423,10 +522,12 @@ export async function claimProduct(
    */
   existingTx?: DbTx,
 ): Promise<Product | null> {
-  const product = await getProductById(productId)
-  if (!product) return null
-  if (!product.claimable) return null
-  if (product.lifecycleStatus === 'merged') return null
+  // ⚠️ NO PRE-READ, NO MANUAL GUARDS. There used to be
+  //   `if (!product.claimable) return null; if (lifecycleStatus === 'merged') …`
+  // here, and that was a SECOND definition of claimability sitting next to the
+  // one in the UPDATE below — exactly the drift this consolidation removes.
+  // The conditional UPDATE is the only check, and it is atomic, which
+  // check-then-act never was.
 
   // ⚠️ OWNERSHIP AND BRAND KEYS MOVE TOGETHER, OR NEITHER MOVES.
   //
@@ -481,16 +582,11 @@ export async function claimProduct(
       // Same failure, different way in. Re-reading `claimable` above and then
       // writing here is check-then-act; only the predicate is atomic.
       //
-      // `claimable = true` alone is not enough: the Group C reassignment set
-      // `owner_id` directly in SQL without touching `claimable`, so a product
-      // can be owned AND still claimable. Both conditions are needed.
-      .where(
-        and(
-          eq(products.id, productId),
-          isNull(products.ownerId),
-          eq(products.claimable, true),
-        ),
-      )
+      // ✅ Reads `claimableProductCondition()` — THE SAME LINE the brand-facing
+      // search and `getClaimableProductById` read. That is the point: a product
+      // the search offers is a product this UPDATE will accept, not by two
+      // authors agreeing but because there is one definition.
+      .where(and(eq(products.id, productId), claimableProductCondition()))
       .returning()
 
     // No row means the predicate did not match — someone got there first.

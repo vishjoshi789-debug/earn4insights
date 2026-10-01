@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { isAdminSession } from '@/lib/auth/roles'
 import {
   claimProduct,
+  getClaimableProductById,
   getProductById,
   ProductAlreadyOwnedError,
 } from '@/db/repositories/productRepository'
@@ -65,15 +66,19 @@ export async function requestClaim(
   const requesterId = session?.user?.id
   if (!requesterId) throw new Error('requestClaim: unauthenticated')
 
-  const product = await getProductById(productId)
-  if (!product) return { ok: false, reason: 'not_found' }
-
-  // Only unowned, consumer-created placeholders are claimable. A verified
-  // owned product is not up for grabs, and Group C (verified, owner NULL,
-  // claimable false) is deliberately NOT reachable here — those need a direct
-  // owner assignment, which is a different operation.
-  if (!product.claimable || product.ownerId || product.lifecycleStatus !== 'pending_verification') {
-    return { ok: false, reason: 'not_claimable' }
+  // ✅ ONE DEFINITION. `getClaimableProductById` applies
+  // `claimableProductCondition()` — the same predicate the brand-facing search
+  // lists by and the ownership UPDATE accepts. This function does NOT restate
+  // the rule; an earlier version checked
+  // `!product.claimable || product.ownerId || lifecycleStatus !== …` inline,
+  // which is how the search and the approval drift apart and start producing a
+  // false affordance for a prospective paying brand.
+  const claimable = await getClaimableProductById(productId)
+  if (!claimable) {
+    // Not eligible. The extra read below exists ONLY to say which sentence the
+    // user sees — it is a message concern and must never re-decide eligibility.
+    const exists = await getProductById(productId)
+    return { ok: false, reason: exists ? 'not_claimable' : 'not_found' }
   }
 
   try {
