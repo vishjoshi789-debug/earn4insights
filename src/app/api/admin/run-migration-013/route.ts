@@ -35,11 +35,31 @@ export async function POST(request: NextRequest) {
     )) as Array<{ count: number }>
     const totalOrphansAtStart = orphansBefore[0]?.count ?? 0
 
+    // ⚠️⚠️ `AND claimable = false` ADDED 2026-10-01 TO BOTH STATEMENTS.
+    //
+    // This route is a RE-RUNNABLE maintenance script, not a historical record, so
+    // it has to be correct for FUTURE runs — which is why editing it is right here
+    // and would be wrong for an ordinary migration.
+    //
+    // Without the guard, either UPDATE could hand an owner to a product that is
+    // still `claimable = true`, violating
+    // `products_claimable_implies_unowned`. ⚠️ And this route is NOT transactional
+    // — four separate `pgClient.unsafe()` calls, and §5 forbids BEGIN/COMMIT on the
+    // pooled connection — so a violation on Step 2 would leave Step 1 COMMITTED:
+    // a failed migration AND partial data, which is worse than either alone.
+    // Guarding both statements makes the violation unreachable, which is better
+    // than making the failure atomic.
+    //
+    // It currently matches nothing extra: every `claimable = true` row has
+    // `created_by IS NULL` because the placeholder UI posts `{ name }` only. The
+    // reachable path was `/api/products/placeholder` accepting `createdBy` from the
+    // request body — now removed. Both halves fixed.
+
     // Step 1: backfill from created_by where available
     const fromCreatedBy = (await pgClient.unsafe(`
       UPDATE products
       SET owner_id = created_by, updated_at = NOW()
-      WHERE owner_id IS NULL AND created_by IS NOT NULL
+      WHERE owner_id IS NULL AND created_by IS NOT NULL AND claimable = false
       RETURNING id, name, owner_id
     `)) as Array<{ id: string; name: string; owner_id: string }>
 
@@ -47,7 +67,7 @@ export async function POST(request: NextRequest) {
     const fromClaimedBy = (await pgClient.unsafe(`
       UPDATE products
       SET owner_id = claimed_by, updated_at = NOW()
-      WHERE owner_id IS NULL AND claimed_by IS NOT NULL
+      WHERE owner_id IS NULL AND claimed_by IS NOT NULL AND claimable = false
       RETURNING id, name, owner_id
     `)) as Array<{ id: string; name: string; owner_id: string }>
 

@@ -74,23 +74,74 @@ export async function GET(request: Request) {
  * 3. Assign ownership to brand
  * 4. Mark product as verified
  */
-export async function POST(request: Request) {
+/**
+ * 🔴🔴 HOTFIX — THIS HANDLER TRANSFERRED PRODUCT OWNERSHIP TO ANY LOGGED-IN USER.
+ *
+ * It is disabled, not deleted, so the exploit path is visible rather than quietly
+ * absent. Phase 2 replaces the body with `requestClaim()` — creating a request for
+ * admin approval instead of taking ownership.
+ *
+ * ── WHAT WAS WRONG ───────────────────────────────────────────────────────────
+ * The only check was `if (!session?.user?.id)`. **No role check, no ownership
+ * proof, no approval.** Any authenticated account — consumer, influencer, brand —
+ * could call `claimProduct()` on any of the 10 claimable products and become its
+ * owner.
+ *
+ * Reachability was traced, not assumed: the path is not in `PUBLIC_PREFIXES` so a
+ * session is required, but any role satisfies that; CSRF applies but a logged-in
+ * browser already holds the cookie AND `CsrfFetchProvider` patches `window.fetch`,
+ * so one `fetch()` from devtools carries a valid token; and product ids are
+ * enumerable from `/dashboard/products` by design (§11).
+ *
+ * ── WHY IT WAS WORSE THAN AN OWNERSHIP BUG ───────────────────────────────────
+ * 1. Once `owner_id` is yours, `canManage` on `/dashboard/products/[productId]`
+ *    is true, which unhides `<RecentFeedback>` — consumer **names, emails and
+ *    media**. A PII exposure, not only a data-integrity defect.
+ * 2. `claimProduct` also writes `lifecycle_status = 'verified'`, and that renders
+ *    a **consumer-visible "Verified" badge** (`api/products/search/route.ts:59`
+ *    → `product-search.tsx:219`) on the feedback-submission surfaces. The exploit
+ *    forged a trust signal shown to other consumers while they chose what to give
+ *    feedback on.
+ *
+ * ── WHY DISABLING BREAKS NOTHING (measured, not assumed) ─────────────────────
+ * `grep -rn "products/claim" src` → the only runtime callers are
+ * `dashboard/analytics/consumer-intelligence/page.tsx:97` and
+ * `feature-insights/page.tsx:34`, and **both call `GET ?action=my-products`**.
+ * **POST has zero callers.** The GET handler above is therefore left untouched.
+ *
+ * ⚠️ Fingerprint for whether it was ever USED: `products.claimed_by IS NOT NULL`.
+ * Only `claimProduct` writes that column — the launch and seed paths never do — so
+ * any non-null row means this ran. The owner's `users.role` then says by whom.
+ */
+export async function POST(_request: Request) {
+  return NextResponse.json(
+    {
+      error:
+        'Product claiming now requires admin approval. This endpoint is disabled; ' +
+        'the approval queue replaces it.',
+    },
+    { status: 503 },
+  )
+}
+
+/** Preserved verbatim for Phase 2, which rewrites it to call `requestClaim()`. */
+async function POST_DISABLED_pendingApprovalQueue(request: Request) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
+
     const body = await request.json()
     const { productId } = body
-    
+
     if (!productId || typeof productId !== 'string') {
       return NextResponse.json(
         { error: 'productId is required' },
         { status: 400 }
       )
     }
-    
+
     // Check product exists
     const product = await getProductById(productId)
     if (!product) {
@@ -99,7 +150,7 @@ export async function POST(request: Request) {
         { status: 404 }
       )
     }
-    
+
     // Check product is claimable
     if (!product.claimable) {
       return NextResponse.json(
@@ -107,24 +158,24 @@ export async function POST(request: Request) {
         { status: 409 }
       )
     }
-    
+
     if (product.lifecycleStatus === 'merged') {
       return NextResponse.json(
         { error: 'This product has been merged into another product' },
         { status: 409 }
       )
     }
-    
+
     // Claim the product
     const claimed = await claimProduct(productId, session.user.id)
-    
+
     if (!claimed) {
       return NextResponse.json(
         { error: 'Failed to claim product' },
         { status: 500 }
       )
     }
-    
+
     return NextResponse.json({
       success: true,
       product: {

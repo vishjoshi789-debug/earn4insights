@@ -22,7 +22,21 @@ import {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name, description, category, categoryName, createdBy } = body
+    // ⚠️ `createdBy` is DELIBERATELY NOT read from the body any more.
+    //
+    // It let the CALLER decide who created a record, which is wrong on its own —
+    // and it had a second effect: migration 013 does
+    // `UPDATE products SET owner_id = created_by WHERE owner_id IS NULL AND
+    // created_by IS NOT NULL`, with no `claimable` guard. A placeholder created
+    // with a caller-supplied `createdBy` would therefore be handed an owner by a
+    // 013 re-run while still flagged claimable — violating
+    // `products_claimable_implies_unowned`. 013 is NOT transactional (four
+    // separate `pgClient.unsafe()` calls; §5 forbids BEGIN/COMMIT on the pooler),
+    // so that failure would leave it half-applied.
+    //
+    // The UI never sent it (`product-search.tsx:118` posts `{ name }` only), so
+    // removing it breaks nothing. Both halves are fixed: this, and the guard in 013.
+    const { name, description, category, categoryName } = body
     
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return NextResponse.json(
@@ -59,7 +73,7 @@ export async function POST(request: Request) {
       description: description || undefined,
       category: category || undefined,
       categoryName: categoryName || undefined,
-      createdBy: createdBy || undefined,
+      // createdBy intentionally omitted — see the destructure above.
     })
     
     return NextResponse.json({
