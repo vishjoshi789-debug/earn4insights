@@ -552,7 +552,7 @@ Sub-daily crons (e.g. `publish-scheduled-launches` at 15-min cadence) are driven
 - **`ARCHITECTURE.md`** — authoritative technical reference (22 sections, all phases)
 - **`docs/PRELAUNCH_AUDIT_FIX_LOG.md`** — 6-pass audit journal, Phase 1–3.5 fix narratives
 - **`docs/SCHEMA.md`** — all DB table definitions (migrations 002–028)
-- **`docs/CRON_JOBS.md`** — full cron schedule (32 entries), auth pattern, batch sizes
+- **`docs/CRON_JOBS.md`** — full cron schedule (**33** entries — corrected 2026-10-01; this line said 32), auth pattern, batch sizes
 - **`docs/SOCIAL_PLATFORM_SETUP.md`** — per-platform listener setup (status, API, cost, approval, env vars)
 - **`docs/FEATURE1_HYPERPERSONALIZATION.md`** — encryption, consent, ICP scoring
 - **`docs/FEATURE2_INFLUENCERS_ADDA.md`** — campaign lifecycle, payments, earnings, content approval, @ tags
@@ -578,3 +578,19 @@ Sub-daily crons (e.g. `publish-scheduled-launches` at 15-min cadence) are driven
 - Instances now consolidated: **`MIN_COHORT_SIZE`** (`lib/privacy/cohort.ts`), **`DbTx`** (`db/tx.ts` — a second copy was about to be written in `razorpayRepository`), **`DUAL_KEY_TABLES`** (`brandKeyRepository.ts` — a hand-written copy had already omitted two tables), and **`claimableProductCondition()`** (`productRepository.ts`).
 - ⚠️ **Resist the "and a matching TS boolean" temptation.** For claimability, an `isProductClaimable(product)` helper alongside the SQL predicate was considered and **rejected** — two expressions of one rule is the problem. To test a single row, apply the predicate with an id filter (`getClaimableProductById`). **One rule, read three ways, defined once.**
 - 🔴 **Consolidating found a live defect that no test would have.** `getClaimableProducts()` claimed "not yet claimed" in its docstring and never checked `owner_id`, so it would have listed the Group C products (owner set by manual SQL, `claimable` untouched) and every claim on one would have failed at the ownership UPDATE — a false affordance waiting for the UI to expose it.
+
+### Differential comparison — the method that found the claimability defect (2026-10-01)
+- **When one rule exists in two places, DIFF the two statements and record any disagreement BEFORE consolidating.** Consolidation destroys the only chance to run that comparison — once there is one expression, the second is gone and with it the evidence that they ever differed.
+- 🔴 **This is how `getClaimableProducts()`'s missing `owner_id` check was found, and no test would have caught it.** A test inherits its author's understanding of the rule, so it excludes exactly the case that would expose the bug: whoever wrote that function believed its predicate was complete, and would have written a test asserting precisely that. Diffing it against `claimProduct`'s independently-written predicate showed one checked `owner_id` and the other did not.
+- **Practical form:** grep the rule's columns, not its name. The two statements rarely share a helper or a comment — that is what makes them two statements.
+- ⚠️ **A defect with no current victims is LATENT, NOT HARMLESS.** On `main`, `claimable_true` = `plus_unowned` = `all_three` = 10, so the missing `owner_id` clause excluded nothing. That is **not** evidence the clause was unnecessary — it is evidence the clause was **unexercised**, because `claimProduct` sets `claimable = false` in the same statement as `owner_id`, so the only route into owned-and-claimable is manual SQL. **Do not read "we measured it and it excluded nothing" as "it didn't matter."**
+
+### A rule learned in one context can INVERT outside it (2026-10-01)
+- 🔴 **`PUBLIC_API_ADMIN_PATHS` is "paths that are PUBLIC despite looking like admin paths" — NOT "the list of admin paths".** It feeds `isPublic()` (`middleware.ts:136`). Adding a session-gated admin route to it **strips the session gate and makes the route publicly reachable.**
+- The **two-file rule** (§5: create a migration route → add its path here) exists because migration routes **self-authenticate** with `x-api-key` and carry no session, so they *must* bypass the session gate. Applied to a session-authed route it does the opposite of protecting it.
+- ⚠️ Generalise: **a safety rule carries its context.** Before applying one somewhere new, check what consumes the thing it touches. Fourth naming-trap instance, after `rewardRedemptionRepository` (writes `payment_redemptions`), the two redemption tables, and `source_id` vs `reference_id`.
+
+### Preview is a stand-in for SCHEMA and INFRASTRUCTURE — never for DATA (2026-10-01)
+- ✅ **Transfers:** migrations (applied to both branches), and pooler behaviour — which is why the `db.transaction()` rollback probe run on preview is sound evidence for production.
+- 🔴 **Does NOT transfer: the data.** Preview holds **1 product**; `main` holds **23**, of which **10** are claimable. A walk-through that passes on preview says nothing about what a brand sees on production, and every row-count assertion must be re-measured per branch.
+- We leaned on "verified on preview" repeatedly without separating those two claims. State which one is meant.
