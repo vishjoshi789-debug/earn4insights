@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
+// ⚠️ `claimProduct` and `getProductById` are deliberately NOT imported here any
+// more. The disabled POST handler's body was DELETED rather than left below an
+// early return: unreachable code is one careless edit away from reachable, and
+// this particular body transferred product ownership to any authenticated caller.
+// Phase 2 reintroduces a POST that calls `requestClaim()` — which creates a
+// request for admin approval and never touches ownership.
 import {
-  claimProduct,
-  getProductById,
   getClaimableProducts,
   getProductsByOwner,
 } from '@/db/repositories/productRepository'
@@ -124,74 +128,3 @@ export async function POST(_request: Request) {
   )
 }
 
-/** Preserved verbatim for Phase 2, which rewrites it to call `requestClaim()`. */
-async function POST_DISABLED_pendingApprovalQueue(request: Request) {
-  try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const { productId } = body
-
-    if (!productId || typeof productId !== 'string') {
-      return NextResponse.json(
-        { error: 'productId is required' },
-        { status: 400 }
-      )
-    }
-
-    // Check product exists
-    const product = await getProductById(productId)
-    if (!product) {
-      return NextResponse.json(
-        { error: 'Product not found' },
-        { status: 404 }
-      )
-    }
-
-    // Check product is claimable
-    if (!product.claimable) {
-      return NextResponse.json(
-        { error: 'This product is not available for claiming' },
-        { status: 409 }
-      )
-    }
-
-    if (product.lifecycleStatus === 'merged') {
-      return NextResponse.json(
-        { error: 'This product has been merged into another product' },
-        { status: 409 }
-      )
-    }
-
-    // Claim the product
-    const claimed = await claimProduct(productId, session.user.id)
-
-    if (!claimed) {
-      return NextResponse.json(
-        { error: 'Failed to claim product' },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({
-      success: true,
-      product: {
-        id: claimed.id,
-        name: claimed.name,
-        lifecycleStatus: claimed.lifecycleStatus,
-        ownerId: claimed.ownerId,
-        claimedAt: claimed.claimedAt,
-      },
-      message: `Successfully claimed "${claimed.name}". You can now manage this product.`,
-    })
-  } catch (error) {
-    console.error('Claim product error:', error)
-    return NextResponse.json(
-      { error: 'Failed to claim product' },
-      { status: 500 }
-    )
-  }
-}
