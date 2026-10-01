@@ -22,6 +22,19 @@ export interface QualityScoreResult {
   actionabilityScore: number  // can product team use this?
   authenticityScore: number   // not spam / bot / low-effort
   reasoning: string           // human-readable explanation
+  /**
+   * Which scorer produced this result. Persisted to
+   * `contribution_events.scored_by`.
+   *
+   * ⚠️ RECORDED, NOT INFERRED. This was previously discoverable only by
+   * checking whether `reasoning` began with the literal string "Heuristic: " —
+   * a text prefix doing a column's job. It mattered the first time the data was
+   * looked at: `community_post` and `survey_complete` both averaged EXACTLY
+   * 20.0 quality while `feedback_submit` varied at 45.4, which is the signature
+   * of a fallback rather than of scoring. A payment's price should not be
+   * auditable only via the opening words of a prose field.
+   */
+  scorer: 'ai' | 'heuristic'
 }
 
 interface ScoringInput {
@@ -102,6 +115,7 @@ function heuristicScore(input: ScoringInput): QualityScoreResult {
     actionabilityScore,
     authenticityScore,
     reasoning: `Heuristic: ${wordCount} words, ${sentences.length} sentences, ${uniqueWords.size} unique words, ${actionHits.length} action terms`,
+    scorer: 'heuristic',
   }
 }
 
@@ -109,6 +123,24 @@ function heuristicScore(input: ScoringInput): QualityScoreResult {
 async function aiScore(input: ScoringInput): Promise<QualityScoreResult> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return heuristicScore(input)
+
+  // ⚠️ NEVER SEND AN EMPTY CONTRIBUTION TO A PAID API.
+  //
+  // `community_upvote_received` calls `recordContribution` with NO
+  // `rawContent` at all (`api/community/react/route.ts:129`), and the pipeline
+  // passes `rawContent || ''` straight through. That was a billed OpenAI call
+  // asking a model to rate the quality of an empty string — it cannot return
+  // anything meaningful, and whatever it does return goes on to multiply a
+  // real points payment.
+  //
+  // The heuristic handles emptiness correctly and for free (zero words scores
+  // at the floor), so this is strictly better on both cost and honesty. The
+  // threshold is deliberately "effectively nothing", not a quality bar: an
+  // upvote event legitimately has no text, whereas a two-word feedback item is
+  // real content the model should judge.
+  if (input.rawContent.trim().length < 2) {
+    return heuristicScore(input)
+  }
 
   const model = process.env.OPENAI_SCORING_MODEL || process.env.OPENAI_THEME_MODEL || 'gpt-4o-mini'
 
@@ -157,6 +189,7 @@ Respond ONLY with valid JSON, no markdown wrapping:
       actionabilityScore: clamp(parsed.actionability ?? 50),
       authenticityScore: clamp(parsed.authenticity ?? 50),
       reasoning: String(parsed.reasoning || 'AI scored').slice(0, 500),
+      scorer: 'ai',
     }
   } catch (err) {
     console.error('[AI Scoring] OpenAI call failed, falling back to heuristics:', err)
@@ -194,6 +227,7 @@ export async function scoreAndPersist(
       noveltyScore: result.noveltyScore,
       actionabilityScore: result.actionabilityScore,
       authenticityScore: result.authenticityScore,
+      scoredBy: result.scorer,
       scoredAt: new Date(),
       status: result.authenticityScore < 20 ? 'flagged' : 'scored',
     })

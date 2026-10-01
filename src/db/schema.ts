@@ -111,6 +111,43 @@ export const products = pgTable('products', {
   }>().notNull(),
 })
 
+/**
+ * Brand claim requests on unowned, consumer-created products (migration 044).
+ *
+ * A claim does NOT take ownership — it creates a row here for admin review.
+ * `claimProduct()` runs on APPROVAL only. `POST /api/dashboard/products/claim`
+ * previously called `claimProduct()` directly with no ownership proof, which
+ * made it a land-grab primitive over rows named `Apple` and `Walmart`.
+ *
+ * ⚠️ TWO DB OBJECTS EXIST THAT ARE NOT DECLARED HERE — see migration 044:
+ *
+ *   1. `product_claim_requests_one_open_per_product` — a PARTIAL unique index
+ *      (`WHERE status IN ('pending','info_requested')`). Drizzle cannot express
+ *      a partial unique index, so it lives only in the migration. **It is the
+ *      concurrency control**: without it two brands hold open requests on one
+ *      product and the second approval silently re-owns it.
+ *   2. `product_claim_requests_status_values` — the status CHECK.
+ *
+ * This is the same schema/DB drift CLAUDE.md flags for
+ * `notification_preferences`' UNIQUE. Documented here deliberately rather than
+ * left to be rediscovered: **a reader who trusts only this file will not know
+ * the uniqueness guarantee exists.**
+ */
+export const productClaimRequests = pgTable('product_claim_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  productId: text('product_id').notNull(),
+  requesterId: text('requester_id').notNull(),
+  // 'pending' | 'approved' | 'rejected' | 'info_requested' — CHECKed in 044
+  status: text('status').notNull().default('pending'),
+  // Free text from the claimant: who they are, why the product is theirs.
+  evidence: text('evidence'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: timestamp('reviewed_at'),
+  reviewNote: text('review_note'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 // ════════════════════════════════════════════════════════════════
 // SECTION 2: SURVEYS & RESPONSES
 // ════════════════════════════════════════════════════════════════
@@ -1092,6 +1129,13 @@ export const contributionEvents = pgTable('contribution_events', {
   finalTokens: integer('final_tokens'),        // actual tokens awarded
   // Processing state
   scoredAt: timestamp('scored_at'),
+  // 'ai' | 'heuristic' — which scorer priced this contribution (migration 043).
+  // ⚠️ Nullable with no default ON PURPOSE. Rows written before 043 genuinely
+  // do not know, and a default of 'ai' or 'heuristic' would invent an answer
+  // for all of them. NULL means "not recorded", which is the truth.
+  // ⚠️ `api/contribution/intelligence/route.ts:37` does a bare `db.select()`
+  // on this table, so the SQL must be applied BEFORE the deploy (§5).
+  scoredBy: text('scored_by'),
   status: text('status').notNull().default('pending'),
   // statuses: 'pending' | 'scored' | 'rewarded' | 'flagged' | 'rejected'
   createdAt: timestamp('created_at').defaultNow().notNull(),
