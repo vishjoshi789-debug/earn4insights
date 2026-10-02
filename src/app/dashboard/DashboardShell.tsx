@@ -109,6 +109,13 @@ type MenuItem = {
 const menuItems: MenuItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, tourId: 'nav-dashboard' },
   { href: '/dashboard/products', label: 'Products', icon: Package, tourId: 'nav-products' },
+  // Claim a product — brand-or-admin. Permanently visible on purpose: a brand
+  // with eight SKUs claims eight products, and the /dashboard/products
+  // empty-state link (the secondary entry point) disappears after the first one,
+  // so it cannot serve a returning brand. requiresCapability is mandatory per
+  // ER.1 — without it a pure consumer sees the item just because 'brand' is in
+  // the role list.
+  { href: '/dashboard/products/claim', label: 'Claim a Product', icon: ShieldCheck, tourId: 'nav-claim-product', role: 'brand', requiresCapability: 'isBrand' },
   { href: '/dashboard/rankings', label: 'Weekly Top 10 products', icon: Trophy, tourId: 'nav-rankings' },
   // Brand: sees aggregated feedback from consumers
   { href: '/dashboard/feedback', label: 'Feedback Hub', icon: MessageSquare, tourId: 'nav-feedback', role: 'brand', requiresCapability: 'isBrand' },
@@ -194,6 +201,7 @@ const menuItems: MenuItem[] = [
   // Payout Queue above (influencer_payouts). Had no admin surface at all until
   // now, so requests sat unreadable by anyone who could act on them.
   { href: '/admin/payout-requests', label: 'Consumer Payouts', icon: IndianRupee, tourId: 'nav-admin-payout-requests', role: 'admin' },
+  { href: '/admin/product-claims', label: 'Product Claims', icon: ShieldCheck, tourId: 'nav-admin-product-claims', role: 'admin' },
   { href: '/admin/community-deals', label: 'Community Deals', icon: Flame, tourId: 'nav-admin-community-deals', role: 'admin' },
   { href: '/admin/campaigns/schedule', label: 'Campaign Schedule', icon: CalendarClock, tourId: 'nav-admin-campaign-schedule', role: 'admin' },
   { href: '/admin/campaigns/analytics', label: 'Campaign Analytics', icon: TrendingUp, tourId: 'nav-admin-campaign-analytics', role: 'admin' },
