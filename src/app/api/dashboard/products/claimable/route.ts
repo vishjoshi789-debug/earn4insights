@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { and, count, eq } from 'drizzle-orm'
+import { count, inArray } from 'drizzle-orm'
 import { auth } from '@/lib/auth/auth.config'
 import { isAdminSession } from '@/lib/auth/roles'
 import { db } from '@/db'
@@ -55,16 +55,29 @@ export async function GET(request: Request) {
 
     const products = await listClaimableProducts(q)
 
-    // One count query for the whole page rather than N+1.
+    // ⚠️ ONE GROUPED QUERY, NOT A LOOP.
+    //
+    // This was a per-product `count()` in a `for` loop — N round trips to Neon
+    // for N products. Asked "at what product count does it become a GROUP BY?",
+    // the honest answer is that the threshold is unknowable without measuring
+    // (it depends on pooler latency, not on row counts), and a threshold nobody
+    // can check is a condition that never gets checked — it gets rediscovered
+    // under load. The rewrite is six lines, so the rewrite happened instead.
+    //
+    // For the record, the number I would have written: **50 products**. At
+    // ~20ms round-trip each that is ~1s of pure latency, which is where a list
+    // page starts feeling broken. It is now irrelevant — this is O(1) queries.
+    //
+    // Products with zero feedback simply do not appear in `rows`; the `?? 0`
+    // below covers them.
     const counts = new Map<string, number>()
     if (products.length > 0) {
-      for (const p of products) {
-        const [row] = await db
-          .select({ n: count() })
-          .from(feedback)
-          .where(eq(feedback.productId, p.id))
-        counts.set(p.id, Number(row?.n ?? 0))
-      }
+      const rows = await db
+        .select({ productId: feedback.productId, n: count() })
+        .from(feedback)
+        .where(inArray(feedback.productId, products.map((p) => p.id)))
+        .groupBy(feedback.productId)
+      for (const r of rows) counts.set(r.productId, Number(r.n))
     }
 
     return NextResponse.json({

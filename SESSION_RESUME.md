@@ -5043,3 +5043,119 @@ two confirmed instances: `notification_preferences`' `UNIQUE` (in the DB since
 **`product_claim_requests_one_open_per_product`**, a partial unique index that
 Drizzle cannot express, created by 044, and **that feature's concurrency
 control**. A reader trusting only `schema.ts` would not know either exists.
+
+## ✅ CLAIM FLOW — WALK COMPLETE ON PREVIEW, 10 of 11 measured (2026-10-04)
+
+Founder ran the walk. **All 10 executable steps PASS.** Step 7 is a code
+inspection, not a measurement, and is recorded as such below.
+
+| # | Result |
+|---|---|
+| 1 | PASS — lists exactly A, B, C; **E excluded**, so the `lifecycle_status` clause is applied. Fixture E did the job it exists for. |
+| 2 | PASS — search narrows, clearing restores |
+| 3 | PASS — claim created, `pending`, row confirmed in SQL |
+| 4 | PASS — duplicate refused by the server |
+| 5 | PASS — queue shows the pending request with product name |
+| 6 | PASS — approve → `owner_id` set, `claimable` false, `lifecycle` verified, request `approved` |
+| 7 | **INSPECTION** — see below |
+| 8 | PASS — A and C gone from the claimable list after approval |
+| 9 | PASS — two-tab race: second approve refused, `owner_id` and `reviewed_at` unchanged |
+| 11 | PASS — rejection frees the product for a different brand |
+
+### 🔍 STEP 7 — INSPECTION, NOT MEASUREMENT
+
+**Read by eye, 2026-10-04.** The chain is complete and nothing nests a second
+transaction:
+
+```
+approveClaim                       db.transaction(async (tx) => …)   ← the ONE boundary
+  └─ claimRequestTransition(…, tx)
+  └─ claimProduct(productId, requesterId, tx)
+       └─ rekeyBrandForProduct(productId, claimedBy, tx)   productRepository.ts:604
+```
+
+⚠️⚠️ **This cannot be upgraded to a measurement by observing the re-key.** The
+re-key happens whether or not `tx` is threaded — threading changes only
+*atomicity*, not *occurrence* — so "did the brand_id move?" returns PASS either
+way. The only measurement would be deliberate failure injection, and rollback is
+already proven separately, so it was not built.
+
+🔴 **A refactor of `approveClaim` INVALIDATES this check and it must be re-read
+by hand.** There is no test that will fail.
+
+### ⚖️ What steps 4 and 9 actually established
+
+**Step 4 — refusal MEASURED, mechanism INSPECTED.** The duplicate was refused;
+*which* mechanism refused it was not observed. A pre-check `SELECT` and 044's
+partial unique index produce the same message and the same single row, and the
+distinction matters because a pre-check races while the index cannot. The code
+does not pre-check (`createClaimRequest` inserts and translates `23505`), but the
+UI test cannot tell them apart.
+
+✅ **Step 9 — the founder's technique was better than the one specified.** Two
+browser tabs: both load the queue, tab 1 approves, tab 2 clicks Approve without
+refreshing. That is a **genuine two-client race**, not a sequential
+approximation. **Record as the default technique for any compare-and-swap guard**
+— it exercises the stale-read path a devtools replay cannot.
+
+### 📋 FOUR FINDINGS FROM THE WALK
+
+**1. The "claim submitted" state does not survive a refresh.** The page tracks
+only the claim made in that session, in memory. Refresh → button enabled again →
+click → server refuses. ⚖️ **Note what that accidentally demonstrated: the UI
+guard was WEAKER than either of us assumed, and the server guard caught it
+anyway.** That is the argument for the server guard, proven by accident.
+*Fix: read existing requests on page load; render "request pending".*
+
+**2. A product with someone ELSE'S open request still shows as claimable.** The
+predicate is `claimable AND owner_id IS NULL AND lifecycle_status =
+'pending_verification'` — a pending request touches none of the three. The unique
+index is on `product_id` alone, so it refuses a second brand exactly as it
+refuses the same brand. A prospect browses, writes 20+ characters of evidence,
+submits, and is refused — at the moment we are trying to make them feel welcome.
+*Fix: mark "claim pending" in the list, or exclude.*
+
+**3. MEASURED — a brand account needs COMPLETED ONBOARDING, not just
+`users.role = 'brand'`.** An ex-influencer account with the role updated was
+redirected to onboarding and could not reach the dashboard until it finished.
+
+**4. A rejected brand can re-request immediately, unlimited times.** The index
+blocks only `pending` and `info_requested`, so a rejected row drops out of the
+filter. **A policy chosen by accident.** Record now, decide later whether a
+cooldown or attempt limit is wanted.
+
+### 🔴 PLAN WORDING CORRECTED — step 11
+
+Step 11 said *"the product reappears in search."* **It never left.** Only
+APPROVAL removes a product from the claimable list, by setting `owner_id` and
+`claimable = false`. A pending or rejected request touches neither. ⚠️ **That
+misreading is exactly how finding 2 stayed invisible** — the plan implied a
+disappearance that does not happen, so nobody looked for the product still being
+listed while a claim was open.
+
+### 📊 THE REWARD TABLES — finding 4's answer, read from code 2026-10-04
+
+| type | `BASE_TOKENS` | `POINT_VALUES` | in `alreadyAwardedTypes`? |
+|---|---|---|---|
+| `feedback_submit` | 25 | 25 | ✅ **YES** |
+| `survey_complete` | 50 | 50 | ✅ YES |
+| `community_post` | 10 | 10 | ✅ YES |
+| `community_reply` | 5 | 5 | ✅ YES |
+| `community_upvote_received` | 2 | 2 | ✅ YES |
+| `poll_vote` | 1 | **absent** | ❌ no — pays full `finalTokens` |
+
+🔴 **So the founder's inference is CONFIRMED: `feedback_submit` pays base
+upfront.** `alreadyAwarded = 25`, `bonusTokens = finalTokens − 25`, so quality
+only reaches the ledger when it clears multiplier 1.0 — i.e. score ≥ 60.
+**With 23 feedback events at avg 45.4 and 17 of 23 below 60, the inert-penalty
+band covers those 23 rows, not 2.** Plus `community_post` (n=2) and whatever
+`survey_complete`'s n turns out to be. **It is a ~25-row problem, not a 2-row
+one** — the exact total waits on the per-type query.
+
+⚠️ `poll_vote` is the only type that would pay full `finalTokens`, and
+`recordContribution` is never called with it — no caller exists.
+
+⚠️ **`BASE_TOKENS` and `POINT_VALUES` are TWO TABLES HOLDING THE SAME FIVE
+NUMBERS** (`contributionPipeline.ts` and `pointsService.ts`). They agree today.
+This is the §5 "one definition, not two agreeing copies" shape, unconsolidated —
+and the top-up arithmetic silently mis-pays if either drifts.
