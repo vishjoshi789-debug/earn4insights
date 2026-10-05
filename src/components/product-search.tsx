@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+// `Badge` is no longer imported — the only use was the "Verified" badge removed
+// below. See the comment at its old site for why it must not come back from
+// `lifecycle_status`.
 import { Search, Check, Plus, Loader2 } from 'lucide-react'
 
 interface SearchResult {
@@ -215,13 +217,31 @@ export default function ProductSearch({ onProductSelect, selectedProduct }: Prop
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-1">
-                        {product.isVerified && (
-                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                            Verified
-                          </Badge>
-                        )}
-                      </div>
+                      {/*
+                        ⚠️ THE "Verified" BADGE WAS REMOVED HERE (2026-10-02).
+                        DO NOT RE-ADD IT FROM `lifecycle_status`.
+
+                        `isVerified` derives from `lifecycleStatus === 'verified'`
+                        (`api/products/search/route.ts:59`) — and `'verified'` is the
+                        COLUMN DEFAULT (`schema.ts:70`). No verification step has ever
+                        existed anywhere in this codebase (`grep -rni
+                        "verifyProduct|productVerification|verify_product"` → empty).
+                        So the badge meant "not a consumer-created placeholder",
+                        granted at INSERT with no check, and it rendered on the PUBLIC
+                        /submit-feedback page to consumers deciding what to review.
+
+                        It carried no information, so removing it loses nothing.
+
+                        The approval queue does NOT make it meaningful: a
+                        claimed-then-approved product and a brand-launched product both
+                        end up `'verified'` in the same column, indistinguishable — one
+                        earned, one free. That is worse than uniformly meaningless.
+
+                        ✅ When verification becomes real: add `verified_at` +
+                        `verified_by` and render from THOSE, so the badge has its own
+                        fact and an audit trail, and `lifecycle_status` keeps its own
+                        job. Founder decision, 2026-10-02.
+                      */}
                     </div>
                   </button>
                 ))}

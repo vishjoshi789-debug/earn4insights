@@ -1,6 +1,8 @@
-import { eq, and, or, ilike, sql, ne, lte } from 'drizzle-orm'
+import { eq, and, or, ilike, sql, ne, lte, isNull } from 'drizzle-orm'
 import { db } from '@/db'
 import { products } from '@/db/schema'
+import type { DbTx } from '@/db/tx'
+import { rekeyBrandForProduct } from './brandKeyRepository'
 import type { Product as DBProduct, NewProduct } from '@/db/schema'
 import type { Product, ProductProfile, ProductLifecycleStatus, ProductCreationSource, ProductLaunchStatus } from '@/lib/types/product'
 
@@ -98,6 +100,102 @@ export function consumerVisibleProducts() {
     eq(products.launchStatus, 'live'),
     and(eq(products.launchStatus, 'scheduled'), eq(products.revealBeforeLaunch, true)),
   )
+}
+
+/**
+ * ⚠️⚠️ THE ONE DEFINITION OF "CLAIMABLE". EVERY CALLER READS THIS LINE.
+ *
+ * The brand-facing search, the single-product eligibility check, and the
+ * ownership UPDATE inside `claimProduct` all apply THIS predicate. They cannot
+ * disagree, because there is nothing to disagree with.
+ *
+ * ── WHY IT IS A PREDICATE AND NOT ALSO A TS BOOLEAN ──────────────────────
+ * A matching `isProductClaimable(product)` helper was considered and REJECTED:
+ * two expressions of one rule is the problem, not the solution. A future
+ * condition gets added to the SQL and not the boolean, nothing errors, and the
+ * search starts offering products the approval will refuse — a false affordance
+ * hitting a prospective paying brand at their first real interaction.
+ *
+ * So there is no boolean. To ask "is THIS product claimable?", call
+ * `getClaimableProductById()`, which applies this same predicate with an id
+ * filter. One rule, read three ways, defined once. Same consolidation as
+ * `MIN_COHORT_SIZE`.
+ *
+ * ── WHY ALL THREE CONDITIONS, AND WHY NONE IS REDUNDANT ──────────────────
+ *
+ * `claimable = true` — "offered to the claim flow at all", NOT "unclaimed".
+ *   The column defaults to FALSE (`schema.ts`), so brand-launched products are
+ *   never claimable; only `createPlaceholderProduct` sets it true. It is the
+ *   opt-in, and it is what excludes test/internal products by construction.
+ *
+ * `owner_id IS NULL` — "not yet claimed". NOT implied by the above: the Group C
+ *   reassignment set `owner_id` directly in SQL without touching `claimable`,
+ *   so a product can be owned AND still flagged claimable. Without this, those
+ *   rows would appear in the search and fail on approval.
+ *
+ * `lifecycle_status = 'pending_verification'` — only consumer-created
+ *   placeholders. Also excludes `'merged'` for free. Moves together with
+ *   `claimable` in code (`createPlaceholderProduct`, `claimProduct`,
+ *   `mergeProduct` all set both), but manual SQL can desync them — as Group C
+ *   proved — so it is asserted rather than assumed.
+ *
+ * ✅ `claimProduct` sets `claimable: false` in the same `.set()` as `ownerId`,
+ * so a successful claim removes the product from this predicate on both counts.
+ */
+export function claimableProductCondition() {
+  return and(
+    eq(products.claimable, true),
+    isNull(products.ownerId),
+    eq(products.lifecycleStatus, 'pending_verification'),
+  )
+}
+
+/**
+ * One claimable product by id, or null. **This is how you ask "is this product
+ * claimable?"** — it applies `claimableProductCondition()`, so the answer can
+ * never drift from what the search lists or what the approval will accept.
+ *
+ * ⚠️ A null result means "not claimable", which includes "does not exist".
+ * Callers that need to tell those apart for a user-facing message do a separate
+ * `getProductById` AFTERWARDS — that is a message concern, not an eligibility
+ * decision, and it must not re-implement the rule.
+ */
+export async function getClaimableProductById(id: string): Promise<Product | null> {
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, id), claimableProductCondition()))
+    .limit(1)
+  return rows[0] ? toProduct(rows[0]) : null
+}
+
+/**
+ * The brand-facing claimable list, optionally filtered by name.
+ *
+ * Built as SEARCH-AND-CONFIRM, not a discovery feed: at the time of writing all
+ * 8 claimable products carry 1–2 feedback items, so a count column would read
+ * "Fewer than 5" on every row and rank nothing. A brand arrives looking for
+ * their OWN product. An empty query returns everything, because 8 is browsable
+ * and an empty box that reveals nothing reads as a broken feature.
+ *
+ * ⚠️ This lets any brand enumerate consumer-created product names. Already true
+ * of `/dashboard/products` (§11 — productIds are enumerable by design), so no
+ * new exposure, but it is now a SECOND surface with that property: closing the
+ * first without closing this one would be a false fix.
+ */
+export async function listClaimableProducts(search?: string): Promise<Product[]> {
+  const conditions = [claimableProductCondition()]
+  const q = search?.trim().toLowerCase()
+  if (q) conditions.push(ilike(products.name, `%${q}%`))
+
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(...conditions))
+    .orderBy(products.name)
+    .limit(50)
+
+  return rows.map(toProduct)
 }
 
 export async function getAllProducts(opts?: { includeScheduled?: boolean }): Promise<Product[]> {
@@ -322,19 +420,22 @@ export async function getProductsByOwner(ownerId: string): Promise<Product[]> {
 }
 
 /**
- * Get claimable products (pending verification, not yet claimed)
+ * Get claimable products.
+ *
+ * 🔴 **THIS FUNCTION ALREADY HAD THE DRIFT.** Its docstring said "not yet
+ * claimed" and its predicate did not check `owner_id` — it asserted only
+ * `claimable = true AND lifecycle_status = 'pending_verification'`. So it would
+ * have listed the Group C products (owner set directly in SQL, `claimable`
+ * untouched) as claimable, and every claim on one would have failed at the
+ * ownership UPDATE. **A live false affordance waiting for the UI that would
+ * have exposed it** — found by consolidating rather than by a bug report.
+ *
+ * Now delegates to `claimableProductCondition()`. Kept as a thin alias because
+ * `/api/dashboard/products/claim` calls it; prefer `listClaimableProducts()`,
+ * which supports search.
  */
 export async function getClaimableProducts(): Promise<Product[]> {
-  const results = await db
-    .select()
-    .from(products)
-    .where(
-      and(
-        eq(products.claimable, true),
-        eq(products.lifecycleStatus, 'pending_verification')
-      )
-    )
-  return results.map(toProduct)
+  return listClaimableProducts()
 }
 
 /**
@@ -379,28 +480,140 @@ export async function createPlaceholderProduct(params: {
 /**
  * Claim a product (brand takes ownership)
  */
+/**
+ * The ownership predicate in `claimProduct` did not match — the product was
+ * claimed or assigned by some other path between the request and the approval.
+ *
+ * Thrown rather than returned so it cannot be confused with "product not
+ * found", and so it rolls back the caller's transaction: an approval that loses
+ * this race must not leave the request marked approved.
+ */
+export class ProductAlreadyOwnedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ProductAlreadyOwnedError'
+  }
+}
+
 export async function claimProduct(
   productId: string,
-  claimedBy: string
+  claimedBy: string,
+  /**
+   * Run inside an EXISTING transaction instead of opening one.
+   *
+   * ⚠️⚠️ **THE CALLER OWNS THE BOUNDARY. DO NOT NEST.**
+   *
+   * `approveClaim` must flip the request status and move ownership together, so
+   * it opens the transaction and passes the handle here. Wrapping ANOTHER
+   * `db.transaction()` around this one does not error — postgres.js turns the
+   * inner one into a SAVEPOINT — which is exactly why it is dangerous: the
+   * nesting silently becomes something nobody reasoned about, and the inner
+   * "commit" is not one.
+   *
+   * Same contract as `deductPoints` (`pointsService.ts:217`) and
+   * `createRedemption`: `existingTx ? run(existingTx) : db.transaction(run)`.
+   *
+   * ⚠️ The guards below run OUTSIDE the boundary even when a tx is passed, so
+   * there is a TOCTOU window between reading `claimable` and writing it.
+   * Accepted as a known gap, not an oversight: at admin-queue volume it is
+   * negligible, and the real serialization points are the `claimable = false`
+   * write inside the transaction plus migration 044's partial unique index on
+   * open requests.
+   */
+  existingTx?: DbTx,
 ): Promise<Product | null> {
-  const product = await getProductById(productId)
-  if (!product) return null
-  if (!product.claimable) return null
-  if (product.lifecycleStatus === 'merged') return null
-  
-  const [updated] = await db
-    .update(products)
-    .set({
-      ownerId: claimedBy,
-      claimedBy,
-      claimedAt: new Date(),
-      claimable: false,
-      lifecycleStatus: 'verified',
-      updatedAt: new Date(),
-    })
-    .where(eq(products.id, productId))
-    .returning()
-  
+  // ⚠️ NO PRE-READ, NO MANUAL GUARDS. There used to be
+  //   `if (!product.claimable) return null; if (lifecycleStatus === 'merged') …`
+  // here, and that was a SECOND definition of claimability sitting next to the
+  // one in the UPDATE below — exactly the drift this consolidation removes.
+  // The conditional UPDATE is the only check, and it is atomic, which
+  // check-then-act never was.
+
+  // ⚠️ OWNERSHIP AND BRAND KEYS MOVE TOGETHER, OR NEITHER MOVES.
+  //
+  // Setting `owner_id` alone is not a claim — it is half of one. Ten tables
+  // carry a `brand_id` pointing at whoever owns this product, every reader
+  // scopes by that column alone, and nothing reconciles the two. A claim that
+  // updated only `owner_id` would hand the brand a product whose alerts, ICPs,
+  // deals and contribution events remain invisible to them and dangling for
+  // the previous owner — silently, on EVERY claim.
+  //
+  // So both writes share one commit boundary. If the re-key throws, the
+  // ownership change rolls back with it and the claim fails loudly: a
+  // half-claimed product is worse than an unclaimed one, because nothing
+  // downstream can tell it happened.
+  //
+  // ── What is actually verified about `db.transaction()` on the pooler ─────
+  //
+  // ✅ COMMIT is proven by data: the 2026-08-23 row in `payment_redemptions` is
+  //    the output of the transaction at `api/consumer/rewards/redeem/route.ts:154`,
+  //    on production, through the pgBouncer pooler. (⚠️ Note the naming trap —
+  //    `rewardRedemptionRepository` writes `payment_redemptions`, NOT
+  //    `reward_redemptions`, which has 0 rows ever.)
+  //
+  // ⚠️ ROLLBACK is a DIFFERENT behaviour and pgBouncer in transaction mode can
+  //    break it while commit looks fine. `scripts/probe-transaction-rollback.ts`
+  //    settles it against the pooled endpoint. An earlier version of this
+  //    comment claimed the redeem route "has run this way in production" as
+  //    though that proved both — it proves commit only.
+  //
+  // CLAUDE.md's transaction warning is about `pgClient.unsafe()` with inline
+  // BEGIN/COMMIT, which is a different mechanism from this.
+  const run = async (tx: DbTx) => {
+    const [row] = await tx
+      .update(products)
+      .set({
+        ownerId: claimedBy,
+        claimedBy,
+        claimedAt: new Date(),
+        claimable: false,
+        lifecycleStatus: 'verified',
+        updatedAt: new Date(),
+      })
+      // ⚠️⚠️ CONDITIONAL, NOT UNCONDITIONAL. The predicate IS the race guard.
+      //
+      // 044's partial unique index stops two OPEN REQUESTS on one product. It
+      // does not stop this sequence:
+      //
+      //   request created → product claimed by another route (admin assignment,
+      //   a direct owner_id write, the legacy claim path) → this request
+      //   approved → ownership SILENTLY OVERWRITTEN
+      //
+      // Same failure, different way in. Re-reading `claimable` above and then
+      // writing here is check-then-act; only the predicate is atomic.
+      //
+      // ✅ Reads `claimableProductCondition()` — THE SAME LINE the brand-facing
+      // search and `getClaimableProductById` read. That is the point: a product
+      // the search offers is a product this UPDATE will accept, not by two
+      // authors agreeing but because there is one definition.
+      .where(and(eq(products.id, productId), claimableProductCondition()))
+      .returning()
+
+    // No row means the predicate did not match — someone got there first.
+    // ⚠️ THROW, do not return null. A null here would be indistinguishable from
+    // "product not found" and would let the caller treat a lost race as a soft
+    // failure. Throwing also rolls the caller's transaction back, so an
+    // approval that loses the race does not leave the request marked approved.
+    if (!row) {
+      throw new ProductAlreadyOwnedError(
+        `Product ${productId} is no longer claimable — it was claimed or assigned ` +
+        `by another path after this request was created.`,
+      )
+    }
+
+    const moved = await rekeyBrandForProduct(productId, claimedBy, tx)
+    if (Object.keys(moved).length > 0) {
+      console.log(`[claimProduct] re-keyed brand records for ${productId}:`, moved)
+    }
+
+    return row
+  }
+
+  // Join the caller's transaction when given one; otherwise own the boundary.
+  // Reuses the handle rather than nesting, so there is exactly one commit point
+  // and no savepoint semantics to reason about.
+  const updated = existingTx ? await run(existingTx) : await db.transaction(run)
+
   return updated ? toProduct(updated) : null
 }
 

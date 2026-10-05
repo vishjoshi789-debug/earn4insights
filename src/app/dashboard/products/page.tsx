@@ -103,9 +103,23 @@ export default async function ProductsPage() {
         </div>
 
         {userRole === 'brand' ? (
-          <Button asChild>
-            <Link href="/dashboard/launch">Launch new product</Link>
-          </Button>
+          /*
+            SECONDARY entry point to the claim flow. The sidebar item is primary.
+            ⚠️ This was specced as a link in this page's EMPTY STATE — that is not
+            possible here: `/dashboard/products` lists EVERY product (it is the
+            consumer discovery surface, not owner-scoped, §11), so it is never
+            empty for a brand and an empty-state link would never render. A
+            persistent secondary action beside Launch serves the same purpose and
+            also works for a returning brand claiming their second SKU.
+          */
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/products/claim">Claim an existing product</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/dashboard/launch">Launch new product</Link>
+            </Button>
+          </div>
         ) : (
           <Button asChild>
             <Link href="/dashboard/submit-feedback">Submit Feedback</Link>

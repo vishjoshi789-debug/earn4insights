@@ -1,15 +1,23 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth.config'
-// ⚠️ `claimProduct` and `getProductById` are deliberately NOT imported here any
-// more. The disabled POST handler's body was DELETED rather than left below an
-// early return: unreachable code is one careless edit away from reachable, and
-// this particular body transferred product ownership to any authenticated caller.
-// Phase 2 reintroduces a POST that calls `requestClaim()` — which creates a
-// request for admin approval and never touches ownership.
+// ⚠️ `claimProduct` is deliberately NOT imported here. This route never moves
+// ownership — it creates a request. `approveClaim()` is the only caller of
+// `claimProduct`, and it runs inside a transaction it owns.
 import {
   getClaimableProducts,
   getProductsByOwner,
 } from '@/db/repositories/productRepository'
+import { isAdminSession } from '@/lib/auth/roles'
+import { requestClaim } from '@/server/productClaimService'
+
+/**
+ * Minimum `evidence` length enforced at the API boundary.
+ *
+ * ⚠️ Deliberately NOT a database constraint: migration 044 keeps the column
+ * nullable so a future admin-created claim (no claimant to ask) remains legal.
+ * The requirement belongs where the claimant is, not in the schema.
+ */
+const MIN_EVIDENCE_LENGTH = 20
 
 /**
  * GET /api/dashboard/products/claim
@@ -66,65 +74,109 @@ export async function GET(request: Request) {
 }
 
 /**
- * POST /api/dashboard/products/claim
- * 
- * Claim a product (brand takes ownership)
- * 
- * Body: { productId: string }
- * 
- * Flow:
- * 1. Verify user is authenticated
- * 2. Verify product exists and is claimable
- * 3. Assign ownership to brand
- * 4. Mark product as verified
+ * POST /api/dashboard/products/claim — REQUEST a claim. Does NOT grant ownership.
+ *
+ * Body: { productId: string, evidence: string }
+ *
+ * ── WHAT THIS HANDLER USED TO DO, AND WHY IT WAS A HOTFIX ───────────────────
+ * Until `fa02109` it called `claimProduct()` behind one check —
+ * `if (!session?.user?.id)`. **No role check, no ownership proof, no approval.**
+ * Any authenticated account, including a consumer or influencer, could take
+ * ownership of any claimable product. Two consequences, in severity order:
+ *
+ *   1. `owner_id` makes `canManage` true on `/dashboard/products/[productId]`,
+ *      which unhides `<RecentFeedback>` — consumer names, emails and media. A
+ *      PII exposure, not only a data-integrity defect.
+ *   2. Unauthorised ownership transfer of a product carrying real feedback.
+ *
+ * ⚠️ An earlier version of this comment also claimed the exploit "forged a trust
+ * signal" via `lifecycle_status = 'verified'`. **That escalation was WRONG and is
+ * retracted:** `'verified'` is the column DEFAULT (`schema.ts:70`), no
+ * verification step has ever existed, so the badge never carried information. It
+ * is being removed rather than defended. See §5.
+ *
+ * Evidenced on 2026-10-01 via `products.claimed_by IS NOT NULL` (the only writer
+ * is `claimProduct`): rows existed, all brand-role. So the exploit was
+ * **POSSIBLE, never used by a non-brand account.** Precaution, not incident.
+ *
+ * ── WHAT IT DOES NOW ────────────────────────────────────────────────────────
+ * Creates a `product_claim_requests` row for admin review. Ownership moves in
+ * `approveClaim()`, inside a transaction, and nowhere else.
  */
-/**
- * 🔴🔴 HOTFIX — THIS HANDLER TRANSFERRED PRODUCT OWNERSHIP TO ANY LOGGED-IN USER.
- *
- * It is disabled, not deleted, so the exploit path is visible rather than quietly
- * absent. Phase 2 replaces the body with `requestClaim()` — creating a request for
- * admin approval instead of taking ownership.
- *
- * ── WHAT WAS WRONG ───────────────────────────────────────────────────────────
- * The only check was `if (!session?.user?.id)`. **No role check, no ownership
- * proof, no approval.** Any authenticated account — consumer, influencer, brand —
- * could call `claimProduct()` on any of the 10 claimable products and become its
- * owner.
- *
- * Reachability was traced, not assumed: the path is not in `PUBLIC_PREFIXES` so a
- * session is required, but any role satisfies that; CSRF applies but a logged-in
- * browser already holds the cookie AND `CsrfFetchProvider` patches `window.fetch`,
- * so one `fetch()` from devtools carries a valid token; and product ids are
- * enumerable from `/dashboard/products` by design (§11).
- *
- * ── WHY IT WAS WORSE THAN AN OWNERSHIP BUG ───────────────────────────────────
- * 1. Once `owner_id` is yours, `canManage` on `/dashboard/products/[productId]`
- *    is true, which unhides `<RecentFeedback>` — consumer **names, emails and
- *    media**. A PII exposure, not only a data-integrity defect.
- * 2. `claimProduct` also writes `lifecycle_status = 'verified'`, and that renders
- *    a **consumer-visible "Verified" badge** (`api/products/search/route.ts:59`
- *    → `product-search.tsx:219`) on the feedback-submission surfaces. The exploit
- *    forged a trust signal shown to other consumers while they chose what to give
- *    feedback on.
- *
- * ── WHY DISABLING BREAKS NOTHING (measured, not assumed) ─────────────────────
- * `grep -rn "products/claim" src` → the only runtime callers are
- * `dashboard/analytics/consumer-intelligence/page.tsx:97` and
- * `feature-insights/page.tsx:34`, and **both call `GET ?action=my-products`**.
- * **POST has zero callers.** The GET handler above is therefore left untouched.
- *
- * ⚠️ Fingerprint for whether it was ever USED: `products.claimed_by IS NOT NULL`.
- * Only `claimProduct` writes that column — the launch and seed paths never do — so
- * any non-null row means this ran. The owner's `users.role` then says by whom.
- */
-export async function POST(_request: Request) {
-  return NextResponse.json(
-    {
-      error:
-        'Product claiming now requires admin approval. This endpoint is disabled; ' +
-        'the approval queue replaces it.',
-    },
-    { status: 503 },
-  )
+export async function POST(request: Request) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // ⚠️ BRAND-OR-ADMIN. The missing role check is half of what made the old
+    // handler exploitable, and the sidebar capability filter does not protect a
+    // route — UI gating is not API gating.
+    const role = (session.user as any).role
+    if (role !== 'brand' && !isAdminSession(session)) {
+      return NextResponse.json({ error: 'Brand access only' }, { status: 403 })
+    }
+
+    const body = await request.json().catch(() => ({}))
+    const productId = typeof body?.productId === 'string' ? body.productId : ''
+    const evidence = typeof body?.evidence === 'string' ? body.evidence.trim() : ''
+
+    if (!productId) {
+      return NextResponse.json({ error: 'productId is required' }, { status: 400 })
+    }
+
+    // ⚠️ EVIDENCE IS REQUIRED HERE, THOUGH THE COLUMN IS NULLABLE.
+    // Migration 044 leaves `evidence` nullable on purpose — a future
+    // admin-created claim has no claimant to supply it. But a request arriving
+    // empty gives the reviewer nothing to judge, which turns the approval queue
+    // into a rubber stamp. The boundary is the right place for the requirement;
+    // the column is not.
+    if (evidence.length < MIN_EVIDENCE_LENGTH) {
+      return NextResponse.json(
+        {
+          error:
+            `Tell us why this product is yours (at least ${MIN_EVIDENCE_LENGTH} characters). ` +
+            `An admin reviews every claim and needs something to go on.`,
+        },
+        { status: 400 },
+      )
+    }
+
+    const result = await requestClaim(session, productId, evidence.slice(0, 2000))
+
+    if (!result.ok) {
+      const status =
+        result.reason === 'not_found' ? 404
+        : result.reason === 'not_claimable' ? 409
+        : 409
+      const message =
+        result.reason === 'not_found' ? 'Product not found'
+        : result.reason === 'not_claimable'
+          ? 'This product is not available to claim'
+          : 'Someone already has an open claim request on this product'
+      return NextResponse.json(
+        { error: message, reason: result.reason, openRequestId: (result as any).openRequestId },
+        { status },
+      )
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        request: {
+          id: result.request.id,
+          productId: result.request.productId,
+          status: result.request.status,
+          createdAt: result.request.createdAt,
+        },
+        message: 'Claim submitted. An admin will review it.',
+      },
+      { status: 201 },
+    )
+  } catch (error) {
+    console.error('[Claim POST] Error:', error)
+    return NextResponse.json({ error: 'Failed to submit claim' }, { status: 500 })
+  }
 }
 
