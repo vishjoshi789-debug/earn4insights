@@ -94,6 +94,71 @@ export async function getClaimRequestsByRequester(
     .orderBy(desc(productClaimRequests.createdAt))
 }
 
+/** One requester's most recent request per product, for the products given. */
+export type OwnRequestSummary = {
+  productId: string
+  status: ClaimStatus
+  createdAt: Date
+}
+
+/**
+ * THIS requester's requests across a set of products — one query, not N.
+ *
+ * ⚠️⚠️ SCOPED TO `requesterId` BY CONSTRUCTION, AND THAT IS A PRIVACY BOUNDARY,
+ * NOT AN OPTIMISATION. The brand-facing claim page renders from this, so it must
+ * never be able to learn that ANOTHER brand holds an open request: a brand could
+ * otherwise submit speculative claims across the catalogue and read off which
+ * products their competitors are pursuing. Do not relax the `requesterId`
+ * predicate to "all requests for these products" for any convenience.
+ *
+ * ⚠️ Returns EVERY status, including `rejected` — the page shows a rejected
+ * request honestly rather than pretending nothing happened. (A rejected brand
+ * can still re-request without limit; that is Finding 4 and deliberately NOT
+ * changed here.)
+ *
+ * ⚠️ Why this is a THIRD query and not a join onto the feedback-count GROUP BY:
+ * joining `feedback` and `product_claim_requests` on `product_id` fans the
+ * feedback count out by the number of request rows, and the count comes back
+ * WRONG WITH NO ERROR. Two fact tables at different grain do not belong in one
+ * aggregate.
+ */
+export async function getOwnRequestsForProducts(
+  requesterId: string,
+  productIds: string[],
+): Promise<OwnRequestSummary[]> {
+  if (productIds.length === 0) return []
+
+  const rows = await db
+    .select({
+      productId: productClaimRequests.productId,
+      status: productClaimRequests.status,
+      createdAt: productClaimRequests.createdAt,
+    })
+    .from(productClaimRequests)
+    .where(
+      and(
+        eq(productClaimRequests.requesterId, requesterId),
+        inArray(productClaimRequests.productId, productIds),
+      ),
+    )
+    .orderBy(desc(productClaimRequests.createdAt))
+
+  // Newest per product wins. 044's partial unique index guarantees at most one
+  // OPEN request per product, but a product can carry several decided ones
+  // (rejected, re-requested, rejected again), so the collapse is required.
+  const seen = new Map<string, OwnRequestSummary>()
+  for (const r of rows) {
+    if (!seen.has(r.productId)) {
+      seen.set(r.productId, {
+        productId: r.productId,
+        status: r.status as ClaimStatus,
+        createdAt: r.createdAt,
+      })
+    }
+  }
+  return [...seen.values()]
+}
+
 /**
  * The admin queue. Defaults to open requests — the ones needing a decision.
  *

@@ -5,6 +5,7 @@ import { isAdminSession } from '@/lib/auth/roles'
 import { db } from '@/db'
 import { feedback } from '@/db/schema'
 import { listClaimableProducts } from '@/db/repositories/productRepository'
+import { getOwnRequestsForProducts } from '@/db/repositories/productClaimRepository'
 import { MIN_COHORT_SIZE } from '@/lib/privacy/cohort'
 
 /**
@@ -70,20 +71,43 @@ export async function GET(request: Request) {
     //
     // Products with zero feedback simply do not appear in `rows`; the `?? 0`
     // below covers them.
+    const productIds = products.map((p) => p.id)
+
     const counts = new Map<string, number>()
-    if (products.length > 0) {
+    if (productIds.length > 0) {
       const rows = await db
         .select({ productId: feedback.productId, n: count() })
         .from(feedback)
-        .where(inArray(feedback.productId, products.map((p) => p.id)))
+        .where(inArray(feedback.productId, productIds))
         .groupBy(feedback.productId)
       for (const r of rows) counts.set(r.productId, Number(r.n))
+    }
+
+    // ── THIS brand's own request state, so the page stops guessing ──────────
+    //
+    // The page previously derived its state only from what happened in the
+    // current browser session: submit a claim, refresh, and the button was
+    // enabled again as though nothing had been sent. The brand then re-submits
+    // and the server refuses — correctly, but after they have retyped their
+    // evidence. A brand sits in `pending` for hours or days, so that is the
+    // state they meet most.
+    //
+    // ⚠️ `getOwnRequestsForProducts` is scoped to the session user. The payload
+    // carries NOTHING about another brand's request — a brand must not be able
+    // to enumerate the catalogue and read off what competitors are pursuing.
+    // (Finding 2 — products with someone else's open request still appear here
+    // with an enabled control. The agreed direction is to EXCLUDE them, not to
+    // badge them, and that is deliberately NOT built yet.)
+    const ownRequests = new Map<string, { status: string; createdAt: Date }>()
+    for (const r of await getOwnRequestsForProducts(session.user.id, productIds)) {
+      ownRequests.set(r.productId, { status: r.status, createdAt: r.createdAt })
     }
 
     return NextResponse.json({
       products: products.map((p) => {
         const n = counts.get(p.id) ?? 0
         const belowFloor = n < MIN_COHORT_SIZE
+        const own = ownRequests.get(p.id)
         return {
           id: p.id,
           name: p.name,
@@ -92,6 +116,11 @@ export async function GET(request: Request) {
           // ⚠️ Exactly one of these two is meaningful. No raw sub-floor number.
           feedbackCount: belowFloor ? null : n,
           feedbackCountBelowFloor: belowFloor,
+          // null = this brand has never requested this product.
+          // ⚠️ Always THIS brand's request. Never anyone else's.
+          ownRequest: own
+            ? { status: own.status, createdAt: own.createdAt.toISOString() }
+            : null,
         }
       }),
       minCohortSize: MIN_COHORT_SIZE,

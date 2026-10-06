@@ -33,9 +33,37 @@ import type { Product } from '@/lib/types/product'
  * "someone already claimed this" into a 500. Genuine faults still throw.
  */
 
+/**
+ * ⚠️⚠️ `already_open` WAS ONE REASON AND HAD TO BECOME TWO.
+ *
+ * The old shape was `reason: 'already_open'` with an `openRequestId`, and the
+ * route rendered it as **"Someone already has an open claim request on this
+ * product."** In production that sentence was shown to the brand whose OWN
+ * request it was — so the app told a brand a competitor had taken their
+ * product, when nobody had. **A confidently wrong message is worse than a vague
+ * one, because the reader acts on it:** abandon the product, or email support
+ * about a rival who does not exist.
+ *
+ * The information to tell the cases apart was always in hand —
+ * `getOpenClaimRequestForProduct` returns the whole row, including
+ * `requesterId` and `createdAt` — and this type threw it away. The fix is the
+ * type, not the message.
+ *
+ * ⚠️ `openRequestId` is GONE, not merely unused. It is another brand's row id
+ * and had no business crossing this boundary.
+ */
 export type RequestClaimResult =
   | { ok: true; request: ProductClaimRequest }
-  | { ok: false; reason: 'not_found' | 'not_claimable' | 'already_open'; openRequestId?: string }
+  | { ok: false; reason: 'not_found' | 'not_claimable' }
+  /** The caller's OWN open request. Safe to name, and dated. */
+  | { ok: false; reason: 'own_request_open'; submittedAt: Date }
+  /**
+   * SOMEONE ELSE holds an open request.
+   * ⚠️ Carries NO detail — not the holder, not the date, not the row id.
+   * Revealing that another party exists lets a brand probe the catalogue and
+   * learn which products competitors are pursuing.
+   */
+  | { ok: false; reason: 'not_available' }
 
 export type DecideClaimResult =
   | { ok: true; request: ProductClaimRequest; product: Product | null }
@@ -90,9 +118,21 @@ export async function requestClaim(
     return { ok: true, request }
   } catch (err) {
     if (isUniqueViolation(err)) {
-      // Someone already has an open request. Fetch it only now, to say so.
+      // An open request already exists. Fetch it only now — to decide WHOSE,
+      // which is the whole point. The row carries `requesterId` and
+      // `createdAt`; an earlier version read it and then discarded both.
       const open = await getOpenClaimRequestForProduct(productId)
-      return { ok: false, reason: 'already_open', openRequestId: open?.id }
+
+      if (open && open.requesterId === requesterId) {
+        // The caller's own. Name it plainly and date it.
+        return { ok: false, reason: 'own_request_open', submittedAt: open.createdAt }
+      }
+
+      // Someone else's — or the row vanished between the violation and this
+      // read (a concurrent rejection frees the index). ⚠️ Both collapse to the
+      // SAME opaque answer on purpose: "not available" is true either way, and
+      // distinguishing them would leak that a third party is involved.
+      return { ok: false, reason: 'not_available' }
     }
     throw err
   }

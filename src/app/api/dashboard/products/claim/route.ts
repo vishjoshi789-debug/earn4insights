@@ -146,18 +146,48 @@ export async function POST(request: Request) {
     const result = await requestClaim(session, productId, evidence.slice(0, 2000))
 
     if (!result.ok) {
-      const status =
-        result.reason === 'not_found' ? 404
-        : result.reason === 'not_claimable' ? 409
-        : 409
-      const message =
-        result.reason === 'not_found' ? 'Product not found'
-        : result.reason === 'not_claimable'
-          ? 'This product is not available to claim'
-          : 'Someone already has an open claim request on this product'
+      // ⚠️⚠️ FOUR REASONS, FOUR MESSAGES — and the split between the last two
+      // is the point of this block.
+      //
+      // This used to say "Someone already has an open claim request on this
+      // product" for BOTH cases, and in production it said that to the brand
+      // whose own request it was. The app told a brand a competitor had taken
+      // their product when nobody had. A brand acts on that.
+      //
+      // So: their OWN request is named plainly and dated. ANOTHER brand's
+      // request reveals nothing — not the holder, not the date, not that a
+      // third party exists at all — because a brand who could tell the
+      // difference could probe the catalogue and map what competitors are
+      // pursuing.
+      if (result.reason === 'not_found') {
+        return NextResponse.json(
+          { error: 'Product not found', reason: result.reason },
+          { status: 404 },
+        )
+      }
+
+      if (result.reason === 'own_request_open') {
+        // Human-readable, not an ISO timestamp — this sentence is read by a
+        // person wondering what happened to the claim they filed.
+        const submitted = result.submittedAt.toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'long',
+        })
+        return NextResponse.json(
+          {
+            error: `Your claim on this product is already with us — submitted ${submitted}. We'll let you know once it's reviewed.`,
+            reason: result.reason,
+          },
+          { status: 409 },
+        )
+      }
+
+      // 'not_claimable' and 'not_available' deliberately share one sentence.
+      // The second covers another brand's open request, and saying anything
+      // more specific is the leak.
       return NextResponse.json(
-        { error: message, reason: result.reason, openRequestId: (result as any).openRequestId },
-        { status },
+        { error: 'This product is not currently available to claim', reason: result.reason },
+        { status: 409 },
       )
     }
 
