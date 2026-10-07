@@ -30,6 +30,12 @@ import { apiPost } from '@/lib/api-client'
 
 const MIN_EVIDENCE_LENGTH = 20
 
+type OwnRequest = {
+  status: 'pending' | 'approved' | 'rejected' | 'info_requested' | string
+  /** ISO. Formatted for display at the point of use, never shown raw. */
+  createdAt: string
+}
+
 type Claimable = {
   id: string
   name: string
@@ -38,6 +44,22 @@ type Claimable = {
   /** null when below the cohort floor — never a raw sub-floor number. */
   feedbackCount: number | null
   feedbackCountBelowFloor: boolean
+  /**
+   * THIS brand's request on this product, or null if they've never asked.
+   *
+   * ⚠️ Always the viewer's own. The API deliberately sends nothing about
+   * another brand's request — a product someone else has claimed still appears
+   * here with an enabled control (Finding 2), and finding out costs a submit.
+   * Excluding those is the agreed direction and is not built yet.
+   */
+  ownRequest: OwnRequest | null
+}
+
+/** "5 October" — a date a person reads, not an ISO timestamp. */
+function formatSubmitted(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'recently'
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
 }
 
 export default function ClaimProductPage() {
@@ -171,7 +193,22 @@ export default function ClaimProductPage() {
 
       <div className="grid gap-3">
         {products.map((p) => {
-          const alreadySubmitted = submitted.includes(p.id)
+          // ⚠️ SERVER STATE FIRST, SESSION STATE ONLY AS A STOPGAP.
+          //
+          // `submitted` is what this browser tab did since load; `p.ownRequest`
+          // is what the database says. The page used to know ONLY the former,
+          // so a refresh re-enabled the button on a product the brand had
+          // already claimed — they'd submit again and be refused. `ownRequest`
+          // survives a refresh, a new tab, and a different device.
+          //
+          // `submitted` is kept purely so the card updates the instant a claim
+          // succeeds, without refetching the list.
+          const own = p.ownRequest
+          const openFromServer = own?.status === 'pending' || own?.status === 'info_requested'
+          const isPending = openFromServer || submitted.includes(p.id)
+          // Honest, not hidden: a rejected brand sees that it was rejected.
+          // They can still request again — that is Finding 4, unchanged here.
+          const wasRejected = own?.status === 'rejected'
           return (
             <Card key={p.id} className="border-border bg-background/40">
               <CardHeader className="pb-3">
@@ -184,20 +221,28 @@ export default function ClaimProductPage() {
                       </CardDescription>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    disabled={alreadySubmitted}
-                    onClick={() => {
-                      setSelected(p)
-                      setEvidence('')
-                      setSubmitError(null)
-                    }}
-                  >
-                    {alreadySubmitted ? 'Claim submitted' : 'This is ours'}
-                  </Button>
+                  {isPending ? (
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 border-amber-700 text-amber-300"
+                    >
+                      Request pending
+                    </Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSelected(p)
+                        setEvidence('')
+                        setSubmitError(null)
+                      }}
+                    >
+                      {wasRejected ? 'Request again' : 'This is ours'}
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-0">
+              <CardContent className="space-y-2 pt-0">
                 {/* ⚠️ Floored. Below MIN_COHORT_SIZE the API sends no number at all —
                     the claimant is still unverified here, so a raw low count would
                     leak what the floor exists to protect. */}
@@ -206,6 +251,20 @@ export default function ClaimProductPage() {
                     ? `Fewer than ${minCohortSize} feedback items`
                     : `${p.feedbackCount} feedback items`}
                 </Badge>
+
+                {openFromServer && own && (
+                  <p className="text-xs text-amber-200/90">
+                    You submitted this claim on {formatSubmitted(own.createdAt)}. An admin
+                    is reviewing it — we&apos;ll let you know.
+                  </p>
+                )}
+
+                {wasRejected && own && (
+                  <p className="text-xs text-muted-foreground">
+                    A previous claim of yours on this product was declined on{' '}
+                    {formatSubmitted(own.createdAt)}. You can ask again with more detail.
+                  </p>
+                )}
               </CardContent>
             </Card>
           )
